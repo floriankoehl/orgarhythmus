@@ -7,7 +7,7 @@ import ModeEditIcon from '@mui/icons-material/ModeEdit';
 
 
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+import { BASE_URL } from "../config/api";// Pfad anpassen falls nötig
 
 
 export async function profile_loader(object){
