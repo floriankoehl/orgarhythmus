@@ -3,15 +3,12 @@ import { useLoaderData } from "react-router-dom"
 import UserCard from "../components/UserCard"
 
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL;
-
-
+import { BASE_URL } from "../config/api"; // Pfad anpassen falls nötig
 
 export async function all_user_loader() {
   const res = await fetch(`${BASE_URL}/api/users/all`);
 
   const contentType = res.headers.get("content-type") || "";
-
   const text = await res.text();
 
   if (!contentType.includes("application/json")) {
