@@ -1,0 +1,26 @@
+# docker-compose.yml  (remove the obsolete "version" key)
+
+services:
+  backend:
+    build: ./backend
+    container_name: django-backend
+    ports:
+      - "8000:8000"                 # host:container
+    volumes:
+      - ./backend:/app              # live code sync for Django
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+
+  frontend:
+    build: ./frontend
+    container_name: react-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE=http://backend:8000
+    volumes:
+      - ./frontend:/app             # your source code
+      - /app/node_modules           # <-- keep deps in container (fixes Rollup/Vite)
+    depends_on:
+      - backend
