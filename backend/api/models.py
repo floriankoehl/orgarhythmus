@@ -1,13 +1,8 @@
 from django.db import models
+from django.contrib.auth.models import User  # ← Djangos User verwenden
 
-class User(models.Model):   # <-- capital M
-    name = models.CharField(max_length=120)
-    password = models.CharField(max_length=120)
-
-    def __str__(self):
-        return self.id, self.name
-
+# Lösche dein eigenes User Model komplett!
 
 class Comment(models.Model):
-    author = models.CharField(max_length=120)
-    text = models.CharField(max_length=2000, blank=True, null=True, default=None)
+    author = models.ForeignKey(User, on_delete=models.CASCADE)  # ← Besser!
+    text = models.CharField(max_length=2000, blank=True, null=True)

@@ -17,22 +17,27 @@ def echo_view(request, text):
     return JsonResponse({"echo": text})
 
 
+from django.contrib.auth.models import User
+from django.contrib.auth import authenticate, login
+
 @csrf_exempt
 def create_user(request):
     if request.method != 'POST':
         return JsonResponse({"error": "Method must be POST"})
 
     request_json = json.loads(request.body)
-    name = request_json.get('username')
+    username = request_json.get('username')
     password_1 = request_json.get('password_first')
     password_2 = request_json.get('password_second')
 
     if password_1 != password_2:
-        print("It returns this password proiblem")
         return JsonResponse({"error": "Passwords must match"}, status=400)
 
-
-    created_user = User.objects.create(name=name, password=password_1)
+    # WICHTIG: create_user hasht das Passwort automatisch!
+    created_user = User.objects.create_user(
+        username=username,
+        password=password_1
+    )
 
     return JsonResponse({"user_id": created_user.id, "ok": True}, status=201)
 
@@ -40,7 +45,6 @@ def create_user(request):
 
 
 
-from django.http import JsonResponse
 from .models import User
 
 def all_users(request):
@@ -147,19 +151,34 @@ def all_comments(request):
 from django.contrib.auth import authenticate, login
 
 
-@csrf_exempt  # or better: set up proper CSRF handling, see below
+@csrf_exempt
 def api_login(request):
-    print(request)
-    print("inside login")
+    print("=" * 50)
+    print("REQUEST METHOD:", request.method)
+    print("REQUEST BODY:", request.body)
+    print("CONTENT TYPE:", request.content_type)
 
     if request.method != "POST":
         return JsonResponse({"error": "Only POST allowed"}, status=405)
 
-    data = json.loads(request.body)
-    user = authenticate(username=data["username"], password=data["password"])
+    try:
+        data = json.loads(request.body)
+        print("PARSED DATA:", data)
+    except json.JSONDecodeError as e:
+        print("JSON ERROR:", e)
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    username = data.get("username")
+    password = data.get("password")
+
+    print(f"USERNAME: {username}, PASSWORD: {password}")
+
+    user = authenticate(username=username, password=password)
 
     if user is None:
+        print("AUTHENTICATION FAILED")
         return JsonResponse({"error": "Invalid credentials"}, status=400)
 
-    login(request, user)  # sets the session cookie
+    login(request, user)
+    print("LOGIN SUCCESS")
     return JsonResponse({"message": "Logged in"})
