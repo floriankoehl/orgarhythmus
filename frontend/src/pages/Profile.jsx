@@ -24,7 +24,7 @@ export async function profile_loader(object){
 }
 
 
-const BASE_URL = "http://192.168.178.200:8000"
+
 
 
 
