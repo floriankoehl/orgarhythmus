@@ -15,8 +15,8 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { useNavigate } from 'react-router-dom';
 
 
-const BASE_URL = "https://api.floriankoehl.com";
 
+const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 
 export default function InputAdornments() {

@@ -3,7 +3,8 @@ import { useLoaderData } from "react-router-dom"
 import UserCard from "../components/UserCard"
 
 
-const BASE_URL = "https://api.floriankoehl.com";
+const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
 
 
 export async function all_user_loader(){
