@@ -6,6 +6,8 @@ import { useState } from "react";
 import ModeEditIcon from '@mui/icons-material/ModeEdit';
 
 
+const BASE_URL = "http://192.168.178.200:8000"
+
 export async function profile_loader(object){
     
 
@@ -13,7 +15,7 @@ export async function profile_loader(object){
 
     const id = object.params.id
     console.log(object.params.id)
-    const res = await fetch(`http://127.0.0.1:8000/api/users/${id}/`)
+    const res = await fetch(`${BASE_URL}/api/users/${id}/`)
     if (!res.ok) {
         throw new Error("No user found")
     }
