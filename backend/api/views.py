@@ -4,7 +4,13 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
 from .models import User, Comment
+from django.http import JsonResponse
+from django.contrib.auth import authenticate, login
+from django.contrib.auth.decorators import login_required  # ← ADD THIS
+from django.views.decorators.csrf import csrf_exempt
+import json
 
+# ... rest of your code
 
 def echo_view(request, text):
     times = request.GET.get('times')
@@ -149,36 +155,74 @@ def all_comments(request):
 
 
 from django.contrib.auth import authenticate, login
+from django.contrib.auth.decorators import login_required
 
-
+# In backend/api/views.py
 @csrf_exempt
 def api_login(request):
     print("=" * 50)
-    print("REQUEST METHOD:", request.method)
-    print("REQUEST BODY:", request.body)
-    print("CONTENT TYPE:", request.content_type)
+    print("LOGIN REQUEST")
 
     if request.method != "POST":
         return JsonResponse({"error": "Only POST allowed"}, status=405)
 
-    try:
-        data = json.loads(request.body)
-        print("PARSED DATA:", data)
-    except json.JSONDecodeError as e:
-        print("JSON ERROR:", e)
-        return JsonResponse({"error": "Invalid JSON"}, status=400)
-
-    username = data.get("username")
-    password = data.get("password")
-
-    print(f"USERNAME: {username}, PASSWORD: {password}")
-
-    user = authenticate(username=username, password=password)
+    data = json.loads(request.body)
+    user = authenticate(username=data["username"], password=data["password"])  # ← This line defines 'user'
 
     if user is None:
-        print("AUTHENTICATION FAILED")
         return JsonResponse({"error": "Invalid credentials"}, status=400)
 
-    login(request, user)
-    print("LOGIN SUCCESS")
+    login(request, user)  # ← Now 'user' exists
+
+    # Debug prints:
+    print("SESSION KEY:", request.session.session_key)
+    print("USER AUTHENTICATED:", request.user.is_authenticated)
+    print("=" * 50)
+
     return JsonResponse({"message": "Logged in"})
+
+
+# And in get_current_user:
+
+def get_current_user(request):
+    print("=" * 50)
+    print("CHECK AUTH REQUEST")
+    print("SESSION KEY:", request.session.session_key)
+    print("USER:", request.user)
+    print("IS AUTHENTICATED:", request.user.is_authenticated)
+    print("COOKIES:", request.COOKIES)
+    print("=" * 50)
+
+    # THIS MUST COME BEFORE accessing user.email!
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Not authenticated"}, status=401)
+
+    # Now it's safe to access user properties
+    user = request.user
+    return JsonResponse({
+        "id": user.id,
+        "username": user.username,
+        "email": user.email or "",
+        "is_authenticated": True
+    })
+
+# Optional: Für nicht-eingeloggte User
+def check_auth(request):
+    """Check if user is authenticated"""
+    if request.user.is_authenticated:
+        return JsonResponse({
+            "id": request.user.id,
+            "username": request.user.username,
+            "is_authenticated": True
+        })
+    return JsonResponse({"is_authenticated": False}, status=401)
+
+
+
+
+
+
+
+
+
+

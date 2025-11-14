@@ -27,6 +27,7 @@ export async function comment_loader() {
 
   const data = await res.json();  
   return data.comments; // return the list itself
+  return {}
 }
 
 

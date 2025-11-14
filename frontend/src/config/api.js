@@ -6,10 +6,10 @@ const isLocal =
   hostname === "localhost" ||
   hostname === "127.0.0.1";
 
-// Für lokale Entwicklung (Laptop)
-const DEV_BASE_URL = "http://127.0.0.1:8000";
+// Für lokale Entwicklung - PROXY verwendet, also leer!
+const DEV_BASE_URL = "";  // Changed!
 
-// Für alles, was über Domain läuft (Pi + Cloudflare)
+// Für Production (Pi + Cloudflare)
 const PROD_BASE_URL = "https://api.floriankoehl.com";
 
 export const BASE_URL = isLocal ? DEV_BASE_URL : PROD_BASE_URL;

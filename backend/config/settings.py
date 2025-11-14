@@ -63,15 +63,40 @@ CORS_ALLOWED_ORIGINS = [
     "https://app.floriankoehl.com",
 ]
 
-# VERY IMPORTANT for cookies:
-CORS_ALLOW_CREDENTIALS = True
+# Session settings
+# Add after your SESSION settings:
+# backend/config/settings.py
+# backend/config/settings.py
+# backend/config/settings.py
 
-CSRF_TRUSTED_ORIGINS = [
+import os
+
+DEBUG = True  # Du hast das schon
+
+# Cookie settings - unterschiedlich für Dev/Production
+if DEBUG:
+    # Development (localhost)
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_SECURE = False
+else:
+    # Production (HTTPS)
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SECURE = True   # WICHTIG für HTTPS!
+    CSRF_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_SECURE = True
+
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_AGE = 1209600
+
+# Rest bleibt gleich
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://app.floriankoehl.com",
 ]
-
 
 ALLOWED_HOSTS = [
     "127.0.0.1",

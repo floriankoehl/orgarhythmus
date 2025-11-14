@@ -54,7 +54,7 @@ export default function Register() {
             return
         }
 
-        navigate("/");
+        navigate("/profile");
 
     }
 //

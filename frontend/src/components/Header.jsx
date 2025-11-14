@@ -63,7 +63,7 @@ export default function Header() {
             )}
           </NavLink>
           <NavLink
-            to="/profile/1"
+            to="/profile"
             className={({ isActive }) =>
               isActive ? "scale-110 transition-transform" : "opacity-70 hover:opacity-100"
             }
