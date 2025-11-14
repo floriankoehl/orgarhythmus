@@ -7,6 +7,7 @@ import { useState } from "react";
 import Avatar from '@mui/material/Avatar';
 import LoginIcon from '@mui/icons-material/Login';
 import AcUnitIcon from '@mui/icons-material/AcUnit';
+import VpnKeyIcon from '@mui/icons-material/VpnKey';
 
 
 export default function Header() {
@@ -36,7 +37,7 @@ export default function Header() {
 
           {/* Login */}
           <NavLink
-            to="/login"
+            to="/register"
             className={({ isActive }) =>
               isActive ? "scale-110 transition-transform" : "opacity-70 hover:opacity-100"
             }
@@ -70,6 +71,18 @@ export default function Header() {
             {({ isActive }) => (
               <Fab color={isActive ? "primary" : "default"} variant="extended">
                 <AccountCircleIcon />
+              </Fab>
+            )}
+          </NavLink>
+          <NavLink
+            to="/login"
+            className={({ isActive }) =>
+              isActive ? "scale-110 transition-transform" : "opacity-70 hover:opacity-100"
+            }
+          >
+            {({ isActive }) => (
+              <Fab color={isActive ? "primary" : "default"} variant="extended">
+                <VpnKeyIcon />
               </Fab>
             )}
           </NavLink>

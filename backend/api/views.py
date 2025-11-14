@@ -140,3 +140,26 @@ def all_comments(request):
     data = list(comments)
 
     return JsonResponse({"comments": data}, safe=False)
+
+
+
+
+from django.contrib.auth import authenticate, login
+
+
+@csrf_exempt  # or better: set up proper CSRF handling, see below
+def api_login(request):
+    print(request)
+    print("inside login")
+
+    if request.method != "POST":
+        return JsonResponse({"error": "Only POST allowed"}, status=405)
+
+    data = json.loads(request.body)
+    user = authenticate(username=data["username"], password=data["password"])
+
+    if user is None:
+        return JsonResponse({"error": "Invalid credentials"}, status=400)
+
+    login(request, user)  # sets the session cookie
+    return JsonResponse({"message": "Logged in"})

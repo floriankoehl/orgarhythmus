@@ -57,7 +57,22 @@ MIDDLEWARE = [
 ]
 
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://app.floriankoehl.com",
+]
+
+# VERY IMPORTANT for cookies:
+CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://app.floriankoehl.com",
+]
+
+
 ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",

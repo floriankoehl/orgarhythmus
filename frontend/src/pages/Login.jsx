@@ -12,20 +12,21 @@ import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 
 
-import { useNavigate } from 'react-router-dom';
+import { redirect, useNavigate } from 'react-router-dom';
 
 
 import { BASE_URL } from '../config/api';
 // const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 
-export default function InputAdornments() {
+export default function Register() {
+    const [username, setUsername] = useState("");
+    const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
-    const [password_first, setPassword_first] = useState("...");
-    const [password_second, setPassword_second] = useState("...");
-    const [username, setUsername] = useState("...");
     const [submitflag, setSubmitflag] = useState(false);
     const [mes, setMes] = useState("");
+
+
 
     const navigate = useNavigate();
 
@@ -40,58 +41,21 @@ export default function InputAdornments() {
 
 
 
-    async function submit() {
+    async function submit_login() {
+        const res = await fetch(`${BASE_URL}/api/login/`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include", // VERY IMPORTANT
+            body: JSON.stringify({ username, password }),
+        });
 
-        setSubmitflag(true)
-        await new Promise(resolve => setTimeout(resolve, 1000))
-
-        try {
-
-
-            const data = { username, password_first, password_second }
-
-            const response = await fetch(`${BASE_URL}/api/users/create`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(data)
-            });
-
-            if (!response.ok) {
-                let serverMsg = "";
-                try {
-                    console.log("Caught FORSOIHJKDJHHDF it here")
-                    const errJson = await response.json();
-                    console.log(errJson)
-                    console.log(errJson.error)
-                    serverMsg = errJson.error
-                } catch {
-                    console.log("Caught it here")
-                    serverMsg = await response.text()
-                }
-                const thisistheproblem = `(${response.status}) ${serverMsg || "Request failed"}`
-                console.log("Caught this error!!!!!!!!", thisistheproblem)
-                throw new Error(thisistheproblem)
-            }
-
-            const result = await response.json();
-            setMes("Created Sucesfully")
-
-
-
-            setSubmitflag(false)
-            console.log("THIS IS THE RESULT WHERE IT IS CORRECT", result)
-
-            navigate(`/profile/${result.user_id}/`)
-        } catch (err) {
-            console.log("This should be the errror", JSON.stringify(err))
-            setMes(err.message)
-        } finally {
-            setSubmitflag(false)
+        if (!res.ok){
+            console.log(res)
         }
-    }
 
+        navigate("/");
+
+    }
 
 
 
@@ -103,17 +67,7 @@ export default function InputAdornments() {
 
         <div className='h-250 w-full flex flex-col items-center'>
             <div className='h-50 flex gap-10 m-5'>
-                {/* <div className='bg-black/5 rounded p-2 m-2 w-40'>
-                    <h2>Words: </h2>
-                    <h2>username: {username}</h2>
-                    <h2>Password_first: {password_first}</h2>
-                    <h2>Password_second: {password_second}</h2>
-                </div>
-                <div className='bg-black/5 rounded p-2 m-2 w-40'>
-                    <h2>Flags: </h2>
-                    <h2>submitflag: {JSON.stringify(submitflag)}</h2>
-                    <h2>Message: {JSON.stringify(mes)}</h2>
-                </div> */}
+
                 
                 {mes ? <div className='h-40 w-80 bg-black/5 rounded-xl mt-5'> {mes} </div> : null}
 
@@ -123,13 +77,16 @@ export default function InputAdornments() {
             <div className='h-120 w-100 bg-black/5 rounded-lg flex flex-col justify-evenly items-center'>
 
                 <div className='flex flex-col justify-center'>
+                    <h2>U: {username}</h2>
+                    <h2>P: {password}</h2>
                     <TextField onChange={(e) => { setUsername(e.target.value) }} sx={{ m: 1, width: '25ch' }} id="outlined-basic" label="Username" variant="standard" />
+                    
                     <FormControl sx={{ m: 1, width: '25ch' }} variant="standard">
                         <InputLabel htmlFor="standard-adornment-password">Password</InputLabel>
                         <Input
                             id="standard-adornment-password"
                             type={showPassword ? 'text' : 'password'}
-                            onChange={(e) => { setPassword_first(e.target.value) }}
+                            onChange={(e)=>{setPassword(e.target.value)}}
                             endAdornment={
                                 <InputAdornment position="end">
                                     <IconButton
@@ -147,30 +104,9 @@ export default function InputAdornments() {
                             }
                         />
                     </FormControl>
-                    <FormControl sx={{ m: 1, width: '25ch' }} variant="standard">
-                        <InputLabel htmlFor="standard-adornment-password">Password</InputLabel>
-                        <Input
-                            id="standard-adornment-password"
-                            type={showPassword ? 'text' : 'password'}
-                            onChange={(e) => { setPassword_second(e.target.value) }}
-                            endAdornment={
-                                <InputAdornment position="end">
-                                    <IconButton
-                                        aria-label={
-                                            showPassword ? 'hide the password' : 'display the password'
-                                        }
-                                        onClick={handleClickShowPassword}
-                                        onMouseDown={handleMouseDownPassword}
-                                        onMouseUp={handleMouseUpPassword}
-                                    >
-                                        {showPassword ? <VisibilityOff /> : <Visibility />}
-                                    </IconButton>
-                                </InputAdornment>
-                            }
-                        />
-                    </FormControl>
+                    
                 </div>
-                <Button onClick={() => { submit() }} variant="contained">Submit</Button>
+                <Button onClick={()=>{submit_login()}} variant="contained">Submit</Button>
             </div>
 
             {submitflag ? <CircularProgress className='m-5' disableShrink /> : null}
