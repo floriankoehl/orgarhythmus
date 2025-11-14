@@ -42,7 +42,7 @@ export default function Register() {
 
 
     async function submit_login() {
-        const res = await fetch(`${BASE_URL}/api/login/`, {
+        const res = await fetch(`${BASE_URL}/api/users/login/`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include", // VERY IMPORTANT
@@ -51,6 +51,7 @@ export default function Register() {
 
         if (!res.ok){
             console.log(res)
+            return
         }
 
         navigate("/");
