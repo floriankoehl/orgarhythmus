@@ -7,16 +7,21 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 
 
-export async function all_user_loader(){
-    const res = await fetch(`${BASE_URL}/api/users/all`)
-    if (!res.ok) {
-        throw new Error("Something went wrong")
-    }
+export async function all_user_loader() {
+  const res = await fetch(`${BASE_URL}/api/users/all`);
 
-    const data = await res.json()
-    return data
+  const contentType = res.headers.get("content-type") || "";
 
+  const text = await res.text();
+
+  if (!contentType.includes("application/json")) {
+    console.error("Unexpected response from API:", text);
+    throw new Error("Server returned non-JSON response");
+  }
+
+  return JSON.parse(text);
 }
+
 
 
 
