@@ -6,3 +6,8 @@ class User(models.Model):   # <-- capital M
 
     def __str__(self):
         return self.id, self.name
+
+
+class Comment(models.Model):
+    author = models.CharField(max_length=120)
+    text = models.CharField(max_length=2000, blank=True, null=True, default=None)

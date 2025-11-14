@@ -3,7 +3,8 @@ import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import User
+from .models import User, Comment
+
 
 def echo_view(request, text):
     times = request.GET.get('times')
@@ -105,3 +106,37 @@ def change_name_user(request):
         return JsonResponse({"ok": True})
     except User.DoesNotExist:
         return JsonResponse({"error": "User not found"}, status=400)
+
+
+
+
+@csrf_exempt
+def write_comment(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Method must be POST"})
+
+    try:
+        data = json.loads(request.body)
+        comment = data.get("comment")
+        if data.get("author"):
+            author = data.get("author")
+            Comment.objects.create(text=comment, author=author)
+            return JsonResponse({"ok": True})
+        else:
+            Comment.objects.create(text=comment)
+            return JsonResponse({"ok": True})
+
+
+    except json.decoder.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+
+
+def all_comments(request):
+    if request.method != "GET":
+        return JsonResponse({"error": "Method can only be GET"}, status=405)
+
+    comments = Comment.objects.values()  # ← converts into list of dicts
+    data = list(comments)
+
+    return JsonResponse({"comments": data}, safe=False)
