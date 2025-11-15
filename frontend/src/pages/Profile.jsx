@@ -27,6 +27,7 @@ export default function Profile() {
                 <h1 className="text-6xl font-bold">{data.username}</h1>
                 <p>User ID: {data.id}</p>
                 <p>Email: {data.email || "Keine Email"}</p>
+                <p>Hi</p>
             </div>
         </div>
     );
