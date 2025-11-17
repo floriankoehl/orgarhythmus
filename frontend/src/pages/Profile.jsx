@@ -28,6 +28,8 @@ export default function Profile() {
                 <p>User ID: {data.id}</p>
                 <p>Email: {data.email || "Keine Email"}</p>
                 <p>Hi</p>
+                <p>This is seeable</p>
+            
             </div>
         </div>
     );
