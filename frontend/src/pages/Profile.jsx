@@ -17,7 +17,7 @@ export async function profile_loader() {
     
     return res.json();
 }
-
+//
 export default function Profile() {
     const data = useLoaderData();
     
