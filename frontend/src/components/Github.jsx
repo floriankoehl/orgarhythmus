@@ -51,7 +51,7 @@ export default function Github() {
   }
 
   return (
-    <div className="bg-black/40 border border-white/20 rounded-2xl h-full p-6 text-white max-w-lg">
+    <div className="bg-black/40 border border-white/20 rounded-2xl w-full h-full p-6 text-white max-w-lg">
       <h2 className="text-2xl font-semibold mb-2">{repo.name}</h2>
       <p className="text-sm text-white/70 mb-4">{repo.description}</p>
 

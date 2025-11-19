@@ -18,8 +18,8 @@ import TouchAppIcon from '@mui/icons-material/TouchApp';
 export default function Landing() {
     const [sizeIcon, setSizeIcon] = useState(90);
     const [clicked, setClicked] = useState(false);
-    const [roadmapflag, setRoadmapflag] = useState(true);
-    const roadmapRef = useRef(null);
+    const [roadmapflag, setRoadmapflag] = useState(false);
+    const roadmapRef = useRef(false);
 
     const scrollToRoadmap = () => {
         roadmapRef.current?.scrollIntoView({
@@ -206,7 +206,8 @@ export default function Landing() {
                                     text-center
                                     text-white
                                     shadow-2xl
-                                    w-8/10
+                                    w-full
+                                    max-w-[1200px]
                                     
                                     flex items-center justify-center
                     ">
@@ -217,12 +218,12 @@ export default function Landing() {
                                    
 
                                     {/* Bottom row left */}
-                                    <div>
+                                    <div className="flex justify-center items-center">
                                         <Github />
                                     </div>
 
                                     {/* Bottom row right */}
-                                    <div>
+                                    <div className="flex justify-center items-center">
                                         <GithubStats />
                                     </div>
                                      {/* Heatmap */}
