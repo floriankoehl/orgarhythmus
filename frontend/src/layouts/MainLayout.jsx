@@ -4,11 +4,11 @@ import Header from "../components/Header";
 export default function Layout() {
   return (
     <>
-        <header className="fixed flex h-16 justify-center w-screen">
+        <header className="fixed flex  justify-center w-screen z-20">
             <Header/>
         </header>
         
-      <main className="pt-15 min-h-screen w-full bg-black/5 ">
+      <main className=" min-h-screen w-full bg-black/5 ">
         <Outlet/>
       </main>
     </>
