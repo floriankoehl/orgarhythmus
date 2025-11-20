@@ -50,8 +50,7 @@ import FindReplaceIcon from '@mui/icons-material/FindReplace';
 // }
 
 
-const nodeWidth = 180;
-const nodeHeight = 60;
+
 
 function getStarLayout(nodes, mainNodeId) {
   // Mittelpunkt des Layouts in "Weltkoordinaten"
@@ -59,7 +58,12 @@ function getStarLayout(nodes, mainNodeId) {
   const centerY = 0;
 
   // Radius für den Kreis der Nachbarn (kannst du anpassen)
-  const radius = 400;
+  console.log("nodes:", nodes.length);
+  let radius = 200;
+  if (nodes.length > 7) {
+    radius = 350;
+  } 
+  
 
   // Hauptknoten finden (oder fallback auf erstes Element)
   const mainNode = nodes.find((n) => n.id === mainNodeId) ?? nodes[0];
@@ -106,12 +110,13 @@ function Company({ id, data }) {
         <> 
             <Handle type="target" position="top" />
             <Handle type="source" position="bottom" />
-            <div onClick={()=>{data.swap_view(id)}}
+            <div
 
 className={`
 relative 
 h-20 
-w-30 
+w-40 
+p-2
 ${data.mainNodeId === id ? "bg-blue-400" : "bg-yellow-200"}
 rounded 
 flex flex-col 
@@ -121,9 +126,31 @@ shadow-lg
 hover:shadow-2xl
 hover:bg-yellow-300
 `}>
-                <InfoIcon className='absolute top-0 right-0  !text-[15px]'/>
-                <FindReplaceIcon/>
-                <h1 className='text-black text-center text-xs'>{data.label}</h1>
+                <div>
+                    <h1 className='text-black text-center text-xs'>{data.label}</h1>
+                    <div className='flex gap-2 justify-center mt-2'>
+                        <div 
+                        onClick={()=>{data.swap_view(id)}}
+                        className='bg-white w-[30px] h-[30px] flex justify-center items-center rounded hover:bg-gray-200 hover:shadow-md hover:shadow-black/20'>
+                            <InfoIcon className='!text-[20px]'/>
+                        </div>
+                        <div 
+                        onClick={()=>{
+                            
+                            data.switch_selection(id);
+                            console.log("This is my id: ", id)
+                        
+                        }}
+                        className='bg-white w-[30px] h-[30px] flex justify-center items-center rounded hover:bg-gray-200 hover:shadow-md hover:shadow-black/20'>
+
+                            <FindReplaceIcon className='!text-[20px]'/>
+                        </div>
+                        
+                    </div>
+                    
+                </div>
+                
+                
             </div>
         </>
     )
@@ -230,6 +257,7 @@ export default function Graph_3() {
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initalEdges);
     const [mainNodeId, setmainNodeId] = useState(null);
+    const [expandedNodeId, setExpandedNodeId] = useState(null);
 
     const [selection, setSelection] = useState(1);
 
@@ -312,7 +340,7 @@ async function fetchData(id) {
     // später kannst du node.type für unterschiedliche Node-Komponenten nutzen
     type: 'company',
     position: { x: 0, y: 0 }, // wird von getStarLayout überschrieben
-    data: { label: node.label },
+    data: { label: node.label, expanded: false },
   }));
 
   // 2) Edges bauen
@@ -342,18 +370,93 @@ async function fetchData(id) {
 useEffect(() => {
   fetchData('563319k');   // nimm erstmal die ID, die im Browser sicher funktioniert
 }, []);
+// '661613k' 563319k
 
 
 
 
+async function updateNodesAndEdges(id) {
+    const response = await fetch(`https://apibizray.bnbdevelopment.hu/api/v1/network/${id}`);
+    if (!response.ok) {
+        console.error('Failed to fetch data');
+        return;
+    }
+    const data = await response.json();
+    console.log('Fetched data:', data);
+
+// nach dem API-Call
+const company = data.company;
+const mainId = company.firmenbuchnummer;
+
+const rawNodes = company.nodes.map((node) => ({
+  id: node.id,
+  type: 'company',
+  position: { x: 0, y: 0 },
+  data: { label: node.label, expanded: false },
+  
+}));
+
+const rawEdges = company.edges.map((edge, index) => ({
+  id: `e${index}-${edge.source}-${edge.target}`,
+  type: 'default_edge',
+  source: edge.source,
+  target: edge.target,
+  animated: true,
+  label: edge.label,
+}));
+
+const layoutedNodes = getStarLayout(rawNodes, mainId);
+
+setNodes((prev) => {
+  const existingIds = new Set(prev.map((n) => n.id));
+  const newOnes = layoutedNodes.filter((n) => !existingIds.has(n.id));
+  return [...prev, ...newOnes];
+});
+
+setEdges((prev) => {
+  const key = (e) => `${e.source}-${e.target}-${e.label}`;
+  const existingKeys = new Set(prev.map(key));
+  const newOnes = rawEdges.filter((e) => !existingKeys.has(key(e)));
+  return [...prev, ...newOnes];
+});
+
+setExpandedNodeId(id);
+
+}
 
 
-
-
-
-
-
+async function unselectNode(id) {
+    const new_edges = edges.filter((edge) => {
+        return !((edge.source === id || edge.target === id) && (edge.source !== mainNodeId && edge.target !== mainNodeId));
+    });
     
+    setEdges(new_edges);
+    setExpandedNodeId(null);
+}
+
+
+function switch_selection(id) {
+  const node = nodes.find((node) => node.id === id);
+  if (!node) return;
+
+  const isExpanded = node.data?.expanded;
+
+  if (isExpanded) {
+    unselectNode(id);
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === id ? { ...n, data: { ...n.data, expanded: false } } : n
+      )
+    );
+  } else {
+    updateNodesAndEdges(id);
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === id ? { ...n, data: { ...n.data, expanded: true } } : n
+      )
+    );
+  }
+}
 
 
     
@@ -407,6 +510,7 @@ useEffect(() => {
         node.data = {...node.data,
             mainNodeId,
             swap_view, 
+            switch_selection
         };
         return node;
     })
