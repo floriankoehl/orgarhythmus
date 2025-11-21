@@ -220,7 +220,98 @@ def check_auth(request):
 
 
 
+def network_connection(request, comp_id):
+    print("Sucesfully called this")
 
+    if comp_id == 1:
+        dummy_data = {
+      "firmenbuchnummer": "661613k",
+      "nodes": [
+        {
+          "id": "661613k",
+          "type": "company",
+          "label": "Körpermanufaktur KG",
+        },
+        {
+          "id": "7402id",
+          "type": "person",
+          "label": "Richard Thomas Kranabetter",
+        },
+        # {
+        #   "id": "765478k",
+        #   "type": "company",
+        #   "label": "Example Company",
+        # },
+        {
+          "id": "8534lo",
+          "type": "location",
+          "label": "AUT, 6850 Dornbirn, Marktstraße 36",
+        },
+      ],
+      "edges": [
+        {
+          "source": "661613k",
+          "target": "7402id",
+          "label": "Person",
+        },
+        {
+          "source": "7402id",
+          "target": "765478k",
+          "label": "Person",
+        },
+        {
+          "source": "661613k",
+          "target": "8534lo",
+          "label": "Location",
+        },
+      ],
+    }
+    else:
+        dummy_data = {
+  "firmenbuchnummer": "765478k",
+  "nodes": [
+    {
+      "id": "765478k",
+      "type": "company",
+      "label": "Example Company"
+    },
+    {
+      "id": "7402id",
+      "type": "person",
+      "label": "Richard Thomas Kranabetter"
+    },
+    {
+      "id": "661613k",
+      "type": "company",
+      "label": "Körpermanufaktur KG"
+    },
+    {
+      "id": "9922xy",
+      "type": "location",
+      "label": "AUT, 6020 Innsbruck, Museumstraße 10"
+    }
+  ],
+  "edges": [
+    {
+      "source": "7402id",
+      "target": "765478k",
+      "label": "Person"
+    },
+    {
+      "source": "7402id",
+      "target": "661613k",
+      "label": "Person"
+    },
+    {
+      "source": "765478k",
+      "target": "9922xy",
+      "label": "Location"
+    }
+  ]
+}
+
+
+    return JsonResponse({"ok": True, "dummy_data": dummy_data})
 
 
 

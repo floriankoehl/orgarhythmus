@@ -6,3 +6,4 @@ from django.contrib.auth.models import User  # ← Djangos User verwenden
 class Comment(models.Model):
     author = models.ForeignKey(User, on_delete=models.CASCADE)  # ← Besser!
     text = models.CharField(max_length=2000, blank=True, null=True)
+
