@@ -126,7 +126,10 @@ shadow-lg
 hover:shadow-2xl
 hover:bg-yellow-300
 `}>
-                <div>
+                <div
+                onDoubleClick={()=>{
+                          data.switch_selection(id);
+                        }}>
                     <h1 className='text-black text-center text-xs'>{data.label}</h1>
                     <div className='flex gap-2 justify-center mt-2'>
                         <div 
@@ -135,12 +138,13 @@ hover:bg-yellow-300
                             <InfoIcon className='!text-[20px]'/>
                         </div>
                         <div 
-                        onClick={()=>{
+                        // onClick={()=>{
                             
-                            data.switch_selection(id);
-                            console.log("This is my id: ", id)
+                        //     data.switch_selection(id);
+                        //     console.log("This is my id: ", id)
                         
-                        }}
+                        // }}
+                        
                         className='bg-white w-[30px] h-[30px] flex justify-center items-center rounded hover:bg-gray-200 hover:shadow-md hover:shadow-black/20'>
 
                             <FindReplaceIcon className='!text-[20px]'/>

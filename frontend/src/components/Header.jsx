@@ -114,6 +114,18 @@ export default function Header() {
               </Fab>
             )}
           </NavLink>
+          <NavLink
+            to="/graph_4"
+            className={({ isActive }) =>
+              isActive ? "scale-110 transition-transform" : "opacity-70 hover:opacity-100"
+            }
+          >
+            {({ isActive }) => (
+              <Fab color={isActive ? "primary" : "default"} variant="extended">
+                <WbIridescentIcon />
+              </Fab>
+            )}
+          </NavLink>
         </nav>
       )}
     </div>
