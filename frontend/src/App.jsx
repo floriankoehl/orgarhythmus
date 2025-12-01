@@ -10,8 +10,10 @@ import Login from "./pages/Login.jsx"
 import Graph_3 from "./pages/Graph_2/Graph_3.jsx";
 import { Link } from "react-router-dom";
 import Landing from "./pages/Landing.jsx";
-import GraphWrapper from "./pages/Graph_2/GraphWrapper.jsx";
-import Graph_4_Wrapper from "./pages/Graph_2/Graph_4_Wrapper.jsx";
+// import GraphWrapper from "./pages/Graph_2/GraphWrapper.jsx";
+// import Graph_4_Wrapper from "./pages/Graph_2/Graph_4_Wrapper.jsx";
+import GraphWrapper from "./pages/Graph_Page/GraphWrapper.jsx"
+
 
 const router = createBrowserRouter([
   {
@@ -26,7 +28,7 @@ const router = createBrowserRouter([
       // { path:"/graph", element: <Graph/>},  
       // { path:"/graph_2", element: <Graph_2/>},   
       { path:"/graph_3", element: <GraphWrapper/>},  
-      { path:"/graph_4", element: <Graph_4_Wrapper/>},  
+      { path:"/graph", element: <GraphWrapper/>},  
       {
     path: "/profile",
     element: <Profile />,

@@ -21,13 +21,13 @@ export default function Header() {
 
   // Central definition of your nav items, so it's easy to change later
   const navItems = [
-    { to: "/", label: "Home", icon: <HomeIcon fontSize="small" /> },
+    // { to: "/", label: "Home", icon: <HomeIcon fontSize="small" /> },
     { to: "/landing", label: "Landing", icon: <FlightLandIcon fontSize="small" /> },
     { to: "/register", label: "Register", icon: <LoginIcon fontSize="small" /> },
     { to: "/profile", label: "Profile", icon: <AccountCircleIcon fontSize="small" /> },
     { to: "/login", label: "Login", icon: <VpnKeyIcon fontSize="small" /> },
-    { to: "/graph_3", label: "Graph 3", icon: <WbIridescentIcon fontSize="small" /> },
-    { to: "/graph_4", label: "Graph 4", icon: <WbIridescentIcon fontSize="small" /> },
+    // { to: "/graph_3", label: "Graph 3", icon: <WbIridescentIcon fontSize="small" /> },
+    { to: "/graph", label: "Graph 4", icon: <WbIridescentIcon fontSize="small" /> },
   ];
 
   // Helper function to generate Tailwind classes depending on active state
@@ -118,12 +118,13 @@ export default function Header() {
 
       {/* Mobile Dropdown Menu (collapsible) */}
       <div
-        className={`md:hidden transform origin-top transition-all duration-200 ${
-          isOpen
-            ? "scale-y-100 opacity-100"
-            : "pointer-events-none scale-y-95 opacity-0"
-        }`}
-      >
+  className={`md:hidden overflow-hidden transition-all duration-200 ${
+    isOpen
+      ? "max-h-96 opacity-100"
+      : "max-h-0 opacity-0"
+  }`}
+>
+
         <nav className="space-y-1 border-t border-slate-800/70 bg-slate-950/95 px-4 pb-4 pt-2">
           {navItems.map((item) => (
             <NavLink

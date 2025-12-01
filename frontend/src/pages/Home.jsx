@@ -125,7 +125,7 @@ export default function InputAdornments() {
 
         </div>
         <div className='flex justify-end mt-2'>
-          <h2>This is added sucesfully</h2>
+         
           <Button onClick={()=> {write_comment()}} className="" variant="contained">Send</Button>
         </div>
         
