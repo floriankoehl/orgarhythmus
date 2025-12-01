@@ -3,11 +3,11 @@ name: Deploy to Raspberry Pi
 on:
   push:
     branches:
-      - main   # falls dein Hauptbranch anders heißt: hier anpassen
+      - main
 
 jobs:
   deploy:
-    runs-on: self-hosted   # nutzt deinen Raspberry-Runner
+    runs-on: self-hosted
 
     steps:
       - name: Pull latest code on Raspberry Pi
@@ -15,8 +15,17 @@ jobs:
           cd /home/floriankoehl/Network
           git pull
 
-      - name: Rebuild and restart Docker containers
+      - name: Build frontend and deploy to Nginx
+        run: |
+          cd /home/floriankoehl/Network/frontend
+          npm install
+          npm run build
+          rm -rf /var/www/app/*
+          cp -r dist/* /var/www/app/
+          sudo systemctl reload nginx
+
+      - name: Rebuild and restart backend container
         run: |
           cd /home/floriankoehl/Network
-          docker compose up --build -d
+          docker compose up --build -d backend
 
