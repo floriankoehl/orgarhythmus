@@ -841,7 +841,7 @@ export default function Graph({ id_that_was_passed }) {
 
     return (
         <>
-            <div className="w-full h-[100vh] bg-blue-300 py-15 relative">
+            <div className="w-full h-[100vh] bg-blue-300  relative">
 
                 <SettingsButton
 
@@ -852,7 +852,7 @@ export default function Graph({ id_that_was_passed }) {
 
 
 
-                <div className="bg-blue-200 px-10 h-full w-full">
+                <div className="bg-red-200  h-full w-full">
                     <div className="h-full w-full ">
                         <ReactFlow
                             style={{ backgroundColor: '#f3f5feff' }}
@@ -880,10 +880,7 @@ export default function Graph({ id_that_was_passed }) {
                             />
 
 
-                            <MiniMap
-                                pannable
-                                zoomable
-                            />
+                            
 
 
                             <Controls />

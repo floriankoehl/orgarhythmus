@@ -27,7 +27,7 @@ export default function Header() {
     { to: "/profile", label: "Profile", icon: <AccountCircleIcon fontSize="small" /> },
     { to: "/login", label: "Login", icon: <VpnKeyIcon fontSize="small" /> },
     // { to: "/graph_3", label: "Graph 3", icon: <WbIridescentIcon fontSize="small" /> },
-    { to: "/graph", label: "Graph 4", icon: <WbIridescentIcon fontSize="small" /> },
+    { to: "/graph", label: "Graph", icon: <WbIridescentIcon fontSize="small" /> },
   ];
 
   // Helper function to generate Tailwind classes depending on active state
@@ -57,10 +57,10 @@ export default function Header() {
           </span>
           <div className="flex flex-col leading-tight">
             <span className="text-sm font-semibold uppercase tracking-[0.15em] text-cyan-300">
-              Network
+              Florian Koehl
             </span>
             <span className="text-xs text-slate-300/80">
-              map your connections
+              My Life as a Website
             </span>
           </div>
         </NavLink>
