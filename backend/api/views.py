@@ -9,8 +9,63 @@ from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required  # ← ADD THIS
 from django.views.decorators.csrf import csrf_exempt
 import json
-
+from .models import Task
 # ... rest of your code
+from django.forms.models import model_to_dict
+
+def all_tasks(request):
+    all_tasks = Task.objects.all()
+    data = [model_to_dict(task) for task in all_tasks]
+
+
+    return JsonResponse({"status": "test", "tasks": data}, status=200)
+
+@csrf_exempt
+def delete_task_by_id(request):
+    if request.method == "POST":
+        body = json.loads(request.body)
+        task_id = body.get("id")
+        task_to_delete = Task.objects.get(id=task_id)
+        task_to_delete.delete()
+
+    return JsonResponse({"status": "success"}, status=200)
+
+
+@csrf_exempt
+def create_task(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Only POST allowed"}, status=405)
+
+    body = json.loads(request.body)
+    name = body.get("name")
+    difficulty = body.get("difficulty")
+    priority = body.get("priority")
+    asking = body.get("approval")
+
+    task = Task.objects.create(name=name, priority=priority, difficulty=difficulty, asking=asking)
+    return JsonResponse(
+        {
+            "status": "success",
+            "task": {"id": task.id, "name": task.name, "difficulty": task.difficulty, "priority": task.priority, "asking": task.asking},
+        },
+        status=201,
+    )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 def echo_view(request, text):
     times = request.GET.get('times')

@@ -9,7 +9,7 @@ export default function Layout() {
             <Header_2/>
         </header>
         
-      <main className=" min-h-screen w-full bg-black/5 ">
+      <main className=" min-h-screen w-full bg-black/5">
         <Outlet/>
       </main>
     </>

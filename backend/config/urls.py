@@ -26,14 +26,39 @@ from api.views import (echo_view,
                        write_comment ,
                        all_comments, api_login, get_current_user, check_auth,
                        network_connection,
-                       dummy_data)  # nutzt unsere Minimal-API
+                       dummy_data,
+                       all_tasks,
+                        delete_task_by_id,
+                        create_task
+
+                       )  # nutzt unsere Minimal-API
 
 def root_view(request):
     # Antwort für GET http://127.0.0.1:8000/
     return JsonResponse({"message": "Django API is running 🚀"})
 
 urlpatterns = [
-    path('', root_view),                               # ← NEU: Root
+    path('', root_view),
+
+
+
+    path('api/orgarhytmus/all_tasks/', all_tasks),
+    path('api/orgarhytmus/delete_task/', delete_task_by_id),
+    path('api/orgarhytmus/create_task/', create_task),
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # ← NEU: Root
     path('admin/', admin.site.urls),
     path('api/echo/<str:text>/', echo_view),
     path('api/users/create', create_user),
@@ -47,6 +72,13 @@ urlpatterns = [
     path('api/auth/me/', get_current_user),      # Nur für eingeloggte User
     path('api/auth/check/', check_auth),
     path('api/company/network_connection/<int:comp_id>/', network_connection),
-    path('api/skills/dummy_data/', dummy_data)
+    path('api/skills/dummy_data/', dummy_data),
+
+
+
+
+
+
+
 ]
 

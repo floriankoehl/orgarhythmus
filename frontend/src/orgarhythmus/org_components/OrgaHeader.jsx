@@ -15,23 +15,18 @@ import VpnKeyIcon from "@mui/icons-material/VpnKey";
 import WbIridescentIcon from "@mui/icons-material/WbIridescent";
 import FlightLandIcon from "@mui/icons-material/FlightLand";
 import { Brain } from 'lucide-react';
-import { CalendarCheck } from 'lucide-react';
 
-export default function Header() {
+
+export default function OrgaHeader() {
   // Controls whether the mobile menu is open or closed
   const [isOpen, setIsOpen] = useState(false);
 
   // Central definition of your nav items, so it's easy to change later
   const navItems = [
-    // { to: "/", label: "Home", icon: <HomeIcon fontSize="small" /> },
+    { to: "/orgarhytmus", label: "Home", icon: <HomeIcon fontSize="small" /> },
     { to: "/landing", label: "Landing", icon: <FlightLandIcon fontSize="small" /> },
-    { to: "/register", label: "Register", icon: <LoginIcon fontSize="small" /> },
-    { to: "/profile", label: "Profile", icon: <AccountCircleIcon fontSize="small" /> },
-    { to: "/login", label: "Login", icon: <VpnKeyIcon fontSize="small" /> },
-    // { to: "/graph_3", label: "Graph 3", icon: <WbIridescentIcon fontSize="small" /> },
-    { to: "/graph", label: "Graph", icon: <WbIridescentIcon fontSize="small" /> },
-    { to: "/skills", label: "Skills", icon: <Brain />},
-    { to: "/orgarhytmus", icon: <CalendarCheck  />}
+    
+
   ];
 
   // Helper function to generate Tailwind classes depending on active state

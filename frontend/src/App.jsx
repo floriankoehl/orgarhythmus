@@ -16,6 +16,14 @@ import GraphWrapper from "./pages/Graph_Page/GraphWrapper.jsx"
 import Skills, {skills_loader_function} from "./pages/Skills/Skills.jsx";
 import SkillsWrapper from "./pages/Skills/SkillsWrapper.jsx";
 
+
+
+import OrgaLayout from "./orgarhythmus/org_layouts/OrgaLayout.jsx";
+import OrgaHome, {fetch_all_tasks} from "./orgarhythmus/org_pages/OrgaHome.jsx";
+
+
+
+
 const router = createBrowserRouter([
   {
     path: "/",
@@ -30,14 +38,21 @@ const router = createBrowserRouter([
       // { path:"/graph_2", element: <Graph_2/>},   
       { path:"/graph_3", element: <GraphWrapper/>},  
       { path:"/graph", element: <GraphWrapper/>},  
-      { path:"/skills", element: <SkillsWrapper/>, loader: skills_loader_function},
+      { path: "/skills", element: <SkillsWrapper />, loader: skills_loader_function },
       {
-    path: "/profile",
-    element: <Profile />,
-    loader: profile_loader,
-    errorElement: <div>Please <Link to="/login">login</Link> first!</div>
-}
+        path: "/profile",
+        element: <Profile />,
+        loader: profile_loader,
+        errorElement: <div>Please <Link to="/login">login</Link> first!</div>
+      }
 
+    ],
+    },
+    {
+    path: "/orgarhytmus",
+    element: <OrgaLayout />,
+    children: [
+      { index: true, element: <OrgaHome />, loader: fetch_all_tasks },
     ],
   },
 ]);
