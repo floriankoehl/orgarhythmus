@@ -5,11 +5,11 @@ export default function OrgaLayout() {
   return (
     <>
 
-      <header className="fixed flex  justify-center w-screen z-20">
+      <header className="fixed flex  items-center justify-center w-screen z-20">
         <OrgaHeader />
       </header>
 
-      <main className=" min-h-screen  w-full bg-black/5 ">
+      <main className=" min-h-screen  flex  justify-center items-center w-full bg-[#002333] ">
         <Outlet />
       </main>
     </>

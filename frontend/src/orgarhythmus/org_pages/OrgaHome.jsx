@@ -138,9 +138,9 @@ export default function OrgaHome(){
     return (
         <>
             <div className="min-h-screen w-screen flex flex-col  items-center justify-center">
-                <div className="border h-full w-full flex items-center flex-col">
-                    <div className="bg-yellow-200 w-200 h-100 flex justify-center items-center">
-                        <div className="h-80 w-79 bg-white rounded">
+                <div className=" h-full w-full flex items-center flex-col">
+                    <div className=" flex justify-center items-center">
+                        <div className="h-80 w-79 bg-white rounded my-20">
                             <div className=" h-3/4 flex flex-col gap-2 p-4">
                                 <h1 className="text-xl font-bold">Create Task</h1>
                                 <TextField 
@@ -227,12 +227,14 @@ export default function OrgaHome(){
                         </div>
 
                     </div>
-                    <div className="bg-green-200 w-200 h-100 grid grid-cols-4 ">
+                    <div className=" w-full max-w-[800px] flex justify-center items-center ">
 
-                        { tasks.map((task)=> {
+                        <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 place-items-center ">
+
+                            { tasks.map((task)=> {
                             return (
                             
-                            <div key={task.id} className="bg-white w-45 h-45 m-2 rounded p-1 relative">
+                            <div key={task.id} className="bg-white w-[80%]  p-2 h-40 m-2 rounded p-1 relative">
                                 <h1 className="text-lg mb-2">{task.name}</h1>
                                 <p className="text-[15px]">Diff: <span>{task.difficulty}</span></p>
                                 <p className="text-[15px]">Prio: <span>{task.priority}</span></p>
@@ -249,6 +251,8 @@ export default function OrgaHome(){
                             </div>
                             )
                         })}
+                        </div>
+                        
                         
                     </div>
                 </div>
