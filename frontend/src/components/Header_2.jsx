@@ -31,7 +31,7 @@ export default function Header() {
     // { to: "/graph_3", label: "Graph 3", icon: <WbIridescentIcon fontSize="small" /> },
     { to: "/graph", label: "Graph", icon: <WbIridescentIcon fontSize="small" /> },
     { to: "/skills", label: "Skills", icon: <Brain />},
-    { to: "/orgarhytmus", icon: <CalendarCheck  />}
+    { to: "/orgarhythmus", icon: <CalendarCheck  />}
   ];
 
   // Helper function to generate Tailwind classes depending on active state

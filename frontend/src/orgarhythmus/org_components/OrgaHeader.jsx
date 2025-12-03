@@ -15,6 +15,7 @@ import VpnKeyIcon from "@mui/icons-material/VpnKey";
 import WbIridescentIcon from "@mui/icons-material/WbIridescent";
 import FlightLandIcon from "@mui/icons-material/FlightLand";
 import { Brain } from 'lucide-react';
+import Diversity3Icon from '@mui/icons-material/Diversity3';
 
 
 export default function OrgaHeader() {
@@ -23,11 +24,11 @@ export default function OrgaHeader() {
 
   // Central definition of your nav items, so it's easy to change later
   const navItems = [
-    { to: "/orgarhytmus", label: "Home", icon: <HomeIcon fontSize="small" /> },
+    { to: "/orgarhythmus", label: "Home", icon: <HomeIcon fontSize="small" />, end: true },
+    { to: "/orgarhythmus/all_teams", label: "Teams", icon: <Diversity3Icon fontSize="small" /> },
     { to: "/landing", label: "Landing", icon: <FlightLandIcon fontSize="small" /> },
-    
-
   ];
+
 
   // Helper function to generate Tailwind classes depending on active state
   const linkBaseClasses =
@@ -70,6 +71,7 @@ export default function OrgaHeader() {
             <NavLink
               key={item.to}
               to={item.to}
+              end={item.end}
               className={({ isActive }) => getLinkClasses(isActive)}
             >
               {/* Icon */}
@@ -95,21 +97,18 @@ export default function OrgaHeader() {
           <div className="space-y-1.5">
             {/* Top line */}
             <span
-              className={`block h-0.5 w-5 rounded-full bg-current transition-transform duration-200 ${
-                isOpen ? "translate-y-[6px] rotate-45" : ""
-              }`}
+              className={`block h-0.5 w-5 rounded-full bg-current transition-transform duration-200 ${isOpen ? "translate-y-[6px] rotate-45" : ""
+                }`}
             />
             {/* Middle line */}
             <span
-              className={`block h-0.5 w-5 rounded-full bg-current transition-opacity duration-200 ${
-                isOpen ? "opacity-0" : "opacity-100"
-              }`}
+              className={`block h-0.5 w-5 rounded-full bg-current transition-opacity duration-200 ${isOpen ? "opacity-0" : "opacity-100"
+                }`}
             />
             {/* Bottom line */}
             <span
-              className={`block h-0.5 w-5 rounded-full bg-current transition-transform duration-200 ${
-                isOpen ? "-translate-y-[6px] -rotate-45" : ""
-              }`}
+              className={`block h-0.5 w-5 rounded-full bg-current transition-transform duration-200 ${isOpen ? "-translate-y-[6px] -rotate-45" : ""
+                }`}
             />
           </div>
         </button>
@@ -117,12 +116,11 @@ export default function OrgaHeader() {
 
       {/* Mobile Dropdown Menu (collapsible) */}
       <div
-  className={`md:hidden overflow-hidden transition-all duration-200 ${
-    isOpen
-      ? "max-h-96 opacity-100"
-      : "max-h-0 opacity-0"
-  }`}
->
+        className={`md:hidden overflow-hidden transition-all duration-200 ${isOpen
+            ? "max-h-96 opacity-100"
+            : "max-h-0 opacity-0"
+          }`}
+      >
 
         <nav className="space-y-1 border-t border-slate-800/70 bg-slate-950/95 px-4 pb-4 pt-2">
           {navItems.map((item) => (

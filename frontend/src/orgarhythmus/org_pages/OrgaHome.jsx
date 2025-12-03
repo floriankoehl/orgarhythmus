@@ -140,7 +140,7 @@ export default function OrgaHome(){
             <div className="min-h-screen w-screen flex flex-col  items-center justify-center">
                 <div className=" h-full w-full flex items-center flex-col">
                     <div className=" flex justify-center items-center">
-                        <div className="h-80 w-79 bg-white rounded my-20">
+                        <div className="h-70 w-79 bg-white shadow-xl shadow-black/20 rounded-lg border border-black/20 rounded my-20">
                             <div className=" h-3/4 flex flex-col gap-2 p-4">
                                 <h1 className="text-xl font-bold">Create Task</h1>
                                 <TextField 
@@ -234,7 +234,7 @@ export default function OrgaHome(){
                             { tasks.map((task)=> {
                             return (
                             
-                            <div key={task.id} className="bg-white w-[80%]  p-2 h-40 m-2 rounded p-1 relative">
+                            <div key={task.id} className="bg-white w-[80%] shadow-xl shadow-black/20 rounded-lg border border-black/20 p-2 h-40 m-2 rounded p-1 relative">
                                 <h1 className="text-lg mb-2">{task.name}</h1>
                                 <p className="text-[15px]">Diff: <span>{task.difficulty}</span></p>
                                 <p className="text-[15px]">Prio: <span>{task.priority}</span></p>
