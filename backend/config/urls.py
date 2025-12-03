@@ -29,7 +29,8 @@ from api.views import (echo_view,
                        dummy_data,
                        all_tasks,
                         delete_task_by_id,
-                        create_task
+                        create_task,
+                        all_teams
 
                        )  # nutzt unsere Minimal-API
 
@@ -45,6 +46,7 @@ urlpatterns = [
     path('api/orgarhytmus/all_tasks/', all_tasks),
     path('api/orgarhytmus/delete_task/', delete_task_by_id),
     path('api/orgarhytmus/create_task/', create_task),
+    path('api/orgarhythmus/all_teams/', all_teams),
 
 
 

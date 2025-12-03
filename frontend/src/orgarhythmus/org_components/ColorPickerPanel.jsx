@@ -11,15 +11,10 @@ export default function ColorPickerPanel({ update_color_function }) {
   };
 
   return (
-    <div className="p-4 bg-slate-900 rounded-xl shadow-xl relative">
-      <HexColorPicker color={color} onChange={handleChange} />
+    <div className="p-4 rounded-xl shadow-xl relative flex flex-col justify-center items-center">
+      <HexColorPicker className="flex" color={color} onChange={handleChange} />
 
-      <div
-        className="mt-4 h-10 w-full rounded-lg border border-white/20"
-        style={{ backgroundColor: color }}
-      />
-
-      <p className="mt-2 text-xs text-slate-200">{color}</p>
+ 
       
     </div>
   );

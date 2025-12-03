@@ -3,7 +3,7 @@ import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import User, Comment
+from .models import User, Comment, Team
 from django.http import JsonResponse
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required  # ← ADD THIS
@@ -53,7 +53,11 @@ def create_task(request):
 
 
 
+def all_teams(request):
+    all_teams = Team.objects.all()
+    data = [model_to_dict(team) for team in all_teams]
 
+    return JsonResponse({"status": "test", "teams": data}, status=200)
 
 
 

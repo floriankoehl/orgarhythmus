@@ -20,7 +20,7 @@ import SkillsWrapper from "./pages/Skills/SkillsWrapper.jsx";
 
 import OrgaLayout from "./orgarhythmus/org_layouts/OrgaLayout.jsx";
 import OrgaHome, {fetch_all_tasks} from "./orgarhythmus/org_pages/OrgaHome.jsx";
-import OrgaAllTeams from "./orgarhythmus/org_pages/OrgaAllTeams.jsx";
+import OrgaAllTeams, {fetch_all_teams} from "./orgarhythmus/org_pages/OrgaAllTeams.jsx";
 
 
 
@@ -53,7 +53,7 @@ const router = createBrowserRouter([
     element: <OrgaLayout />,
     children: [
       { index: true, element: <OrgaHome />, loader: fetch_all_tasks },
-      { path:"all_teams", element: <OrgaAllTeams/>},  
+      { path:"all_teams", element: <OrgaAllTeams/>, loader: fetch_all_teams},  
     ],
   },
 ]);
