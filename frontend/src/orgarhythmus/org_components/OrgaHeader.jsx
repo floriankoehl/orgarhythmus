@@ -16,6 +16,7 @@ import WbIridescentIcon from "@mui/icons-material/WbIridescent";
 import FlightLandIcon from "@mui/icons-material/FlightLand";
 import { Brain } from 'lucide-react';
 import Diversity3Icon from '@mui/icons-material/Diversity3';
+import ListIcon from '@mui/icons-material/List';
 
 
 export default function OrgaHeader() {
@@ -24,9 +25,9 @@ export default function OrgaHeader() {
 
   // Central definition of your nav items, so it's easy to change later
   const navItems = [
-    { to: "/orgarhythmus", label: "Home", icon: <HomeIcon fontSize="small" />, end: true },
+    { to: "/orgarhythmus", label: "Tasks", icon: <ListIcon fontSize="small" />, end: true },
     { to: "/orgarhythmus/all_teams", label: "Teams", icon: <Diversity3Icon fontSize="small" /> },
-    { to: "/landing", label: "Landing", icon: <FlightLandIcon fontSize="small" /> },
+    { to: "/landing", label: "Go back", icon: <FlightLandIcon fontSize="small" /> },
   ];
 
 

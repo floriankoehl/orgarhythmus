@@ -8,22 +8,10 @@ import Button from '@mui/material/Button';
 import { BASE_URL } from "../../config/api"
 import { useLoaderData } from 'react-router-dom';
 import { useRevalidator } from "react-router-dom";
+import SmTeamCard from '../org_components/SmTeamCard';
+import { fetch_all_teams } from "../org_API"
 
 
-export async function fetch_all_teams() {
-    const res = await fetch(`${BASE_URL}/api/orgarhythmus/all_teams/`)
-
-    if (!res.ok) {
-        console.log("Something went wrong")
-        return
-    }
-
-    const data = await res.json()
-
-    console.log("Called sucesfully and here is data: ", data)
-    return data.teams
-
-}
 
 
 export default function OrgaAllTeams() {
@@ -41,26 +29,7 @@ export default function OrgaAllTeams() {
 
 
 
-    async function delete_team(id) {
-        console.log("Trying to delete team...")
-
-        const res = await fetch(`${BASE_URL}/api/orgarhythmus/delete_team/`, {
-            method: "POST",
-            headers: {
-                "content-type": "application/json"
-            },
-            body: JSON.stringify({ id })
-        });
-
-        if (!res.ok) {
-            console.log("Couldnt Delete Team")
-            return
-        };
-
-        setAll_Teams((prevTeams) => prevTeams.filter(team => team.id !== id))
-
-        console.log("Team deleted sucesfully")
-    };
+   
 
 
 
@@ -169,30 +138,12 @@ export default function OrgaAllTeams() {
                         </div>
                     </div>
                     <div className="h-1/2 w-full lg:p-10 p-1">
-                        <div className="h-full w-full  grid md:grid-cols-3 lg:grid-cols-4 gap-3 p-2">
+                        <div className="h-full w-full  grid md:grid-cols-3 lg:grid-cols-4 gap-3 p-2 place-items-center">
 
                             {all_teams.map((team) => {
                                 return (
-                                    <div
-                                        key={team.id}
-                                        style={{ backgroundColor: team.color }}
-                                        className="h-full w-full bg-white shadow-xl 
-                                        shadow-black/20 rounded-lg border border-black/20
-                                        min-h-40 min-w-40"
-                                    >
-                                        <div className='h-1/4 w-full   flex items-center px-2 text-md'>
-                                            {team.name}
-                                        </div>
-                                        <div className='h-3/4 w-full flex  text-md relative'>
-                                            <div className='absolute bottom-0 flex h-10 w-full justify-center mb-2'>
-                                                <Button
-                                                    onClick={() => { delete_team(team.id) }}
-                                                    variant="contained" color="error" size='small'>Delete</Button>
-
-                                            </div>
-                                        </div>
-
-                                    </div>
+                                    <SmTeamCard key={team.id} team={team} setAll_Teams={setAll_Teams}/>
+                           
                                 );
                             })}
 

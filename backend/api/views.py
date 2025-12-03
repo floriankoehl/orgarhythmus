@@ -13,12 +13,40 @@ from .models import Task
 # ... rest of your code
 from django.forms.models import model_to_dict
 
+from django.forms.models import model_to_dict
+
+
+
+def serialize_task(task):
+    return {
+        "id": task.id,
+        "name": task.name,
+        "difficulty": task.difficulty,
+        "priority": task.priority,
+        "asking": task.asking,
+        "team": (
+            {
+                "id": task.team.id,
+                "name": task.team.name,
+                "color": task.team.color,
+            }
+            if task.team
+            else None
+        ),
+    }
+
+
+
+
+
+
+
+
 def all_tasks(request):
-    all_tasks = Task.objects.all()
-    data = [model_to_dict(task) for task in all_tasks]
+    tasks = Task.objects.select_related("team").all()
+    data = [serialize_task(task) for task in tasks]
+    return JsonResponse({"tasks": data}, status=200)
 
-
-    return JsonResponse({"status": "test", "tasks": data}, status=200)
 
 @csrf_exempt
 def delete_task_by_id(request):
@@ -31,6 +59,75 @@ def delete_task_by_id(request):
     return JsonResponse({"status": "success"}, status=200)
 
 
+# @csrf_exempt
+# def create_task(request):
+#     if request.method != "POST":
+#         return JsonResponse({"error": "Only POST allowed"}, status=405)
+#
+#     body = json.loads(request.body)
+#     name = body.get("name")
+#     difficulty = body.get("difficulty")
+#     priority = body.get("priority")
+#     asking = body.get("approval")
+#     team_id = body.get("team_id")
+#     team = Team.objects.get(id=team_id)
+#
+#
+#     task = Task.objects.create(name=name, priority=priority, difficulty=difficulty, asking=asking, team=team)
+#     return JsonResponse(
+#         {
+#             "status": "success",
+#             "task": {"id": task.id, "name": task.name, "difficulty": task.difficulty, "priority": task.priority, "asking": task.asking, "team_id": task.team.name},
+#         },
+#         status=201,
+#     )
+
+
+
+# @csrf_exempt
+# def create_task(request):
+#     if request.method != "POST":
+#         return JsonResponse({"error": "Only POST allowed"}, status=405)
+#
+#     body = json.loads(request.body)
+#     name = body.get("name")
+#     difficulty = body.get("difficulty")
+#     priority = body.get("priority")
+#     asking = body.get("approval")
+#     team_id = body.get("team_id")  # 👈 comes from React
+#
+#     team = None
+#     if team_id not in (None, "", "null"):
+#         try:
+#             team = Team.objects.get(id=team_id)
+#         except Team.DoesNotExist:
+#             return JsonResponse({"error": "Invalid team_id"}, status=400)
+#
+#     task = Task.objects.create(
+#         name=name,
+#         priority=priority,
+#         difficulty=difficulty,
+#         asking=asking,
+#         team=team,   # 👈 attach team (or None)
+#     )
+#
+#     return JsonResponse(
+#         {
+#             "status": "success",
+#             "task": {
+#                 "id": task.id,
+#                 "name": task.name,
+#                 "difficulty": task.difficulty,
+#                 "priority": task.priority,
+#                 "asking": task.asking,
+#                 "team": task.team,
+#             },
+#         },
+#         status=201,
+#     )
+#
+
+
 @csrf_exempt
 def create_task(request):
     if request.method != "POST":
@@ -41,23 +138,53 @@ def create_task(request):
     difficulty = body.get("difficulty")
     priority = body.get("priority")
     asking = body.get("approval")
+    team_id = body.get("team_id")
 
-    task = Task.objects.create(name=name, priority=priority, difficulty=difficulty, asking=asking)
+    team = None
+    if team_id not in (None, "", "null"):
+        try:
+            team = Team.objects.get(id=team_id)
+        except Team.DoesNotExist:
+            return JsonResponse({"error": "Invalid team_id"}, status=400)
+
+    task = Task.objects.create(
+        name=name,
+        difficulty=difficulty,
+        priority=priority,
+        asking=asking,
+        team=team,
+    )
+
     return JsonResponse(
         {
             "status": "success",
-            "task": {"id": task.id, "name": task.name, "difficulty": task.difficulty, "priority": task.priority, "asking": task.asking},
+            "task": serialize_task(task),   # 👈 same shape as all_tasks
         },
         status=201,
     )
 
+def serialize_team(team):
+    return {
+        "id": team.id,
+        "name": team.name,
+        "color": team.color,
+        "tasks": [serialize_task(task) for task in team.tasks.all()],  # 👈 only tasks with that team
+    }
 
+
+# def all_teams(request):
+#     all_teams = Team.objects.all()
+#     data = [model_to_dict(team) for team in all_teams]
+#
+#     return JsonResponse({"status": "test", "teams": data}, status=200)
 
 def all_teams(request):
-    all_teams = Team.objects.all()
-    data = [model_to_dict(team) for team in all_teams]
+    # prefetch tasks so it doesn’t query DB in a loop
+    all_teams = Team.objects.prefetch_related("tasks").all()
+    data = [serialize_team(team) for team in all_teams]
 
-    return JsonResponse({"status": "test", "teams": data}, status=200)
+    return JsonResponse({"teams": data}, status=200)
+
 
 @csrf_exempt
 def delete_team(request):
