@@ -31,7 +31,7 @@ const router = createBrowserRouter([
     path: "/",
     element: <Layout />,
     children: [
-      { index: true, element: <Home />, loader:  comment_loader},
+      { index: true, element: <Landing />},
       { path:"/landing", element: <Landing/>},
       { path:"/login", element: <LoginPage/>},
       { path:"/register", element: <RegisterPage/>},
@@ -44,12 +44,7 @@ const router = createBrowserRouter([
       { path:"/graph_3", element: <GraphWrapper/>},  
       { path:"/graph", element: <GraphWrapper/>},  
       { path: "/skills", element: <SkillsWrapper />, loader: skills_loader_function },
-      {
-        path: "/profile",
-        element: <Profile />,
-        loader: profile_loader,
-        errorElement: <div>Please <Link to="/login">login</Link> first!</div>
-      }
+      
 
     ],
     },
