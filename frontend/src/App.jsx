@@ -22,8 +22,9 @@ import OrgaLayout from "./orgarhythmus/org_layouts/OrgaLayout.jsx";
 import OrgaHome, {fetch_all_tasks} from "./orgarhythmus/org_pages/OrgaHome.jsx";
 import OrgaAllTeams from "./orgarhythmus/org_pages/OrgaAllTeams.jsx";
 import { fetch_all_teams } from "./orgarhythmus/org_API";
-
-
+import LoginPage from "./pages/LoginPage";
+import ProfilePage from "./pages/ProfilePage";
+import RegisterPage from "./pages/RegisterPage";
 
 const router = createBrowserRouter([
   {
@@ -32,8 +33,11 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Home />, loader:  comment_loader},
       { path:"/landing", element: <Landing/>},
-      { path:"/register", element: <Register/>},
-      { path:"/login", element: <Login/>},
+      { path:"/login", element: <LoginPage/>},
+      { path:"/register", element: <RegisterPage/>},
+      { path:"/profile", element: <ProfilePage/>},
+      // { path:"/register", element: <Register/>},
+      // { path:"/login", element: <Login/>},
       { path:"/network", element: <Network/>, loader: all_user_loader},
       // { path:"/graph", element: <Graph/>},  
       // { path:"/graph_2", element: <Graph_2/>},   

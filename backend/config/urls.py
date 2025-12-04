@@ -17,14 +17,24 @@ Including another URLconf
 from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import path
+
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+)
+
+
 from api.views import (echo_view,
-create_user,
+
 all_users,
 display_single_user,
-delete_user,
-change_name_user,
+
+
 write_comment ,
-all_comments, api_login, get_current_user, check_auth,
+all_comments,
+get_current_user,
+
+
 network_connection,
 dummy_data,
 all_tasks,
@@ -32,8 +42,12 @@ delete_task_by_id,
 create_task,
 all_teams,
 delete_team,
-create_team
+create_team,
 
+
+#USER AUTHENTICATION & REGISTRATION
+register_user,
+check_auth,
                        )  # nutzt unsere Minimal-API
 
 def root_view(request):
@@ -52,6 +66,21 @@ urlpatterns = [
     path('api/orgarhythmus/delete_team/', delete_team),
     path('api/orgarhythmus/create_team/', create_team),
 
+    #AUTHENTICATION
+    path('admin/', admin.site.urls),
+
+    path('api/auth/me/', get_current_user),  # Nur für eingeloggte User
+    path('api/auth/check/', check_auth),
+    path('api/auth/jwt/create/', TokenObtainPairView.as_view(), name='jwt_create'),
+    path('api/auth/jwt/refresh/', TokenRefreshView.as_view(), name='jwt_refresh'),
+    path('api/auth/register/', register_user, name='register_user'),
+
+
+
+
+    path('api/users/all', all_users),
+    path('api/users/<int:user_id>/', display_single_user),
+
 
 
 
@@ -65,18 +94,13 @@ urlpatterns = [
 
 
     # ← NEU: Root
-    path('admin/', admin.site.urls),
+
     path('api/echo/<str:text>/', echo_view),
-    path('api/users/create', create_user),
-    path('api/users/login/', api_login),
-    path('api/users/all', all_users),
-    path('api/users/<int:user_id>/', display_single_user),
-    path('api/users/delete/', delete_user),
-    path('api/users/change_name/', change_name_user),
+
+
     path('api/comments/write/', write_comment),
     path('api/comments/all_comments/', all_comments),
-    path('api/auth/me/', get_current_user),      # Nur für eingeloggte User
-    path('api/auth/check/', check_auth),
+
     path('api/company/network_connection/<int:comp_id>/', network_connection),
     path('api/skills/dummy_data/', dummy_data),
 

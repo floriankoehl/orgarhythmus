@@ -3,20 +3,288 @@ import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import User, Comment, Team
+from .models import Comment, Team
 from django.http import JsonResponse
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required  # ← ADD THIS
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.models import User
+from django.contrib.auth import authenticate, login
 import json
 from .models import Task
 # ... rest of your code
 from django.forms.models import model_to_dict
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET
+from django.contrib.auth import authenticate, login
+from django.contrib.auth.decorators import login_required
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.response import Response
+from rest_framework import status
+from django.contrib.auth.models import User
+
 
 from django.forms.models import model_to_dict
 
 
+#____________________________________________________
+#__________________AUTHENTICATION____________________
+#____________________________________________________
 
+
+# def get_current_user(request):
+#     print("=" * 50)
+#     print("CHECK AUTH REQUEST")
+#     print("SESSION KEY:", request.session.session_key)
+#     print("USER:", request.user)
+#     print("IS AUTHENTICATED:", request.user.is_authenticated)
+#     print("COOKIES:", request.COOKIES)
+#     print("=" * 50)
+#
+#     # THIS MUST COME BEFORE accessing user.email!
+#     if not request.user.is_authenticated:
+#         return JsonResponse({"error": "Not authenticated"}, status=401)
+#
+#     # Now it's safe to access user properties
+#     user = request.user
+#     return JsonResponse({
+#         "id": user.id,
+#         "username": user.username,
+#         "email": user.email or "",
+#         "is_authenticated": True
+#     })
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])  # register should be open
+def register_user(request):
+    """
+    Simple user registration endpoint.
+
+    Expects JSON:
+    {
+      "username": "...",
+      "password1": "...",
+      "password2": "...",
+      "email": "..."  (optional)
+    }
+    """
+
+    data = request.data  # DRF already parsed JSON
+    username = data.get("username")
+    password1 = data.get("password1")
+    password2 = data.get("password2")
+    email = data.get("email", "")
+
+    # 1) Basic required fields
+    if not username or not password1 or not password2:
+        return Response(
+            {"detail": "username, password1 and password2 are required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # 2) Passwords must match
+    if password1 != password2:
+        return Response(
+            {"detail": "Passwords must match"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # 3) Username must be unique
+    if User.objects.filter(username=username).exists():
+        return Response(
+            {"detail": "Username already taken"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # 4) Create the user (password is hashed automatically)
+    user = User.objects.create_user(
+        username=username,
+        password=password1,
+        email=email,
+    )
+
+    # 5) Return minimal info (no token here, just confirmation)
+    return Response(
+        {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+        },
+        status=status.HTTP_201_CREATED,
+    )
+
+
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_current_user(request):
+    """
+    Return info about the currently authenticated user.
+
+    Authentication comes from the JWT in the Authorization header:
+    Authorization: Bearer <access_token>
+    """
+    user = request.user
+
+    return Response({
+        "id": user.id,
+        "username": user.username,
+        "email": user.email or "",
+        "is_authenticated": True,
+    })
+
+
+def check_auth(request):
+    """Check if user is authenticated"""
+    if request.user.is_authenticated:
+        return JsonResponse({
+            "id": request.user.id,
+            "username": request.user.username,
+            "is_authenticated": True
+        })
+    return JsonResponse({"is_authenticated": False}, status=401)
+
+
+
+
+
+
+
+#POST
+# @csrf_exempt
+# def create_user(request):
+#     if request.method != 'POST':
+#         return JsonResponse({"error": "Method must be POST"})
+#
+#     request_json = json.loads(request.body)
+#     username = request_json.get('username')
+#     password_1 = request_json.get('password_first')
+#     password_2 = request_json.get('password_second')
+#
+#     if password_1 != password_2:
+#         return JsonResponse({"error": "Passwords must match"}, status=400)
+#
+#     # WICHTIG: create_user hasht das Passwort automatisch!
+#     created_user = User.objects.create_user(
+#         username=username,
+#         password=password_1
+#     )
+#
+#     return JsonResponse({"user_id": created_user.id, "ok": True}, status=201)
+#
+
+# @csrf_exempt
+# def delete_user(request):
+#     if request.method != "POST":
+#         return JsonResponse({"error": "Method must be POST"})
+#     try:
+#         data = json.loads(request.body)  # <-- this decodes the JSON
+#         user_id = int(data.get("id"))
+#         print(user_id, type(user_id))
+#
+#
+#         user_to_delete = User.objects.get(pk=user_id)
+#         user_to_delete.delete()
+#         return JsonResponse({"ok": True})
+#     except User.DoesNotExist:
+#         return JsonResponse({"error": "User not found"}, status=400)
+#
+
+# @csrf_exempt
+# def change_name_user(request):
+#     print("SUccesfully in this function ")
+#     print("\n"*5)
+#
+#     if request.method != "POST":
+#         print("Method must be POST")
+#         return JsonResponse({"error": "Method must be POST"})
+#
+#     try:
+#
+#         data = json.loads(request.body)
+#         user_id = int(data.get("id"))
+#         user = User.objects.get(pk=user_id)
+#         print(f"data: {data}, user_id: {user_id}")
+#         user.name = data.get("newName")
+#         print(data.get("newName"))
+#         user.save()
+#         print("User sucesfully saved")
+#         return JsonResponse({"ok": True})
+#     except User.DoesNotExist:
+#         return JsonResponse({"error": "User not found"}, status=400)
+#
+
+
+#GET
+def all_users(request):
+    users = list(User.objects.values())  # returns list of dicts
+    return JsonResponse({"users": users})
+
+def display_single_user(request, user_id):
+    print("user id: ", user_id)
+
+    if request.method != 'GET':
+        return JsonResponse({"error": "Method must be GET"})
+    try:
+        user = User.objects.get(pk=user_id)
+        return JsonResponse({"user": user.name, "id": user.id})
+
+    except User.DoesNotExist:
+        return JsonResponse({"error": "User not found"})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#____________________________________________________
+#__________________TASKS & TEAMS_____________________
+#____________________________________________________
+
+#SERIALIZATION
 def serialize_task(task):
     return {
         "id": task.id,
@@ -35,18 +303,20 @@ def serialize_task(task):
         ),
     }
 
+def serialize_team(team):
+    return {
+        "id": team.id,
+        "name": team.name,
+        "color": team.color,
+        "tasks": [serialize_task(task) for task in team.tasks.all()],  # 👈 only tasks with that team
+    }
 
 
-
-
-
-
-
+#TASKS
 def all_tasks(request):
     tasks = Task.objects.select_related("team").all()
     data = [serialize_task(task) for task in tasks]
     return JsonResponse({"tasks": data}, status=200)
-
 
 @csrf_exempt
 def delete_task_by_id(request):
@@ -57,76 +327,6 @@ def delete_task_by_id(request):
         task_to_delete.delete()
 
     return JsonResponse({"status": "success"}, status=200)
-
-
-# @csrf_exempt
-# def create_task(request):
-#     if request.method != "POST":
-#         return JsonResponse({"error": "Only POST allowed"}, status=405)
-#
-#     body = json.loads(request.body)
-#     name = body.get("name")
-#     difficulty = body.get("difficulty")
-#     priority = body.get("priority")
-#     asking = body.get("approval")
-#     team_id = body.get("team_id")
-#     team = Team.objects.get(id=team_id)
-#
-#
-#     task = Task.objects.create(name=name, priority=priority, difficulty=difficulty, asking=asking, team=team)
-#     return JsonResponse(
-#         {
-#             "status": "success",
-#             "task": {"id": task.id, "name": task.name, "difficulty": task.difficulty, "priority": task.priority, "asking": task.asking, "team_id": task.team.name},
-#         },
-#         status=201,
-#     )
-
-
-
-# @csrf_exempt
-# def create_task(request):
-#     if request.method != "POST":
-#         return JsonResponse({"error": "Only POST allowed"}, status=405)
-#
-#     body = json.loads(request.body)
-#     name = body.get("name")
-#     difficulty = body.get("difficulty")
-#     priority = body.get("priority")
-#     asking = body.get("approval")
-#     team_id = body.get("team_id")  # 👈 comes from React
-#
-#     team = None
-#     if team_id not in (None, "", "null"):
-#         try:
-#             team = Team.objects.get(id=team_id)
-#         except Team.DoesNotExist:
-#             return JsonResponse({"error": "Invalid team_id"}, status=400)
-#
-#     task = Task.objects.create(
-#         name=name,
-#         priority=priority,
-#         difficulty=difficulty,
-#         asking=asking,
-#         team=team,   # 👈 attach team (or None)
-#     )
-#
-#     return JsonResponse(
-#         {
-#             "status": "success",
-#             "task": {
-#                 "id": task.id,
-#                 "name": task.name,
-#                 "difficulty": task.difficulty,
-#                 "priority": task.priority,
-#                 "asking": task.asking,
-#                 "team": task.team,
-#             },
-#         },
-#         status=201,
-#     )
-#
-
 
 @csrf_exempt
 def create_task(request):
@@ -163,28 +363,15 @@ def create_task(request):
         status=201,
     )
 
-def serialize_team(team):
-    return {
-        "id": team.id,
-        "name": team.name,
-        "color": team.color,
-        "tasks": [serialize_task(task) for task in team.tasks.all()],  # 👈 only tasks with that team
-    }
 
 
-# def all_teams(request):
-#     all_teams = Team.objects.all()
-#     data = [model_to_dict(team) for team in all_teams]
-#
-#     return JsonResponse({"status": "test", "teams": data}, status=200)
-
+#TEAMS
 def all_teams(request):
     # prefetch tasks so it doesn’t query DB in a loop
     all_teams = Team.objects.prefetch_related("tasks").all()
     data = [serialize_team(team) for team in all_teams]
 
     return JsonResponse({"teams": data}, status=200)
-
 
 @csrf_exempt
 def delete_team(request):
@@ -194,8 +381,6 @@ def delete_team(request):
         team_to_delete = Team.objects.get(id=team_id)
         team_to_delete.delete()
         return JsonResponse({"status": "success"}, status=200)
-
-
 
 @csrf_exempt
 def create_team(request):
@@ -242,99 +427,6 @@ def echo_view(request, text):
     return JsonResponse({"echo": text})
 
 
-from django.contrib.auth.models import User
-from django.contrib.auth import authenticate, login
-
-@csrf_exempt
-def create_user(request):
-    if request.method != 'POST':
-        return JsonResponse({"error": "Method must be POST"})
-
-    request_json = json.loads(request.body)
-    username = request_json.get('username')
-    password_1 = request_json.get('password_first')
-    password_2 = request_json.get('password_second')
-
-    if password_1 != password_2:
-        return JsonResponse({"error": "Passwords must match"}, status=400)
-
-    # WICHTIG: create_user hasht das Passwort automatisch!
-    created_user = User.objects.create_user(
-        username=username,
-        password=password_1
-    )
-
-    return JsonResponse({"user_id": created_user.id, "ok": True}, status=201)
-
-
-
-
-
-from .models import User
-
-def all_users(request):
-    users = list(User.objects.values())  # returns list of dicts
-    return JsonResponse({"users": users})
-
-
-
-
-
-def display_single_user(request, user_id):
-    print("user id: ", user_id)
-
-    if request.method != 'GET':
-        return JsonResponse({"error": "Method must be GET"})
-    try:
-        user = User.objects.get(pk=user_id)
-        return JsonResponse({"user": user.name, "id": user.id})
-
-    except User.DoesNotExist:
-        return JsonResponse({"error": "User not found"})
-
-
-
-
-@csrf_exempt
-def delete_user(request):
-    if request.method != "POST":
-        return JsonResponse({"error": "Method must be POST"})
-    try:
-        data = json.loads(request.body)  # <-- this decodes the JSON
-        user_id = int(data.get("id"))
-        print(user_id, type(user_id))
-
-
-        user_to_delete = User.objects.get(pk=user_id)
-        user_to_delete.delete()
-        return JsonResponse({"ok": True})
-    except User.DoesNotExist:
-        return JsonResponse({"error": "User not found"}, status=400)
-
-
-
-@csrf_exempt
-def change_name_user(request):
-    print("SUccesfully in this function ")
-    print("\n"*5)
-
-    if request.method != "POST":
-        print("Method must be POST")
-        return JsonResponse({"error": "Method must be POST"})
-
-    try:
-
-        data = json.loads(request.body)
-        user_id = int(data.get("id"))
-        user = User.objects.get(pk=user_id)
-        print(f"data: {data}, user_id: {user_id}")
-        user.name = data.get("newName")
-        print(data.get("newName"))
-        user.save()
-        print("User sucesfully saved")
-        return JsonResponse({"ok": True})
-    except User.DoesNotExist:
-        return JsonResponse({"error": "User not found"}, status=400)
 
 
 
@@ -373,68 +465,38 @@ def all_comments(request):
 
 
 
-from django.contrib.auth import authenticate, login
-from django.contrib.auth.decorators import login_required
+
 
 # In backend/api/views.py
-@csrf_exempt
-def api_login(request):
-    print("=" * 50)
-    print("LOGIN REQUEST")
-
-    if request.method != "POST":
-        return JsonResponse({"error": "Only POST allowed"}, status=405)
-
-    data = json.loads(request.body)
-    user = authenticate(username=data["username"], password=data["password"])  # ← This line defines 'user'
-
-    if user is None:
-        return JsonResponse({"error": "Invalid credentials"}, status=400)
-
-    login(request, user)  # ← Now 'user' exists
-
-    # Debug prints:
-    print("SESSION KEY:", request.session.session_key)
-    print("USER AUTHENTICATED:", request.user.is_authenticated)
-    print("=" * 50)
-
-    return JsonResponse({"message": "Logged in"})
-
+# @csrf_exempt
+# def api_login(request):
+#     print("=" * 50)
+#     print("LOGIN REQUEST")
+#
+#     if request.method != "POST":
+#         return JsonResponse({"error": "Only POST allowed"}, status=405)
+#
+#     data = json.loads(request.body)
+#     user = authenticate(username=data["username"], password=data["password"])  # ← This line defines 'user'
+#
+#     if user is None:
+#         return JsonResponse({"error": "Invalid credentials"}, status=400)
+#
+#     login(request, user)  # ← Now 'user' exists
+#
+#     # Debug prints:
+#     print("SESSION KEY:", request.session.session_key)
+#     print("USER AUTHENTICATED:", request.user.is_authenticated)
+#     print("=" * 50)
+#
+#     return JsonResponse({"message": "Logged in"})
+#
 
 # And in get_current_user:
 
-def get_current_user(request):
-    print("=" * 50)
-    print("CHECK AUTH REQUEST")
-    print("SESSION KEY:", request.session.session_key)
-    print("USER:", request.user)
-    print("IS AUTHENTICATED:", request.user.is_authenticated)
-    print("COOKIES:", request.COOKIES)
-    print("=" * 50)
 
-    # THIS MUST COME BEFORE accessing user.email!
-    if not request.user.is_authenticated:
-        return JsonResponse({"error": "Not authenticated"}, status=401)
-
-    # Now it's safe to access user properties
-    user = request.user
-    return JsonResponse({
-        "id": user.id,
-        "username": user.username,
-        "email": user.email or "",
-        "is_authenticated": True
-    })
 
 # Optional: Für nicht-eingeloggte User
-def check_auth(request):
-    """Check if user is authenticated"""
-    if request.user.is_authenticated:
-        return JsonResponse({
-            "id": request.user.id,
-            "username": request.user.username,
-            "is_authenticated": True
-        })
-    return JsonResponse({"is_authenticated": False}, status=401)
 
 
 
@@ -536,8 +598,6 @@ def network_connection(request, comp_id):
 
 
 
-from django.http import JsonResponse
-from django.views.decorators.http import require_GET
 
 
 @require_GET

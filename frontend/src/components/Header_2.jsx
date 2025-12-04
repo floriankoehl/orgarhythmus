@@ -16,22 +16,27 @@ import WbIridescentIcon from "@mui/icons-material/WbIridescent";
 import FlightLandIcon from "@mui/icons-material/FlightLand";
 import { Brain } from 'lucide-react';
 import { CalendarCheck } from 'lucide-react';
+import { useAuth } from "../auth/AuthContext";
+import LogoutIcon from '@mui/icons-material/Logout';
+
+
+
+
+
+
 
 export default function Header() {
   // Controls whether the mobile menu is open or closed
   const [isOpen, setIsOpen] = useState(false);
+  const { user, isAuthenticated, loadingUser, logout  } = useAuth();
 
   // Central definition of your nav items, so it's easy to change later
   const navItems = [
-    // { to: "/", label: "Home", icon: <HomeIcon fontSize="small" /> },
     { to: "/landing", label: "Landing", icon: <FlightLandIcon fontSize="small" /> },
-    { to: "/register", label: "Register", icon: <LoginIcon fontSize="small" /> },
-    { to: "/profile", label: "Profile", icon: <AccountCircleIcon fontSize="small" /> },
-    { to: "/login", label: "Login", icon: <VpnKeyIcon fontSize="small" /> },
-    // { to: "/graph_3", label: "Graph 3", icon: <WbIridescentIcon fontSize="small" /> },
     { to: "/graph", label: "Graph", icon: <WbIridescentIcon fontSize="small" /> },
-    { to: "/skills", label: "Skills", icon: <Brain />},
-    { to: "/orgarhythmus", icon: <CalendarCheck  />}
+    { to: "/skills", label: "Skills", icon: <Brain /> },
+    { to: "/orgarhythmus", icon: <CalendarCheck /> },
+
   ];
 
   // Helper function to generate Tailwind classes depending on active state
@@ -71,21 +76,106 @@ export default function Header() {
 
         {/* RIGHT: Desktop Nav */}
         <nav className="hidden items-center gap-2 md:flex">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => getLinkClasses(isActive)}
+  {navItems.map((item) => (
+    
+    <NavLink
+      key={item.to}
+      to={item.to}
+      className={({ isActive }) => getLinkClasses(isActive)}
+    >
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/60">
+        {item.icon}
+      </span>
+      <span>{item.label}</span>
+    </NavLink>
+  ))}
+
+  {/* SHOW REGISTER ONLY WHEN NOT LOGGED IN */}
+ 
+  {!loadingUser && !isAuthenticated && (
+    <div className="lg:ml-10 md:ml-3">
+    <NavLink
+      to="/login"
+      className={({ isActive }) => getLinkClasses(isActive)}
+    >
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/60">
+        <VpnKeyIcon fontSize="small" />
+      </span>
+      <span>Login</span>
+    </NavLink>
+    </div>
+  )}
+
+  {!loadingUser && isAuthenticated && (
+  <div className="w-[2px] rounded-full h-8 bg-white lg:ml-3 md:ml-1"></div>
+)}
+
+  {!loadingUser && !isAuthenticated && (
+    <NavLink
+      to="/register"
+      className={({ isActive }) => getLinkClasses(isActive)}
+    >
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/60">
+        <VpnKeyIcon fontSize="small" />
+      </span>
+      <span>Register</span>
+    </NavLink>
+  )}
+
+  {!loadingUser && isAuthenticated && (
+  <div className="flex items-center gap-3 ml-4">
+
+    <NavLink
+      key={user.username}
+      to="/profile"
+      className="
+      flex items-center gap-2 rounded-full px-3 p-1 text-sm font-medium transition-all duration-200
+      bg-slate-800/70 text-slate-200 hover:bg-slate-700 hover:text-white hover:scale-105"
+    >
+      <span className="flex p-2 h-8 w-8 items-center justify-center rounded-full bg-slate-800/70 text-white">
+        <AccountCircleIcon />
+      </span>
+      <span className="font-semibold text-cyan-300">{user.username}</span>
+    </NavLink>
+
+    <button
+      onClick={() => logout()}
+      className="
+      flex items-center gap-2 rounded-full px-3 p-1 text-sm font-medium transition-all duration-200
+      bg-slate-800/70 text-slate-200 hover:bg-slate-700 hover:text-white hover:scale-105"
+    >
+      <span className="flex p-2 h-8 w-8 items-center justify-center rounded-full bg-slate-800/70 text-white">
+        <LogoutIcon />
+      </span>
+      Logout
+    </button>
+
+  </div>
+)}
+
+</nav>
+
+
+{/* {!loadingUser && isAuthenticated && (
+
+            <NavLink key={user.username}
+              to={"/profile"}
+             
             >
-              {/* Icon */}
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/60">
-                {item.icon}
-              </span>
-              {/* Label */}
-              <span>{item.label}</span>
+
+              <div className="flex items-center justify-between rounded-xl px-3 py-2 text-sm font-medium transition-all">
+                <div className="flex items-center gap-3 ">
+                  <span className="flex p-2 h-8 w-8 items-center justify-center rounded-full bg-slate-800/70 text-white">
+                    <AccountCircleIcon />
+                  </span>
+                  <span className="font-semibold text-cyan-300">{user.username}</span>
+                </div>
+              </div>
             </NavLink>
-          ))}
-        </nav>
+          )} */}
+
+
+
 
         {/* RIGHT: Mobile Burger Button (shown only on small screens) */}
         <button
@@ -100,21 +190,18 @@ export default function Header() {
           <div className="space-y-1.5">
             {/* Top line */}
             <span
-              className={`block h-0.5 w-5 rounded-full bg-current transition-transform duration-200 ${
-                isOpen ? "translate-y-[6px] rotate-45" : ""
-              }`}
+              className={`block h-0.5 w-5 rounded-full bg-current transition-transform duration-200 ${isOpen ? "translate-y-[6px] rotate-45" : ""
+                }`}
             />
             {/* Middle line */}
             <span
-              className={`block h-0.5 w-5 rounded-full bg-current transition-opacity duration-200 ${
-                isOpen ? "opacity-0" : "opacity-100"
-              }`}
+              className={`block h-0.5 w-5 rounded-full bg-current transition-opacity duration-200 ${isOpen ? "opacity-0" : "opacity-100"
+                }`}
             />
             {/* Bottom line */}
             <span
-              className={`block h-0.5 w-5 rounded-full bg-current transition-transform duration-200 ${
-                isOpen ? "-translate-y-[6px] -rotate-45" : ""
-              }`}
+              className={`block h-0.5 w-5 rounded-full bg-current transition-transform duration-200 ${isOpen ? "-translate-y-[6px] -rotate-45" : ""
+                }`}
             />
           </div>
         </button>
@@ -122,14 +209,43 @@ export default function Header() {
 
       {/* Mobile Dropdown Menu (collapsible) */}
       <div
-  className={`md:hidden overflow-hidden transition-all duration-200 ${
-    isOpen
-      ? "max-h-96 opacity-100"
-      : "max-h-0 opacity-0"
-  }`}
->
+        className={`md:hidden overflow-hidden transition-all duration-200 ${isOpen
+            ? "max-h-96 opacity-100"
+            : "max-h-0 opacity-0"
+          }`}
+      >
 
+          
         <nav className="space-y-1 border-t border-slate-800/70 bg-slate-950/95 px-4 pb-4 pt-2">
+          {/* MOBILE USER INFO */}
+          
+          
+
+          {!loadingUser && isAuthenticated && (
+
+            <NavLink key={user.username}
+              to={"/profile"}
+              onClick={() => setIsOpen(false)}
+            >
+              
+
+
+              <div className="flex items-center justify-between rounded-xl px-3 py-2 text-sm font-medium transition-all">
+                <div className="flex items-center gap-3 ">
+                  <span className="flex p-2 h-8 w-8 items-center justify-center rounded-full bg-slate-800/70 text-white">
+                    <AccountCircleIcon />
+                  </span>
+                  <span className="
+                text-black hover:bg-slate-800 hover:text-white bg-white px-2 py-1 rounded
+                ">{user.username}</span>
+                </div>
+              </div>
+            </NavLink>
+          )}
+
+
+
+
           {navItems.map((item) => (
             <NavLink
               key={item.to}
@@ -155,6 +271,8 @@ export default function Header() {
               <span className="h-2 w-2 rounded-full bg-cyan-400/90" />
             </NavLink>
           ))}
+
+
         </nav>
       </div>
     </header>
