@@ -219,6 +219,69 @@ export default function Header() {
         <nav className="space-y-1 border-t border-slate-800/70 bg-slate-950/95 px-4 pb-4 pt-2">
           {/* MOBILE USER INFO */}
           
+{!loadingUser && !isAuthenticated && (
+<div className="flex mb-3">
+  <div className="w-1/2">
+    <NavLink
+      to="/login"
+      className={({ isActive }) => getLinkClasses(isActive)}
+      onClick={() => setIsOpen(false)}
+    >
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/60">
+        <VpnKeyIcon fontSize="small" />
+      </span>
+      <span>Login</span>
+    </NavLink>
+  </div>
+  <div className="w-1/2">
+    <NavLink
+      to="/register"
+      className={({ isActive }) => getLinkClasses(isActive)}
+      onClick={() => setIsOpen(false)}
+    >
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/60">
+        <VpnKeyIcon fontSize="small" />
+      </span>
+      <span>Register</span>
+    </NavLink>
+  </div>
+
+</div>
+
+  )}
+
+
+          {/* {!loadingUser && !isAuthenticated && (
+    <div className="lg:ml-10 md:ml-3">
+    <NavLink
+      to="/login"
+      className={({ isActive }) => getLinkClasses(isActive)}
+    >
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/60">
+        <VpnKeyIcon fontSize="small" />
+      </span>
+      <span>Login</span>
+    </NavLink>
+    </div>
+  )}
+
+  {!loadingUser && isAuthenticated && (
+  <div className="w-[2px] rounded-full h-8 bg-white lg:ml-3 md:ml-1"></div>
+)}
+
+  {!loadingUser && !isAuthenticated && (
+    <NavLink
+      to="/register"
+      className={({ isActive }) => getLinkClasses(isActive)}
+    >
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900/60">
+        <VpnKeyIcon fontSize="small" />
+      </span>
+      <span>Register</span>
+    </NavLink>
+  )} */}
+
+
           
 
           {!loadingUser && isAuthenticated && (
