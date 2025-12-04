@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { BASE_URL } from "../config/api";
+import { NavLink } from "react-router-dom";
 // import { useAuth } from "../../auth/AuthContext";
 
 // import { BASE_URL } from "../../config/api";
@@ -125,7 +126,7 @@ export default function CommentWall() {
     shadow-xl backdrop-blur
 
     pt-25 md:pt-5
-    h-screen md:h-[70vh]   // ⬅️ FULLSCREEN ON MOBILE, 70vh ON DESKTOP
+    h-[calc(100vh-64px)] md:h-[70vh]   // ⬅️ FULLSCREEN ON MOBILE, 70vh ON DESKTOP
     max-h-screen md:max-h-[600px]   // ⬅️ PREVENT OVERFLOW ON MOBILE
 
     p-4
@@ -243,9 +244,14 @@ export default function CommentWall() {
       )}
 
       {!loadingUser && !isAuthenticated && (
-            <div className="bg-white w-full h-10 flex justify-center items-center font-bold rounded-xl mt-3">
+          <NavLink
+                  to="/login"
+                  className={({ isActive }) => getLinkClasses(isActive)}
+                  onClick={() => setIsOpen(false)}
+                ><div className="bg-white w-full h-10 flex justify-center items-center font-bold rounded-xl mt-3">
                 <h1>Log in to write messages!</h1>
-            </div>
+            </div></NavLink>
+            
           )}
 
 
