@@ -419,11 +419,21 @@ def add_dependency(request):
     )
 
     if created:
-        return JsonResponse({"status": "success", "created": True}, status=201)
+        return JsonResponse({
+            "id": dependency.id,
+            "vortakt": vortakt_task.id,
+            "nachtakt": nachtakt_task.id,
+            "status": "success",
+            "created": True,
+        }, status=201)
     else:
-        return JsonResponse({"status": "already_exists", "created": False}, status=200)
-
-
+        return JsonResponse({
+            "id": dependency.id,
+            "vortakt": vortakt_task.id,
+            "nachtakt": nachtakt_task.id,
+            "status": "already_exists",
+            "created": False,
+        }, status=200)
 
 
 from rest_framework import serializers
@@ -442,10 +452,22 @@ def all_dependencies(request):
     return Response(serializer.data, status=200)
 
 
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def delete_dependency(request):
+    # request.data automatically parses JSON with @api_view
+    dep_id = request.data.get("dep_id")
 
+    if not dep_id:
+        return Response({"error": "dep_id is required"}, status=400)
 
-
-
+    try:
+        dependency = Dependency.objects.get(id=dep_id)
+        dependency.delete()
+        print(f"Successfully deleted dependency {dep_id}")
+        return Response({"status": "success"}, status=200)
+    except Dependency.DoesNotExist:
+        return Response({"error": "Dependency not found"}, status=404)
 
 
 

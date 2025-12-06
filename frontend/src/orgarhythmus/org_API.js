@@ -90,13 +90,60 @@ export async function all_dependencies(){
 
 
 export async function add_dependency(vortakt_id, nachtakt_id){
-    const res = await fetch(`${BASE_URL}/api/orgarhythmus/add_dependency/`, {
-        method: "POST", 
-        headers: {
-            "content-type": "application/json"
-        },
-        body: JSON.stringify({
-            vortakt_id, nachtakt_id
-        })
-    })
+  const res = await fetch(`${BASE_URL}/api/orgarhythmus/add_dependency/`, {
+    method: "POST", 
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ vortakt_id, nachtakt_id })
+  });
+
+  if (!res.ok) {
+    throw new Error("Failed to add dependency");
+  }
+
+  const data = await res.json();
+  return data;
 }
+
+
+
+
+
+
+export async function delete_dependency(dep_id){
+    const token = localStorage.getItem("access_token");
+
+    if (!token) {
+        throw redirect("/login");
+    }
+
+    const res = await fetch(`${BASE_URL}/api/orgarhythmus/delete_dependency/`, {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${token}`,
+            "content-type": "application/json"
+        },  
+        body: JSON.stringify({ dep_id }),
+    });
+
+    if (res.status === 401 || res.status === 403) {
+        throw redirect("/login");
+    }
+
+    if (!res.ok) {
+        throw new Error("Could not delete dependency");
+    }
+
+    const data = await res.json();
+    return data;  // ✅ Return the response
+}
+
+
+
+
+
+
+
+
+

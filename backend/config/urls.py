@@ -45,6 +45,7 @@ delete_team,
 create_team,
 add_dependency,
 all_dependencies,
+delete_dependency,
 
 #USER AUTHENTICATION & REGISTRATION
 register_user,
@@ -68,6 +69,7 @@ urlpatterns = [
     path('api/orgarhythmus/create_team/', create_team),
     path('api/orgarhythmus/add_dependency/', add_dependency),
     path('api/orgarhythmus/all_dependencies/', all_dependencies),
+    path('api/orgarhythmus/delete_dependency/', delete_dependency),
 
 
 
