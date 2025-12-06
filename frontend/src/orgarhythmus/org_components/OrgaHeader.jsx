@@ -35,8 +35,9 @@ export default function OrgaHeader() {
   const navItems = [
     { to: "/orgarhythmus", label: "Tasks", icon: <ListIcon fontSize="small" />, end: true },
     { to: "/orgarhythmus/all_teams", label: "Teams", icon: <Diversity3Icon fontSize="small" /> },
-    { to: "/landing", label: "Go back", icon: <FlightLandIcon fontSize="small" /> },
     { to: "/orgarhythmus/dependencies", label: "Dependencies", icon: <ListOrdered fontSize="small" /> },
+    { to: "/landing", label: "Go back", icon: <FlightLandIcon fontSize="small" /> },
+    
   ];
 
 

@@ -284,21 +284,41 @@ def display_single_user(request, user_id):
 
 #SERIALIZATION
 def serialize_task(task):
+    # Get all parent tasks (vortakte)
+    vortakte = [
+        {
+            'id': dep.vortakt.id,
+            'name': dep.vortakt.name,
+            'dependency_id': dep.id,
+            'type': dep.type
+        }
+        for dep in task.vortakte.all()
+    ]
+
+    # Get all child tasks (nachtakte)
+    nachtakte = [
+        {
+            'id': dep.nachtakt.id,
+            'name': dep.nachtakt.name,
+            'dependency_id': dep.id,
+            'type': dep.type
+        }
+        for dep in task.nachtakte.all()
+    ]
+
     return {
         "id": task.id,
         "name": task.name,
         "difficulty": task.difficulty,
         "priority": task.priority,
         "asking": task.asking,
-        "team": (
-            {
-                "id": task.team.id,
-                "name": task.team.name,
-                "color": task.team.color,
-            }
-            if task.team
-            else None
-        ),
+        "team": {
+            "id": task.team.id,
+            "name": task.team.name,
+            "color": task.team.color,
+        } if task.team else None,
+        "vortakte": vortakte,  # ✅ Parent tasks
+        "nachtakte": nachtakte,  # ✅ Child tasks
     }
 
 def serialize_team(team):

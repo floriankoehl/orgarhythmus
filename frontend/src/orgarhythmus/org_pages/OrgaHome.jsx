@@ -1,344 +1,206 @@
-import { useEffect, useState } from "react";
-import { useLoaderData } from "react-router-dom"
-// import { BASE_URL } from '../config/api';
-import { BASE_URL } from "../../config/api"
-import Button from '@mui/material/Button';
-import TextField from '@mui/material/TextField';
-import MenuItem from "@mui/material/MenuItem";
-import ToggleButton from '@mui/material/ToggleButton';
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
-import { ThumbsUp, ThumbsDown } from 'lucide-react';
-import Select from "@mui/material/Select";
+import { useEffect, useState, useCallback } from "react";
+import Button from "@mui/material/Button";
+import { Plus, X } from "lucide-react";
 import { fetch_all_tasks, fetch_all_teams } from "../org_API";
-import { redirect } from "react-router-dom";
-import CommentWall from "../../pages/CommentWall";
-
-
-
-const numbers = [1, 2, 3, 4, 5];
-
-
-// export async function fetch_all_tasks() {
-//     const token = localStorage.getItem("access_token");
-
-//     if (!token) {
-//     throw redirect("/login");
-//   }
-
-//     const res = await fetch(`${BASE_URL}/api/orgarhytmus/all_tasks/`, {
-//     headers: {
-//       "Authorization": `Bearer ${token}`,
-//     },
-//   });
-
-//     if (res.status === 401 || res.status === 403) {
-//     // Token invalid/expired or user not allowed
-//     throw redirect("/login");
-//   }
-
-//     if (!res.ok) {
-//     // Let React Router show the default error boundary or your custom one
-//     throw new Error("Could not load tasks");
-//   }
-
-//     const data = await res.json();
-//     console.log("dateeeeeeeeeeea", data)
-//     // const dummy = {"task1": "task1 data", "task2": "task2 data"}
-//     return data
-// }
-
-
-
-
-
-
-export default function OrgaHome() {
-    //Fetching all Tasks and Teams
-    const [all_teams, setAll_Teams] = useState([]);
-    const [tasks, setTasks] = useState([]);
-    
-    // const all_tasks = useLoaderData();
-    // const [tasks, setTasks] = useState(all_tasks.tasks);
-    
-    //Creating a Task Form
-    const [task_create_name, setTask_Create_Name] = useState("");
-    const [task_difficulty, setTask_Difficulty] = useState(0);
-    const [task_priority, setTask_Priority] = useState(0);
-    const [task_approval, setTask_Approval] = useState(false);
-    const [selectedTeamId, setSelectedTeamId] = useState("");
-
-    //not used
-    const [alignment, setAlignment] = useState('web');
-
-
-    useEffect(()=>{
-        async function loadTasks() {
-            const all_fetched_tasks = await fetch_all_tasks();
-            setTasks(all_fetched_tasks || []);
-            console.log(all_fetched_tasks)
-        };
-        loadTasks();
-
-        console.log(tasks)
-        
-    }, []);
-
-
-    useEffect(() => {
-        async function loadTeams() {
-            const all_fetched_teams = await fetch_all_teams();
-            setAll_Teams(all_fetched_teams || []);
-        }
-        loadTeams();
-    }, []);
-
-
-
-
-    const handleChange = (event, newAlignment) => {
-        console.log(newAlignment)
-
-        setAlignment(newAlignment);
-
-        if (newAlignment === "True") {
-            setTask_Approval(false);
-            console.log("Changed to true")
-        } else {
-            setTask_Approval(true);
-            console.log("Changed to false")
-        }
-        console.log(task_approval)
-    };
-
-
-    console.log("Tasks sucesfully updated: ", tasks)
-
-
-
-    async function delete_task(id) {
-        const res = await fetch(`${BASE_URL}/api/orgarhytmus/delete_task/`, {
-            method: "POST",
-            headers: {
-                "content-type": "application/json"
-            },
-            body: JSON.stringify({ id }),
-        })
-
-        if (!res) {
-            console.log("Some Error")
-            return
-        }
-
-
-        const data = await res.json();
-
-        setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
-
-        console.log(data)
-    }
-
-
-
-
-
-    async function create_task() {
-        console.log(task_approval)
-        const res = await fetch(`${BASE_URL}/api/orgarhytmus/create_task/`, {
-            method: "POST",
-            headers: {
-                "content-type": "application/json"
-            },
-            body: JSON.stringify({
-                name: task_create_name,
-                difficulty: task_difficulty,
-                priority: task_priority,
-                approval: task_approval,
-                team_id: selectedTeamId || null,
-            }),
-        })
-
-        if (!res) {
-            console.log("something went wrong")
-        }
-
-
-        const data = await res.json();
-
-
-        setTasks(prev => [...prev, data.task]);
-
-        console.log("Sucesfully created")
-
-    }
-
-
-
-
-
-
-
-
-
-
-
-    return (
-        <>
-            <div className="min-h-screen w-screen flex flex-col  items-center justify-center">
-                <div className=" h-full bg-black/7 w-full flex items-center flex-col">
-                    <div className=" flex justify-center items-center">
-                        <div className="h-80 w-79 bg-white shadow-xl shadow-black/20 rounded-lg border border-black/20 rounded my-20">
-                            <div className=" h-3/4 flex flex-col gap-2 p-4">
-                                <h1 className="mb-1 text-xl font-bold">Create Task</h1>
-                                <TextField
-                                    onChange={(e) => { setTask_Create_Name(e.target.value) }}
-                                    id="outlined-basic" label="Name" variant="outlined" size="small"
-                                />
-
-                                
-                                <div className="flex justify-center  flex-col">
-                                    <h2 className="text-sm">Team</h2>
-                                    <Select
-                                        value={selectedTeamId}
-                                        onChange={(e) => setSelectedTeamId(e.target.value)}
-                                        size="small"
-                                        sx={{ width: 200 }}
-                                        displayEmpty
-                                    >
-                                        <MenuItem value="">
-                                            <em>No team</em>
-                                        </MenuItem>
-
-                                        {all_teams.map((team) => (
-
-                                            <MenuItem className="p-2" key={team.id} value={team.id}>
-                                                <div style={{ backgroundColor: team.color }} className="w-full h-full p-1 rounded-full pl-4">
-                                                    {team.name}
-                                                </div>
-
-                                            </MenuItem>
-                                        ))}
-                                    </Select>
-
-                                </div>
-
-                                <div className="flex gap-3">
-                                    <div>
-                                        <TextField
-                                            label="Priority"
-                                            select
-                                            size="small"
-                                            sx={{ width: 130 }}
-                                            onChange={(e) => {
-
-                                                setTask_Priority(Number(e.target.value))
-
-                                            }}
-                                            fullWidth
-                                        >
-                                            {numbers.map((n) => (
-                                                <MenuItem key={n} value={n}>
-                                                    {n}
-                                                </MenuItem>
-                                            ))}
-                                        </TextField>
-
-                                    </div>
-
-                                    <div>
-                                        <TextField
-                                            label="Difficulty"
-                                            select
-                                            size="small"
-                                            sx={{ width: 130 }}
-                                            onChange={(e) => {
-
-                                                setTask_Difficulty(Number(e.target.value))
-
-                                            }}
-                                            fullWidth
-                                        >
-                                            {numbers.map((n) => (
-                                                <MenuItem key={n} value={n}>
-                                                    {n}
-                                                </MenuItem>
-                                            ))}
-                                        </TextField>
-
-                                    </div>
-
-
-                                </div>
-
-
-
-                                {/* <div className="flex items-center gap-2">
-                                    <h3 >Approval Required: </h3>
-                                    <ToggleButtonGroup
-                                    color="primary"
-                                    value={alignment}
-                                    exclusive
-                                    onChange={handleChange}
-                                    aria-label="Platform"
-                                    >
-                                    <ToggleButton value="True" ><ThumbsUp size={13} /></ToggleButton>
-                                    <ToggleButton  value="False"><ThumbsDown size={13}/></ToggleButton>
-                                    
-                                    </ToggleButtonGroup>
-                                </div> */}
-
-                                
-
-                            </div>
-                            <div className="w-full h-1/4 flex justify-center items-center">
-                                <Button
-                                    onClick={() => { create_task() }}
-                                    className=""
-                                    variant="contained"
-                                >Create</Button>
-                            </div>
-                        </div>
-
-                    </div>
-                    <div className=" w-full max-w-[800px] flex justify-center items-center ">
-
-                        <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 place-items-center ">
-
-                            {tasks.map((task) => {
-                                return (
-
-                                    <div key={task.id} className="bg-white w-[80%] max-w-[350px] shadow-xl shadow-black/20 rounded-lg border border-black/20 p-2 h-45 m-2 rounded p-1 relative">
-                                        <h1 className="text-lg mb-1">{task.name}</h1>
-                                        <h2
-                                            style={{ backgroundColor: task.team?.color }}
-                                            className="text-[15px] mb-2 rounded">Team: <span>{task.team?.name}</span></h2>
-
-                                        <p className="text-[15px]">Diff: <span>{task.difficulty}</span></p>
-                                        <p className="text-[15px]">Prio: <span>{task.priority}</span></p>
-
-
-
-                                        <div className="absolute bottom-0 w-full flex justify-center p-2">
-                                            <Button
-                                                onClick={() => delete_task(task.id)}
-                                                className=""
-                                                variant="contained"
-                                                color="error">Delete</Button>
-
-                                        </div>
-                                    </div>
-                                )
-                            })}
-                        </div>
-
-
-                    </div>
-                </div>
-
-
-            </div>
-        </>
-    )
+import CreateTaskForm from "../org_components/CreateTaskForm";
+import SMTaskCard from "../org_components/TaskCardSM";
+
+/* ---------- Stats component ---------- */
+function Stats({ tasks, teams }) {
+  const totalTasks = tasks.length;
+  const totalTeams = teams.length;
+  const unassignedTasks = tasks.filter((t) => !t.team).length;
+
+  const avgPriority =
+    totalTasks > 0
+      ? (tasks.reduce((sum, t) => sum + (t.priority || 0), 0) / totalTasks).toFixed(1)
+      : "-";
+
+  const avgDifficulty =
+    totalTasks > 0
+      ? (tasks.reduce((sum, t) => sum + (t.difficulty || 0), 0) / totalTasks).toFixed(1)
+      : "-";
+
+  return (
+    <section className="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* Total Tasks */}
+      <div className="rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm px-3 py-3 shadow-sm">
+        <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-slate-500">
+          Tasks
+        </p>
+        <p className="mt-1 text-2xl font-semibold text-slate-900">{totalTasks}</p>
+        <p className="mt-1 text-xs text-slate-500">Total tasks in your board</p>
+      </div>
+
+      {/* Total Teams */}
+      <div className="rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm px-3 py-3 shadow-sm">
+        <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-slate-500">
+          Teams
+        </p>
+        <p className="mt-1 text-2xl font-semibold text-slate-900">{totalTeams}</p>
+        <p className="mt-1 text-xs text-slate-500">Active task groups</p>
+      </div>
+
+      {/* Unassigned tasks */}
+      <div className="rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm px-3 py-3 shadow-sm">
+        <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-slate-500">
+          Unassigned
+        </p>
+        <p className="mt-1 text-2xl font-semibold text-slate-900">{unassignedTasks}</p>
+        <p className="mt-1 text-xs text-slate-500">Tasks without a team</p>
+      </div>
+
+      {/* Averages */}
+      <div className="rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm px-3 py-3 shadow-sm">
+        <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-slate-500">
+          Avg. Prio / Diff
+        </p>
+        <p className="mt-1 text-2xl font-semibold text-slate-900">
+          {avgPriority} / {avgDifficulty}
+        </p>
+        <p className="mt-1 text-xs text-slate-500">Based on all tasks</p>
+      </div>
+    </section>
+  );
 }
 
+/* ---------- OrgaHome ---------- */
+export default function OrgaHome() {
+  const [all_teams, setAll_Teams] = useState([]);
+  const [tasks, setTasks] = useState([]);
+  const [showCreatePanel, setShowCreatePanel] = useState(false);
 
+  // ✅ Load all data (tasks + teams)
+  const loadAllData = useCallback(async () => {
+    const all_fetched_tasks = await fetch_all_tasks();
+    setTasks(all_fetched_tasks || []);
 
+    const all_fetched_teams = await fetch_all_teams();
+    setAll_Teams(all_fetched_teams || []);
+
+    console.log("Data loaded:", all_fetched_tasks);
+  }, []);
+
+  useEffect(() => {
+    loadAllData();
+  }, [loadAllData]);
+
+  const hasTasks = tasks && tasks.length > 0;
+
+  const handleTaskCreated = useCallback(() => {
+    // Reload data and close panel
+    loadAllData();
+    setShowCreatePanel(false);
+  }, [loadAllData]);
+
+  return (
+    <div className="min-h-screen w-screen bg-gradient-to-b from-slate-50 to-slate-100 flex justify-center">
+      <div className="w-full max-w-6xl px-4 py-10">
+        {/* Header */}
+        <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
+              OrgaRhythmus Board
+            </h1>
+            <p className="text-sm text-slate-600 mt-1">
+              {hasTasks
+                ? `You currently have ${tasks.length} task${
+                    tasks.length === 1 ? "" : "s"
+                  } across ${all_teams.length} team${
+                    all_teams.length === 1 ? "" : "s"
+                  }.`
+                : "Start your rhythm by creating the first task."}
+            </p>
+          </div>
+
+          {/* Create Task button */}
+          <div className="flex justify-start sm:justify-end">
+            <Button
+              variant="contained"
+              size="medium"
+              onClick={() => setShowCreatePanel(true)}
+              style={{
+                borderRadius: "9999px",
+                paddingInline: "1.25rem",
+                textTransform: "none",
+                display: "flex",
+                gap: "0.4rem",
+                alignItems: "center",
+              }}
+            >
+              <Plus size={18} />
+              New Task
+            </Button>
+          </div>
+        </header>
+
+        {/* Animated create panel */}
+        {showCreatePanel && (
+          <div className="mb-8">
+            <div className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-sm shadow-md p-4 sm:p-5 relative overflow-hidden">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h2 className="text-sm font-semibold tracking-[0.16em] uppercase text-slate-500">
+                    Create a new task
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Define name, team, priority and difficulty to add it to your rhythm.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowCreatePanel(false)}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              {/* Slight inner highlight bar */}
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-sky-400 via-violet-400 to-emerald-400" />
+
+              {/* Your existing form component */}
+              <div className="mt-2">
+                <CreateTaskForm onTaskCreated={handleTaskCreated} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Stats row */}
+        <Stats tasks={tasks} teams={all_teams} />
+
+        {/* Tasks container */}
+        <section className="rounded-2xl border border-slate-200 bg-white/70 shadow-sm backdrop-blur-sm p-4 sm:p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xs font-semibold tracking-[0.12em] uppercase text-slate-500">
+              Tasks
+            </h2>
+            <span className="text-xs text-slate-400">
+              {hasTasks ? "Live overview" : "Nothing here yet"}
+            </span>
+          </div>
+
+          {hasTasks ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 place-items-stretch">
+              {tasks.map((task) => (
+                <SMTaskCard
+                  key={task.id}
+                  task={task}
+                  onTaskDeleted={loadAllData}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-14 text-center text-slate-500 text-sm">
+              <p className="font-medium">No tasks yet.</p>
+              <p className="mt-1">
+                Hit <span className="font-semibold">“New Task”</span> in the top
+                right to get started ✨
+              </p>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}

@@ -3,23 +3,13 @@ import { redirect } from "react-router-dom";
 
 
 
-export async function fetch_all_teams() {
-    const res = await fetch(`${BASE_URL}/api/orgarhythmus/all_teams/`)
-
-    if (!res.ok) {
-        console.log("Something went wrong")
-        return
-    }
-
-    const data = await res.json()
-
-    console.log("Called sucesfully and here is data: ", data)
-    return data.teams
-
-}
 
 
-
+//_______________________________________________
+//_______________________________________________
+//____________________TASKS______________________
+//_______________________________________________
+//_______________________________________________
 
 
 export async function fetch_all_tasks() {
@@ -51,8 +41,97 @@ export async function fetch_all_tasks() {
     return data.tasks
 }
 
+export async function create_task(name, difficulty, priority, approval, team_id) {
+    const res = await fetch(`${BASE_URL}/api/orgarhytmus/create_task/`, {
+        method: "POST",
+        headers: {
+            "content-type": "application/json"
+        },
+        body: JSON.stringify({
+            name: name,
+            difficulty: difficulty,
+            priority: priority,
+            approval: approval,
+            team_id: team_id || null,
+        }),
+    })
+
+    if (!res.ok) {  // ✅ Better error check
+        console.log("something went wrong");
+        throw new Error("Failed to create task");
+    }
+
+    const data = await res.json();
+    console.log("Successfully created");
+    
+    return data;  // ✅ Return the data
+}
+
+export async function delete_task(id) {
+        const res = await fetch(`${BASE_URL}/api/orgarhytmus/delete_task/`, {
+            method: "POST",
+            headers: {
+                "content-type": "application/json"
+            },
+            body: JSON.stringify({ id }),
+        })
+
+        if (!res.ok) {
+            console.log("Some Error")
+            return
+        }
+
+        const data = await res.json();
+        // setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
+        console.log(data)
+
+        return data
+    }
 
 
+
+
+
+
+
+
+
+
+
+//_______________________________________________
+//_______________________________________________
+//____________________TEAMS______________________
+//_______________________________________________
+//_______________________________________________
+
+//ALL TEAMS
+export async function fetch_all_teams() {
+    const res = await fetch(`${BASE_URL}/api/orgarhythmus/all_teams/`)
+
+    if (!res.ok) {
+        console.log("Something went wrong")
+        return
+    }
+
+    const data = await res.json()
+
+    console.log("Called sucesfully and here is data: ", data)
+    return data.teams
+
+}
+
+
+
+
+
+
+
+
+//_______________________________________________
+//_______________________________________________
+//________________DEPENDENCIES___________________
+//_______________________________________________
+//_______________________________________________
 
 
 export async function all_dependencies(){
@@ -84,11 +163,6 @@ export async function all_dependencies(){
 }
 
 
-
-
-
-
-
 export async function add_dependency(vortakt_id, nachtakt_id){
   const res = await fetch(`${BASE_URL}/api/orgarhythmus/add_dependency/`, {
     method: "POST", 
@@ -105,10 +179,6 @@ export async function add_dependency(vortakt_id, nachtakt_id){
   const data = await res.json();
   return data;
 }
-
-
-
-
 
 
 export async function delete_dependency(dep_id){
