@@ -22,6 +22,8 @@ import LogoutIcon from '@mui/icons-material/Logout';
 
 import { useAuth } from "../../auth/AuthContext";
 import ChatIcon from '@mui/icons-material/Chat';
+import { ListOrdered } from 'lucide-react';
+
 
 export default function OrgaHeader() {
   // Controls whether the mobile menu is open or closed
@@ -34,6 +36,7 @@ export default function OrgaHeader() {
     { to: "/orgarhythmus", label: "Tasks", icon: <ListIcon fontSize="small" />, end: true },
     { to: "/orgarhythmus/all_teams", label: "Teams", icon: <Diversity3Icon fontSize="small" /> },
     { to: "/landing", label: "Go back", icon: <FlightLandIcon fontSize="small" /> },
+    { to: "/orgarhythmus/dependencies", label: "Dependencies", icon: <ListOrdered fontSize="small" /> },
   ];
 
 

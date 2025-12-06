@@ -40,3 +40,16 @@ class Task(models.Model):
 
     def __str__(self):
         return self.name
+
+
+
+class Dependency(models.Model):
+    vortakt = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='nachtakte')  # parent -> children
+    nachtakt = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='vortakte')  # child -> parents
+    type = models.CharField(max_length=200, blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.vortakt} -> {self.nachtakt} ({self.type})"
+
+    class Meta:
+        unique_together = ('vortakt', 'nachtakt')

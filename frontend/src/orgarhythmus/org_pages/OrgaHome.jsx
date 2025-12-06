@@ -9,7 +9,7 @@ import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import { ThumbsUp, ThumbsDown } from 'lucide-react';
 import Select from "@mui/material/Select";
-import { fetch_all_teams } from "../org_API";
+import { fetch_all_tasks, fetch_all_teams } from "../org_API";
 import { redirect } from "react-router-dom";
 import CommentWall from "../../pages/CommentWall";
 
@@ -18,34 +18,34 @@ import CommentWall from "../../pages/CommentWall";
 const numbers = [1, 2, 3, 4, 5];
 
 
-export async function fetch_all_tasks() {
-    const token = localStorage.getItem("access_token");
+// export async function fetch_all_tasks() {
+//     const token = localStorage.getItem("access_token");
 
-    if (!token) {
-    throw redirect("/login");
-  }
+//     if (!token) {
+//     throw redirect("/login");
+//   }
 
-    const res = await fetch(`${BASE_URL}/api/orgarhytmus/all_tasks/`, {
-    headers: {
-      "Authorization": `Bearer ${token}`,
-    },
-  });
+//     const res = await fetch(`${BASE_URL}/api/orgarhytmus/all_tasks/`, {
+//     headers: {
+//       "Authorization": `Bearer ${token}`,
+//     },
+//   });
 
-    if (res.status === 401 || res.status === 403) {
-    // Token invalid/expired or user not allowed
-    throw redirect("/login");
-  }
+//     if (res.status === 401 || res.status === 403) {
+//     // Token invalid/expired or user not allowed
+//     throw redirect("/login");
+//   }
 
-    if (!res.ok) {
-    // Let React Router show the default error boundary or your custom one
-    throw new Error("Could not load tasks");
-  }
+//     if (!res.ok) {
+//     // Let React Router show the default error boundary or your custom one
+//     throw new Error("Could not load tasks");
+//   }
 
-    const data = await res.json();
-    console.log("dateeeeeeeeeeea", data)
-    // const dummy = {"task1": "task1 data", "task2": "task2 data"}
-    return data
-}
+//     const data = await res.json();
+//     console.log("dateeeeeeeeeeea", data)
+//     // const dummy = {"task1": "task1 data", "task2": "task2 data"}
+//     return data
+// }
 
 
 
@@ -53,18 +53,36 @@ export async function fetch_all_tasks() {
 
 
 export default function OrgaHome() {
-    const all_tasks = useLoaderData();
-    const [tasks, setTasks] = useState(all_tasks.tasks);
+    //Fetching all Tasks and Teams
+    const [all_teams, setAll_Teams] = useState([]);
+    const [tasks, setTasks] = useState([]);
+    
+    // const all_tasks = useLoaderData();
+    // const [tasks, setTasks] = useState(all_tasks.tasks);
+    
+    //Creating a Task Form
     const [task_create_name, setTask_Create_Name] = useState("");
     const [task_difficulty, setTask_Difficulty] = useState(0);
     const [task_priority, setTask_Priority] = useState(0);
     const [task_approval, setTask_Approval] = useState(false);
-    const [all_teams, setAll_Teams] = useState([]);
     const [selectedTeamId, setSelectedTeamId] = useState("");
 
-
-
+    //not used
     const [alignment, setAlignment] = useState('web');
+
+
+    useEffect(()=>{
+        async function loadTasks() {
+            const all_fetched_tasks = await fetch_all_tasks();
+            setTasks(all_fetched_tasks || []);
+            console.log(all_fetched_tasks)
+        };
+        loadTasks();
+
+        console.log(tasks)
+        
+    }, []);
+
 
     useEffect(() => {
         async function loadTeams() {
@@ -75,7 +93,6 @@ export default function OrgaHome() {
     }, []);
 
 
-    console.log("ALL TEAMS________________________: ", all_teams)
 
 
     const handleChange = (event, newAlignment) => {

@@ -3,7 +3,7 @@ import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import Comment, Team
+from .models import Comment, Team, Dependency
 from django.http import JsonResponse
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required  # ← ADD THIS
@@ -390,6 +390,68 @@ def create_team(request):
         color = body.get("color")
         Team.objects.create(name=name, color=color)
         return JsonResponse({"status": "success"}, status=200)
+
+
+#____________________________________________________
+#__________________Dependencies_____________________
+#____________________________________________________
+
+#DEPENDENCIES
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def add_dependency(request):
+    print("Pipeline works")
+    if request.method != "POST":
+        return JsonResponse({"error": "Only POST allowed"}, status=405)
+
+    body = json.loads(request.body)
+    vortakt_id = body.get("vortakt_id")
+    nachtakt_id = body.get("nachtakt_id")
+
+    vortakt_task = Task.objects.get(id=vortakt_id)
+    nachtakt_task = Task.objects.get(id=nachtakt_id)
+
+    dependency, created = Dependency.objects.get_or_create(
+        vortakt=vortakt_task,
+        nachtakt=nachtakt_task
+    )
+
+    if created:
+        return JsonResponse({"status": "success", "created": True}, status=201)
+    else:
+        return JsonResponse({"status": "already_exists", "created": False}, status=200)
+
+
+
+
+from rest_framework import serializers
+# Create a serializer
+class DependencySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Dependency
+        fields = ['id', 'vortakt', 'nachtakt', 'type']
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def all_dependencies(request):
+    all_deps = Dependency.objects.all()
+    serializer = DependencySerializer(all_deps, many=True)
+    return Response(serializer.data, status=200)
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

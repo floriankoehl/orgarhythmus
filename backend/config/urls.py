@@ -43,7 +43,8 @@ create_task,
 all_teams,
 delete_team,
 create_team,
-
+add_dependency,
+all_dependencies,
 
 #USER AUTHENTICATION & REGISTRATION
 register_user,
@@ -65,6 +66,15 @@ urlpatterns = [
     path('api/orgarhythmus/all_teams/', all_teams),
     path('api/orgarhythmus/delete_team/', delete_team),
     path('api/orgarhythmus/create_team/', create_team),
+    path('api/orgarhythmus/add_dependency/', add_dependency),
+    path('api/orgarhythmus/all_dependencies/', all_dependencies),
+
+
+
+
+
+
+
 
     #AUTHENTICATION
     path('admin/', admin.site.urls),

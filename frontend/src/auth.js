@@ -76,8 +76,6 @@ export async function authFetch(path, options = {}) {
 
 
 
-
-
 //HELPER I ADDED MANUALLY
 export function hasToken() {
   return !!getAccessToken();
