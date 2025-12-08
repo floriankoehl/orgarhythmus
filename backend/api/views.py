@@ -260,12 +260,23 @@ def create_task(request):
 
 
 #TEAMS
-def all_teams(request):
-    # prefetch tasks so it doesn’t query DB in a loop
-    all_teams = Team.objects.prefetch_related("tasks").all()
-    data = [serialize_team(team) for team in all_teams]
+from django.http import JsonResponse
 
+def all_teams(request):
+    all_teams = (
+        Team.objects
+        .prefetch_related(
+            "tasks",           # Team → Task
+            "tasks__attempts", # Task → Attempt
+            "tasks__vortakte", # Task → Dependency (where this task is child)
+            "tasks__nachtakte" # Task → Dependency (where this task is parent)
+        )
+        .all()
+    )
+
+    data = [serialize_team(team) for team in all_teams]
     return JsonResponse({"teams": data}, status=200)
+
 
 @csrf_exempt
 def delete_team(request):
