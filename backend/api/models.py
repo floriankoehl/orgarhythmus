@@ -43,8 +43,10 @@ class Task(models.Model):
         super().save(*args, **kwargs)
 
         if is_new:
-            name = f"{self.name}_1"
-            Attempt.objects.create(task=self, name = name, number=1)
+            for i in range(3):
+                name = f"{self.name}_{i}"
+                Attempt.objects.create(task=self, name=name, number=i+1)
+
 
 
     def __str__(self):
