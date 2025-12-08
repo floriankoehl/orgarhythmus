@@ -3,7 +3,7 @@ import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import Comment, Team, Dependency
+from .models import Comment, Team, Dependency, Attempt
 from django.http import JsonResponse
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required  # ← ADD THIS
@@ -28,7 +28,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth.models import User
-
+from rest_framework import serializers
 
 from django.forms.models import model_to_dict
 
@@ -36,29 +36,6 @@ from django.forms.models import model_to_dict
 #____________________________________________________
 #__________________AUTHENTICATION____________________
 #____________________________________________________
-
-
-# def get_current_user(request):
-#     print("=" * 50)
-#     print("CHECK AUTH REQUEST")
-#     print("SESSION KEY:", request.session.session_key)
-#     print("USER:", request.user)
-#     print("IS AUTHENTICATED:", request.user.is_authenticated)
-#     print("COOKIES:", request.COOKIES)
-#     print("=" * 50)
-#
-#     # THIS MUST COME BEFORE accessing user.email!
-#     if not request.user.is_authenticated:
-#         return JsonResponse({"error": "Not authenticated"}, status=401)
-#
-#     # Now it's safe to access user properties
-#     user = request.user
-#     return JsonResponse({
-#         "id": user.id,
-#         "username": user.username,
-#         "email": user.email or "",
-#         "is_authenticated": True
-#     })
 
 
 @api_view(["POST"])
@@ -120,9 +97,6 @@ def register_user(request):
         status=status.HTTP_201_CREATED,
     )
 
-
-
-
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_current_user(request):
@@ -141,7 +115,6 @@ def get_current_user(request):
         "is_authenticated": True,
     })
 
-
 def check_auth(request):
     """Check if user is authenticated"""
     if request.user.is_authenticated:
@@ -151,80 +124,6 @@ def check_auth(request):
             "is_authenticated": True
         })
     return JsonResponse({"is_authenticated": False}, status=401)
-
-
-
-
-
-
-
-#POST
-# @csrf_exempt
-# def create_user(request):
-#     if request.method != 'POST':
-#         return JsonResponse({"error": "Method must be POST"})
-#
-#     request_json = json.loads(request.body)
-#     username = request_json.get('username')
-#     password_1 = request_json.get('password_first')
-#     password_2 = request_json.get('password_second')
-#
-#     if password_1 != password_2:
-#         return JsonResponse({"error": "Passwords must match"}, status=400)
-#
-#     # WICHTIG: create_user hasht das Passwort automatisch!
-#     created_user = User.objects.create_user(
-#         username=username,
-#         password=password_1
-#     )
-#
-#     return JsonResponse({"user_id": created_user.id, "ok": True}, status=201)
-#
-
-# @csrf_exempt
-# def delete_user(request):
-#     if request.method != "POST":
-#         return JsonResponse({"error": "Method must be POST"})
-#     try:
-#         data = json.loads(request.body)  # <-- this decodes the JSON
-#         user_id = int(data.get("id"))
-#         print(user_id, type(user_id))
-#
-#
-#         user_to_delete = User.objects.get(pk=user_id)
-#         user_to_delete.delete()
-#         return JsonResponse({"ok": True})
-#     except User.DoesNotExist:
-#         return JsonResponse({"error": "User not found"}, status=400)
-#
-
-# @csrf_exempt
-# def change_name_user(request):
-#     print("SUccesfully in this function ")
-#     print("\n"*5)
-#
-#     if request.method != "POST":
-#         print("Method must be POST")
-#         return JsonResponse({"error": "Method must be POST"})
-#
-#     try:
-#
-#         data = json.loads(request.body)
-#         user_id = int(data.get("id"))
-#         user = User.objects.get(pk=user_id)
-#         print(f"data: {data}, user_id: {user_id}")
-#         user.name = data.get("newName")
-#         print(data.get("newName"))
-#         user.save()
-#         print("User sucesfully saved")
-#         return JsonResponse({"ok": True})
-#     except User.DoesNotExist:
-#         return JsonResponse({"error": "User not found"}, status=400)
-#
-
-
-#GET
-
 
 def display_single_user(request, user_id):
     print("user id: ", user_id)
@@ -237,31 +136,6 @@ def display_single_user(request, user_id):
 
     except User.DoesNotExist:
         return JsonResponse({"error": "User not found"})
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -412,6 +286,13 @@ def create_team(request):
         return JsonResponse({"status": "success"}, status=200)
 
 
+
+
+
+
+
+
+
 #____________________________________________________
 #__________________Dependencies_____________________
 #____________________________________________________
@@ -455,14 +336,11 @@ def add_dependency(request):
             "created": False,
         }, status=200)
 
-
-from rest_framework import serializers
 # Create a serializer
 class DependencySerializer(serializers.ModelSerializer):
     class Meta:
         model = Dependency
         fields = ['id', 'vortakt', 'nachtakt', 'type']
-
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -470,7 +348,6 @@ def all_dependencies(request):
     all_deps = Dependency.objects.all()
     serializer = DependencySerializer(all_deps, many=True)
     return Response(serializer.data, status=200)
-
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
@@ -488,6 +365,79 @@ def delete_dependency(request):
         return Response({"status": "success"}, status=200)
     except Dependency.DoesNotExist:
         return Response({"error": "Dependency not found"}, status=404)
+
+
+
+
+
+
+
+
+
+
+
+#____________________________________________________
+#__________________ATTEMPTS_____________________
+#____________________________________________________
+
+
+class TaskSerializer(serializers.ModelSerializer):
+    # Get all dependencies where this task is the "vortakt" (parent)
+    nachtakte = DependencySerializer(many=True, read_only=True)
+    # Get all dependencies where this task is the "nachtakt" (child)
+    vortakte = DependencySerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Task
+        fields = ['id', 'name', 'difficulty', 'priority', 'asking', 'team', 'nachtakte', 'vortakte']
+
+
+class AttemptSerializer(serializers.ModelSerializer):
+    task = TaskSerializer(read_only=True)  # Nest the full task with dependencies
+    team_name = serializers.CharField(source='task.team.name', read_only=True)
+
+
+    class Meta:
+        model = Attempt
+        fields = ['id', 'name', 'number', 'task', 'team_name']
+
+
+
+
+
+#Attempts
+
+from rest_framework.response import Response
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def all_attempts(request):
+    attempts = Attempt.objects.all()
+    serializer = AttemptSerializer(attempts, many=True)  # Use the AttemptSerializer we created
+    return Response(serializer.data, status=200)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

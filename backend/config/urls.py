@@ -50,6 +50,10 @@ delete_dependency,
 #USER AUTHENTICATION & REGISTRATION
 register_user,
 check_auth,
+
+
+#ATTEMPS:
+all_attempts
                        )  # nutzt unsere Minimal-API
 
 def root_view(request):
@@ -70,6 +74,8 @@ urlpatterns = [
     path('api/orgarhythmus/add_dependency/', add_dependency),
     path('api/orgarhythmus/all_dependencies/', all_dependencies),
     path('api/orgarhythmus/delete_dependency/', delete_dependency),
+
+    path('api/orgarhythmus/all_attempts/', all_attempts),
 
 
 

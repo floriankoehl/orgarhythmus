@@ -36,7 +36,7 @@ export async function fetch_all_tasks() {
   }
 
     const data = await res.json();
-    console.log("The fetched tasks from the API", data.tasks)
+    // console.log("The fetched tasks from the API", data.tasks)
     // const dummy = {"task1": "task1 data", "task2": "task2 data"}
     return data.tasks
 }
@@ -109,13 +109,13 @@ export async function fetch_all_teams() {
     const res = await fetch(`${BASE_URL}/api/orgarhythmus/all_teams/`)
 
     if (!res.ok) {
-        console.log("Something went wrong")
+        console.log("Something went wrong calling teams in api.js")
         return
     }
 
     const data = await res.json()
 
-    console.log("Called sucesfully and here is data: ", data)
+    // console.log("The fetched teams from api: ", data)
     return data.teams
 
 }
@@ -209,6 +209,38 @@ export async function delete_dependency(dep_id){
     return data;  // ✅ Return the response
 }
 
+
+
+
+
+//_______________________________________________
+//_______________________________________________
+//________________ATTEMPTS___________________
+//_______________________________________________
+//_______________________________________________
+
+
+export async function fetch_all_attempts(){
+  const token = localStorage.getItem("access_token")
+
+  if (!token) {
+    throw redirect("/login")
+  }
+
+  const res = await fetch(`${BASE_URL}/api/orgarhythmus/all_attempts/`, {
+    headers: {
+      "Authorization": `Bearer ${token}`
+    }
+  })
+
+  if (res.status === 401 || res.status === 403) {
+    throw new Error("Could not load tasks");
+  }
+
+  const data = await res.json();
+  // console.log("The fetched attempts from the API", data)
+  return data
+}
 
 
 

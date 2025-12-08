@@ -27,6 +27,7 @@ import ProfilePage from "./pages/ProfilePage";
 import RegisterPage from "./pages/RegisterPage";
 import Dependencies from "./orgarhythmus/org_pages/Dependencies.jsx";
 import DependenciesWrapper from "./orgarhythmus/org_pages/DependenciesWrapper.jsx";
+import OrgAttemptsWrapper from "./orgarhythmus/org_pages/OrgAttemptsWrapper.jsx";
 
 
 const router = createBrowserRouter([
@@ -59,6 +60,7 @@ const router = createBrowserRouter([
       { index: true, element: <OrgaHome />, loader: fetch_all_tasks },
       { path:"all_teams", element: <OrgaAllTeams/>, loader: fetch_all_teams},  
       { path:"dependencies", element: <DependenciesWrapper/>},  
+      { path:"attempts", element: <OrgAttemptsWrapper/>}
     ],
   },
 ]);

@@ -38,9 +38,17 @@ class Task(models.Model):
     team = models.ForeignKey(Team, on_delete=SET_NULL, null=True, blank=True, related_name="tasks")
 
 
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+
+        if is_new:
+            name = f"{self.name}_1"
+            Attempt.objects.create(task=self, name = name, number=1)
+
+
     def __str__(self):
         return self.name
-
 
 
 class Dependency(models.Model):
@@ -53,3 +61,19 @@ class Dependency(models.Model):
 
     class Meta:
         unique_together = ('vortakt', 'nachtakt')
+
+
+
+
+
+class Attempt(models.Model):
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='attempts')
+    name = models.CharField(max_length=200, blank=True, null=True)
+    number = models.IntegerField()  # Remove blank=True, null=True if it's always required
+
+    class Meta:
+        unique_together = ('task', 'number')  # Prevent duplicate attempt numbers
+        ordering = ['number']  # Always order by attempt number
+
+
+
