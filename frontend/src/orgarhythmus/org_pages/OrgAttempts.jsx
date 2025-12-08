@@ -281,7 +281,7 @@ function AttemptNode({ data, selected }) {
         bg-white rounded-md border  
         shadow-sm flex justify-center items-center m-2 text-xs
         transition-all duration-150
-        font-bold !text-[15px] text-black shadow-xl shadow-black/5
+        font-bold !text-[15px] text-black shadow-xl shadow-black/2
         ${selected ? "border-sky-500 shadow-md scale-105 shadow-black/30"  : "border-slate-300"}
       `}
       style={{
