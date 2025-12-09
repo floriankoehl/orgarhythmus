@@ -990,6 +990,133 @@ def project_tasks_view(request, project_id):
 
 
 
+#
+#
+# from rest_framework import serializers
+# from .models import Task, Attempt, AttemptDependency, Team
+#
+#
+# class TeamSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Team
+#         fields = ["id", "name", "color"]
+#
+#
+# class TaskMiniSerializer(serializers.ModelSerializer):
+#     team = TeamSerializer(read_only=True)
+#
+#     class Meta:
+#         model = Task
+#         fields = ["id", "name", "team"]
+#
+#
+#
+# class AttemptSerializer(serializers.ModelSerializer):
+#     task = TaskMiniSerializer(read_only=True)
+#
+#     class Meta:
+#         model = Attempt
+#         fields = [
+#             "id",
+#             "slot_index",
+#             "task",
+#         ]
+#
+#
+#
+# from rest_framework.decorators import api_view, permission_classes
+# from rest_framework.permissions import IsAuthenticated
+# from rest_framework.response import Response
+#
+# from .models import Project, Task, Attempt, AttemptDependency
+#
+#
+# @api_view(["GET"])
+# @permission_classes([IsAuthenticated])
+# def project_attempts_view(request, project_id):
+#   # alle Tasks dieses Projekts
+#   tasks = Task.objects.filter(project_id=project_id)
+#   attempts = Attempt.objects.filter(task__in=tasks).select_related("task")
+#
+#   # wenn du schon eine Serializer-Struktur hast:
+#   # einfach die bisherige "all_attempts" Logik nutzen + filter
+#   data = AttemptSerializer(attempts, many=True).data
+#
+#   return Response(data)
+#
+#
+# @api_view(["POST"])
+# @permission_classes([IsAuthenticated])
+# def project_attempts_update_slot_index_view(request, project_id):
+#   attempt_id = request.data.get("attempt_id")
+#   slot_index = request.data.get("slot_index")
+#
+#   try:
+#     attempt = Attempt.objects.get(
+#       id=attempt_id,
+#       task__project_id=project_id,
+#     )
+#   except Attempt.DoesNotExist:
+#     return Response({"detail": "Attempt not found for this project."}, status=404)
+#
+#   attempt.slot_index = slot_index
+#   attempt.save()
+#
+#   return Response({"status": "ok"})
+#
+#
+#
+#
+#
+#
+#
+#
+#
+# @api_view(["GET", "POST"])
+# @permission_classes([IsAuthenticated])
+# def project_attempt_dependencies_view(request, project_id):
+#   if request.method == "GET":
+#     deps = AttemptDependency.objects.filter(
+#       vortakt_attempt__task__project_id=project_id
+#     )
+#     data = AttemptDependencySerializer(deps, many=True).data
+#     return Response(data)
+#
+#   # POST = neue Dependency
+#   vortakt_id = request.data.get("vortakt_attempt_id")
+#   nachtakt_id = request.data.get("nachtakt_attempt_id")
+#
+#   try:
+#     vortakt = Attempt.objects.get(id=vortakt_id, task__project_id=project_id)
+#     nachtakt = Attempt.objects.get(id=nachtakt_id, task__project_id=project_id)
+#   except Attempt.DoesNotExist:
+#     return Response({"detail": "Attempt not found in this project."}, status=404)
+#
+#   dep = AttemptDependency.objects.create(
+#     vortakt_attempt=vortakt,
+#     nachtakt_attempt=nachtakt,
+#   )
+#   return Response(AttemptDependencySerializer(dep).data, status=201)
+#
+#
+# @api_view(["POST"])
+# @permission_classes([IsAuthenticated])
+# def project_attempt_dependencies_delete_view(request, project_id):
+#   dependency_id = request.data.get("dependency_id")
+#
+#   try:
+#     dep = AttemptDependency.objects.get(
+#       id=dependency_id,
+#       vortakt_attempt__task__project_id=project_id
+#     )
+#   except AttemptDependency.DoesNotExist:
+#     return Response({"detail": "Dependency not found in this project."}, status=404)
+#
+#   dep.delete()
+#   return Response({"status": "deleted"})
+#
+#
+#
 
 
 
@@ -1019,6 +1146,185 @@ def project_tasks_view(request, project_id):
 
 
 
+
+
+
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from .models import Project, Task, Attempt, AttemptDependency
+# Import kommt später:
+# from .serializers import AttemptWithDependenciesSerializer, AttemptDependencySerializer
+
+from rest_framework import serializers
+from .models import Task, Attempt, AttemptDependency, Team
+
+
+class TeamSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Team
+        fields = ["id", "name", "color"]
+
+
+class TaskMiniSerializer(serializers.ModelSerializer):
+    team = TeamSerializer(read_only=True)
+
+    class Meta:
+        model = Task
+        fields = ["id", "name", "team"]
+
+
+class AttemptSerializer(serializers.ModelSerializer):
+    task = TaskMiniSerializer(read_only=True)
+
+    class Meta:
+        model = Attempt
+        fields = [
+            "id",
+            "slot_index",
+            "task",
+        ]
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def project_attempts_view(request, project_id):
+    # Alle Tasks dieses Projektes
+    tasks = Task.objects.filter(project_id=project_id)
+
+    # Alle Attempts dieser Tasks (inkl. Task + Team per select_related optimiert)
+    attempts = (
+        Attempt.objects
+        .filter(task__in=tasks)
+        .select_related("task", "task__team")
+    )
+
+    serialized = AttemptSerializer(attempts, many=True).data
+
+    # Wichtig: Struktur beibehalten wie im Platzhalter → "attempts": [...]
+    return Response({
+        "attempts": serialized
+    })
+
+
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def project_attempts_update_slot_index_view(request, project_id):
+    attempt_id = request.data.get("attempt_id")
+    slot_index = request.data.get("slot_index")
+
+    if attempt_id is None or slot_index is None:
+        return Response({"detail": "Missing attempt_id or slot_index"}, status=400)
+
+    try:
+        attempt = Attempt.objects.get(
+            id=attempt_id,
+            task__project_id=project_id,
+        )
+    except Attempt.DoesNotExist:
+        return Response(
+            {"detail": "Attempt not found for this project."},
+            status=404
+        )
+
+    attempt.slot_index = slot_index
+    attempt.save()
+
+    return Response({"status": "ok"})
+
+
+
+
+
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def project_attempt_dependencies_view(request, project_id):
+
+    # ---- GET: alle Dependencies für dieses Projekt ----
+    if request.method == "GET":
+        deps = AttemptDependency.objects.filter(
+            vortakt_attempt__task__project_id=project_id
+        )
+        # data = AttemptDependencySerializer(deps, many=True).data
+        return Response({
+            "dependencies": [],
+            "message": "Serializer missing"
+        })
+
+    # ---- POST: neue Dependency ----
+    vortakt_id = request.data.get("vortakt_attempt_id")
+    nachtakt_id = request.data.get("nachtakt_attempt_id")
+
+    if not vortakt_id or not nachtakt_id:
+        return Response({"detail": "Missing attempt IDs"}, status=400)
+
+    try:
+        vortakt = Attempt.objects.get(id=vortakt_id, task__project_id=project_id)
+        nachtakt = Attempt.objects.get(id=nachtakt_id, task__project_id=project_id)
+    except Attempt.DoesNotExist:
+        return Response({"detail": "Attempt not found in this project."}, status=404)
+
+    # Dependency erstellen
+    dep = AttemptDependency.objects.create(
+        vortakt_attempt=vortakt,
+        nachtakt_attempt=nachtakt,
+    )
+
+    # return Response(AttemptDependencySerializer(dep).data, status=201)
+    return Response({"status": "created", "id": dep.id}, status=201)
+
+
+
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def project_attempt_dependencies_delete_view(request, project_id):
+    dependency_id = request.data.get("dependency_id")
+
+    if not dependency_id:
+        return Response({"detail": "Missing dependency_id"}, status=400)
+
+    try:
+        dep = AttemptDependency.objects.get(
+            id=dependency_id,
+            vortakt_attempt__task__project_id=project_id
+        )
+    except AttemptDependency.DoesNotExist:
+        return Response({"detail": "Dependency not found in this project."}, status=404)
+
+    dep.delete()
+    return Response({"status": "deleted"})
+
+
+
+
+
+
+
+
+
+def all_teams_for_this_project(request, project_id):
+    all_teams = (
+        Team.objects
+        .prefetch_related(
+            "tasks",           # Team → Task
+            "tasks__attempts", # Task → Attempt
+            "tasks__vortakte", # Task → Dependency (where this task is child)
+            "tasks__nachtakte" # Task → Dependency (where this task is parent)
+        )
+        .filter(id=project_id)
+    )
+
+    data = [serialize_team(team) for team in all_teams]
+    return JsonResponse({"teams": data}, status=200)
 
 
 

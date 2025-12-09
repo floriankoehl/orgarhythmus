@@ -159,6 +159,61 @@ path(
 
 
 
+path(
+        "api/orgarhythmus/projects/<int:project_id>/attempts/",
+        views.project_attempts_view,
+        name="project_attempts",
+    ),
+    path(
+        "api/orgarhythmus/projects/<int:project_id>/attempts/update_slot_index/",
+        views.project_attempts_update_slot_index_view,
+        name="project_attempts_update_slot_index",
+    ),
+    path(
+        "api/orgarhythmus/projects/<int:project_id>/attempt_dependencies/",
+        views.project_attempt_dependencies_view,
+        name="project_attempt_dependencies",
+    ),
+    path(
+        "api/orgarhythmus/projects/<int:project_id>/attempt_dependencies/delete/",
+        views.project_attempt_dependencies_delete_view,
+        name="project_attempt_dependencies_delete",
+    ),
+path(
+        "api/orgarhythmus/projects/<int:project_id>/all_teams_for_this_project/",
+        views.all_teams_for_this_project,
+        name="all_teams_for_this_project",
+    ),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

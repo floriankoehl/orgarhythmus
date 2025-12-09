@@ -105,8 +105,43 @@ export async function delete_task(id) {
 //_______________________________________________
 
 //ALL TEAMS
+// export async function fetch_all_teams() {
+//     const res = await fetch(`${BASE_URL}/api/orgarhythmus/all_teams/`)
+
+//     if (!res.ok) {
+//         console.log("Something went wrong calling teams in api.js")
+//         return
+//     }
+
+//     const data = await res.json()
+
+//     // console.log("The fetched teams from api: ", data)
+//     return data.teams
+
+// }
+
+
+function getCurrentProjectIdFromLocation() {
+  // Beispiel-Pfad: /orgarhythmus/projects/1/attempts
+  const path = window.location.pathname; 
+  const parts = path.split("/").filter(Boolean); 
+  // ["orgarhythmus", "projects", "1", "attempts"]
+
+  const projectsIndex = parts.indexOf("projects");
+  if (projectsIndex === -1 || projectsIndex + 1 >= parts.length) {
+    return null;
+  }
+
+  const id = parseInt(parts[projectsIndex + 1], 10);
+  return Number.isNaN(id) ? null : id;
+}
+
+
+
+
 export async function fetch_all_teams() {
-    const res = await fetch(`${BASE_URL}/api/orgarhythmus/all_teams/`)
+    const projectId = getCurrentProjectIdFromLocation();
+    const res = await fetch(`${BASE_URL}/api/orgarhythmus/${projectId}/all_teams_for_this_project/`)
 
     if (!res.ok) {
         console.log("Something went wrong calling teams in api.js")
@@ -119,7 +154,6 @@ export async function fetch_all_teams() {
     return data.teams
 
 }
-
 
 
 
@@ -631,6 +665,34 @@ export async function createTaskForProject(projectId, payload) {
 
   return await res.json();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

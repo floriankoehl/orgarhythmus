@@ -38,7 +38,7 @@ export default function ProjectHeader({ }) {
   const navItems = [
   {
     key: "tasks",
-    to: projectId ? `/orgarhythmus/projects/${projectId}/tasks` : "/orgarhythmus/projects",
+    to: projectId ? `/orgarhythmus/projects/${projectId}/teams` : "/orgarhythmus/projects",
     label: "Tasks",
     icon: <ListIcon fontSize="small" />,
     end: true,
@@ -60,11 +60,13 @@ export default function ProjectHeader({ }) {
     icon: <ListOrdered fontSize="small" />,
   },
   {
-    key: "attempts",
-    to: "/orgarhythmus/attempts",
-    label: "Attempts",
-    icon: <NumbersIcon fontSize="small" />,
-  },
+  key: "attempts",
+  to: projectId
+    ? `/orgarhythmus/projects/${projectId}/attempts`
+    : "/orgarhythmus/projects",    // fallback
+  label: "Attempts",
+  icon: <NumbersIcon fontSize="small" />,
+}
 ];
 
 
