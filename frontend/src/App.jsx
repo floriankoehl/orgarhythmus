@@ -29,7 +29,7 @@ import Dependencies from "./orgarhythmus/org_pages/Dependencies.jsx";
 import DependenciesWrapper from "./orgarhythmus/org_pages/DependenciesWrapper.jsx";
 import OrgAttemptsWrapper from "./orgarhythmus/org_pages/OrgAttemptsWrapper.jsx";
 import ProjectLayout from "./orgarhythmus/org_layouts/ProjectLayout.jsx";
-import ProjectMain from "./orgarhythmus/projects/pages/ProjectMain.jsx";
+import ProjectMain, {project_loader} from "./orgarhythmus/projects/pages/ProjectMain.jsx";
 import OrgaProjects from "./orgarhythmus/projects/components/OrgaProjects.jsx";
 import ProjectTeams from "./orgarhythmus/projects/pages/ProjectTeams.jsx"
 import ProjectTasks from "./orgarhythmus/projects/pages/ProjectTasks.jsx";
