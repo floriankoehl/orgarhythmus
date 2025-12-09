@@ -657,6 +657,77 @@ def update_attempt_slot_index(request):
 
 
 
+import json
+from django.http import JsonResponse
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from .models import AttemptDependency
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def delete_attempt_dependency(request):
+    """
+    Delete a single AttemptDependency by id.
+    Body: { "dependency_id": <int> }
+    """
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    dep_id = body.get("dependency_id")
+    if dep_id is None:
+        return JsonResponse({"error": "dependency_id is required"}, status=400)
+
+    try:
+        dep = AttemptDependency.objects.get(id=dep_id)
+    except AttemptDependency.DoesNotExist:
+        return JsonResponse({"error": "AttemptDependency not found"}, status=404)
+
+    dep.delete()
+
+    return JsonResponse({"id": dep_id, "status": "deleted"}, status=200)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

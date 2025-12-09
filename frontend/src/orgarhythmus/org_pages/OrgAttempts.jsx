@@ -20,6 +20,7 @@ import {
   add_attempt_dependency,
   fetch_all_attempt_dependencies, 
   update_attempt_slot_index,   
+  delete_attempt_dependency
 } from "../org_API";
 import dagre from "@dagrejs/dagre";
 import Button from "@mui/material/Button";
@@ -62,7 +63,7 @@ function playSnapSound() {
 }
 
 function get_overall_gap(num_tasks, gap, header_gap) {
-  return num_tasks * gap + header_gap -20;
+  return num_tasks * gap + header_gap -10;
 }
 
 
@@ -413,6 +414,8 @@ export default function OrgAttempts() {
   const [overallgap, setOverAllGap] = useState(0)
 
   const [edges, setEdges] = useState([]);
+  const [selectedDepId, setSelectedDepId] = useState(null);
+const [selectedEdgeId, setSelectedEdgeId] = useState(null);
 
 
 
@@ -791,6 +794,40 @@ const onNodeDragStop = useCallback((event, node) => {
 //   })();
 // }, [setEdges]);
 
+// const onConnect = useCallback((connection) => {
+//   console.log("onConnect fired:", connection);
+
+//   const vortaktId = extractAttemptId(connection.source);
+//   const nachtaktId = extractAttemptId(connection.target);
+
+//   if (!vortaktId || !nachtaktId) {
+//     console.error("Could not parse attempt IDs from nodes:", connection);
+//     return;
+//   }
+
+//   (async () => {
+//     try {
+//       const res = await add_attempt_dependency(vortaktId, nachtaktId);
+//       console.log("Dependency created:", res);
+
+//       setEdges((eds) =>
+//         addEdge(
+//           {
+//             ...connection,
+//             type: "default",
+//             animated: true,
+//             interactionWidth: 20,
+//             style: { strokeWidth: 2 },
+//           },
+//           eds
+//         )
+//       );
+//     } catch (err) {
+//       console.error("Failed to create attempt dependency:", err);
+//     }
+//   })();
+// }, [setEdges]);
+
 const onConnect = useCallback((connection) => {
   console.log("onConnect fired:", connection);
 
@@ -811,6 +848,7 @@ const onConnect = useCallback((connection) => {
         addEdge(
           {
             ...connection,
+            id: `attemptdep-${res.id}`,   // 👈 now we know which DB row this is
             type: "default",
             animated: true,
             interactionWidth: 20,
@@ -826,6 +864,24 @@ const onConnect = useCallback((connection) => {
 }, [setEdges]);
 
 
+async function handleDeleteSelectedDependency() {
+  if (!selectedDepId || !selectedEdgeId) return;
+
+  try {
+    const res = await delete_attempt_dependency(selectedDepId);
+    console.log("Dependency deleted:", res);
+
+    // Remove edge from ReactFlow
+    setEdges((eds) => eds.filter((e) => e.id !== selectedEdgeId));
+
+    setSelectedDepId(null);
+    setSelectedEdgeId(null);
+  } catch (err) {
+    console.error("Failed to delete dependency:", err);
+  }
+}
+
+
 
 //
 
@@ -835,9 +891,27 @@ const onConnect = useCallback((connection) => {
         style={{ height: `${y_reactflow_size}px` }}
         className="w-screen
              flex justify-center items-center 
-             m-20 lg:max-w-full  lg:px-10 md:max-w-[700px] sm:max-w-full p-3
+             my-20 lg:max-w-full  lg:px-10 md:max-w-[700px] sm:max-w-full p-3
+             
              "
       >
+        {selectedDepId && (
+  <div className="absolute bottom-5 left-0 w-full flex justify-center mt-4">
+    <button
+      onClick={handleDeleteSelectedDependency}
+      className="
+          
+        px-4 py-2 rounded-md 
+        bg-red-500 text-white 
+        text-sm font-medium 
+        hover:bg-red-600 
+        shadow-sm
+      "
+    >
+      Delete selected dependency
+    </button>
+ </div>
+)}
         <div style={{ width: COMPONENT_WIDTH, height: y_reactflow_size }} className="
         shadow-xl shadow-black/30 rounded-xl ">
           <ReactFlow
@@ -849,11 +923,26 @@ const onConnect = useCallback((connection) => {
   onConnect={onConnect}
   onNodeDragStop={onNodeDragStop}
   elementsSelectable={true}               // (default, but nice to be explicit)
-  deleteKeyCode={["Delete", "Backspace"]} // allow deleting selected edges/nodes
+  deleteKeyCode={["Delete", "Backspace"]}
+  
+  onEdgeClick={(evt, edge) => {
+    console.log("EDGE CLICKED:", edge);
+    if (edge.id?.startsWith("attemptdep-")) {
+      const depId = parseInt(edge.id.replace("attemptdep-", ""), 10);
+      if (!Number.isNaN(depId)) {
+        setSelectedDepId(depId);
+        setSelectedEdgeId(edge.id);
+      }
+    } else {
+      setSelectedDepId(null);
+      setSelectedEdgeId(null);
+    }
+  }}
+  // allow deleting selected edges/nodes
   // maxZoom={1.2}
   minZoom={1}
     // onNodeClick={(evt, node) => console.log("NODE CLICKED:", node)}
-  onEdgeClick={(evt, edge) => console.log("EDGE CLICKED:", edge)}
+  // onEdgeClick={(evt, edge) => console.log("EDGE CLICKED:", edge)}
 
   translateExtent={[
     [0, 0],
@@ -865,6 +954,7 @@ const onConnect = useCallback((connection) => {
         </ReactFlow>
         </div>
         
+
       </div>
 
     </>

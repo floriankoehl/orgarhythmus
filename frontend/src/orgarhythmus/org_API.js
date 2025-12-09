@@ -389,6 +389,32 @@ export async function update_attempt_slot_index(attempt_id, slot_index) {
 
 
 
+export async function delete_attempt_dependency(dependency_id) {
+  const token = localStorage.getItem("access_token");
+
+  if (!token) {
+    throw redirect("/login");
+  }
+
+  const res = await fetch(
+    `${BASE_URL}/api/orgarhythmus/delete_attempt_dependency/`,
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ dependency_id }),
+    }
+  );
+
+  if (!res.ok) {
+    console.error("Backend failed:", res.status);
+    throw new Error("Failed to delete attempt dependency");
+  }
+
+  return await res.json();
+}
 
 
 

@@ -58,7 +58,8 @@ check_auth,
 all_attempts,
 add_attempt_dependency,
 list_attempt_dependencies,
-update_attempt_slot_index
+update_attempt_slot_index,
+delete_attempt_dependency
                        )  # nutzt unsere Minimal-API
 
 def root_view(request):
@@ -85,7 +86,7 @@ urlpatterns = [
     path('api/orgarhythmus/all_attempt_dependencies/', list_attempt_dependencies),
     path('api/orgarhythmus/update_attempt_slot_index/', update_attempt_slot_index),
     # path("api/orgarhythmus/update_attempt_slot_index/", update_attempt_slot_index),
-
+path("api/orgarhythmus/delete_attempt_dependency/", delete_attempt_dependency),  # 👈 NEW
 
 
 
