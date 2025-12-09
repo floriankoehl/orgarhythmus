@@ -129,7 +129,7 @@ function snapAttemptX(x) {
 const isMobile = window.innerWidth <= 768;
 let TASK_HEIGHT = 60;
 let TASK_WIDTH = 60;
-const ENTRIES = 15
+const ENTRIES = 25
 
 let SIDEBAR_WIDTH = 80;
 let TASK_SIDEBAR_WIDTH = 100;
@@ -896,7 +896,7 @@ async function handleDeleteSelectedDependency() {
              "
       >
         {selectedDepId && (
-  <div className="absolute bottom-5 left-0 w-full flex justify-center mt-4">
+  <div className="absolute top-15 left-0 w-full flex justify-center mt-4">
     <button
       onClick={handleDeleteSelectedDependency}
       className="
