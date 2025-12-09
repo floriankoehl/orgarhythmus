@@ -34,8 +34,8 @@ export default function Header() {
   const navItems = [
     { to: "/comment_wall", label: "Chat", icon: <ChatIcon fontSize="small" /> },
     { to: "/landing", label: "Landing", icon: <FlightLandIcon fontSize="small" /> },
-    { to: "/graph", label: "Graph", icon: <WbIridescentIcon fontSize="small" /> },
-    { to: "/skills", label: "Skills", icon: <Brain /> },
+    // { to: "/graph", label: "Graph", icon: <WbIridescentIcon fontSize="small" /> },
+    // { to: "/skills", label: "Skills", icon: <Brain /> },
     { to: "/orgarhythmus", label: "Orgarhytmus", icon: <CalendarCheck /> },
 
   ];

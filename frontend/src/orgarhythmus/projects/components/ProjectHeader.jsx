@@ -26,16 +26,33 @@ import { ListOrdered } from 'lucide-react';
 import ReplayIcon from '@mui/icons-material/Replay';
 import NumbersIcon from '@mui/icons-material/Numbers';
 import { FolderOpenDot, Folder } from 'lucide-react';
+import { PanelsTopLeft } from 'lucide-react';
+
+
+
 
 export default function ProjectHeader({ }) {
   // Controls whether the mobile menu is open or closed
-  const [isOpen, setIsOpen] = useState(false);
+  const [ isOpen, setIsOpen] = useState(false);
   const { user, isAuthenticated, loadingUser, logout } = useAuth();
   const { projectId } = useParams();   
 
 
   // Central definition of your nav items, so it's easy to change later
   const navItems = [
+    {
+    key: "project_main",
+    to: `/orgarhythmus/projects/${projectId}/`,
+    label: "Project",
+    icon: <PanelsTopLeft size={16} color="white" />,
+    end: true, 
+  },
+    {
+    key: "project-teams",
+    to: projectId ? `/orgarhythmus/projects/${projectId}/teams` : "/orgarhythmus/projects",
+    label: "Teams",
+    icon: <Diversity3Icon className="!h-[17px] text-white" />,
+  },
   {
     key: "tasks",
     to: projectId ? `/orgarhythmus/projects/${projectId}/tasks` : "/orgarhythmus/projects",
@@ -45,20 +62,15 @@ export default function ProjectHeader({ }) {
   },
 
   // 🔵 This is now the *project* teams page
-  {
-    key: "project-teams",
-    to: projectId ? `/orgarhythmus/projects/${projectId}/teams` : "/orgarhythmus/projects",
-    label: "Teams",
-    icon: <Diversity3Icon fontSize="small" />,
-  },
+  
 
   // the others can stay global for now
-  {
-    key: "dependencies",
-    to: "/orgarhythmus/dependencies",
-    label: "Dependencies",
-    icon: <ListOrdered fontSize="small" />,
-  },
+  // {
+  //   key: "dependencies",
+  //   to: "/orgarhythmus/dependencies",
+  //   label: "Dependencies",
+  //   icon: <ListOrdered fontSize="small" />,
+  // },
   {
   key: "attempts",
   to: projectId
@@ -211,17 +223,15 @@ export default function ProjectHeader({ }) {
     <span className="text-sm font-semibold uppercase tracking-[0.15em] text-cyan-300">
       Orgarhythmus
     </span>
-    <span className="text-xs text-slate-300/80">
-      Algorhythmus der Organisation
-    </span>
-  </div>
-
-  {/* NEW: small project badge if we are inside a project */}
-  {projectId && (
-    <div className="ml-3 inline-flex items-center rounded-full border border-cyan-500/50 bg-cyan-500/10 px-3 py-1 text-[11px] text-cyan-200">
+    {projectId && (
+    <div className="inline-flex items-center rounded-full border border-cyan-500/50 bg-cyan-500/10 px-3 py-1 text-[11px] text-cyan-200">
       Project <span className="ml-1 font-semibold">#{projectId}</span>
     </div>
   )}
+  </div>
+
+  {/* NEW: small project badge if we are inside a project */}
+  
 </NavLink>
 
 

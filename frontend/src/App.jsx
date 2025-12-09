@@ -21,7 +21,7 @@ import CommentWall from "./pages/CommentWall.jsx";
 import OrgaLayout from "./orgarhythmus/org_layouts/OrgaLayout.jsx";
 import OrgaHome from "./orgarhythmus/org_pages/OrgaHome.jsx";
 import OrgaAllTeams from "./orgarhythmus/org_pages/OrgaAllTeams.jsx";
-import { fetch_all_teams, fetch_all_tasks } from "./orgarhythmus/org_API";
+import { fetch_all_teams } from "./orgarhythmus/org_API";
 import LoginPage from "./pages/LoginPage";
 import ProfilePage from "./pages/ProfilePage";
 import RegisterPage from "./pages/RegisterPage";
@@ -29,7 +29,7 @@ import Dependencies from "./orgarhythmus/org_pages/Dependencies.jsx";
 import DependenciesWrapper from "./orgarhythmus/org_pages/DependenciesWrapper.jsx";
 import OrgAttemptsWrapper from "./orgarhythmus/org_pages/OrgAttemptsWrapper.jsx";
 import ProjectLayout from "./orgarhythmus/org_layouts/ProjectLayout.jsx";
-import ProjectMain, { project_loader } from "./orgarhythmus/projects/pages/ProjectMain.jsx";
+import ProjectMain from "./orgarhythmus/projects/pages/ProjectMain.jsx";
 import OrgaProjects from "./orgarhythmus/projects/components/OrgaProjects.jsx";
 import ProjectTeams from "./orgarhythmus/projects/pages/ProjectTeams.jsx"
 import ProjectTasks from "./orgarhythmus/projects/pages/ProjectTasks.jsx";
@@ -62,11 +62,11 @@ const router = createBrowserRouter([
     path: "/orgarhythmus",
     element: <OrgaLayout />,
     children: [
-      { index: true, element: <OrgaHome />, loader: fetch_all_tasks },
+      // { index: true, element: <OrgaHome />, loader: fetch_all_tasks },
       { path: "all_teams", element: <OrgaAllTeams />, loader: fetch_all_teams },
       { path: "dependencies", element: <DependenciesWrapper /> },
       { path: "attempts", element: <OrgAttemptsWrapper /> },
-      { path: "projects", element: <OrgaProjects /> },
+      { index: true,  element: <OrgaProjects /> },
       {
         path: "projects/:projectId",
         element: <ProjectLayout />,

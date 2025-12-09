@@ -1406,17 +1406,6 @@ def all_attempts_for_this_project(request, project_id):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
 def echo_view(request, text):
     times = request.GET.get('times')
     if times is not None:

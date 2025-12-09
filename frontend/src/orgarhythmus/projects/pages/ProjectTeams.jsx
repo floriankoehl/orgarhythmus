@@ -9,7 +9,7 @@ import { HexColorPicker } from "react-colorful";
 
 import { fetchTeamsForProject, createTeamForProject } from "../../org_API";
 
-export default function ProjectMain() {
+export default function ProjectTeams() {
   const { projectId } = useParams();
 
   const [teams, setTeams] = useState([]);

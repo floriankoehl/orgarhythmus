@@ -892,7 +892,7 @@ async function handleDeleteSelectedDependency() {
         className="w-screen !h-screen
              flex justify-center items-center 
              lg:max-w-full  lg:px-10 md:max-w-[700px] sm:max-w-full p-3
-                 
+            
              "
       >
         {selectedDepId && (
@@ -900,7 +900,7 @@ async function handleDeleteSelectedDependency() {
     <button
       onClick={handleDeleteSelectedDependency}
       className="
-          
+        
         px-4 py-2 rounded-md 
         bg-red-500 text-white 
         text-sm font-medium 
