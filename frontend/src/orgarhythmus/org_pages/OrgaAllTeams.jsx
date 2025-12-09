@@ -175,7 +175,7 @@ export default function OrgaAllTeams() {
 
         {/* Create panel */}
         {showCreatePanel && (
-          <div className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-sm shadow-md p-4 sm:p-5 relative overflow-hidden mb-4">
+          <div className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-sm shadow-md p-4 sm:p-5 relative mb-4 z-50">
             <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-sky-400 via-violet-400 to-emerald-400" />
 
             <div className="flex items-start justify-between mb-4">
