@@ -889,10 +889,10 @@ async function handleDeleteSelectedDependency() {
     <>
       <div
         style={{ height: `${y_reactflow_size}px` }}
-        className="w-screen
+        className="w-screen !h-screen
              flex justify-center items-center 
-             my-20 lg:max-w-full  lg:px-10 md:max-w-[700px] sm:max-w-full p-3
-             
+             lg:max-w-full  lg:px-10 md:max-w-[700px] sm:max-w-full p-3
+                 
              "
       >
         {selectedDepId && (
@@ -913,7 +913,7 @@ async function handleDeleteSelectedDependency() {
  </div>
 )}
         <div style={{ width: COMPONENT_WIDTH, height: y_reactflow_size }} className="
-        shadow-xl shadow-black/30 rounded-xl ">
+        shadow-xl shadow-black/30 rounded-xl max-h-[75vh] ">
           <ReactFlow
   nodes={mergedNodes}
   edges={edges}
