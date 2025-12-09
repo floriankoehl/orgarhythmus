@@ -1,33 +1,44 @@
 from gc import set_debug
 
 from django.db import models
-from django.contrib.auth.models import User  # ← Djangos User verwenden
+from django.contrib.auth.models import User
 from django.db.models import SET_NULL
-
-
-# Lösche dein eigenes User Model komplett!
 
 class Comment(models.Model):
     author = models.ForeignKey(User, on_delete=models.CASCADE)  # ← Besser!
     text = models.CharField(max_length=2000, blank=True, null=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
+#________________________________________________________________________________________________________________________________
+#________________________________________________________________________________________________________________________________
+#________________________________________________________________________________________________________________________________
+#________________________________________________________ORGARHYTHMUS_____________________________________________________________
+#________________________________________________________________________________________________________________________________
+#________________________________________________________________________________________________________________________________
+#________________________________________________________________________________________________________________________________
 
+#_________________________________________
+#________________PROJECT__________________
+#_________________________________________
 
-
-
-
-
-
-
-class Team(models.Model):
-    name = models.CharField(max_length=200, blank=True, null=True)
-    color = models.CharField(max_length=200, blank=True, null=True)
+class Project(models.Model):
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="projects_owned")
+    members = models.ManyToManyField(User, related_name="projects", blank=True)
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
 
 
+class Team(models.Model):
+    name = models.CharField(max_length=200, blank=True, null=True)
+    color = models.CharField(max_length=200, blank=True, null=True)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="teams")
+
+    def __str__(self):
+        return self.name
 
 
 class Task(models.Model):
@@ -36,6 +47,8 @@ class Task(models.Model):
     priority = models.CharField(max_length=200, blank=True, null=True)
     asking = models.CharField(max_length=200, blank=True, null=True)
     team = models.ForeignKey(Team, on_delete=SET_NULL, null=True, blank=True, related_name="tasks")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tasks")
+
 
 
     def save(self, *args, **kwargs):
@@ -65,9 +78,6 @@ class Dependency(models.Model):
         unique_together = ('vortakt', 'nachtakt')
 
 
-
-
-
 class Attempt(models.Model):
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='attempts')
     name = models.CharField(max_length=200, blank=True, null=True)
@@ -77,9 +87,6 @@ class Attempt(models.Model):
     class Meta:
         unique_together = ('task', 'number')  # Prevent duplicate attempt numbers
         ordering = ['number']  # Always order by attempt number
-
-
-
 
 
 class AttemptDependency(models.Model):
@@ -92,5 +99,13 @@ class AttemptDependency(models.Model):
 
     class Meta:
         unique_together = ('vortakt_attempt', 'nachtakt_attempt')
+
+
+
+
+
+
+
+
 
 

@@ -711,6 +711,338 @@ def delete_attempt_dependency(request):
 
 
 
+#__________________________________________________________________________________________
+#__________________________________________________________________________________________
+#__________________________________________________________________________________________
+#__________________________________________________________________________________________
+#__________________________________________________________________________________________
+#______________________________________PROJECTS_____________________________________________
+#__________________________________________________________________________________________
+#__________________________________________________________________________________________
+#__________________________________________________________________________________________
+#__________________________________________________________________________________________
+#__________________________________________________________________________________________
+
+
+
+
+#____________________________________________________
+#_____________________SERIALIZER________________________
+#____________________________________________________
+
+from .models import Comment, Team, Dependency, Attempt, Project
+from django.db.models import Q
+from rest_framework import serializers
+from .models import Project, Team
+
+
+
+
+class ProjectSerializer(serializers.ModelSerializer):
+    owner_username = serializers.CharField(source="owner.username", read_only=True)
+
+    class Meta:
+        model = Project
+        fields = ["id", "name", "description", "created_at", "owner", "owner_username"]
+        read_only_fields = ["id", "created_at", "owner", "owner_username"]
+
+
+
+class TeamSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Team
+        fields = [
+            "id",
+            "name",
+            "color",
+            "project",
+        ]
+        read_only_fields = ["id", "project"]
+
+
+
+#____________________________________________________
+#_____________________PROJECT________________________
+#____________________________________________________
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def list_projects(request):
+    """
+    List all projects the current user is involved in
+    (owner or member).
+    """
+    user = request.user
+    projects = (
+        Project.objects
+        .filter(Q(owner=user) | Q(members=user))
+        .distinct()
+        .order_by("-created_at")
+    )
+    serializer = ProjectSerializer(projects, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_project(request):
+    """
+    Create a new project for the current user.
+    Body: { "name": "...", "description": "..." }
+    """
+    data = request.data
+    name = data.get("name", "").strip()
+    description = data.get("description", "").strip()
+
+    if not name:
+        return Response(
+            {"detail": "Name is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    project = Project.objects.create(
+        owner=request.user,
+        name=name,
+        description=description or "",
+    )
+    # Optional: Owner auch gleich als Mitglied hinzufügen
+    project.members.add(request.user)
+
+    serializer = ProjectSerializer(project)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+
+
+from django.shortcuts import get_object_or_404
+from django.db.models import Q
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_project(request, pk):
+    """
+    Return one project if the user is owner or member.
+    """
+    user = request.user
+    project = get_object_or_404(
+        Project,
+        Q(id=pk) & (Q(owner=user) | Q(members=user))
+    )
+    serializer = ProjectSerializer(project)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+
+
+#____________________________________________________
+#_____________________TEAMS__________________________
+#____________________________________________________
+
+from django.db import models
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Project, Team
+
+
+
+def user_has_project_access(user, project: Project) -> bool:
+    return (
+        project.owner_id == user.id
+        or project.members.filter(id=user.id).exists()
+    )
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def project_teams(request, project_id):
+    """
+    GET  -> alle Teams eines Projekts
+    POST -> neues Team im Projekt anlegen
+    """
+    user = request.user
+
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(user, project):
+        return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == "GET":
+        teams = project.teams.all().order_by("name")
+        serializer = TeamSerializer(teams, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    # POST → Team erstellen
+    serializer = TeamSerializer(data=request.data)
+    if serializer.is_valid():
+        team = serializer.save(project=project)
+        out = TeamSerializer(team).data
+        return Response(out, status=status.HTTP_201_CREATED)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+
+
+
+
+
+
+
+# views.py
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import Project, Task, Team
+
+
+def task_to_dict(task):
+    """Formatiert Task so, wie dein Frontend ihn braucht."""
+    return {
+        "id": task.id,
+        "name": task.name,
+        "priority": task.priority,
+        "difficulty": task.difficulty,
+        "approval": task.asking,
+        "team": {
+            "id": task.team.id,
+            "name": task.team.name,
+            "color": task.team.color,
+        } if task.team else None,
+        # Wenn du vortakte / nachtakte brauchst, kannst du hier später erweitern
+    }
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def project_tasks_view(request, project_id):
+    # 1) Projekt prüfen
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response(
+            {"detail": "Project not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    # 2) GET: alle Tasks dieses Projekts
+    if request.method == "GET":
+        tasks = (
+            Task.objects
+            .filter(project=project)
+            .select_related("team")
+        )
+        data = [task_to_dict(t) for t in tasks]
+        # dein Frontend erwartet `data.tasks` → also:
+        return Response({"tasks": data}, status=status.HTTP_200_OK)
+
+    # 3) POST: neuen Task für dieses Projekt anlegen
+    if request.method == "POST":
+        payload = request.data
+
+        name = (payload.get("name") or "").strip()
+        if not name:
+            return Response(
+                {"detail": "Name is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        priority = payload.get("priority") or 0
+        difficulty = payload.get("difficulty") or 0
+        approval = bool(payload.get("approval", False))
+        team_id = payload.get("team_id")
+
+        team = None
+        if team_id:
+            try:
+                # wichtig: Team MUSS zum selben Project gehören
+                team = Team.objects.get(pk=team_id, project=project)
+            except Team.DoesNotExist:
+                return Response(
+                    {"detail": "Team does not belong to this project."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        task = Task.objects.create(
+            project=project,
+            team=team,
+            name=name,
+            priority=priority,
+            difficulty=difficulty,
+            asking=approval,
+        )
+
+        return Response(
+            task_to_dict(task),
+            status=status.HTTP_201_CREATED,
+        )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

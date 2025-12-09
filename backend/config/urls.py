@@ -59,8 +59,18 @@ all_attempts,
 add_attempt_dependency,
 list_attempt_dependencies,
 update_attempt_slot_index,
-delete_attempt_dependency
+delete_attempt_dependency,
+
+
+#PROJECTS:
+list_projects,
+create_project,
+get_project,
+
                        )  # nutzt unsere Minimal-API
+
+from django.urls import path
+from api import views
 
 def root_view(request):
     # Antwort für GET http://127.0.0.1:8000/
@@ -87,6 +97,74 @@ urlpatterns = [
     path('api/orgarhythmus/update_attempt_slot_index/', update_attempt_slot_index),
     # path("api/orgarhythmus/update_attempt_slot_index/", update_attempt_slot_index),
 path("api/orgarhythmus/delete_attempt_dependency/", delete_attempt_dependency),  # 👈 NEW
+
+    # ... deine existierenden orgarhythmus Routen ...
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    #PROJEKT BEZOGEN:
+    path('api/orgarhythmus/projects/', list_projects),
+    path('api/orgarhythmus/projects/create/', create_project),
+    path("api/orgarhythmus/projects/<int:pk>/", get_project),path(
+        "api/orgarhythmus/projects/<int:project_id>/teams/",
+        views.project_teams,
+        name="project_teams",
+    ),
+path(
+        "api/orgarhythmus/projects/<int:project_id>/teams/",
+        views.project_teams,
+        name="project_teams",
+    ),
+path(
+        "api/orgarhythmus/projects/<int:project_id>/tasks/",
+        views.project_tasks_view,
+        name="project_tasks",
+    ),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
