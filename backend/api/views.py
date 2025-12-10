@@ -1,8 +1,6 @@
 import json
-
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-
 from .models import Comment, Team, Dependency, Attempt
 from django.http import JsonResponse
 from django.contrib.auth import authenticate, login
@@ -12,25 +10,91 @@ from django.contrib.auth.models import User
 from django.contrib.auth import authenticate, login
 import json
 from .models import Task
-# ... rest of your code
 from django.forms.models import model_to_dict
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
-
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth.models import User
 from rest_framework import serializers
-
 from django.forms.models import model_to_dict
+from django.http import JsonResponse
+from rest_framework.response import Response
+from django.http import JsonResponse
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from .models import AttemptDependency
+import json
+from django.http import JsonResponse
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from .models import Attempt
+import json
+from django.http import JsonResponse
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from .models import AttemptDependency
+from .models import Comment, Team, Dependency, Attempt, Project
+from django.db.models import Q
+from rest_framework import serializers
+from .models import Project, Team
+from django.shortcuts import get_object_or_404
+from django.db.models import Q
+from django.db import models
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Project, Team
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Project, Task, Team
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from .models import Project, Task, Attempt, AttemptDependency
+from rest_framework import serializers
+from .models import Task, Attempt, AttemptDependency, Team
+
+from django.http import JsonResponse
+from .models import Attempt, Task
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #____________________________________________________
@@ -146,17 +210,19 @@ def display_single_user(request, user_id):
 
 
 
+#_______________________________________________________________________________________________
+#_______________________________________________________________________________________________
+#_______________________________________________________________________________________________
+#_______________________________________________________________________________________________
+#__________________SERIALIZER___________________________
+#_______________________________________________________________________________________________
+#_______________________________________________________________________________________________
+#_______________________________________________________________________________________________
+#_______________________________________________________________________________________________
 
 
 
-
-
-
-#____________________________________________________
-#__________________TASKS & TEAMS_____________________
-#____________________________________________________
-
-#SERIALIZATION
+#Tasks
 def serialize_task(task):
     # Get all parent tasks (vortakte)
     vortakte = [
@@ -195,6 +261,8 @@ def serialize_task(task):
         "nachtakte": nachtakte,  # ✅ Child tasks
     }
 
+
+#Team
 def serialize_team(team):
     return {
         "id": team.id,
@@ -204,7 +272,116 @@ def serialize_team(team):
     }
 
 
-#TASKS
+#Dependency
+class DependencySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Dependency
+        fields = ['id', 'vortakt', 'nachtakt', 'type']
+
+
+#Task Again
+class TaskSerializer(serializers.ModelSerializer):
+    # Get all dependencies where this task is the "vortakt" (parent)
+    nachtakte = DependencySerializer(many=True, read_only=True)
+    # Get all dependencies where this task is the "nachtakt" (child)
+    vortakte = DependencySerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Task
+        fields = ['id', 'name', 'difficulty', 'priority', 'asking', 'team', 'nachtakte', 'vortakte']
+
+
+#Attempt
+class AttemptSerializer(serializers.ModelSerializer):
+    task = TaskSerializer(read_only=True)  # Nest the full task with dependencies
+    team_name = serializers.CharField(source='task.team.name', read_only=True)
+
+
+    class Meta:
+        model = Attempt
+        fields = ['id', 'name', 'number', 'task', 'team_name']
+
+
+#ProjectSerializer
+class ProjectSerializer(serializers.ModelSerializer):
+    owner_username = serializers.CharField(source="owner.username", read_only=True)
+
+    class Meta:
+        model = Project
+        fields = ["id", "name", "description", "created_at", "owner", "owner_username"]
+        read_only_fields = ["id", "created_at", "owner", "owner_username"]
+
+
+#TeamSerializer
+class TeamSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Team
+        fields = [
+            "id",
+            "name",
+            "color",
+            "project",
+        ]
+        read_only_fields = ["id", "project"]
+
+
+#ProjectTeamSerializer
+class ProjectTeamSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Team
+        fields = ["id", "name", "color"]
+
+
+#ProjectTaskMiniSerializer
+class ProjectTaskMiniSerializer(serializers.ModelSerializer):
+    team = ProjectTeamSerializer(read_only=True)
+
+    class Meta:
+        model = Task
+        fields = ["id", "name", "team"]
+
+
+#ProjectTaskMiniSerializer
+class ProjectAttemptSerializer(serializers.ModelSerializer):
+    task = ProjectTaskMiniSerializer(read_only=True)
+
+    class Meta:
+        model = Attempt
+        fields = [
+            "id",
+            "slot_index",
+            "task",
+        ]
+
+
+
+
+
+
+
+
+
+
+# ________________________________________________________________________________________________________________________________
+# ________________________________________________________________________________________________________________________________
+# ________________________________________________________________________________________________________________________________
+# _________________________________________________________BEFORE PROJECT_________________________________________________________
+# ________________________________________________________________________________________________________________________________
+# ________________________________________________________________________________________________________________________________
+
+
+
+
+
+
+
+
+#____________________________________________________
+#__________________TASKS & TEAMS_____________________
+#____________________________________________________
+
+
+#all_tasks
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def all_tasks(request):
@@ -212,6 +389,30 @@ def all_tasks(request):
     data = [serialize_task(task) for task in tasks]
     return JsonResponse({"tasks": data}, status=200)
 
+
+#all_teams
+def all_teams(request):
+    all_teams = (
+        Team.objects
+        .prefetch_related(
+            "tasks",           # Team → Task
+            "tasks__attempts", # Task → Attempt
+            "tasks__vortakte", # Task → Dependency (where this task is child)
+            "tasks__nachtakte" # Task → Dependency (where this task is parent)
+        )
+        .all()
+    )
+
+    data = [serialize_team(team) for team in all_teams]
+    return JsonResponse({"teams": data}, status=200)
+
+
+
+
+
+
+
+#TODO Old Function
 @csrf_exempt
 def delete_task_by_id(request):
     if request.method == "POST":
@@ -222,6 +423,8 @@ def delete_task_by_id(request):
 
     return JsonResponse({"status": "success"}, status=200)
 
+
+#TODO Old Function
 @csrf_exempt
 def create_task(request):
     if request.method != "POST":
@@ -258,26 +461,7 @@ def create_task(request):
     )
 
 
-
-#TEAMS
-from django.http import JsonResponse
-
-def all_teams(request):
-    all_teams = (
-        Team.objects
-        .prefetch_related(
-            "tasks",           # Team → Task
-            "tasks__attempts", # Task → Attempt
-            "tasks__vortakte", # Task → Dependency (where this task is child)
-            "tasks__nachtakte" # Task → Dependency (where this task is parent)
-        )
-        .all()
-    )
-
-    data = [serialize_team(team) for team in all_teams]
-    return JsonResponse({"teams": data}, status=200)
-
-
+#TODO Old Function
 @csrf_exempt
 def delete_team(request):
     if request.method == "POST":
@@ -287,6 +471,8 @@ def delete_team(request):
         team_to_delete.delete()
         return JsonResponse({"status": "success"}, status=200)
 
+
+#TODO Old Function
 @csrf_exempt
 def create_team(request):
     if request.method == "POST":
@@ -308,9 +494,8 @@ def create_team(request):
 #__________________Dependencies_____________________
 #____________________________________________________
 
-#DEPENDENCIES
 
-
+# add_dependency
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def add_dependency(request):
@@ -347,12 +532,8 @@ def add_dependency(request):
             "created": False,
         }, status=200)
 
-# Create a serializer
-class DependencySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Dependency
-        fields = ['id', 'vortakt', 'nachtakt', 'type']
 
+# all_dependencies
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def all_dependencies(request):
@@ -360,6 +541,8 @@ def all_dependencies(request):
     serializer = DependencySerializer(all_deps, many=True)
     return Response(serializer.data, status=200)
 
+
+# delete_dependency
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def delete_dependency(request):
@@ -381,54 +564,12 @@ def delete_dependency(request):
 
 
 
-
-
-
-
-
-
 #____________________________________________________
-#__________________ATTEMPTS_____________________
+#____________________ATTEMPTS_______________________
 #____________________________________________________
 
 
-class TaskSerializer(serializers.ModelSerializer):
-    # Get all dependencies where this task is the "vortakt" (parent)
-    nachtakte = DependencySerializer(many=True, read_only=True)
-    # Get all dependencies where this task is the "nachtakt" (child)
-    vortakte = DependencySerializer(many=True, read_only=True)
-
-    class Meta:
-        model = Task
-        fields = ['id', 'name', 'difficulty', 'priority', 'asking', 'team', 'nachtakte', 'vortakte']
-
-
-class AttemptSerializer(serializers.ModelSerializer):
-    task = TaskSerializer(read_only=True)  # Nest the full task with dependencies
-    team_name = serializers.CharField(source='task.team.name', read_only=True)
-
-
-    class Meta:
-        model = Attempt
-        fields = ['id', 'name', 'number', 'task', 'team_name']
-
-
-
-
-
-#Attempts
-
-from rest_framework.response import Response
-
-# @api_view(["GET"])
-# @permission_classes([AllowAny])
-# def all_attempts(request):
-#     attempts = Attempt.objects.all()
-#     serializer = AttemptSerializer(attempts, many=True)  # Use the AttemptSerializer we created
-#     return Response(serializer.data, status=200)
-#
-
-
+# all_attempts
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def all_attempts(request):
@@ -448,52 +589,7 @@ def all_attempts(request):
     return JsonResponse(data, safe=False, status=200)
 
 
-
-
-#Attempts dependecies:
-
-# def add_dependency(request):
-#     print("Pipeline works")
-#     if request.method != "POST":
-#         return JsonResponse({"error": "Only POST allowed"}, status=405)
-#
-#     body = json.loads(request.body)
-#     vortakt_id = body.get("vortakt_id")
-#     nachtakt_id = body.get("nachtakt_id")
-#
-#     vortakt_task = Task.objects.get(id=vortakt_id)
-#     nachtakt_task = Task.objects.get(id=nachtakt_id)
-#
-#     dependency, created = Dependency.objects.get_or_create(
-#         vortakt=vortakt_task,
-#         nachtakt=nachtakt_task
-#     )
-#
-#     if created:
-#         return JsonResponse({
-#             "id": dependency.id,
-#             "vortakt": vortakt_task.id,
-#             "nachtakt": nachtakt_task.id,
-#             "status": "success",
-#             "created": True,
-#         }, status=201)
-#     else:
-#         return JsonResponse({
-#             "id": dependency.id,
-#             "vortakt": vortakt_task.id,
-#             "nachtakt": nachtakt_task.id,
-#             "status": "already_exists",
-#             "created": False,
-#         }, status=200)
-
-from django.http import JsonResponse
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-import json
-
-from .models import Attempt, AttemptDependency
-
-
+# add_attempt_dependency
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def add_attempt_dependency(request):
@@ -535,14 +631,7 @@ def add_attempt_dependency(request):
     })
 
 
-
-
-from django.http import JsonResponse
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from .models import AttemptDependency
-
-
+# list_attempt_dependencies
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def list_attempt_dependencies(request):
@@ -564,57 +653,7 @@ def list_attempt_dependencies(request):
     return JsonResponse(data, safe=False, status=200)
 
 
-
-
-
-import json
-from django.http import JsonResponse
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from .models import Attempt
-
-# @api_view(["POST"])
-# @permission_classes([AllowAny])
-# def update_attempt_slot_index(request):
-#     """
-#     Update the slot_index of a single Attempt.
-#     Body: { "attempt_id": <int>, "slot_index": <int> }
-#     """
-#     try:
-#         body = json.loads(request.body)
-#     except json.JSONDecodeError:
-#         return JsonResponse({"error": "Invalid JSON"}, status=400)
-#
-#     attempt_id = body.get("attempt_id")
-#     slot_index = body.get("slot_index")
-#
-#     if attempt_id is None or slot_index is None:
-#         return JsonResponse({"error": "attempt_id and slot_index are required"}, status=400)
-#
-#     try:
-#         attempt = Attempt.objects.get(id=attempt_id)
-#     except Attempt.DoesNotExist:
-#         return JsonResponse({"error": "Attempt not found"}, status=404)
-#
-#     # you can clamp here if you want (1..ENTRIES)
-#     attempt.slot_index = int(slot_index)
-#     attempt.save()
-#
-#     return JsonResponse({
-#         "id": attempt.id,
-#         "slot_index": attempt.slot_index,
-#         "status": "updated",
-#     }, status=200)
-#
-
-
-
-
-
-
-
-
-
+# update_attempt_slot_index
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def update_attempt_slot_index(request):
@@ -648,21 +687,7 @@ def update_attempt_slot_index(request):
 
 
 
-
-
-
-
-
-
-
-
-
-import json
-from django.http import JsonResponse
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from .models import AttemptDependency
-
+# delete_attempt_dependency
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def delete_attempt_dependency(request):
@@ -698,73 +723,16 @@ def delete_attempt_dependency(request):
 
 
 
+# ________________________________________________________________________________________________________________________________
+# ________________________________________________________________________________________________________________________________
+# ________________________________________________________________________________________________________________________________
+# _________________________________________________________AFTER PROJECT_________________________________________________________
+# ________________________________________________________________________________________________________________________________
+# ________________________________________________________________________________________________________________________________
 
 
 
-
-
-
-
-
-
-
-
-
-
-#__________________________________________________________________________________________
-#__________________________________________________________________________________________
-#__________________________________________________________________________________________
-#__________________________________________________________________________________________
-#__________________________________________________________________________________________
-#______________________________________PROJECTS_____________________________________________
-#__________________________________________________________________________________________
-#__________________________________________________________________________________________
-#__________________________________________________________________________________________
-#__________________________________________________________________________________________
-#__________________________________________________________________________________________
-
-
-
-
-#____________________________________________________
-#_____________________SERIALIZER________________________
-#____________________________________________________
-
-from .models import Comment, Team, Dependency, Attempt, Project
-from django.db.models import Q
-from rest_framework import serializers
-from .models import Project, Team
-
-
-
-
-class ProjectSerializer(serializers.ModelSerializer):
-    owner_username = serializers.CharField(source="owner.username", read_only=True)
-
-    class Meta:
-        model = Project
-        fields = ["id", "name", "description", "created_at", "owner", "owner_username"]
-        read_only_fields = ["id", "created_at", "owner", "owner_username"]
-
-
-
-class TeamSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Team
-        fields = [
-            "id",
-            "name",
-            "color",
-            "project",
-        ]
-        read_only_fields = ["id", "project"]
-
-
-
-#____________________________________________________
-#_____________________PROJECT________________________
-#____________________________________________________
-
+#List Projects
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def list_projects(request):
@@ -783,6 +751,7 @@ def list_projects(request):
     return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+#create_project
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def create_project(request):
@@ -812,11 +781,7 @@ def create_project(request):
     return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-
-
-from django.shortcuts import get_object_or_404
-from django.db.models import Q
-
+#get_project
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_project(request, pk):
@@ -838,15 +803,8 @@ def get_project(request, pk):
 #_____________________TEAMS__________________________
 #____________________________________________________
 
-from django.db import models
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
-from .models import Project, Team
 
-
-
+# user_has_project_access (helper)
 def user_has_project_access(user, project: Project) -> bool:
     return (
         project.owner_id == user.id
@@ -854,6 +812,7 @@ def user_has_project_access(user, project: Project) -> bool:
     )
 
 
+# project_teams 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def project_teams(request, project_id):
@@ -886,25 +845,7 @@ def project_teams(request, project_id):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-
-
-
-
-
-
-
-
-
-# views.py
-
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
-
-from .models import Project, Task, Team
-
-
+# task_to_dict (helper)
 def task_to_dict(task):
     """Formatiert Task so, wie dein Frontend ihn braucht."""
     return {
@@ -922,6 +863,7 @@ def task_to_dict(task):
     }
 
 
+# project_tasks_view
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def project_tasks_view(request, project_id):
@@ -990,133 +932,6 @@ def project_tasks_view(request, project_id):
 
 
 
-#
-#
-# from rest_framework import serializers
-# from .models import Task, Attempt, AttemptDependency, Team
-#
-#
-# class TeamSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = Team
-#         fields = ["id", "name", "color"]
-#
-#
-# class TaskMiniSerializer(serializers.ModelSerializer):
-#     team = TeamSerializer(read_only=True)
-#
-#     class Meta:
-#         model = Task
-#         fields = ["id", "name", "team"]
-#
-#
-#
-# class AttemptSerializer(serializers.ModelSerializer):
-#     task = TaskMiniSerializer(read_only=True)
-#
-#     class Meta:
-#         model = Attempt
-#         fields = [
-#             "id",
-#             "slot_index",
-#             "task",
-#         ]
-#
-#
-#
-# from rest_framework.decorators import api_view, permission_classes
-# from rest_framework.permissions import IsAuthenticated
-# from rest_framework.response import Response
-#
-# from .models import Project, Task, Attempt, AttemptDependency
-#
-#
-# @api_view(["GET"])
-# @permission_classes([IsAuthenticated])
-# def project_attempts_view(request, project_id):
-#   # alle Tasks dieses Projekts
-#   tasks = Task.objects.filter(project_id=project_id)
-#   attempts = Attempt.objects.filter(task__in=tasks).select_related("task")
-#
-#   # wenn du schon eine Serializer-Struktur hast:
-#   # einfach die bisherige "all_attempts" Logik nutzen + filter
-#   data = AttemptSerializer(attempts, many=True).data
-#
-#   return Response(data)
-#
-#
-# @api_view(["POST"])
-# @permission_classes([IsAuthenticated])
-# def project_attempts_update_slot_index_view(request, project_id):
-#   attempt_id = request.data.get("attempt_id")
-#   slot_index = request.data.get("slot_index")
-#
-#   try:
-#     attempt = Attempt.objects.get(
-#       id=attempt_id,
-#       task__project_id=project_id,
-#     )
-#   except Attempt.DoesNotExist:
-#     return Response({"detail": "Attempt not found for this project."}, status=404)
-#
-#   attempt.slot_index = slot_index
-#   attempt.save()
-#
-#   return Response({"status": "ok"})
-#
-#
-#
-#
-#
-#
-#
-#
-#
-# @api_view(["GET", "POST"])
-# @permission_classes([IsAuthenticated])
-# def project_attempt_dependencies_view(request, project_id):
-#   if request.method == "GET":
-#     deps = AttemptDependency.objects.filter(
-#       vortakt_attempt__task__project_id=project_id
-#     )
-#     data = AttemptDependencySerializer(deps, many=True).data
-#     return Response(data)
-#
-#   # POST = neue Dependency
-#   vortakt_id = request.data.get("vortakt_attempt_id")
-#   nachtakt_id = request.data.get("nachtakt_attempt_id")
-#
-#   try:
-#     vortakt = Attempt.objects.get(id=vortakt_id, task__project_id=project_id)
-#     nachtakt = Attempt.objects.get(id=nachtakt_id, task__project_id=project_id)
-#   except Attempt.DoesNotExist:
-#     return Response({"detail": "Attempt not found in this project."}, status=404)
-#
-#   dep = AttemptDependency.objects.create(
-#     vortakt_attempt=vortakt,
-#     nachtakt_attempt=nachtakt,
-#   )
-#   return Response(AttemptDependencySerializer(dep).data, status=201)
-#
-#
-# @api_view(["POST"])
-# @permission_classes([IsAuthenticated])
-# def project_attempt_dependencies_delete_view(request, project_id):
-#   dependency_id = request.data.get("dependency_id")
-#
-#   try:
-#     dep = AttemptDependency.objects.get(
-#       id=dependency_id,
-#       vortakt_attempt__task__project_id=project_id
-#     )
-#   except AttemptDependency.DoesNotExist:
-#     return Response({"detail": "Dependency not found in this project."}, status=404)
-#
-#   dep.delete()
-#   return Response({"status": "deleted"})
-#
-#
-#
 
 
 
@@ -1124,71 +939,14 @@ def project_tasks_view(request, project_id):
 
 
 
+# AFTER THAT THE SERIALIZER NAME CONFUSION BEGAN
 
 
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-
-from .models import Project, Task, Attempt, AttemptDependency
-# Import kommt später:
-# from .serializers import AttemptWithDependenciesSerializer, AttemptDependencySerializer
-
-from rest_framework import serializers
-from .models import Task, Attempt, AttemptDependency, Team
-
-
-class TeamSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Team
-        fields = ["id", "name", "color"]
-
-
-class TaskMiniSerializer(serializers.ModelSerializer):
-    team = TeamSerializer(read_only=True)
-
-    class Meta:
-        model = Task
-        fields = ["id", "name", "team"]
-
-
-class AttemptSerializer(serializers.ModelSerializer):
-    task = TaskMiniSerializer(read_only=True)
-
-    class Meta:
-        model = Attempt
-        fields = [
-            "id",
-            "slot_index",
-            "task",
-        ]
-
-
+# project_attempts_view
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def project_attempts_view(request, project_id):
@@ -1202,7 +960,7 @@ def project_attempts_view(request, project_id):
         .select_related("task", "task__team")
     )
 
-    serialized = AttemptSerializer(attempts, many=True).data
+    serialized = ProjectAttemptSerializer(attempts, many=True).data
 
     # Wichtig: Struktur beibehalten wie im Platzhalter → "attempts": [...]
     return Response({
@@ -1210,8 +968,7 @@ def project_attempts_view(request, project_id):
     })
 
 
-
-
+# project_attempts_update_slot_index_view
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def project_attempts_update_slot_index_view(request, project_id):
@@ -1238,11 +995,7 @@ def project_attempts_update_slot_index_view(request, project_id):
     return Response({"status": "ok"})
 
 
-
-
-
-
-
+# project_attempt_dependencies_view
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def project_attempt_dependencies_view(request, project_id):
@@ -1281,9 +1034,7 @@ def project_attempt_dependencies_view(request, project_id):
     return Response({"status": "created", "id": dep.id}, status=201)
 
 
-
-
-
+# project_attempt_dependencies_delete_view
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def project_attempt_dependencies_delete_view(request, project_id):
@@ -1304,13 +1055,7 @@ def project_attempt_dependencies_delete_view(request, project_id):
     return Response({"status": "deleted"})
 
 
-
-
-
-
-
-
-
+# all_teams_for_this_project (helper)
 def all_teams_for_this_project(request, project_id):
     all_teams = (
         Team.objects
@@ -1327,12 +1072,7 @@ def all_teams_for_this_project(request, project_id):
     return JsonResponse({"teams": data}, status=200)
 
 
-
-
-
-from django.http import JsonResponse
-from .models import Attempt, Task
-
+# all_attempts_for_this_project
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def all_attempts_for_this_project(request, project_id):
@@ -1367,10 +1107,7 @@ def all_attempts_for_this_project(request, project_id):
 
 
 
-
-
-
-
+#TODO Old Function
 @csrf_exempt
 def project_team_detail(request, project_id, team_id):
     """Handles DELETE for a single team."""
@@ -1416,9 +1153,18 @@ def project_team_detail(request, project_id, team_id):
 
 
 
+# ________________________________________________________________________________________________________________________________
+# ________________________________________________________________________________________________________________________________
+# ________________________________________________________________________________________________________________________________
+# _______________________________________________________OTHER WEBSITE STUFF____________________________________________________
+# ________________________________________________________________________________________________________________________________
+# ________________________________________________________________________________________________________________________________
 
-
-
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Comment
 
 
 def echo_view(request, text):
@@ -1431,15 +1177,6 @@ def echo_view(request, text):
         return JsonResponse({"echo": [text] * n})
     return JsonResponse({"echo": text})
 
-
-
-
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.response import Response
-from rest_framework import status
-
-from .models import Comment
 
 # GET /api/comments/all_comments/
 @api_view(["GET"])
@@ -1490,77 +1227,6 @@ def write_comment(request):
     }
 
     return Response({"comment": data}, status=status.HTTP_201_CREATED)
-
-
-
-# @csrf_exempt
-# def write_comment(request):
-#     if request.method != "POST":
-#         return JsonResponse({"error": "Method must be POST"})
-#
-#     try:
-#         data = json.loads(request.body)
-#         comment = data.get("comment")
-#         if data.get("author"):
-#             author = data.get("author")
-#             Comment.objects.create(text=comment, author=author)
-#             return JsonResponse({"ok": True})
-#         else:
-#             Comment.objects.create(text=comment)
-#             return JsonResponse({"ok": True})
-#
-#
-#     except json.decoder.JSONDecodeError:
-#         return JsonResponse({"error": "Invalid JSON"}, status=400)
-#
-#
-#
-# def all_comments(request):
-#     if request.method != "GET":
-#         return JsonResponse({"error": "Method can only be GET"}, status=405)
-#
-#     comments = Comment.objects.values()  # ← converts into list of dicts
-#     data = list(comments)
-#
-#     return JsonResponse({"comments": data}, safe=False)
-#
-
-
-
-
-
-# In backend/api/views.py
-# @csrf_exempt
-# def api_login(request):
-#     print("=" * 50)
-#     print("LOGIN REQUEST")
-#
-#     if request.method != "POST":
-#         return JsonResponse({"error": "Only POST allowed"}, status=405)
-#
-#     data = json.loads(request.body)
-#     user = authenticate(username=data["username"], password=data["password"])  # ← This line defines 'user'
-#
-#     if user is None:
-#         return JsonResponse({"error": "Invalid credentials"}, status=400)
-#
-#     login(request, user)  # ← Now 'user' exists
-#
-#     # Debug prints:
-#     print("SESSION KEY:", request.session.session_key)
-#     print("USER AUTHENTICATED:", request.user.is_authenticated)
-#     print("=" * 50)
-#
-#     return JsonResponse({"message": "Logged in"})
-#
-
-# And in get_current_user:
-
-
-
-# Optional: Für nicht-eingeloggte User
-
-
 
 
 def network_connection(request, comp_id):
@@ -1657,11 +1323,6 @@ def network_connection(request, comp_id):
     return JsonResponse({"ok": True, "dummy_data": dummy_data})
 
 
-
-
-
-
-
 @require_GET
 def dummy_data(request):
     """
@@ -1756,3 +1417,26 @@ def dummy_data(request):
     }
 
     return JsonResponse({"ok": True, "data": data})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
