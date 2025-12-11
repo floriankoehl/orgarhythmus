@@ -168,62 +168,121 @@ class ProjectSerializer(serializers.ModelSerializer):
 
 
 
-# __________________Team
-#Team (APPROVED)
-def serialize_team(team):
-    return {
-        "id": team.id,
-        "name": team.name,
-        "color": team.color,
-        "tasks": [serialize_task(task) for task in team.tasks.all()],  # only tasks with that team
-    }
-
-
 
 # __________________Task
+
+# TaskSerializer_TeamView
+class TaskSerializer_TeamView(serializers.ModelSerializer):
+    # nested team summary, like your manual "team": {...}
+    # team = BasicTeamSerializer(read_only=True)
+
+    class Meta:
+        model = Task
+        fields = [
+            "id",
+            "name",
+            "difficulty",
+            "priority",
+            "asking",
+            "team",
+        ]
+
+
+# __________________Team
+
+# TeamExpandedSerializer
+class TeamExpandedSerializer(serializers.ModelSerializer):
+    tasks = TaskSerializer_TeamView(many=True, read_only=True)  # uses related_name="tasks"
+
+    class Meta:
+        model = Team
+        fields = [
+            "id",
+            "name",
+            "color",
+            "tasks",
+        ]
+
+
+#(OVERWORKED COMPLETELY)
+# BasicTeamSerializer
+class BasicTeamSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Team
+        fields = [
+            "id",
+            "name",
+            "color",
+            "project",
+        ]
+        read_only_fields = ["id", "project"]
+
+
+
+
+
+
+
+
+
+
+
+
+#Team (APPROVED)
+# def serialize_team(team):
+#     return {
+#         "id": team.id,
+#         "name": team.name,
+#         "color": team.color,
+#         "tasks": [serialize_task(task) for task in team.tasks.all()],  # only tasks with that team
+#     }
+
+
+
+
 
 
 # __________________Attempt
 
 
 #Tasks
-def serialize_task(task):
-    # Get all parent tasks (vortakte)
-    vortakte = [
-        {
-            'id': dep.vortakt.id,
-            'name': dep.vortakt.name,
-            'dependency_id': dep.id,
-            'type': dep.type
-        }
-        for dep in task.vortakte.all()
-    ]
+# def serialize_task(task):
+#     # Get all parent tasks (vortakte)
+#     vortakte = [
+#         {
+#             'id': dep.vortakt.id,
+#             'name': dep.vortakt.name,
+#             'dependency_id': dep.id,
+#             'type': dep.type
+#         }
+#         for dep in task.vortakte.all()
+#     ]
 
-    # Get all child tasks (nachtakte)
-    nachtakte = [
-        {
-            'id': dep.nachtakt.id,
-            'name': dep.nachtakt.name,
-            'dependency_id': dep.id,
-            'type': dep.type
-        }
-        for dep in task.nachtakte.all()
-    ]
+#     # Get all child tasks (nachtakte)
+#     nachtakte = [
+#         {
+#             'id': dep.nachtakt.id,
+#             'name': dep.nachtakt.name,
+#             'dependency_id': dep.id,
+#             'type': dep.type
+#         }
+#         for dep in task.nachtakte.all()
+#     ]
 
-    return {
-        "id": task.id,
-        "name": task.name,
-        "difficulty": task.difficulty,
-        "priority": task.priority,
-        "asking": task.asking,
-        "team": {
-            "id": task.team.id,
-            "name": task.team.name,
-            "color": task.team.color,
-        } if task.team else None,
-        "vortakte": vortakte,  # ✅ Parent tasks
-        "nachtakte": nachtakte,  # ✅ Child tasks
-    }
+#     return {
+#         "id": task.id,
+#         "name": task.name,
+#         "difficulty": task.difficulty,
+#         "priority": task.priority,
+#         "asking": task.asking,
+#         "team": {
+#             "id": task.team.id,
+#             "name": task.team.name,
+#             "color": task.team.color,
+#         } if task.team else None,
+#         "vortakte": vortakte,  # ✅ Parent tasks
+#         "nachtakte": nachtakte,  # ✅ Child tasks
+#     }
 
 
 
@@ -234,41 +293,29 @@ class DependencySerializer(serializers.ModelSerializer):
         fields = ['id', 'vortakt', 'nachtakt', 'type']
 
 
-#Task Again
-class TaskSerializer(serializers.ModelSerializer):
-    # Get all dependencies where this task is the "vortakt" (parent)
-    nachtakte = DependencySerializer(many=True, read_only=True)
-    # Get all dependencies where this task is the "nachtakt" (child)
-    vortakte = DependencySerializer(many=True, read_only=True)
+# #Task Again
+# class TaskSerializer(serializers.ModelSerializer):
+#     # Get all dependencies where this task is the "vortakt" (parent)
+#     nachtakte = DependencySerializer(many=True, read_only=True)
+#     # Get all dependencies where this task is the "nachtakt" (child)
+#     vortakte = DependencySerializer(many=True, read_only=True)
 
-    class Meta:
-        model = Task
-        fields = ['id', 'name', 'difficulty', 'priority', 'asking', 'team', 'nachtakte', 'vortakte']
-
-
-#Attempt
-class AttemptSerializer(serializers.ModelSerializer):
-    task = TaskSerializer(read_only=True)  # Nest the full task with dependencies
-    team_name = serializers.CharField(source='task.team.name', read_only=True)
+#     class Meta:
+#         model = Task
+#         fields = ['id', 'name', 'difficulty', 'priority', 'asking', 'team', 'nachtakte', 'vortakte']
 
 
-    class Meta:
-        model = Attempt
-        fields = ['id', 'name', 'number', 'task', 'team_name']
+# #Attempt
+# class AttemptSerializer(serializers.ModelSerializer):
+#     task = TaskSerializer(read_only=True)  # Nest the full task with dependencies
+#     team_name = serializers.CharField(source='task.team.name', read_only=True)
 
 
+#     class Meta:
+#         model = Attempt
+#         fields = ['id', 'name', 'number', 'task', 'team_name']
 
-#TeamSerializer
-class TeamSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Team
-        fields = [
-            "id",
-            "name",
-            "color",
-            "project",
-        ]
-        read_only_fields = ["id", "project"]
+
 
 
 #ProjectTeamSerializer
@@ -402,7 +449,7 @@ def get_project(request, pk):
 
 
 
-
+# (OVERWORKED COMPLETELY)
 # project_teams 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
@@ -423,23 +470,24 @@ def project_teams(request, project_id):
 
     if request.method == "GET":
         teams = project.teams.all().order_by("name")
-        serializer = TeamSerializer(teams, many=True)
+        serializer = BasicTeamSerializer(teams, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     # POST → Team erstellen
-    serializer = TeamSerializer(data=request.data)
+    serializer = BasicTeamSerializer(data=request.data)
     if serializer.is_valid():
         team = serializer.save(project=project)
-        out = TeamSerializer(team).data
+        out = BasicTeamSerializer(team).data
         return Response(out, status=status.HTTP_201_CREATED)
 
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# project_teams_detailed
+# (OVERWORKED COMPLETELY)
+# project_teams_expanded
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def project_teams_detailed(request, project_id):
+def project_teams_expanded(request, project_id):
     user = request.user
 
     try:
@@ -460,8 +508,12 @@ def project_teams_detailed(request, project_id):
         .filter(project_id=project_id)
     )
 
-    data = [serialize_team(team) for team in all_teams]
-    return JsonResponse({"teams": data}, status=200)
+    # data = [serialize_team(team) for team in all_teams]
+    # return JsonResponse({"teams": data}, status=200)
+    serializer = TeamExpandedSerializer(all_teams, many=True)
+    return Response({"teams": serializer.data}, status=status.HTTP_200_OK)
+
+
 
 
 

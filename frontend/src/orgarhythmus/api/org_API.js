@@ -123,10 +123,11 @@ export async function fetch_project_detail(projectId) {
 //_______________________________________________
 //_______________________________________________
 
-// fetch_all_teams
-export async function fetch_all_teams(projectId) {
+// (OVERWORKED COMPLETELY)
+// project_teams_expanded
+export async function project_teams_expanded(projectId) {
   const res = await authFetch(
-    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/project_teams_detailed/`,
+    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/project_teams_expanded/`,
   );
 
   if (res.status === 401 || res.status === 403) {
@@ -223,8 +224,6 @@ export async function delete_task(id) {
 
   return data;
 }
-
-// ___________Tasks
 
 // fetchTasksForProject
 export async function fetchTasksForProject(projectId) {

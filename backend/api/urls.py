@@ -24,7 +24,7 @@ urlpatterns = [
     path("orgarhythmus/projects/<int:pk>/", views.get_project),
     path("orgarhythmus/projects/<int:project_id>/teams/", views.project_teams, name="project_teams" ), 
     path("orgarhythmus/projects/<int:project_id>/tasks/", views.project_tasks_view, name="project_tasks", ),
-    path("orgarhythmus/projects/<int:project_id>/project_teams_detailed/", views.project_teams_detailed, name="project_teams_detailed", ), 
+    path("orgarhythmus/projects/<int:project_id>/project_teams_expanded/", views.project_teams_expanded, name="project_teams_expanded", ), 
     path("orgarhythmus/projects/<int:project_id>/all_attempts_for_this_project/", views.all_attempts_for_this_project, name="all_attempts_for_this_project", ),
     path("orgarhythmus/projects/<int:project_id>/teams/<int:team_id>/", views.project_team_detail),
 

@@ -9,7 +9,7 @@ import ReactFlow, {
 } from "reactflow";
 import {
     fetch_all_attempts,
-    fetch_all_teams,
+    project_teams_expanded,
     add_attempt_dependency,
     fetch_all_attempt_dependencies,
     update_attempt_slot_index,
@@ -378,7 +378,7 @@ export default function OrgAttempts() {
             async function loadTeams() {
                 try {
                     //Fetch Teams
-                    const all_teams = await fetch_all_teams(projectId);
+                    const all_teams = await project_teams_expanded(projectId);
                     setAll_Teams(all_teams)
 
 
