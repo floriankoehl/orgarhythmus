@@ -3,12 +3,12 @@ import Button from "@mui/material/Button";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { delete_task } from "../api/org_API";
 
-export default function SMTaskCard({ task, onTaskDeleted }) {
+export default function SMTaskCard({ projectId, task, onTaskDeleted }) {
   const [showVortakte, setShowVortakte] = useState(false);
   const [showNachtakte, setShowNachtakte] = useState(false);
 
-  async function handleDelete(task_id) {
-    const result = await delete_task(task_id);
+  async function handleDelete(projectId, task_id) {
+    const result = await delete_task(projectId, task_id);
     if (result) {
       onTaskDeleted();
     }
@@ -158,7 +158,7 @@ export default function SMTaskCard({ task, onTaskDeleted }) {
       {/* Footer / Delete Button */}
       <div className="mt-auto pt-3 flex justify-end">
         <Button
-          onClick={() => handleDelete(task.id)}
+          onClick={() => handleDelete(projectId, task.id)}
           variant="contained"
           color="error"
           size="small"

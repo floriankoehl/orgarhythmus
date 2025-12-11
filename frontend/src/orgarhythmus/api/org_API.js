@@ -144,6 +144,7 @@ export async function project_teams_expanded(projectId) {
   return data.teams;
 }
 
+// (OVERWORKED COMPLETELY)
 // fetchTeamsForProject
 export async function fetchTeamsForProject(projectId) {
   const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/teams/`, {
@@ -157,6 +158,7 @@ export async function fetchTeamsForProject(projectId) {
   return await res.json();
 }
 
+// (OVERWORKED COMPLETELY)
 // createTeamForProject
 export async function createTeamForProject(projectId, payload) {
   const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/teams/`, {
@@ -202,25 +204,38 @@ export async function deleteTeamForProject(projectId, teamId) {
 //_______________________________________________
 
 // delete_task
-export async function delete_task(id) {
-  const res = await fetch(`${BASE_URL}/api/orgarhytmus/delete_task/`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({ id }),
+// export async function delete_task(id) {
+//   const res = await authFetch(`/api/orgarhytmus/delete_task/`, {
+//     method: 'POST',
+//     headers: {
+//       'content-type': 'application/json',
+//     },
+//     body: JSON.stringify({ id }),
+//   });
+
+//   if (!res.ok) {
+//     console.log('Some Error');
+//     return;
+//   }
+
+//   const data = await res.json();
+//   // setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
+//   console.log(data);
+
+//   return data;
+// }
+
+export async function delete_task(projectId, id) {
+  const res = await authFetch(`/api/orgarhythmus/${projectId}/tasks/${id}/delete/`, {
+    method: 'DELETE',
   });
 
   if (!res.ok) {
-    console.log('Some Error');
-    return;
+    console.error('Failed to delete task');
+    return null;
   }
 
-  const data = await res.json();
-  // setTasks(prevTasks => prevTasks.filter(task => task.id !== id));
-  console.log(data);
-
-  return data;
+  return true; // 204 No Content
 }
 
 // fetchTasksForProject

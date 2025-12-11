@@ -168,11 +168,11 @@ class ProjectSerializer(serializers.ModelSerializer):
 
 
 
-
 # __________________Task
 
+# (OVERWORKED COMPLETELY)
 # TaskSerializer_TeamView
-class TaskSerializer_TeamView(serializers.ModelSerializer):
+class TaskSerializer(serializers.ModelSerializer):
     # nested team summary, like your manual "team": {...}
     # team = BasicTeamSerializer(read_only=True)
 
@@ -188,11 +188,19 @@ class TaskSerializer_TeamView(serializers.ModelSerializer):
         ]
 
 
+
+
+
+
+
+
 # __________________Team
 
+
+# (OVERWORKED COMPLETELY)
 # TeamExpandedSerializer
 class TeamExpandedSerializer(serializers.ModelSerializer):
-    tasks = TaskSerializer_TeamView(many=True, read_only=True)  # uses related_name="tasks"
+    tasks = TaskSerializer(many=True, read_only=True)  # uses related_name="tasks"
 
     class Meta:
         model = Team
@@ -221,130 +229,65 @@ class BasicTeamSerializer(serializers.ModelSerializer):
 
 
 
-
-
-
-
-
-
-
-#Team (APPROVED)
-# def serialize_team(team):
-#     return {
-#         "id": team.id,
-#         "name": team.name,
-#         "color": team.color,
-#         "tasks": [serialize_task(task) for task in team.tasks.all()],  # only tasks with that team
-#     }
-
-
-
-
-
-
-# __________________Attempt
-
-
-#Tasks
-# def serialize_task(task):
-#     # Get all parent tasks (vortakte)
-#     vortakte = [
-#         {
-#             'id': dep.vortakt.id,
-#             'name': dep.vortakt.name,
-#             'dependency_id': dep.id,
-#             'type': dep.type
-#         }
-#         for dep in task.vortakte.all()
-#     ]
-
-#     # Get all child tasks (nachtakte)
-#     nachtakte = [
-#         {
-#             'id': dep.nachtakt.id,
-#             'name': dep.nachtakt.name,
-#             'dependency_id': dep.id,
-#             'type': dep.type
-#         }
-#         for dep in task.nachtakte.all()
-#     ]
-
-#     return {
-#         "id": task.id,
-#         "name": task.name,
-#         "difficulty": task.difficulty,
-#         "priority": task.priority,
-#         "asking": task.asking,
-#         "team": {
-#             "id": task.team.id,
-#             "name": task.team.name,
-#             "color": task.team.color,
-#         } if task.team else None,
-#         "vortakte": vortakte,  # ✅ Parent tasks
-#         "nachtakte": nachtakte,  # ✅ Child tasks
-#     }
-
-
-
-#Dependency
-class DependencySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Dependency
-        fields = ['id', 'vortakt', 'nachtakt', 'type']
-
-
-# #Task Again
-# class TaskSerializer(serializers.ModelSerializer):
-#     # Get all dependencies where this task is the "vortakt" (parent)
-#     nachtakte = DependencySerializer(many=True, read_only=True)
-#     # Get all dependencies where this task is the "nachtakt" (child)
-#     vortakte = DependencySerializer(many=True, read_only=True)
-
-#     class Meta:
-#         model = Task
-#         fields = ['id', 'name', 'difficulty', 'priority', 'asking', 'team', 'nachtakte', 'vortakte']
-
-
-# #Attempt
-# class AttemptSerializer(serializers.ModelSerializer):
-#     task = TaskSerializer(read_only=True)  # Nest the full task with dependencies
-#     team_name = serializers.CharField(source='task.team.name', read_only=True)
-
-
-#     class Meta:
-#         model = Attempt
-#         fields = ['id', 'name', 'number', 'task', 'team_name']
-
-
-
-
-#ProjectTeamSerializer
-class ProjectTeamSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Team
-        fields = ["id", "name", "color"]
-
-
-#ProjectTaskMiniSerializer
-class ProjectTaskMiniSerializer(serializers.ModelSerializer):
-    team = ProjectTeamSerializer(read_only=True)
+# TaskSerializer_TeamView
+class TaskSerializer_TeamView(serializers.ModelSerializer):
+    # nested team summary, like your manual "team": {...}
+    team = BasicTeamSerializer(read_only=True)
 
     class Meta:
         model = Task
-        fields = ["id", "name", "team"]
-
-
-#ProjectTaskMiniSerializer
-class ProjectAttemptSerializer(serializers.ModelSerializer):
-    task = ProjectTaskMiniSerializer(read_only=True)
-
-    class Meta:
-        model = Attempt
         fields = [
             "id",
-            "slot_index",
-            "task",
+            "name",
+            "difficulty",
+            "priority",
+            "asking",
+            "team",
         ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# #ProjectTeamSerializer
+# class ProjectTeamSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Team
+#         fields = ["id", "name", "color"]
+
+
+# #ProjectTaskMiniSerializer
+# class ProjectTaskMiniSerializer(serializers.ModelSerializer):
+#     team = BasicTeamSerializer(read_only=True)
+
+#     class Meta:
+#         model = Task
+#         fields = ["id", "name", "team"]
+
+
+# #ProjectTaskMiniSerializer
+# class ProjectAttemptSerializer(serializers.ModelSerializer):
+#     task = ProjectTaskMiniSerializer(read_only=True)
+
+#     class Meta:
+#         model = Attempt
+#         fields = [
+#             "id",
+#             "slot_index",
+#             "task",
+#         ]
 
 
 
@@ -515,27 +458,31 @@ def project_teams_expanded(request, project_id):
 
 
 
-
-
-# project_team_detail
-#TODO Old Function
-@csrf_exempt
+# (OVERWORKED COMPLETELY)
+# project_team_detail (for now only delete)
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
 def project_team_detail(request, project_id, team_id):
-    """Handles DELETE for a single team."""
+    """DELETE a single team in a project."""
 
+    user = request.user
+
+    # Find team within this project
     try:
-        team = Team.objects.get(id=team_id, project_id=project_id)
+        team = Team.objects.select_related("project").get(
+            id=team_id,
+            project_id=project_id,
+        )
     except Team.DoesNotExist:
-        return JsonResponse({"error": "Team not found"}, status=404)
+        return Response({"detail": "Team not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    # DELETE
-    if request.method == "DELETE":
-        team.delete()
-        return JsonResponse({"success": True}, status=204)
+    # Permission check based on project
+    if not user_has_project_access(user, team.project):
+        return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
 
-    return JsonResponse({"error": "Method not allowed"}, status=405)
-
-
+    # Delete team
+    team.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 
@@ -548,41 +495,43 @@ def project_team_detail(request, project_id, team_id):
 #_______________________________________________________________________________________________
 #_______________________________________________________________________________________________
 
-# task_to_dict (helper)
-def task_to_dict(task):
-    """Formatiert Task so, wie dein Frontend ihn braucht."""
-    return {
-        "id": task.id,
-        "name": task.name,
-        "priority": task.priority,
-        "difficulty": task.difficulty,
-        "approval": task.asking,
-        "team": {
-            "id": task.team.id,
-            "name": task.team.name,
-            "color": task.team.color,
-        } if task.team else None,
-        # Wenn du vortakte / nachtakte brauchst, kannst du hier später erweitern
-    }
 
 
-#TODO Old Function
-# delete_task_by_id
-@csrf_exempt
-def delete_task_by_id(request):
-    if request.method == "POST":
-        body = json.loads(request.body)
-        task_id = body.get("id")
-        task_to_delete = Task.objects.get(id=task_id)
-        task_to_delete.delete()
-
-    return JsonResponse({"status": "success"}, status=200)
 
 
-# project_tasks_view
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_task_by_id(request, project_id, task_id):
+    """
+    Delete a task by ID (only if user has access to the project).
+    """
+    print("Inside this function")
+
+    # 1) Try to load the task inside the given project
+    try:
+        task = Task.objects.select_related("project").get(
+            id=task_id,
+            project_id=project_id,
+        )
+    except Task.DoesNotExist:
+        return Response({"detail": "Task not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    # 2) Check user access to this project
+    if not user_has_project_access(request.user, task.project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    # 3) Delete
+    task.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+
+
+#project_tasks
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
-def project_tasks_view(request, project_id):
+def project_tasks(request, project_id):
     # 1) Projekt prüfen
     try:
         project = Project.objects.get(pk=project_id)
@@ -599,9 +548,9 @@ def project_tasks_view(request, project_id):
             .filter(project=project)
             .select_related("team")
         )
-        data = [task_to_dict(t) for t in tasks]
-        # dein Frontend erwartet `data.tasks` → also:
-        return Response({"tasks": data}, status=status.HTTP_200_OK)
+
+        serializer = TaskSerializer_TeamView(tasks, many=True)
+        return Response({"tasks": serializer.data}, status=status.HTTP_200_OK)
 
     # 3) POST: neuen Task für dieses Projekt anlegen
     if request.method == "POST":
@@ -622,7 +571,6 @@ def project_tasks_view(request, project_id):
         team = None
         if team_id:
             try:
-                # wichtig: Team MUSS zum selben Project gehören
                 team = Team.objects.get(pk=team_id, project=project)
             except Team.DoesNotExist:
                 return Response(
@@ -639,11 +587,8 @@ def project_tasks_view(request, project_id):
             asking=approval,
         )
 
-        return Response(
-            task_to_dict(task),
-            status=status.HTTP_201_CREATED,
-        )
-
+        serializer = TaskSerializer_TeamView(task)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 

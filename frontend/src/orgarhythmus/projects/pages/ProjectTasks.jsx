@@ -212,6 +212,7 @@ export default function ProjectTasks() {
               {tasks.map((task) => (
                 <SMTaskCard
                   key={task.id}
+                  projectId={projectId}
                   task={task}
                   onTaskDeleted={loadData}
                 />

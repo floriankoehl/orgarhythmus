@@ -12,7 +12,7 @@ from rest_framework_simplejwt.views import (
 
 urlpatterns = [
     #Probably need still rework
-    path('orgarhytmus/delete_task/', views.delete_task_by_id),
+    path('orgarhythmus/<int:project_id>/tasks/<int:task_id>/delete/', views.delete_task_by_id),
     path('orgarhythmus/add_attempt_dependency/', views.add_attempt_dependency),
     path('orgarhythmus/all_attempt_dependencies/', views.list_attempt_dependencies),
     path('orgarhythmus/update_attempt_slot_index/', views.update_attempt_slot_index),  
@@ -23,7 +23,7 @@ urlpatterns = [
     path('orgarhythmus/projects/create/', views.create_project),   
     path("orgarhythmus/projects/<int:pk>/", views.get_project),
     path("orgarhythmus/projects/<int:project_id>/teams/", views.project_teams, name="project_teams" ), 
-    path("orgarhythmus/projects/<int:project_id>/tasks/", views.project_tasks_view, name="project_tasks", ),
+    path("orgarhythmus/projects/<int:project_id>/tasks/", views.project_tasks, name="project_tasks", ),
     path("orgarhythmus/projects/<int:project_id>/project_teams_expanded/", views.project_teams_expanded, name="project_teams_expanded", ), 
     path("orgarhythmus/projects/<int:project_id>/all_attempts_for_this_project/", views.all_attempts_for_this_project, name="all_attempts_for_this_project", ),
     path("orgarhythmus/projects/<int:project_id>/teams/<int:team_id>/", views.project_team_detail),
