@@ -169,6 +169,15 @@ class ProjectSerializer(serializers.ModelSerializer):
 
 
 # __________________Team
+#Team (APPROVED)
+def serialize_team(team):
+    return {
+        "id": team.id,
+        "name": team.name,
+        "color": team.color,
+        "tasks": [serialize_task(task) for task in team.tasks.all()],  # only tasks with that team
+    }
+
 
 
 # __________________Task
@@ -216,15 +225,6 @@ def serialize_task(task):
         "nachtakte": nachtakte,  # ✅ Child tasks
     }
 
-
-#Team
-def serialize_team(team):
-    return {
-        "id": team.id,
-        "name": team.name,
-        "color": team.color,
-        "tasks": [serialize_task(task) for task in team.tasks.all()],  # 👈 only tasks with that team
-    }
 
 
 #Dependency
@@ -400,21 +400,7 @@ def get_project(request, pk):
 #_______________________________________________________________________________________________
 #_______________________________________________________________________________________________
 
-# all_teams_for_this_project (helper)
-def all_teams_for_this_project(request, project_id):
-    all_teams = (
-        Team.objects
-        .prefetch_related(
-            "tasks",           # Team → Task
-            "tasks__attempts", # Task → Attempt
-            "tasks__vortakte", # Task → Dependency (where this task is child)
-            "tasks__nachtakte" # Task → Dependency (where this task is parent)
-        )
-        .filter(project_id=project_id)
-    )
 
-    data = [serialize_team(team) for team in all_teams]
-    return JsonResponse({"teams": data}, status=200)
 
 
 # project_teams 
@@ -448,6 +434,35 @@ def project_teams(request, project_id):
         return Response(out, status=status.HTTP_201_CREATED)
 
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# project_teams_detailed
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def project_teams_detailed(request, project_id):
+    user = request.user
+
+    try:
+        project = Project.objects.get(id=project_id)
+    except:
+        return Response({"detail": "Project not found"}, status=404)
+
+    if not user_has_project_access(user, project):
+        return Response({"detail": "Not allowed"}, status=403)
+
+
+    all_teams = (
+        Team.objects
+        .prefetch_related(
+            "tasks",           # Team → Task
+            "tasks__attempts", # Task → Attempt
+        )
+        .filter(project_id=project_id)
+    )
+
+    data = [serialize_team(team) for team in all_teams]
+    return JsonResponse({"teams": data}, status=200)
+
 
 
 # project_team_detail
