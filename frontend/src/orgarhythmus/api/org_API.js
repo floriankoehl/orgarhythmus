@@ -8,7 +8,6 @@ import { authFetch } from '../../auth'; // Pfad ggf. anpassen
 //_______________________________________________
 //_______________________________________________
 
-// (SHOULD BE USED BY TASKCARD)
 // delete_task
 export async function delete_task(id) {
   const res = await fetch(`${BASE_URL}/api/orgarhytmus/delete_task/`, {
@@ -37,7 +36,6 @@ export async function delete_task(id) {
 //_______________________________________________
 //_______________________________________________
 
-// (USED IN THIS FILE)
 // getCurrentProjectIdFromLocation (helper)
 function getCurrentProjectIdFromLocation() {
   // Beispiel-Pfad: /orgarhythmus/projects/1/attempts
@@ -51,13 +49,18 @@ function getCurrentProjectIdFromLocation() {
   }
 
   const id = parseInt(parts[projectsIndex + 1], 10);
-  return Number.isNaN(id) ? null : id;
+
+  const projectId = Number.isNaN(id) ? null : id;
+
+  console.log('Inside getCurrentProjectIdFromLocation (PROJECT ID): ', projectId);
+  return projectId;
 }
 
-// (ACTUALLY USED BY ATTEMPTS)
 // fetch_all_teams
-export async function fetch_all_teams() {
-  const projectId = getCurrentProjectIdFromLocation();
+export async function fetch_all_teams(projectId) {
+  // const projectId = getCurrentProjectIdFromLocation();
+
+  console.log('Inside fetch_all_teams (PROJECT ID): ', projectId);
 
   const res = await fetch(
     `${BASE_URL}/api/orgarhythmus/projects/${projectId}/all_teams_for_this_project/`,
@@ -72,13 +75,31 @@ export async function fetch_all_teams() {
   return data.teams;
 }
 
+// // fetch_all_teams
+// export async function fetch_all_teams() {
+//   const projectId = getCurrentProjectIdFromLocation();
+
+//   console.log('Inside fetch_all_teams (PROJECT ID): ', projectId);
+
+//   const res = await fetch(
+//     `${BASE_URL}/api/orgarhythmus/projects/${projectId}/all_teams_for_this_project/`,
+//   );
+
+//   if (!res.ok) {
+//     console.log('Something went wrong calling teams in api.js');
+//     return;
+//   }
+
+//   const data = await res.json();
+//   return data.teams;
+// }
+
 //_______________________________________________
 //_______________________________________________
 //__________________ATTEMPTS____________________
 //_______________________________________________
 //_______________________________________________
 
-// (ACTUALLY USED BY ATTEMPTS)
 // fetch_all_attempts
 export async function fetch_all_attempts() {
   const projectId = getCurrentProjectIdFromLocation();
@@ -108,7 +129,6 @@ export async function fetch_all_attempts() {
   return data.attempts;
 }
 
-// (ACTUALLY USED BY ATTEMPTS)
 // add_attempt_dependency
 export async function add_attempt_dependency(vortakt_attempt_id, nachtakt_attempt_id) {
   const token = localStorage.getItem('access_token');
@@ -135,7 +155,6 @@ export async function add_attempt_dependency(vortakt_attempt_id, nachtakt_attemp
   return data;
 }
 
-// (ACTUALLY USED BY ATTEMPTS)
 // fetch_all_attempt_dependencies
 export async function fetch_all_attempt_dependencies() {
   const token = localStorage.getItem('access_token');
@@ -158,7 +177,6 @@ export async function fetch_all_attempt_dependencies() {
   return await res.json();
 }
 
-// (ACTUALLY USED BY ATTEMPTS)
 // update_attempt_slot_index
 export async function update_attempt_slot_index(attempt_id, slot_index) {
   const token = localStorage.getItem('access_token');
@@ -181,7 +199,6 @@ export async function update_attempt_slot_index(attempt_id, slot_index) {
   return await res.json();
 }
 
-// (ACTUALLY USED BY ATTEMPTS)
 // delete_attempt_dependency
 export async function delete_attempt_dependency(dependency_id) {
   const token = localStorage.getItem('access_token');
@@ -213,7 +230,6 @@ export async function delete_attempt_dependency(dependency_id) {
 //_______________________________________________
 //_______________________________________________
 
-// (USED BY ORGA PROJECTS)
 // fetch_all_projects
 export async function fetch_all_projects() {
   const token = localStorage.getItem('access_token');
@@ -239,7 +255,6 @@ export async function fetch_all_projects() {
   return await res.json();
 }
 
-// (USED BY ORGA PROJECTS)
 // create_project_api
 export async function create_project_api(name, description) {
   const token = localStorage.getItem('access_token');
@@ -273,7 +288,6 @@ export async function create_project_api(name, description) {
   return await res.json();
 }
 
-// (USED BY ORGA PROJECT MAIN)
 // fetch_project_detail
 export async function fetch_project_detail(projectId) {
   const token = localStorage.getItem('access_token');
@@ -301,7 +315,6 @@ export async function fetch_project_detail(projectId) {
 
 // ___________Teams
 
-// (USED BY ORGA PROJECT TEAMS AND PROJECT TASKS)
 // fetchTeamsForProject
 export async function fetchTeamsForProject(projectId) {
   const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/teams/`, {
@@ -315,7 +328,6 @@ export async function fetchTeamsForProject(projectId) {
   return await res.json();
 }
 
-// (USED BY ORGA PROJECT TEAMS)
 // createTeamForProject
 export async function createTeamForProject(projectId, payload) {
   const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/teams/`, {
@@ -333,7 +345,6 @@ export async function createTeamForProject(projectId, payload) {
 
 // ___________Tasks
 
-// (USED BY PROJECT TASK)
 // fetchTasksForProject
 export async function fetchTasksForProject(projectId) {
   const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/tasks/`, {
@@ -349,7 +360,6 @@ export async function fetchTasksForProject(projectId) {
   return data.tasks || data;
 }
 
-// (USED BY PROJECTCreateTaskForm)
 // createTaskForProject
 export async function createTaskForProject(projectId, payload) {
   const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/tasks/`, {
@@ -365,7 +375,6 @@ export async function createTaskForProject(projectId, payload) {
   return await res.json();
 }
 
-// (USED BY Project Teams)
 // deleteTeamForProject
 export async function deleteTeamForProject(projectId, teamId) {
   const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/teams/${teamId}/`, {

@@ -16,7 +16,7 @@ import {
     delete_attempt_dependency
 } from "../../api/org_API";
 import snapSoundFile from "../../../assets/snap.mp3"
-
+import { useParams } from "react-router-dom";
 
 
 
@@ -349,6 +349,9 @@ const headerNode = {
 // ________________________COMPONENT________________________
 export default function OrgAttempts() {
     // States & Variables
+    const { projectId } = useParams();
+    console.log("PROJECT ID FROM PARAMS: ", projectId);
+
     const [all_teams, setAll_Teams] = useState([]);
     const [all_tasks, setAll_Tasks] = useState([]);
     const [all_attempts, setAll_Attempts] = useState([])
@@ -374,7 +377,7 @@ export default function OrgAttempts() {
             async function loadTeams() {
 
                 //Fetch Teams
-                const all_teams = await fetch_all_teams();
+                const all_teams = await fetch_all_teams(projectId);
                 setAll_Teams(all_teams)
 
 
