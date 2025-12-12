@@ -16,9 +16,11 @@ import {
     delete_attempt_dependency
 } from "../../api/org_API";
 import snapSoundFile from "../../../assets/snap.mp3"
+import whipSoundFile from "../../../assets/whip.mp3"
+import clackSoundFile from "../../../assets/pen_down.mp3"
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../../auth/AuthContext";
-
+import { ChevronsDownUp } from 'lucide-react';
 
 
 
@@ -50,10 +52,36 @@ function playSnapSound() {
         snapAudio.currentTime = 0;
         snapAudio.play();
     } catch (e) {
-        // ignore
+        console.log("Couldnt play snap sound")
     }
 }
 
+const whipAudio = new Audio(whipSoundFile);
+whipAudio.volume = 0.3; // super subtle
+
+function playWhipSound() {
+    // try/catch so it doesn’t explode if browser blocks it
+    try {
+        whipAudio.currentTime = 0;
+        whipAudio.play();
+    } catch (e) {
+        console.log("Couldnt play whip sound")
+    }
+}
+
+
+const clickAudio = new Audio(clackSoundFile);
+clickAudio.volume = 0.4; // super subtle
+
+function playClackSound() {
+    // try/catch so it doesn’t explode if browser blocks it
+    try {
+        clickAudio.currentTime = 0;
+        clickAudio.play();
+    } catch (e) {
+        console.log("Couldnt play whip sound")
+    }
+}
 
 // get_overall_gap
 function get_overall_gap(num_tasks, gap, header_gap) {
@@ -210,10 +238,103 @@ function TaskHeaderNode() {
 }
 
 // TeamNode
-function TeamNode({ data }) {
+function TeamNode({ id, data }) {
+    const [collapsed, setCollapsed] = useState(false);
+    const [height, setHeight] = useState(data.height);
+
+
+
+
+    // function handleCollapse() {
+    //     if (!collapsed) {
+    //         console.log("Should collapse now")
+    //         setCollapsed(true)
+    //         setHeight(30)
+    //         data.setTaskNodes((prevTasks) =>
+    //             prevTasks.map((n) => {
+    //                 if (n.parentNode !== id) return n;          // only my children
+    //                 return { ...n, hidden: true };              // React Flow supports `hidden`
+    //             })
+    //         );
+
+    //     } else {
+    //         setHeight(data.height)
+    //         data.setTaskNodes((prevTasks) =>
+    //             prevTasks.map((n) => {
+    //                 if (n.parentNode !== id) return n;          // only my children
+    //                 return { ...n, hidden: false };              // React Flow supports `hidden`
+    //             })
+    //         );
+
+    //         setCollapsed(false)
+    //     }
+
+
+
+    //     playClackSound();
+    // }
+
+
+    function handleCollapse() {
+        if (!collapsed) {
+            console.log("Should collapse now");
+            setCollapsed(true);
+            setHeight(30);
+
+            data.setTaskNodes((prevTasks) => {
+                // collect my task ids
+                const myTaskIds = prevTasks
+                    .filter((t) => t.parentNode === id)
+                    .map((t) => t.id);
+
+                // hide attempts belonging to my tasks
+                data.setAttemptNodes((prevAttempts) =>
+                    prevAttempts.map((a) => {
+                        if (!myTaskIds.includes(a.parentNode)) return a;
+                        return { ...a, hidden: true };
+                    })
+                );
+
+                // hide my tasks
+                return prevTasks.map((n) => {
+                    if (n.parentNode !== id) return n;
+                    return { ...n, hidden: true };
+                });
+            });
+
+        } else {
+            setHeight(data.height);
+
+            data.setTaskNodes((prevTasks) => {
+                const myTaskIds = prevTasks
+                    .filter((t) => t.parentNode === id)
+                    .map((t) => t.id);
+
+                // show attempts again
+                data.setAttemptNodes((prevAttempts) =>
+                    prevAttempts.map((a) => {
+                        if (!myTaskIds.includes(a.parentNode)) return a;
+                        return { ...a, hidden: false };
+                    })
+                );
+
+                // show my tasks
+                return prevTasks.map((n) => {
+                    if (n.parentNode !== id) return n;
+                    return { ...n, hidden: false };
+                });
+            });
+
+            setCollapsed(false);
+        }
+
+        playClackSound();
+    }
+
+
     return (
         <div
-            style={{ width: COMPONENT_WIDTH, height: data.height }}
+            style={{ width: COMPONENT_WIDTH, height: height }}
             className="relative h-full flex rounded-lg overflow-hidden border border-slate-300"
         >
             {/* top color strip */}
@@ -229,7 +350,14 @@ function TeamNode({ data }) {
             {/* Left vertical label */}
             <div
                 style={{ width: SIDEBAR_WIDTH, backgroundColor: data.color }}
-                className="text-white flex items-center justify-center"
+                className="text-white flex items-center justify-center relative"
+                onWheelCapture={(e) => {
+                    // e.preventDefault();
+                    e.stopPropagation();
+                }}
+                onDoubleClickCapture={(e) => {
+                    e.stopPropagation();
+                }}
             >
                 <span
                     className="text-xs font-semibold tracking-wide text-black"
@@ -237,6 +365,19 @@ function TeamNode({ data }) {
                 >
                     {data.label}
                 </span>
+                <div
+                    className="
+                                absolute top-1 left-1 rounded p-[1px]
+                                bg-black/50 hover:bg-white
+                                cursor-pointer
+                            "
+                    onClick={(e) => {
+                        handleCollapse()
+                        // your toggle action here
+                    }}
+                >
+                    <ChevronsDownUp size={14} color="white" />
+                </div>
             </div>
 
             {/* Right area – attempts live visually here, but as separate nodes */}
@@ -356,7 +497,7 @@ export default function OrgAttempts() {
     const [all_teams, setAll_Teams] = useState([]);
     const [all_tasks, setAll_Tasks] = useState([]);
     const [all_attempts, setAll_Attempts] = useState([])
-    const [nodes, setNodes] = useState([])
+    const [attempt_nodes, setAttemptNodes] = useState([])
     const [groupNodes, setGroupNodes] = useState([])
     const [taskNodes, setTaskNodes] = useState([])
     const [mergedNodes, setMergedNodes] = useState([])
@@ -368,6 +509,12 @@ export default function OrgAttempts() {
     const [selectedEdgeId, setSelectedEdgeId] = useState(null);
 
     const REACTFLOW_HEIGHT = 700;
+
+
+
+
+
+
 
 
 
@@ -401,10 +548,17 @@ export default function OrgAttempts() {
                                 id: `team-${team.id}`,
                                 type: "teamNode",
                                 position: { x: 0, y: currentY },   // 👈 use cumulative Y
-                                data: { label: team.name, color: team.color, height: team_display_height },
+                                data: {
+                                    label: team.name,
+                                    color: team.color,
+                                    height: team_display_height,
+                                    setTaskNodes,
+                                    setAttemptNodes
+                                },
 
                                 draggable: false,
-                                selectable: false,
+                                // TODO (selectable: false) in group nodes HINDERS COLLPASE BUTTON OF TEAM BUT IS ALSO NECESSARY FOR SELECTING EDGES
+                                // selectable: false
                             };
 
                             currentY += team_display_height + TEAM_GAP_PADDING_Y;  // 👈 move down for next team
@@ -462,7 +616,7 @@ export default function OrgAttempts() {
                 const all_attempts = await fetch_all_attempts();
                 setAll_Attempts(all_attempts);
 
-                const updated_nodes = all_attempts.map((attempt, index) => {
+                const updated_attempt_nodes = all_attempts.map((attempt, index) => {
                     const x = getXFromSlotIndex(attempt.slot_index);  // 👈 use DB value, default inside helper
 
                     return {
@@ -478,7 +632,7 @@ export default function OrgAttempts() {
                     };
                 });
 
-                setNodes(updated_nodes);
+                setAttemptNodes(updated_attempt_nodes);
             }
 
 
@@ -518,13 +672,13 @@ export default function OrgAttempts() {
             headerNode,
             ...groupNodes,
             ...taskNodes,
-            ...nodes, // attempts
+            ...attempt_nodes, // attempts
 
 
 
 
         ]);
-    }, [groupNodes, taskNodes, nodes]);
+    }, [groupNodes, taskNodes, attempt_nodes]);
 
 
 
@@ -544,6 +698,16 @@ export default function OrgAttempts() {
 
         const slotIndex = getSlotIndexFromX(node.position.x);
         const snappedX = getXFromSlotIndex(slotIndex);
+
+
+        setAttemptNodes((prev) =>
+            prev.map((n) =>
+                n.id === node.id
+                    ? { ...n, position: { ...n.position, x: snappedX } }
+                    : n
+            )
+        );
+
 
         setMergedNodes((nds) =>
             nds.map((n) =>
@@ -567,6 +731,7 @@ export default function OrgAttempts() {
                 console.error("Failed to save slot index:", err);
             }
         })();
+        playSnapSound();
     }, [setMergedNodes]);
 
 
@@ -610,6 +775,7 @@ export default function OrgAttempts() {
                 console.error("Failed to create attempt dependency:", err);
             }
         })();
+        playWhipSound();
     }, [setEdges]);
 
 
@@ -641,7 +807,7 @@ export default function OrgAttempts() {
                 style={{ height: `${y_reactflow_size}px` }}
                 className="w-screen !h-screen
                         flex justify-center items-center 
-                        lg:max-w-full  lg:px-10 
+                        lg:max-w-full  lg:px-10 bg-white
                         md:max-w-[700px] sm:max-w-full p-3">
 
                 {/* Delete Dependency */}
@@ -663,7 +829,7 @@ export default function OrgAttempts() {
 
                 {/* ReactFlow */}
                 <div style={{ width: COMPONENT_WIDTH, height: y_reactflow_size }} className="
-                                shadow-xl shadow-black/30 rounded-xl max-h-[75vh] ">
+                                shadow-xl shadow-black/30 rounded-xl max-h-[75vh] bg-gray-200">
                     <ReactFlow
                         nodes={mergedNodes}
                         edges={edges}
@@ -674,7 +840,7 @@ export default function OrgAttempts() {
                         onNodeDragStop={onNodeDragStop}
                         elementsSelectable={true}               // (default, but nice to be explicit)
                         deleteKeyCode={["Delete", "Backspace"]}
-                        minZoom={1}
+                        // minZoom={1}
                         onEdgeClick={(evt, edge) => {
                             console.log("EDGE CLICKED:", edge);
                             if (edge.id?.startsWith("attemptdep-")) {
@@ -690,7 +856,7 @@ export default function OrgAttempts() {
                         }}
                         translateExtent={[
                             [0, 0],
-                            [COMPONENT_WIDTH + 100, y_reactflow_size],
+                            [COMPONENT_WIDTH, y_reactflow_size],
                         ]}
                     >
 

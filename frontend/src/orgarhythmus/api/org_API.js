@@ -123,7 +123,6 @@ export async function fetch_project_detail(projectId) {
 //_______________________________________________
 //_______________________________________________
 
-// (OVERWORKED COMPLETELY)
 // project_teams_expanded
 export async function project_teams_expanded(projectId) {
   const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/project_teams_expanded/`);
@@ -144,7 +143,6 @@ export async function project_teams_expanded(projectId) {
   return data.teams;
 }
 
-// (OVERWORKED COMPLETELY)
 // fetchTeamsForProject
 export async function fetchTeamsForProject(projectId) {
   const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/teams/`, {
@@ -158,7 +156,6 @@ export async function fetchTeamsForProject(projectId) {
   return await res.json();
 }
 
-// (OVERWORKED COMPLETELY)
 // createTeamForProject
 export async function createTeamForProject(projectId, payload) {
   const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/teams/`, {
@@ -278,7 +275,7 @@ export async function fetch_all_attempts() {
   const data = await res.json();
   // console.log("The fetched attempts from the API", data)
 
-  console.log('simply doesnt return antyhitn ganymore: ', data);
+  // console.log('Attempts: ', data);
   return data.attempts;
 }
 

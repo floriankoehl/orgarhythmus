@@ -156,8 +156,7 @@ def get_current_user(request):
 #_______________________________________________________________________________________________
 
 
-# __________________Project
-#ProjectSerializer (APPROVED)
+#ProjectSerializer
 class ProjectSerializer(serializers.ModelSerializer):
     owner_username = serializers.CharField(source="owner.username", read_only=True)
 
@@ -167,10 +166,6 @@ class ProjectSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "owner", "owner_username"]
 
 
-
-# __________________Task
-
-# (OVERWORKED COMPLETELY)
 # TaskSerializer_TeamView
 class TaskSerializer(serializers.ModelSerializer):
     # nested team summary, like your manual "team": {...}
@@ -188,16 +183,6 @@ class TaskSerializer(serializers.ModelSerializer):
         ]
 
 
-
-
-
-
-
-
-# __________________Team
-
-
-# (OVERWORKED COMPLETELY)
 # TeamExpandedSerializer
 class TeamExpandedSerializer(serializers.ModelSerializer):
     tasks = TaskSerializer(many=True, read_only=True)  # uses related_name="tasks"
@@ -212,7 +197,6 @@ class TeamExpandedSerializer(serializers.ModelSerializer):
         ]
 
 
-#(OVERWORKED COMPLETELY)
 # BasicTeamSerializer
 class BasicTeamSerializer(serializers.ModelSerializer):
     class Meta:
@@ -224,9 +208,6 @@ class BasicTeamSerializer(serializers.ModelSerializer):
             "project",
         ]
         read_only_fields = ["id", "project"]
-
-
-
 
 
 # TaskSerializer_TeamView
@@ -246,48 +227,6 @@ class TaskSerializer_TeamView(serializers.ModelSerializer):
         ]
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# #ProjectTeamSerializer
-# class ProjectTeamSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = Team
-#         fields = ["id", "name", "color"]
-
-
-# #ProjectTaskMiniSerializer
-# class ProjectTaskMiniSerializer(serializers.ModelSerializer):
-#     team = BasicTeamSerializer(read_only=True)
-
-#     class Meta:
-#         model = Task
-#         fields = ["id", "name", "team"]
-
-
-# #ProjectTaskMiniSerializer
-# class ProjectAttemptSerializer(serializers.ModelSerializer):
-#     task = ProjectTaskMiniSerializer(read_only=True)
-
-#     class Meta:
-#         model = Attempt
-#         fields = [
-#             "id",
-#             "slot_index",
-#             "task",
-#         ]
 
 
 
@@ -391,8 +330,6 @@ def get_project(request, pk):
 #_______________________________________________________________________________________________
 
 
-
-# (OVERWORKED COMPLETELY)
 # project_teams 
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
@@ -426,7 +363,6 @@ def project_teams(request, project_id):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# (OVERWORKED COMPLETELY)
 # project_teams_expanded
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -458,7 +394,6 @@ def project_teams_expanded(request, project_id):
 
 
 
-# (OVERWORKED COMPLETELY)
 # project_team_detail (for now only delete)
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
@@ -496,10 +431,7 @@ def project_team_detail(request, project_id, team_id):
 #_______________________________________________________________________________________________
 
 
-
-
-
-
+# delete_task_by_id
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def delete_task_by_id(request, project_id, task_id):
@@ -524,8 +456,6 @@ def delete_task_by_id(request, project_id, task_id):
     # 3) Delete
     task.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
-
-
 
 
 #project_tasks
@@ -589,9 +519,6 @@ def project_tasks(request, project_id):
 
         serializer = TaskSerializer_TeamView(task)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-
-
 
 
 #_______________________________________________________________________________________________
@@ -758,21 +685,6 @@ def all_attempts_for_this_project(request, project_id):
     #    const all_attempts2 = await fetch_all_attempts();
     #    all_attempts2.attempts.map(...)
     return JsonResponse({"attempts": data}, status=200)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

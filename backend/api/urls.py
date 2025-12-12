@@ -28,7 +28,6 @@ urlpatterns = [
     path("orgarhythmus/projects/<int:project_id>/tasks/", views.project_tasks, name="project_tasks", ),
     path('orgarhythmus/projects/<int:project_id>/tasks/<int:task_id>/delete/', views.delete_task_by_id),
     
-    
     #Attempts
     path('orgarhythmus/add_attempt_dependency/', views.add_attempt_dependency),
     path('orgarhythmus/all_attempt_dependencies/', views.list_attempt_dependencies),
