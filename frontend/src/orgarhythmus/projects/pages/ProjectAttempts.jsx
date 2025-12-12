@@ -127,9 +127,13 @@ const ENTRIES = 25
 let SIDEBAR_WIDTH = 80;
 let TASK_SIDEBAR_WIDTH = 100;
 
-const TEAM_GAP_PADDING_Y = 0;
+const TEAM_GAP_PADDING_Y = 10;
 const TASK_GAP_PADDING_X = 0;
 const HEADER_BODY_GAP = 10;
+
+
+// ************** -> ADDED NOW 2: const TEAM_COLLAPSED_HEIGHT ***************** : 
+const TEAM_COLLAPSED_HEIGHT = 20;
 
 
 // Mobile Task Adjustment
@@ -240,97 +244,77 @@ function TaskHeaderNode() {
 
 // TeamNode
 function TeamNode({ id, data }) {
+    // ************** -> ADDED NOW: DEBUG [TeamNode render] ***************** : 
+    console.log("[TeamNode render]", id, "data.isCollapsed =", data.isCollapsed);
+
+
+
     const [collapsed, setCollapsed] = useState(false);
-    const [height, setHeight] = useState(data.height);
+
+    // ************** -> ADDED NOW 2: height calculation inside teamnode ***************** : 
+    // const [height, setHeight] = useState(data.height);
+    const height = data.isCollapsed ? TEAM_COLLAPSED_HEIGHT : data.height;
+
+
 
 
 
 
     // function handleCollapse() {
     //     if (!collapsed) {
-    //         console.log("Should collapse now")
-    //         setCollapsed(true)
-    //         setHeight(30)
-    //         data.setTaskNodes((prevTasks) =>
-    //             prevTasks.map((n) => {
-    //                 if (n.parentNode !== id) return n;          // only my children
-    //                 return { ...n, hidden: true };              // React Flow supports `hidden`
-    //             })
-    //         );
+    //         console.log("Should collapse now");
+    //         setCollapsed(true);
+    //         setHeight(30);
+
+    //         data.setTaskNodes((prevTasks) => {
+    //             // collect my task ids
+    //             const myTaskIds = prevTasks
+    //                 .filter((t) => t.parentNode === id)
+    //                 .map((t) => t.id);
+
+    //             // hide attempts belonging to my tasks
+    //             data.setAttemptNodes((prevAttempts) =>
+    //                 prevAttempts.map((a) => {
+    //                     if (!myTaskIds.includes(a.parentNode)) return a;
+    //                     return { ...a, hidden: true };
+    //                 })
+    //             );
+
+    //             // hide my tasks
+    //             return prevTasks.map((n) => {
+    //                 if (n.parentNode !== id) return n;
+    //                 return { ...n, hidden: true };
+    //             });
+    //         });
 
     //     } else {
-    //         setHeight(data.height)
-    //         data.setTaskNodes((prevTasks) =>
-    //             prevTasks.map((n) => {
-    //                 if (n.parentNode !== id) return n;          // only my children
-    //                 return { ...n, hidden: false };              // React Flow supports `hidden`
-    //             })
-    //         );
+    //         setHeight(data.height);
 
-    //         setCollapsed(false)
+    //         data.setTaskNodes((prevTasks) => {
+    //             const myTaskIds = prevTasks
+    //                 .filter((t) => t.parentNode === id)
+    //                 .map((t) => t.id);
+
+    //             // show attempts again
+    //             data.setAttemptNodes((prevAttempts) =>
+    //                 prevAttempts.map((a) => {
+    //                     if (!myTaskIds.includes(a.parentNode)) return a;
+    //                     return { ...a, hidden: false };
+    //                 })
+    //             );
+
+    //             // show my tasks
+    //             return prevTasks.map((n) => {
+    //                 if (n.parentNode !== id) return n;
+    //                 return { ...n, hidden: false };
+    //             });
+    //         });
+
+    //         setCollapsed(false);
     //     }
-
-
 
     //     playClackSound();
     // }
-
-
-    function handleCollapse() {
-        if (!collapsed) {
-            console.log("Should collapse now");
-            setCollapsed(true);
-            setHeight(30);
-
-            data.setTaskNodes((prevTasks) => {
-                // collect my task ids
-                const myTaskIds = prevTasks
-                    .filter((t) => t.parentNode === id)
-                    .map((t) => t.id);
-
-                // hide attempts belonging to my tasks
-                data.setAttemptNodes((prevAttempts) =>
-                    prevAttempts.map((a) => {
-                        if (!myTaskIds.includes(a.parentNode)) return a;
-                        return { ...a, hidden: true };
-                    })
-                );
-
-                // hide my tasks
-                return prevTasks.map((n) => {
-                    if (n.parentNode !== id) return n;
-                    return { ...n, hidden: true };
-                });
-            });
-
-        } else {
-            setHeight(data.height);
-
-            data.setTaskNodes((prevTasks) => {
-                const myTaskIds = prevTasks
-                    .filter((t) => t.parentNode === id)
-                    .map((t) => t.id);
-
-                // show attempts again
-                data.setAttemptNodes((prevAttempts) =>
-                    prevAttempts.map((a) => {
-                        if (!myTaskIds.includes(a.parentNode)) return a;
-                        return { ...a, hidden: false };
-                    })
-                );
-
-                // show my tasks
-                return prevTasks.map((n) => {
-                    if (n.parentNode !== id) return n;
-                    return { ...n, hidden: false };
-                });
-            });
-
-            setCollapsed(false);
-        }
-
-        playClackSound();
-    }
 
 
     return (
@@ -367,15 +351,25 @@ function TeamNode({ id, data }) {
                     {data.label}
                 </span>
                 <div
-                    className="
-                                absolute top-1 left-1 rounded p-[1px]
-                                bg-black/50 hover:bg-white
-                                cursor-pointer
-                            "
+                    className={`
+
+                                ${data.isCollapsed ? "left-1 " : "top-1 left-1"}
+                                absolute  rounded 
+                                bg-black/50 hover:bg-black/70
+                                cursor-pointer`}
+
+
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
+
+
+                        // ************** -> ADDED NOW: toggleTeamCollapse call while onclick ***************** : 
+                        // e.stopPropagation();
+                        // handleCollapse();
                         e.stopPropagation();
-                        handleCollapse();
+                        console.log("[TeamNode] click collapse:", id, "isCollapsed(data):", data.isCollapsed);
+                        data.toggleTeamCollapse(id);
+
                     }}
                 >
                     <ChevronsDownUp size={14} color="white" />
@@ -491,6 +485,8 @@ const headerNode = {
 
 // ________________________COMPONENT________________________
 export default function OrgAttempts() {
+    console.log("________________________________\n")
+
     // States & Variables
     const { projectId } = useParams();
     const navigate = useNavigate();
@@ -513,6 +509,171 @@ export default function OrgAttempts() {
     const REACTFLOW_HEIGHT = 700;
 
     const [dep_setting_selected, setDep_setting_selected] = useState(false)
+
+
+    // ************** -> ADDED NOW : collapsedByTeamId ***************** : 
+    const [collapsedByTeamId, setCollapsedByTeamId] = useState({});
+
+
+    // ************** -> ADDED NOW: toggleTeamCollapse ***************** : 
+    const toggleTeamCollapse = useCallback((teamNodeId) => {
+        console.log("[toggleTeamCollapse] called for:", teamNodeId);
+
+        setCollapsedByTeamId((prev) => {
+            const next = {
+                ...prev,
+                [teamNodeId]: !prev[teamNodeId],
+            };
+
+            console.log("[toggleTeamCollapse] prev:", prev);
+            console.log("[toggleTeamCollapse] next:", next);
+
+            return next;
+        });
+    }, []);
+
+
+    // ************** -> ADDED NOW 3: Helper - getTaskIdsForTeam ***************** : 
+    function getTaskIdsForTeam(taskNodes, teamId) {
+        return taskNodes
+            .filter((t) => t.parentNode === teamId)
+            .map((t) => t.id);
+    }
+
+
+    // ************** -> ADDED NOW 3: Sinks hidden flags:  ***************** : 
+    // useEffect(() => {
+    //     if (!groupNodes.length) return;
+
+    //     console.log("==========[HIDE PASS] START==========");
+    //     console.log("[HIDE PASS] collapsedByTeamId:", collapsedByTeamId);
+
+    //     // Build a Set of all task ids that belong to collapsed teams
+    //     const collapsedTeamIds = Object.keys(collapsedByTeamId).filter((k) => collapsedByTeamId[k]);
+    //     console.log("[HIDE PASS] collapsedTeamIds:", collapsedTeamIds);
+
+    //     const collapsedTaskIds = new Set();
+
+    //     // 1) update taskNodes.hidden
+    //     setTaskNodes((prevTasks) => {
+    //         // collect task ids for collapsed teams
+    //         collapsedTeamIds.forEach((teamId) => {
+    //             prevTasks.forEach((t) => {
+    //                 if (t.parentNode === teamId) collapsedTaskIds.add(t.id);
+    //             });
+    //         });
+
+    //         console.log("[HIDE PASS] collapsedTaskIds:", Array.from(collapsedTaskIds));
+
+    //         return prevTasks.map((t) => {
+    //             const shouldHide = collapsedTeamIds.includes(t.parentNode);
+    //             return shouldHide ? { ...t, hidden: true } : { ...t, hidden: false };
+    //         });
+    //     });
+
+    //     // 2) update attempt_nodes.hidden (attempt_nodes state!)
+    //     setAttemptNodes((prevAttempts) =>
+    //         prevAttempts.map((a) => {
+    //             const shouldHide = collapsedTaskIds.has(a.parentNode);
+    //             return shouldHide ? { ...a, hidden: true } : { ...a, hidden: false };
+    //         })
+    //     );
+
+    //     console.log("==========[HIDE PASS] END==========");
+    // }, [collapsedByTeamId, groupNodes.length]);
+    useEffect(() => {
+        if (!groupNodes.length) return;
+
+        console.log("==========[HIDE PASS] START==========");
+        console.log("[HIDE PASS] collapsedByTeamId:", collapsedByTeamId);
+
+        const collapsedTeamIds = Object.keys(collapsedByTeamId).filter((k) => collapsedByTeamId[k]);
+        console.log("[HIDE PASS] collapsedTeamIds:", collapsedTeamIds);
+
+        // ✅ compute collapsed task ids from current taskNodes state (closure)
+        const collapsedTaskIds = new Set(
+            taskNodes
+                .filter((t) => collapsedTeamIds.includes(t.parentNode))
+                .map((t) => t.id)
+        );
+
+        console.log("[HIDE PASS] collapsedTaskIds:", Array.from(collapsedTaskIds));
+
+        // 1) tasks: hide if parent team collapsed
+        setTaskNodes((prevTasks) =>
+            prevTasks.map((t) => ({
+                ...t,
+                hidden: collapsedTeamIds.includes(t.parentNode),
+            }))
+        );
+
+        // 2) attempts: hide if parent task is in collapsedTaskIds
+        setAttemptNodes((prevAttempts) =>
+            prevAttempts.map((a) => ({
+                ...a,
+                hidden: collapsedTaskIds.has(a.parentNode),
+            }))
+        );
+
+        console.log("==========[HIDE PASS] END==========");
+    }, [collapsedByTeamId, groupNodes.length]);
+
+
+
+
+
+    // ************** -> ADDED NOW 2: useEffect - runs when collapse map changes ***************** : 
+    useEffect(() => {
+        if (!groupNodes.length) return;
+
+        console.log("==========[LAYOUT PASS] START==========");
+        console.log("[LAYOUT PASS] collapsedByTeamId:", collapsedByTeamId);
+
+
+
+        setGroupNodes((prev) => {
+            let currentY = TASK_HEIGHT + HEADER_BODY_GAP;
+            const next = prev.map((node) => {
+                const isCollapsed = !!collapsedByTeamId[node.id];
+
+                const expandedHeight = node.data?.height ?? 0;
+                const effectiveHeight = isCollapsed ? TEAM_COLLAPSED_HEIGHT : expandedHeight;
+
+                console.log(
+                    "[LAYOUT PASS] team:",
+                    node.id,
+                    "collapsed:",
+                    isCollapsed,
+                    "expandedHeight:",
+                    expandedHeight,
+                    "effectiveHeight:",
+                    effectiveHeight,
+                    "newY:",
+                    currentY
+                );
+
+                const updated = {
+                    ...node,
+                    position: { ...node.position, y: currentY },
+                    data: {
+                        ...node.data,
+                        isCollapsed, // keep data in sync too
+                    },
+                };
+
+                currentY += effectiveHeight + TEAM_GAP_PADDING_Y;
+                return updated;
+            });
+
+            console.log("==========[LAYOUT PASS] END==========");
+            return next;
+        });
+
+        // optional: update reactflow container height too
+        // (we’ll verify the packing first, then adjust height precisely)
+    }, [collapsedByTeamId]);
+
+
 
 
 
@@ -538,6 +699,9 @@ export default function OrgAttempts() {
         async function loadData() {
             //LOAD TEAMS (& Tasks through Teams)
             async function loadTeams() {
+                // ************** -> ADDED NOW: security log: [loadTeams] ***************** : 
+                console.log("[loadTeams] collapsedByTeamId:", collapsedByTeamId);
+
                 try {
                     //Fetch Teams
                     const all_teams = await project_teams_expanded(projectId);
@@ -568,7 +732,12 @@ export default function OrgAttempts() {
                                     color: team.color,
                                     height: team_display_height,
                                     setTaskNodes,
-                                    setAttemptNodes
+                                    setAttemptNodes,
+
+
+                                    // ************** -> ADDED NOW: toggleTeamCollapse & isCollapsed ***************** : 
+                                    toggleTeamCollapse,
+                                    isCollapsed: !!collapsedByTeamId[`team-${team.id}`],
                                 },
 
                                 draggable: false,
@@ -675,6 +844,9 @@ export default function OrgAttempts() {
             await loadAttemptDependencies();
         }
         loadData()
+
+        // ************** -> ADDED NOW: collapsedByTeamId added ***************** : 
+        // ************** -> ADDED NOW 2: collapsedByTeamId removed again ***************** : 
     }, [projectId, navigate, logout])
 
 
