@@ -344,10 +344,10 @@ function TeamNode({ id, data }) {
             <div
                 style={{ width: SIDEBAR_WIDTH, backgroundColor: data.color }}
                 className="text-white flex items-center justify-center relative"
-                onWheelCapture={(e) => {
-                    // e.preventDefault();
-                    e.stopPropagation();
-                }}
+                // onWheelCapture={(e) => {
+                //     // e.preventDefault();
+                //     e.stopPropagation();
+                // }}
                 onDoubleClickCapture={(e) => {
                     e.stopPropagation();
                 }}
@@ -374,6 +374,7 @@ function TeamNode({ id, data }) {
                         // ************** -> ADDED NOW: toggleTeamCollapse call while onclick ***************** : 
                         // e.stopPropagation();
                         // handleCollapse();
+                        // playClackSound()
                         e.stopPropagation();
                         console.log("[TeamNode] click collapse:", id, "isCollapsed(data):", data.isCollapsed);
                         data.toggleTeamCollapse(id);
@@ -864,6 +865,7 @@ export default function OrgAttempts() {
                                 },
 
                                 draggable: false,
+                                selectable: false
                                 // TODO (selectable: false) in group nodes HINDERS COLLPASE BUTTON OF TEAM BUT IS ALSO NECESSARY FOR SELECTING EDGES
                                 // selectable: false
                             };
@@ -1009,7 +1011,7 @@ export default function OrgAttempts() {
 
     // onNodeDragStop
     const onNodeDragStop = useCallback((event, node) => {
-
+        playSnapSound();
         // ************** -> ADDED NOW 4: onNodeDragStop for group nodes ***************** : 
         if (node.type === "teamNode") {
             console.log("==========[TEAM DROP]==========");
@@ -1094,7 +1096,7 @@ export default function OrgAttempts() {
                 console.error("Failed to save slot index:", err);
             }
         })();
-        playSnapSound();
+
 
         // ************** -> ADDED NOW 4: dependency list update:  ***************** : 
         // }, [setMergedNodes]);
