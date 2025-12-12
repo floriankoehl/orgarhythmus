@@ -372,9 +372,10 @@ function TeamNode({ id, data }) {
                                 bg-black/50 hover:bg-white
                                 cursor-pointer
                             "
+                    onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
-                        handleCollapse()
-                        // your toggle action here
+                        e.stopPropagation();
+                        handleCollapse();
                     }}
                 >
                     <ChevronsDownUp size={14} color="white" />
@@ -511,19 +512,22 @@ export default function OrgAttempts() {
 
     const REACTFLOW_HEIGHT = 700;
 
-    const [dep_setting_selected, setDep_setting_selected] = useState(true)
+    const [dep_setting_selected, setDep_setting_selected] = useState(false)
 
 
 
 
 
     useEffect(() => {
+        console.log("Dep settings selected is now: ", dep_setting_selected)
         setGroupNodes((nodes) =>
             nodes.map((node) => ({
                 ...node,
-                selectable: dep_setting_selected,
+                selectable: !dep_setting_selected,
+                draggable: !dep_setting_selected,
             }))
         );
+        console.log("Dep settings selected is now: ", dep_setting_selected)
     }, [dep_setting_selected]);
 
 
