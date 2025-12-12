@@ -348,7 +348,7 @@ function TeamNode({ id, data }) {
                     className="text-xs font-semibold tracking-wide text-black"
                     style={{ textOrientation: "mixed" }}
                 >
-                    {data.label}
+                    {data.label} - {id}
                 </span>
                 <div
                     className={`
@@ -508,11 +508,16 @@ export default function OrgAttempts() {
 
     const REACTFLOW_HEIGHT = 700;
 
-    const [dep_setting_selected, setDep_setting_selected] = useState(false)
+    const [dep_setting_selected, setDep_setting_selected] = useState(true)
 
 
     // ************** -> ADDED NOW : collapsedByTeamId ***************** : 
     const [collapsedByTeamId, setCollapsedByTeamId] = useState({});
+
+    // ************** -> ADDED NOW 4: teamOrder useState ***************** : 
+    const [teamOrder, setTeamOrder] = useState([]);
+
+
 
 
     // ************** -> ADDED NOW: toggleTeamCollapse ***************** : 
@@ -619,21 +624,123 @@ export default function OrgAttempts() {
     }, [collapsedByTeamId, groupNodes.length]);
 
 
+    // ************** -> ADDED NOW 4: Helper: getTeamInsertIndexFromY ***************** : 
+    function getTeamInsertIndexFromY(dropY, orderedTeamIds, groupNodes, collapsedByTeamId) {
+        let currentY = TASK_HEIGHT + HEADER_BODY_GAP;
+
+        for (let i = 0; i < orderedTeamIds.length; i++) {
+            const id = orderedTeamIds[i];
+            const node = groupNodes.find((n) => n.id === id);
+            if (!node) continue;
+
+            const expandedHeight = node.data?.height ?? 0;
+            const effectiveHeight = collapsedByTeamId[id]
+                ? TEAM_COLLAPSED_HEIGHT
+                : expandedHeight;
+
+            const midY = currentY + effectiveHeight / 2;
+
+            console.log(
+                "[REORDER CHECK]",
+                id,
+                "range:",
+                currentY,
+                "→",
+                currentY + effectiveHeight,
+                "mid:",
+                midY,
+                "dropY:",
+                dropY
+            );
+
+            if (dropY < midY) {
+                return i;
+            }
+
+            currentY += effectiveHeight + TEAM_GAP_PADDING_Y;
+        }
+
+        return orderedTeamIds.length;
+    }
 
 
 
+
+    // ************** -> ADDED NOW 4: Updated this effect (order aware) ***************** : 
     // ************** -> ADDED NOW 2: useEffect - runs when collapse map changes ***************** : 
+    // useEffect(() => {
+    //     if (!groupNodes.length) return;
+
+    //     console.log("==========[LAYOUT PASS] START==========");
+    //     console.log("[LAYOUT PASS] collapsedByTeamId:", collapsedByTeamId);
+
+
+
+    //     setGroupNodes((prev) => {
+    //         let currentY = TASK_HEIGHT + HEADER_BODY_GAP;
+    //         const next = prev.map((node) => {
+    //             const isCollapsed = !!collapsedByTeamId[node.id];
+
+    //             const expandedHeight = node.data?.height ?? 0;
+    //             const effectiveHeight = isCollapsed ? TEAM_COLLAPSED_HEIGHT : expandedHeight;
+
+    //             console.log(
+    //                 "[LAYOUT PASS] team:",
+    //                 node.id,
+    //                 "collapsed:",
+    //                 isCollapsed,
+    //                 "expandedHeight:",
+    //                 expandedHeight,
+    //                 "effectiveHeight:",
+    //                 effectiveHeight,
+    //                 "newY:",
+    //                 currentY
+    //             );
+
+    //             const updated = {
+    //                 ...node,
+    //                 position: { ...node.position, y: currentY },
+    //                 data: {
+    //                     ...node.data,
+    //                     isCollapsed, // keep data in sync too
+    //                 },
+    //             };
+
+    //             currentY += effectiveHeight + TEAM_GAP_PADDING_Y;
+    //             return updated;
+    //         });
+
+    //         console.log("==========[LAYOUT PASS] END==========");
+    //         return next;
+    //     });
+
+    //     // optional: update reactflow container height too
+    //     // (we’ll verify the packing first, then adjust height precisely)
+    // }, [collapsedByTeamId]);
     useEffect(() => {
         if (!groupNodes.length) return;
+        if (!teamOrder.length) return;
 
         console.log("==========[LAYOUT PASS] START==========");
+        console.log("[LAYOUT PASS] teamOrder:", teamOrder);
         console.log("[LAYOUT PASS] collapsedByTeamId:", collapsedByTeamId);
 
-
-
         setGroupNodes((prev) => {
+            // map nodes by id for fast lookup
+            const byId = new Map(prev.map((n) => [n.id, n]));
+
+            // build ordered list (ignore ids that no longer exist)
+            const ordered = teamOrder.map((id) => byId.get(id)).filter(Boolean);
+
+            // append any “new/untracked” teams that aren’t in teamOrder yet (safety)
+            const extras = prev.filter((n) => !teamOrder.includes(n.id));
+            if (extras.length) {
+                console.log("[LAYOUT PASS] extras not in teamOrder:", extras.map((e) => e.id));
+            }
+
             let currentY = TASK_HEIGHT + HEADER_BODY_GAP;
-            const next = prev.map((node) => {
+
+            const next = [...ordered, ...extras].map((node) => {
                 const isCollapsed = !!collapsedByTeamId[node.id];
 
                 const expandedHeight = node.data?.height ?? 0;
@@ -655,10 +762,7 @@ export default function OrgAttempts() {
                 const updated = {
                     ...node,
                     position: { ...node.position, y: currentY },
-                    data: {
-                        ...node.data,
-                        isCollapsed, // keep data in sync too
-                    },
+                    data: { ...node.data, isCollapsed },
                 };
 
                 currentY += effectiveHeight + TEAM_GAP_PADDING_Y;
@@ -668,10 +772,7 @@ export default function OrgAttempts() {
             console.log("==========[LAYOUT PASS] END==========");
             return next;
         });
-
-        // optional: update reactflow container height too
-        // (we’ll verify the packing first, then adjust height precisely)
-    }, [collapsedByTeamId]);
+    }, [collapsedByTeamId, teamOrder, groupNodes.length]);
 
 
 
@@ -752,6 +853,11 @@ export default function OrgAttempts() {
                         }).filter(Boolean);;
 
                     setGroupNodes(updated_group_nodes);
+
+                    // ************** -> ADDED NOW 4: initialOrder ***************** : 
+                    const initialOrder = updated_group_nodes.map((n) => n.id);
+                    console.log("[teamOrder:init]", initialOrder);
+                    setTeamOrder(initialOrder);
 
 
                     //RENDER TASK NODES
@@ -881,6 +987,37 @@ export default function OrgAttempts() {
 
     // onNodeDragStop
     const onNodeDragStop = useCallback((event, node) => {
+
+        // ************** -> ADDED NOW 4: onNodeDragStop for group nodes ***************** : 
+        if (node.type === "teamNode") {
+            console.log("==========[TEAM DROP]==========");
+            console.log("[TEAM DROP] node:", node.id);
+            console.log("[TEAM DROP] dropY:", node.position.y);
+            console.log("[TEAM DROP] current order:", teamOrder);
+
+            const filtered = teamOrder.filter((id) => id !== node.id);
+
+            const insertIndex = getTeamInsertIndexFromY(
+                node.position.y,
+                filtered,
+                groupNodes,
+                collapsedByTeamId
+            );
+
+            const nextOrder = [
+                ...filtered.slice(0, insertIndex),
+                node.id,
+                ...filtered.slice(insertIndex),
+            ];
+
+            console.log("[TEAM DROP] insertIndex:", insertIndex);
+            console.log("[TEAM DROP] next order:", nextOrder);
+
+            setTeamOrder(nextOrder);
+            return;
+        }
+
+
         if (node.type !== "attemptNode") return;
 
         const slotIndex = getSlotIndexFromX(node.position.x);
@@ -919,7 +1056,10 @@ export default function OrgAttempts() {
             }
         })();
         playSnapSound();
-    }, [setMergedNodes]);
+
+        // ************** -> ADDED NOW 4: dependency list update:  ***************** : 
+        // }, [setMergedNodes]);
+    }, [teamOrder, groupNodes, collapsedByTeamId]);
 
 
     // onEdgesChange
@@ -1075,7 +1215,7 @@ export default function OrgAttempts() {
                             onNodeDragStop={onNodeDragStop}
                             elementsSelectable={true}               // (default, but nice to be explicit)
                             deleteKeyCode={["Delete", "Backspace"]}
-                            // minZoom={1}
+                            minZoom={1}
                             onEdgeClick={(evt, edge) => {
                                 console.log("EDGE CLICKED:", edge);
                                 if (edge.id?.startsWith("attemptdep-")) {
