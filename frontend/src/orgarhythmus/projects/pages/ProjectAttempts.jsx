@@ -1149,6 +1149,7 @@ export default function OrgAttempts() {
 
     // handleDeleteSelectedDependency
     async function handleDeleteSelectedDependency() {
+        playWhipSound()
         if (!selectedDepId || !selectedEdgeId) return;
 
         try {
