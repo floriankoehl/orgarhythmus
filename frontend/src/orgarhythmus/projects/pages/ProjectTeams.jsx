@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { HexColorPicker } from "react-colorful";
 
 import {
-  fetchTeamsForProject,
+  project_teams_expanded,  // Change this
   createTeamForProject,
   deleteTeamForProject,
 } from "../../api/org_API";
@@ -38,8 +38,8 @@ export default function ProjectTeams() {
   async function loadTeams() {
     try {
       setLoading(true);
-      const data = await fetchTeamsForProject(projectId);
-      const list = Array.isArray(data) ? data : data.teams || [];
+      const data = await project_teams_expanded(projectId);  // Use expanded version
+      const list = Array.isArray(data) ? data : [];
       setTeams(list);
     } catch (err) {
       console.error(err);
@@ -75,7 +75,7 @@ export default function ProjectTeams() {
   }
 
   async function handleDelete(teamId, teamName) {
-    const ok = window.confirm(`Delete team “${teamName}”?`);
+    const ok = window.confirm(`Delete team "${teamName}"?`);
     if (!ok) return;
 
     try {
@@ -93,8 +93,8 @@ export default function ProjectTeams() {
   }
 
   return (
-    <div className="min-h-screen w-full max-w-[1200px] bg-gradient-to-b from-slate-50 to-slate-100 flex justify-center">
-      <div className="w-full max-w-full px-4 py-8 flex flex-col gap-6">
+    <div className="min-h-screen w-full bg-gradient-to-b from-slate-50 to-slate-100 flex justify-center px-4">
+      <div className="w-full max-w-5xl py-8 flex flex-col gap-6">
         {/* Header */}
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -201,34 +201,34 @@ export default function ProjectTeams() {
                   </div>
                 </div>
               </div>
+            </div>
 
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="outlined"
-                  size="small"
-                  style={{ textTransform: "none" }}
-                  onClick={() => setShowCreate(false)}
-                >
-                  Cancel
-                </Button>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outlined"
+                size="small"
+                style={{ textTransform: "none" }}
+                onClick={() => setShowCreate(false)}
+              >
+                Cancel
+              </Button>
 
-                <Button
-                  variant="contained"
-                  size="small"
-                  disabled={!name.trim() || creating}
-                  style={{ textTransform: "none" }}
-                  onClick={handleCreate}
-                >
-                  {creating ? (
-                    <span className="flex items-center gap-1">
-                      <Loader2 className="animate-spin" size={16} />
-                      Creating…
-                    </span>
-                  ) : (
-                    "Create"
-                  )}
-                </Button>
-              </div>
+              <Button
+                variant="contained"
+                size="small"
+                disabled={!name.trim() || creating}
+                style={{ textTransform: "none" }}
+                onClick={handleCreate}
+              >
+                {creating ? (
+                  <span className="flex items-center gap-1">
+                    <Loader2 className="animate-spin" size={16} />
+                    Creating…
+                  </span>
+                ) : (
+                  "Create"
+                )}
+              </Button>
             </div>
           </div>
         )}
@@ -262,6 +262,7 @@ export default function ProjectTeams() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {teams.map((team) => {
                 const initial = team.name?.[0]?.toUpperCase() || "T";
+                const taskCount = team.tasks?.length || 0;
 
                 return (
                   <div
@@ -297,7 +298,7 @@ export default function ProjectTeams() {
                         title="Delete team"
                         disabled={deletingId === team.id}
                         onClick={(e) => {
-                          e.stopPropagation(); // Prevent navigation when clicking delete
+                          e.stopPropagation();
                           handleDelete(team.id, team.name);
                         }}
                         className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-red-50 text-slate-400 hover:text-red-500"
@@ -310,9 +311,32 @@ export default function ProjectTeams() {
                       </button>
                     </div>
 
-                    <div className="text-xs text-slate-500">
-                      {team.tasks?.length || 0} tasks assigned
-                    </div>
+                    {/* Tasks list */}
+                    {taskCount > 0 ? (
+                      <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-slate-100">
+                        <p className="text-xs font-semibold text-slate-600">
+                          Tasks ({taskCount})
+                        </p>
+                        <ul className="space-y-1">
+                          {team.tasks.slice(0, 3).map((task) => (
+                            <li
+                              key={task.id}
+                              className="text-xs text-slate-600 flex items-center gap-2"
+                            >
+                              <span className="h-1 w-1 rounded-full bg-slate-400" />
+                              <span className="truncate">{task.name}</span>
+                            </li>
+                          ))}
+                          {taskCount > 3 && (
+                            <li className="text-xs text-slate-500 italic">
+                              +{taskCount - 3} more
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500 mt-2">No tasks assigned</p>
+                    )}
                   </div>
                 );
               })}

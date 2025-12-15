@@ -1,7 +1,7 @@
 // orgarhythmus/projects/pages/ProjectTasks.jsx
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import Button from "@mui/material/Button";
 import { Plus } from "lucide-react";
 
@@ -80,6 +80,7 @@ function ProjectStats({ tasks, teams }) {
 /* ---- Hauptkomponente ---- */
 export default function ProjectTasks() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
 
   const [tasks, setTasks] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -210,12 +211,17 @@ export default function ProjectTasks() {
           ) : hasTasks ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 place-items-stretch">
               {tasks.map((task) => (
-                <SMTaskCard
+                <div
                   key={task.id}
-                  projectId={projectId}
-                  task={task}
-                  onTaskDeleted={loadData}
-                />
+                  onClick={() => navigate(`/orgarhythmus/projects/${projectId}/tasks/${task.id}`)}
+                  className="p-4 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer border border-slate-200"
+                >
+                  <SMTaskCard
+                    projectId={projectId}
+                    task={task}
+                    onTaskDeleted={loadData}
+                  />
+                </div>
               ))}
             </div>
           ) : (

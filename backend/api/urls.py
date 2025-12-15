@@ -32,6 +32,8 @@ urlpatterns = [
 
     #Tasks
     path("orgarhythmus/projects/<int:project_id>/tasks/", views.project_tasks, name="project_tasks", ),
+    #TODO ADDED TASK
+    path("orgarhythmus/projects/<int:project_id>/tasks/<int:task_id>/detail/", views.task_detail_view, name="task_detail_view"),  # ADD THIS
     path('orgarhythmus/projects/<int:project_id>/tasks/<int:task_id>/delete/', views.delete_task_by_id),
     
     #Attempts

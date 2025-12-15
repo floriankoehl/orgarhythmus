@@ -236,6 +236,24 @@ class TaskSerializer_TeamView(serializers.ModelSerializer):
 
 
 
+# TODO ADDED TASKS 
+# TODO Maybe a mismatch (task expanded is something different then team expandend)
+# TaskExpandedSerializer
+class TaskExpandedSerializer(serializers.ModelSerializer):
+    team = BasicTeamSerializer(read_only=True)
+    project_id = serializers.IntegerField(source='project.id', read_only=True)
+    
+    class Meta:
+        model = Task
+        fields = [
+            'id',
+            'name',
+            'priority',
+            'difficulty',
+            'team',
+            'project_id',
+        ]
+
 
 
 
@@ -645,6 +663,73 @@ def project_tasks(request, project_id):
 
         serializer = TaskSerializer_TeamView(task)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+
+
+#TODO ADDED TASKS
+# task_detail_view
+@api_view(["GET", "PATCH"])
+@permission_classes([IsAuthenticated])
+def task_detail_view(request, project_id, task_id):
+    """
+    GET: Retrieve a single task with details
+    PATCH: Update task properties (name, team, priority, difficulty, etc.)
+    """
+    user = request.user
+
+    try:
+        task = Task.objects.select_related("project", "team").get(
+            id=task_id,
+            project_id=project_id,
+        )
+    except Task.DoesNotExist:
+        return Response({"detail": "Task not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    # Permission check
+    if not user_has_project_access(user, task.project):
+        return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == "GET":
+        serializer = TaskExpandedSerializer(task)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    # PATCH: Update task
+    if request.method == "PATCH":
+        data = request.data
+        
+        if "name" in data:
+            name = data["name"].strip()
+            if name:
+                task.name = name
+        
+        if "team_id" in data:
+            team_id = data["team_id"]
+            if team_id is None:
+                task.team = None
+            else:
+                try:
+                    team = Team.objects.get(id=team_id, project_id=project_id)
+                    task.team = team
+                except Team.DoesNotExist:
+                    return Response(
+                        {"detail": "Team not found in this project."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+        
+        if "priority" in data:
+            task.priority = data["priority"]
+        
+        if "difficulty" in data:
+            task.difficulty = data["difficulty"]
+        
+        task.save()
+        
+        serializer = TaskExpandedSerializer(task)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+
 
 
 #_______________________________________________________________________________________________

@@ -323,6 +323,38 @@ export async function createTaskForProject(projectId, payload) {
   return await res.json();
 }
 
+// ...existing code...
+
+// fetchSingleTask
+export async function fetchSingleTask(projectId, taskId) {
+  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/tasks/${taskId}/detail/`, {
+    method: 'GET',
+  });
+
+  if (!res.ok) {
+    throw new Error('Failed to fetch task details');
+  }
+
+  return await res.json();
+}
+
+
+// updateTask
+export async function updateTask(projectId, taskId, payload) {
+  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/tasks/${taskId}/detail/`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw new Error('Failed to update task');
+  }
+
+  return await res.json();
+}
+
+
+
 //_______________________________________________
 //_______________________________________________
 //__________________ATTEMPTS____________________
