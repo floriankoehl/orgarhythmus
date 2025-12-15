@@ -470,6 +470,8 @@ def reorder_project_teams(request, project_id):
 #_______________________________________________________________________________________________
 #_______________________________________________________________________________________________
 
+from django.conf import settings
+
 
 # delete_task_by_id
 @api_view(["DELETE"])
@@ -479,6 +481,12 @@ def delete_task_by_id(request, project_id, task_id):
     Delete a task by ID (only if user has access to the project).
     """
     print("Inside this function")
+    if settings.DEBUG:
+        print("Inside delete_task_by_id - DEBUG is True")
+
+    if not settings.DEBUG:
+        print("OK its false sucesfully")
+
 
     # 1) Try to load the task inside the given project
     try:
