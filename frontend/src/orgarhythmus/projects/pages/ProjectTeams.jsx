@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { HexColorPicker } from "react-colorful";
 
 import {
@@ -20,6 +20,7 @@ import Button from "@mui/material/Button";
 
 export default function ProjectTeams() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
 
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -92,9 +93,8 @@ export default function ProjectTeams() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-b from-slate-50 to-slate-100 flex justify-center">
+    <div className="min-h-screen w-full max-w-[1200px] bg-gradient-to-b from-slate-50 to-slate-100 flex justify-center">
       <div className="w-full max-w-full px-4 py-8 flex flex-col gap-6">
-
         {/* Header */}
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -266,7 +266,8 @@ export default function ProjectTeams() {
                 return (
                   <div
                     key={team.id}
-                    className="rounded-xl border border-slate-200 bg-white shadow hover:shadow-lg transition p-4 flex flex-col gap-4"
+                    onClick={() => navigate(`/orgarhythmus/projects/${projectId}/teams/${team.id}`)}
+                    className="rounded-xl border border-slate-200 bg-white shadow hover:shadow-lg transition p-4 flex flex-col gap-4 cursor-pointer"
                   >
                     <div
                       className="h-2 w-full rounded"
@@ -295,7 +296,10 @@ export default function ProjectTeams() {
                       <button
                         title="Delete team"
                         disabled={deletingId === team.id}
-                        onClick={() => handleDelete(team.id, team.name)}
+                        onClick={(e) => {
+                          e.stopPropagation(); // Prevent navigation when clicking delete
+                          handleDelete(team.id, team.name);
+                        }}
                         className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-red-50 text-slate-400 hover:text-red-500"
                       >
                         {deletingId === team.id ? (

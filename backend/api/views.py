@@ -450,6 +450,7 @@ def project_team_detail(request, project_id, team_id):
 
 
 
+
 # reorder_project_teams
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
@@ -482,6 +483,61 @@ def reorder_project_teams(request, project_id):
             Team.objects.filter(project_id=project_id, id=team_id).update(line_index=idx)
 
     return Response({"ok": True, "saved_order": order}, status=status.HTTP_200_OK)
+
+
+
+
+# TODO ADDED Teams
+# team_detail_view
+@api_view(["GET", "PATCH"])
+@permission_classes([IsAuthenticated])
+def team_detail_view(request, project_id, team_id):
+    """
+    GET: Retrieve a single team with its tasks
+    PATCH: Update team properties (name, color, etc.)
+    """
+    user = request.user
+
+    try:
+        team = Team.objects.select_related("project").prefetch_related("tasks").get(
+            id=team_id,
+            project_id=project_id,
+        )
+    except Team.DoesNotExist:
+        return Response({"detail": "Team not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    # Permission check
+    if not user_has_project_access(user, team.project):
+        return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == "GET":
+        serializer = TeamExpandedSerializer(team)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    # PATCH: Update team
+    if request.method == "PATCH":
+        data = request.data
+        
+        if "name" in data:
+            name = data["name"].strip()
+            if name:
+                team.name = name
+        
+        if "color" in data:
+            team.color = data["color"]
+        
+        team.save()
+        
+        serializer = TeamExpandedSerializer(team)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+
+
+
+
+
+
 
 
 #_______________________________________________________________________________________________

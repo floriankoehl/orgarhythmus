@@ -30,7 +30,7 @@ function ProjectStats({ tasks, teams }) {
       : "-";
 
   return (
-    <section className="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <section className="mb-6 grid grid-cols-2 sm:grid-cols-3 gap-3">
       <div className="rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm px-3 py-3 shadow-sm">
         <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-slate-500">
           Tasks
@@ -61,15 +61,7 @@ function ProjectStats({ tasks, teams }) {
         <p className="mt-1 text-xs text-slate-500">Without team</p>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm px-3 py-3 shadow-sm">
-        <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-slate-500">
-          Avg. Prio / Diff
-        </p>
-        <p className="mt-1 text-2xl font-semibold text-slate-900">
-          {avgPriority} / {avgDifficulty}
-        </p>
-        <p className="mt-1 text-xs text-slate-500">Based on project tasks</p>
-      </div>
+     
     </section>
   );
 }
@@ -182,7 +174,7 @@ export default function ProjectMain() {
         
         {/* Back Button */}
         <button
-          onClick={() => navigate("/orgarhythmus/projects")}
+          onClick={() => navigate("/orgarhythmus/")}
           className="group inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white/100 text-slate-900 transition-all duration-200 shadow-sm hover:shadow-md border border-slate-200 w-fit"
         >
           <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
@@ -275,10 +267,11 @@ export default function ProjectMain() {
 
             {loaded_teams.length > 0 ? (
               <div className="space-y-3">
-                {loaded_teams.slice(0, 4).map((team, idx) => (
+                {loaded_teams.slice(0, 4).map((team) => (
                   <div
-                    key={idx}
-                    className="p-3 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors flex items-center justify-between group"
+                    key={team.id}
+                    onClick={() => navigate(`/orgarhythmus/projects/${project.id}/teams/${team.id}`)}
+                    className="p-3 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors flex items-center justify-between group cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
                       <div
@@ -342,9 +335,9 @@ export default function ProjectMain() {
 
             {loaded_tasks.length > 0 ? (
               <div className="space-y-3">
-                {loaded_tasks.slice(0, 4).map((task, idx) => (
+                {loaded_tasks.slice(0, 4).map((task) => (
                   <div
-                    key={idx}
+                    key={task.id}
                     className="p-3 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors"
                   >
                     <div className="flex items-start justify-between gap-2">

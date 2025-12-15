@@ -16,7 +16,7 @@ import ProjectMain, { project_loader } from "./orgarhythmus/projects/pages/Proje
 import OrgaProjects from "./orgarhythmus/pages/OrgaProjects.jsx";
 import ProjectTeams from "./orgarhythmus/projects/pages/ProjectTeams.jsx"
 import ProjectTasks from "./orgarhythmus/projects/pages/ProjectTasks.jsx";
-
+import ProjectTeamDetail from "./orgarhythmus/projects/pages/ProjectTeamDetail.jsx";
 
 const router = createBrowserRouter([
   {
@@ -54,6 +54,7 @@ const router = createBrowserRouter([
             loader: project_loader,
           },
           { path: "teams", element: <ProjectTeams /> },
+          { path: "teams/:teamId", element: <ProjectTeamDetail /> },
           { path: "tasks", element: <ProjectTasks /> },
           { path: "attempts", element: <ProjectAttemptsWrapper /> },
         ],

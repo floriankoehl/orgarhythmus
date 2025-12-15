@@ -9,7 +9,7 @@ export default function OrgaLayout() {
         <OrgaHeader />
       </header>
 
-      <main className="mt-10 min-h-screen  flex  justify-center items-center w-full items-stretch">
+      <main className="mt-15 min-h-screen  flex  justify-center items-center w-full items-stretch">
         <Outlet />
       </main>
     </>

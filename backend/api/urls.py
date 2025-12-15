@@ -18,16 +18,17 @@ urlpatterns = [
     path('orgarhythmus/projects/', views.list_projects),   
     path('orgarhythmus/projects/create/', views.create_project),   
     path("orgarhythmus/projects/<int:pk>/", views.get_project),
-    #TODO ADDED
+    
     path("orgarhythmus/projects/<int:pk>/delete/", views.delete_project),  
 
 
     #Teams
     path("orgarhythmus/projects/<int:project_id>/teams/", views.project_teams, name="project_teams" ), 
+    #TODO ADDED TEAM
+    path("orgarhythmus/projects/<int:project_id>/teams/<int:team_id>/detail/", views.team_detail_view, name="team_detail_view"),  # ADD THIS
     path("orgarhythmus/projects/<int:project_id>/teams/<int:team_id>/", views.project_team_detail),
     path("orgarhythmus/projects/<int:project_id>/project_teams_expanded/", views.project_teams_expanded, name="project_teams_expanded", ), 
-    path("orgarhythmus/projects/<int:project_id>/teams/reorder/", views.reorder_project_teams, name="reorder_project_teams",
-),
+    path("orgarhythmus/projects/<int:project_id>/teams/reorder/", views.reorder_project_teams, name="reorder_project_teams",),
 
     #Tasks
     path("orgarhythmus/projects/<int:project_id>/tasks/", views.project_tasks, name="project_tasks", ),

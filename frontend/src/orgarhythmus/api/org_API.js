@@ -237,6 +237,42 @@ export async function reorder_project_teams(projectId, order) {
   }
 }
 
+
+
+// TODO ADDED Team
+// fetchSingleTeam
+export async function fetchSingleTeam(projectId, teamId) {
+  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/teams/${teamId}/detail/`, {
+    method: 'GET',
+  });
+
+  if (!res.ok) {
+    throw new Error('Failed to fetch team details');
+  }
+
+  return await res.json();
+}
+
+
+// TODO ADDED Team
+// updateTeam
+export async function updateTeam(projectId, teamId, payload) {
+  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/teams/${teamId}/detail/`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw new Error('Failed to update team');
+  }
+
+  return await res.json();
+}
+
+
+
+
+
 //_______________________________________________
 //_______________________________________________
 //____________________TASKS______________________
