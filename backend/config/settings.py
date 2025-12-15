@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+import os
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -22,10 +23,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-%93dq0*u(1im_bz-e$2esdrr!2-fd3oh=rv11d5kd10116@thv'
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-%93dq0*u(1im_bz-e$2esdrr!2-fd3oh=rv11d5kd10116@thv')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "True") == "True"
 
 ALLOWED_HOSTS = ["localhost", "127.0.0.1", "backend", "app.floriankoehl.com", "api.floriankoehl.com"]
 
@@ -42,7 +43,7 @@ INSTALLED_APPS = [
 
     # Third-party
     'rest_framework',
-    'rest_framework_simplejwt',   # ← add this
+    'rest_framework_simplejwt',
     'corsheaders',
 
     # Local
@@ -60,65 +61,6 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
-
-
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://app.floriankoehl.com",
-]
-
-# Session settings
-# Add after your SESSION settings:
-# backend/config/settings.py
-# backend/config/settings.py
-# backend/config/settings.py
-
-import os
-
-DEBUG = True  # Du hast das schon
-
-# Cookie settings - unterschiedlich für Dev/Production
-if DEBUG:
-    # Development (localhost)
-    SESSION_COOKIE_SAMESITE = 'Lax'
-    SESSION_COOKIE_SECURE = False
-    CSRF_COOKIE_SAMESITE = 'Lax'
-    CSRF_COOKIE_SECURE = False
-else:
-    # Production (HTTPS)
-    SESSION_COOKIE_SAMESITE = 'Lax'
-    SESSION_COOKIE_SECURE = True   # WICHTIG für HTTPS!
-    CSRF_COOKIE_SAMESITE = 'Lax'
-    CSRF_COOKIE_SECURE = True
-
-SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_AGE = 1209600
-
-# Rest bleibt gleich
-CORS_ALLOW_CREDENTIALS = True
-# CORS_ALLOWED_ORIGINS = [
-#     "http://localhost:5173",
-#     "http://127.0.0.1:5173",
-#     "https://app.floriankoehl.com",
-# ]
-
-ALLOWED_HOSTS = [
-    "127.0.0.1",
-    "localhost",
-    "192.168.178.200",
-    "api.floriankoehl.com",
-    "app.floriankoehl.com",
-]
-
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://app.floriankoehl.com",
-    "https://api.floriankoehl.com",
-]
-
-
 
 ROOT_URLCONF = 'config.urls'
 
@@ -190,6 +132,10 @@ STATIC_URL = 'static/'
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# REST Framework
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
@@ -200,12 +146,52 @@ REST_FRAMEWORK = {
 }
 
 
+# JWT Settings
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=120),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
 }
 
 
+# CORS Settings
+CORS_ALLOW_CREDENTIALS = True
 
+if DEBUG:
+    # Development - allow localhost
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost",
+        "http://127.0.0.1",
+    ]
+else:
+    # Production - only allow your domain
+    CORS_ALLOWED_ORIGINS = [
+        "https://app.floriankoehl.com",
+    ]
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+# CSRF Settings
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost",
+    "https://app.floriankoehl.com",
+    "https://api.floriankoehl.com",
+]
+
+# Cookie Settings
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_AGE = 1209600  # 2 weeks
+
+if DEBUG:
+    # Development (HTTP)
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_SECURE = False
+else:
+    # Production (HTTPS)
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_SECURE = True
