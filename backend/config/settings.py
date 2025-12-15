@@ -13,6 +13,10 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 from datetime import timedelta
 import os
+from dotenv import load_dotenv
+
+# Load .env file (for local development outside Docker)
+load_dotenv()
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.

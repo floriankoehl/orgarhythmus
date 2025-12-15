@@ -33,6 +33,7 @@ from rest_framework import status
 from django.db import transaction
 
 from .models import Team
+from django.conf import settings
 
 
 
@@ -256,8 +257,6 @@ def user_has_project_access(user, project: Project) -> bool:
         or project.members.filter(id=user.id).exists()
     )
 
-# ----------------------------------------------------------------------------------------------
-
 
 #List Projects
 @api_view(["GET"])
@@ -325,6 +324,29 @@ def get_project(request, pk):
 
 
 
+# TODO ADDDEEEDD
+#delete_project
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_project(request, pk):
+    """
+    Delete a project (only owner can delete).
+    """
+    user = request.user
+    
+    try:
+        project = Project.objects.get(id=pk)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Only owner can delete
+    if project.owner_id != user.id:
+        return Response({"detail": "Only project owner can delete"}, status=status.HTTP_403_FORBIDDEN)
+    
+    project.delete()
+    return Response({"detail": "Project deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+
+# ...existing code...
 
 
 
@@ -428,7 +450,7 @@ def project_team_detail(request, project_id, team_id):
 
 
 
-
+# reorder_project_teams
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
 def reorder_project_teams(request, project_id):
@@ -470,7 +492,7 @@ def reorder_project_teams(request, project_id):
 #_______________________________________________________________________________________________
 #_______________________________________________________________________________________________
 
-from django.conf import settings
+
 
 
 # delete_task_by_id

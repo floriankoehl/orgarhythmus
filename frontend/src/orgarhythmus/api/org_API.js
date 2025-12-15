@@ -117,6 +117,24 @@ export async function fetch_project_detail(projectId) {
   return await res.json();
 }
 
+
+
+// TODO ADDED
+// delete_project
+export async function delete_project(projectId) {
+  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/delete/`, {
+    method: 'DELETE',
+  });
+
+  if (!res.ok) {
+    throw new Error('Failed to delete project');
+  }
+
+  return true;
+}
+
+
+
 //_______________________________________________
 //_______________________________________________
 //____________________TEAMS______________________
@@ -194,6 +212,7 @@ export async function deleteTeamForProject(projectId, teamId) {
   }
 }
 
+// reorder_project_teams
 export async function reorder_project_teams(projectId, order) {
   const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/teams/reorder/`, {
     method: 'PATCH',

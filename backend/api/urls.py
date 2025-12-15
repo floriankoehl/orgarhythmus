@@ -18,6 +18,9 @@ urlpatterns = [
     path('orgarhythmus/projects/', views.list_projects),   
     path('orgarhythmus/projects/create/', views.create_project),   
     path("orgarhythmus/projects/<int:pk>/", views.get_project),
+    #TODO ADDED
+    path("orgarhythmus/projects/<int:pk>/delete/", views.delete_project),  
+
 
     #Teams
     path("orgarhythmus/projects/<int:project_id>/teams/", views.project_teams, name="project_teams" ), 

@@ -93,7 +93,7 @@ export default function ProjectTeams() {
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-b from-slate-50 to-slate-100 flex justify-center">
-      <div className="w-full max-w-5xl px-4 py-8 flex flex-col gap-6">
+      <div className="w-full max-w-full px-4 py-8 flex flex-col gap-6">
 
         {/* Header */}
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
