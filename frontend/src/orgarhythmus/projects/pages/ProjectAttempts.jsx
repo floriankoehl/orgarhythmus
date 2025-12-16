@@ -1,5 +1,5 @@
 import 'reactflow/dist/style.css';
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import ReactFlow, {
   applyNodeChanges,
   applyEdgeChanges,
@@ -511,6 +511,9 @@ export default function OrgAttempts() {
   const [hideCollapsedNodes, setHideCollapsedNodes] = useState(false);
   const [hideEdgesOfCollapsed, setHideEdgesOfCollapsed] = useState(false);
   const [hideEmptyDays, setHideEmptyDays] = useState(false);
+
+  // Error message state
+  const [errorMessage, setErrorMessage] = useState(null);
 
   // Collapsed days map: key = day index (1-based), value = true/false
   const [collapsedDays, setCollapsedDays] = useState({});
@@ -1416,8 +1419,14 @@ export default function OrgAttempts() {
     );
   }, [collapsedDays, pixelMap, componentWidth]);
 
-  // Automatically collapse/expand empty days when hideEmptyDays changes
+  // Automatically collapse/expand empty days when hideEmptyDays button is toggled
+  const prevHideEmptyDaysRef = useRef(hideEmptyDays);
   useEffect(() => {
+    // Only run when hideEmptyDays actually changes (button press), not on mount or other deps
+    if (prevHideEmptyDaysRef.current === hideEmptyDays) return;
+    prevHideEmptyDaysRef.current = hideEmptyDays;
+
+    // Evaluate which days are empty at the time of button press
     setCollapsedDays((prevCollapsedDays) => {
       const newCollapsedDays = { ...prevCollapsedDays };
       let hasChanges = false;
@@ -1555,6 +1564,82 @@ export default function OrgAttempts() {
       if (node.type !== 'attemptNode') return;
 
       const slotIndex = getSlotIndexFromX(node.position.x);
+      const attemptId = extractAttemptId(node.id); // "attempt-19" -> 19
+      if (!attemptId) return;
+
+      // Check if moving to this slot would violate any dependencies
+      // For each edge where this node is the target (has incoming dependency)
+      const incomingEdges = edges.filter((e) => e.target === node.id);
+      for (const edge of incomingEdges) {
+        // Find the source attempt's slot
+        const sourceAttemptId = extractAttemptId(edge.source);
+        const sourceAttempt = all_attempts.find((a) => a.id === sourceAttemptId);
+        if (sourceAttempt && sourceAttempt.slot_index >= slotIndex) {
+          // Dependency violation: trying to move before or same day as predecessor
+          const originalSlot = node?.data?.slotIndex || 1;
+          const revertX = getXFromSlotIndex(originalSlot);
+
+          setAttemptNodes((prev) =>
+            prev.map((n) =>
+              n.id === node.id
+                ? {
+                    ...n,
+                    position: { ...n.position, x: revertX },
+                    data: { ...n.data, shake: true },
+                  }
+                : n,
+            ),
+          );
+
+          setTimeout(() => {
+            setAttemptNodes((prev) =>
+              prev.map((n) => (n.id === node.id ? { ...n, data: { ...n.data, shake: false } } : n)),
+            );
+          }, 250);
+
+          playClackSound();
+          setErrorMessage('Cannot move: must be after all dependencies');
+          setTimeout(() => setErrorMessage(null), 3000);
+          return;
+        }
+      }
+
+      // Check if moving to this slot would violate outgoing dependencies
+      // For each edge where this node is the source (has outgoing dependency)
+      const outgoingEdges = edges.filter((e) => e.source === node.id);
+      for (const edge of outgoingEdges) {
+        // Find the target attempt's slot
+        const targetAttemptId = extractAttemptId(edge.target);
+        const targetAttempt = all_attempts.find((a) => a.id === targetAttemptId);
+        if (targetAttempt && targetAttempt.slot_index <= slotIndex) {
+          // Dependency violation: trying to move after or same day as successor
+          const originalSlot = node?.data?.slotIndex || 1;
+          const revertX = getXFromSlotIndex(originalSlot);
+
+          setAttemptNodes((prev) =>
+            prev.map((n) =>
+              n.id === node.id
+                ? {
+                    ...n,
+                    position: { ...n.position, x: revertX },
+                    data: { ...n.data, shake: true },
+                  }
+                : n,
+            ),
+          );
+
+          setTimeout(() => {
+            setAttemptNodes((prev) =>
+              prev.map((n) => (n.id === node.id ? { ...n, data: { ...n.data, shake: false } } : n)),
+            );
+          }, 250);
+
+          playClackSound();
+          setErrorMessage('Cannot move: all dependents must be after this');
+          setTimeout(() => setErrorMessage(null), 3000);
+          return;
+        }
+      }
 
       // Block dropping onto collapsed days: revert to original slot and pulse
       if (collapsedDays[slotIndex]) {
@@ -1604,9 +1689,7 @@ export default function OrgAttempts() {
         ),
       );
 
-      const attemptId = extractAttemptId(node.id); // "attempt-19" -> 19
-      if (!attemptId) return;
-
+      // attemptId already declared at the top, so we can use it directly
       (async () => {
         try {
           const res = await update_attempt_slot_index(attemptId, slotIndex);
@@ -1619,7 +1702,16 @@ export default function OrgAttempts() {
       // ************** -> ADDED NOW 4: dependency list update:  ***************** :
       // }, [setMergedNodes]);
     },
-    [teamOrder, groupNodes, collapsedByTeamId, collapsedDays, getXFromSlotIndex, getSlotIndexFromX],
+    [
+      teamOrder,
+      groupNodes,
+      collapsedByTeamId,
+      collapsedDays,
+      getXFromSlotIndex,
+      getSlotIndexFromX,
+      edges,
+      all_attempts,
+    ],
   );
 
   // onEdgesChange
@@ -1692,6 +1784,25 @@ export default function OrgAttempts() {
   // ________________________RENDER________________________
   return (
     <>
+      {/* Error Message Overlay */}
+      {errorMessage && (
+        <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
+          <div className="animate-pulse rounded-lg bg-red-500 px-8 py-4 text-white shadow-2xl">
+            <div className="flex items-center gap-3">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+              <span className="text-lg font-semibold">{errorMessage}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div
         style={{ height: `${y_reactflow_size + SETTINGS_HEIGHT}px` }}
         className="flex w-screen items-center justify-center bg-white p-3 sm:max-w-full md:max-w-[700px] lg:max-w-full lg:px-10"
