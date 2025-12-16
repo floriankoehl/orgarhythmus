@@ -364,6 +364,42 @@ def delete_project(request, pk):
     project.delete()
     return Response({"detail": "Project deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
 
+
+# update_project
+@api_view(["PATCH", "PUT"])
+@permission_classes([IsAuthenticated])
+def update_project(request, pk):
+    """
+    Update a project (name, description, etc.)
+    Only owner or members can update.
+    """
+    user = request.user
+    
+    try:
+        project = Project.objects.get(id=pk)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Check if user has access (owner or member)
+    if not user_has_project_access(user, project):
+        return Response({"detail": "You don't have access to this project"}, status=status.HTTP_403_FORBIDDEN)
+    
+    # Only owner can update project settings
+    if project.owner_id != user.id:
+        return Response({"detail": "Only project owner can update project"}, status=status.HTTP_403_FORBIDDEN)
+    
+    # Update fields if provided
+    data = request.data
+    if "name" in data:
+        project.name = data["name"]
+    if "description" in data:
+        project.description = data["description"]
+    
+    project.save()
+    
+    serializer = ProjectSerializer(project)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
 # ...existing code...
 
 

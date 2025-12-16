@@ -18,7 +18,7 @@ urlpatterns = [
     path('orgarhythmus/projects/', views.list_projects),   
     path('orgarhythmus/projects/create/', views.create_project),   
     path("orgarhythmus/projects/<int:pk>/", views.get_project),
-    
+    path("orgarhythmus/projects/<int:pk>/update/", views.update_project),
     path("orgarhythmus/projects/<int:pk>/delete/", views.delete_project),  
 
 

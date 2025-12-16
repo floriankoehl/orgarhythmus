@@ -1,22 +1,17 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { HexColorPicker } from "react-colorful";
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { HexColorPicker } from 'react-colorful';
 
 import {
-  project_teams_expanded,  // Change this
+  project_teams_expanded, // Change this
   createTeamForProject,
   deleteTeamForProject,
-} from "../../api/org_API";
+} from '../../api/org_API';
 
-import {
-  Users,
-  Plus,
-  Trash2,
-  Loader2
-} from "lucide-react";
+import { Users, Plus, Trash2, Loader2 } from 'lucide-react';
 
-import TextField from "@mui/material/TextField";
-import Button from "@mui/material/Button";
+import TextField from '@mui/material/TextField';
+import Button from '@mui/material/Button';
 
 export default function ProjectTeams() {
   const { projectId } = useParams();
@@ -28,8 +23,8 @@ export default function ProjectTeams() {
 
   // Create panel
   const [showCreate, setShowCreate] = useState(false);
-  const [name, setName] = useState("");
-  const [color, setColor] = useState("#facc15");
+  const [name, setName] = useState('');
+  const [color, setColor] = useState('#facc15');
   const [showPicker, setShowPicker] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -38,12 +33,12 @@ export default function ProjectTeams() {
   async function loadTeams() {
     try {
       setLoading(true);
-      const data = await project_teams_expanded(projectId);  // Use expanded version
+      const data = await project_teams_expanded(projectId); // Use expanded version
       const list = Array.isArray(data) ? data : [];
       setTeams(list);
     } catch (err) {
       console.error(err);
-      setError("Could not load teams.");
+      setError('Could not load teams.');
     } finally {
       setLoading(false);
     }
@@ -60,15 +55,15 @@ export default function ProjectTeams() {
       setCreating(true);
       await createTeamForProject(projectId, { name, color });
 
-      setName("");
-      setColor("#facc15");
+      setName('');
+      setColor('#facc15');
       setShowPicker(false);
       setShowCreate(false);
 
       await loadTeams();
     } catch (err) {
       console.error(err);
-      setError("Could not create team.");
+      setError('Could not create team.');
     } finally {
       setCreating(false);
     }
@@ -86,26 +81,26 @@ export default function ProjectTeams() {
       setTeams((prev) => prev.filter((t) => t.id !== teamId));
     } catch (err) {
       console.error(err);
-      setError("Could not delete team.");
+      setError('Could not delete team.');
     } finally {
       setDeletingId(null);
     }
   }
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-b from-slate-50 to-slate-100 flex justify-center px-4">
-      <div className="w-full max-w-5xl py-8 flex flex-col gap-6">
+    <div className="flex min-h-screen w-full justify-center bg-gradient-to-b from-slate-50 to-slate-100 px-4">
+      <div className="flex w-full max-w-5xl flex-col gap-6 py-8">
         {/* Header */}
-        <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-11 w-11 rounded-xl bg-slate-900 flex items-center justify-center text-white shadow">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-white shadow">
               <Users size={20} />
             </div>
             <div>
               <h1 className="text-2xl font-semibold text-slate-900">
                 Teams for Project #{projectId}
               </h1>
-              <p className="text-xs text-slate-600 mt-1">
+              <p className="mt-1 text-xs text-slate-600">
                 Manage which teams operate inside this OrgaRhythmus project.
               </p>
             </div>
@@ -115,12 +110,12 @@ export default function ProjectTeams() {
             variant="contained"
             onClick={() => setShowCreate(true)}
             style={{
-              borderRadius: "100px",
-              textTransform: "none",
-              paddingInline: "1.2rem",
-              display: "flex",
-              alignItems: "center",
-              gap: "0.45rem",
+              borderRadius: '100px',
+              textTransform: 'none',
+              paddingInline: '1.2rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
             }}
           >
             <Plus size={18} />
@@ -130,28 +125,26 @@ export default function ProjectTeams() {
 
         {/* Error message */}
         {error && (
-          <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             {error}
           </div>
         )}
 
         {/* Create team panel */}
         {showCreate && (
-          <div className="relative rounded-2xl bg-white border border-slate-200 shadow p-5">
-            <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-sky-400 via-violet-400 to-emerald-400 rounded-t-lg" />
+          <div className="relative rounded-2xl border border-slate-200 bg-white p-5 shadow">
+            <div className="absolute inset-x-0 top-0 h-[2px] rounded-t-lg bg-gradient-to-r from-sky-400 via-violet-400 to-emerald-400" />
 
-            <div className="flex justify-between items-start mb-4">
+            <div className="mb-4 flex items-start justify-between">
               <div>
-                <h2 className="text-xs uppercase font-semibold tracking-wide text-slate-500">
+                <h2 className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
                   Create Team
                 </h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  Enter a name and pick a team color.
-                </p>
+                <p className="mt-1 text-xs text-slate-500">Enter a name and pick a team color.</p>
               </div>
               <button
                 onClick={() => setShowCreate(false)}
-                className="h-7 w-7 rounded-full border border-slate-200 text-slate-500 flex items-center justify-center hover:bg-slate-100"
+                className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-100"
               >
                 ✕
               </button>
@@ -179,20 +172,17 @@ export default function ProjectTeams() {
                     <span className="font-mono">{color}</span>
                   </div>
 
-                  <div
-                    className="relative cursor-pointer"
-                    onClick={() => setShowPicker((x) => !x)}
-                  >
+                  <div className="relative cursor-pointer" onClick={() => setShowPicker((x) => !x)}>
                     <div
-                      className="h-8 w-24 rounded-full border border-slate-300 flex items-center justify-center bg-white shadow"
-                      style={{ backgroundColor: color + "22" }}
+                      className="flex h-8 w-24 items-center justify-center rounded-full border border-slate-300 bg-white shadow"
+                      style={{ backgroundColor: color + '22' }}
                     >
-                      {showPicker ? "OK" : "Pick"}
+                      {showPicker ? 'OK' : 'Pick'}
                     </div>
 
                     {showPicker && (
                       <div
-                        className="absolute bottom-full right-0 mb-2 z-[9999] p-3 bg-slate-900 rounded-xl shadow-xl"
+                        className="absolute right-0 bottom-full z-[9999] mb-2 rounded-xl bg-slate-900 p-3 shadow-xl"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <HexColorPicker color={color} onChange={setColor} />
@@ -207,7 +197,7 @@ export default function ProjectTeams() {
               <Button
                 variant="outlined"
                 size="small"
-                style={{ textTransform: "none" }}
+                style={{ textTransform: 'none' }}
                 onClick={() => setShowCreate(false)}
               >
                 Cancel
@@ -217,7 +207,7 @@ export default function ProjectTeams() {
                 variant="contained"
                 size="small"
                 disabled={!name.trim() || creating}
-                style={{ textTransform: "none" }}
+                style={{ textTransform: 'none' }}
                 onClick={handleCreate}
               >
                 {creating ? (
@@ -226,7 +216,7 @@ export default function ProjectTeams() {
                     Creating…
                   </span>
                 ) : (
-                  "Create"
+                  'Create'
                 )}
               </Button>
             </div>
@@ -234,63 +224,58 @@ export default function ProjectTeams() {
         )}
 
         {/* Team grid */}
-        <section className="rounded-2xl bg-white border border-slate-200 shadow p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xs uppercase font-semibold tracking-wide text-slate-500">
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
               Teams in this project
             </h2>
             <span className="text-xs text-slate-400">
               {loading
-                ? "Loading…"
+                ? 'Loading…'
                 : teams.length === 0
-                  ? "No teams"
-                  : `${teams.length} team${teams.length === 1 ? "" : "s"}`}
+                  ? 'No teams'
+                  : `${teams.length} team${teams.length === 1 ? '' : 's'}`}
             </span>
           </div>
 
           {loading ? (
-            <div className="flex flex-col items-center py-10 gap-2 text-slate-500">
+            <div className="flex flex-col items-center gap-2 py-10 text-slate-500">
               <Loader2 className="animate-spin" />
               <span className="text-xs">Loading teams…</span>
             </div>
           ) : teams.length === 0 ? (
-            <div className="flex flex-col items-center py-10 text-slate-500 gap-3">
+            <div className="flex flex-col items-center gap-3 py-10 text-slate-500">
               <Users size={22} className="text-slate-300" />
               <p className="text-sm">No teams yet — create your first one!</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {teams.map((team) => {
-                const initial = team.name?.[0]?.toUpperCase() || "T";
+                const initial = team.name?.[0]?.toUpperCase() || 'T';
                 const taskCount = team.tasks?.length || 0;
 
                 return (
                   <div
                     key={team.id}
                     onClick={() => navigate(`/orgarhythmus/projects/${projectId}/teams/${team.id}`)}
-                    className="rounded-xl border border-slate-200 bg-white shadow hover:shadow-lg transition p-4 flex flex-col gap-4 cursor-pointer"
+                    className="flex cursor-pointer flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow transition hover:shadow-lg"
                   >
-                    <div
-                      className="h-2 w-full rounded"
-                      style={{ backgroundColor: team.color }}
-                    />
+                    <div className="h-2 w-full rounded" style={{ backgroundColor: team.color }} />
 
-                    <div className="flex justify-between items-center">
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div
-                          className="h-10 w-10 rounded-full shadow flex items-center justify-center text-sm font-bold text-slate-900"
-                          style={{ backgroundColor: team.color + "aa" }}
+                          className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-slate-900 shadow"
+                          style={{ backgroundColor: team.color + 'aa' }}
                         >
                           {initial}
                         </div>
 
                         <div>
-                          <h3 className="font-semibold text-slate-900 truncate max-w-[150px]">
+                          <h3 className="max-w-[150px] truncate font-semibold text-slate-900">
                             {team.name}
                           </h3>
-                          <p className="text-xs font-mono text-slate-500">
-                            {team.color}
-                          </p>
+                          <p className="font-mono text-xs text-slate-500">{team.color}</p>
                         </div>
                       </div>
 
@@ -301,7 +286,7 @@ export default function ProjectTeams() {
                           e.stopPropagation();
                           handleDelete(team.id, team.name);
                         }}
-                        className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-red-50 text-slate-400 hover:text-red-500"
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-red-50 hover:text-red-500"
                       >
                         {deletingId === team.id ? (
                           <Loader2 size={16} className="animate-spin" />
@@ -313,29 +298,32 @@ export default function ProjectTeams() {
 
                     {/* Tasks list */}
                     {taskCount > 0 ? (
-                      <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-slate-100">
-                        <p className="text-xs font-semibold text-slate-600">
-                          Tasks ({taskCount})
-                        </p>
+                      <div className="mt-2 flex flex-col gap-2 border-t border-slate-100 pt-2">
+                        <p className="text-xs font-semibold text-slate-600">Tasks ({taskCount})</p>
                         <ul className="space-y-1">
                           {team.tasks.slice(0, 3).map((task) => (
                             <li
                               key={task.id}
-                              className="text-xs text-slate-600 flex items-center gap-2"
+                              onClick={(e) => {
+                                e.stopPropagation(); // Prevent team card click
+                                navigate(`/orgarhythmus/projects/${projectId}/tasks/${task.id}`);
+                              }}
+                              className="-mx-2 flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs text-slate-600 transition-colors hover:bg-slate-50"
                             >
                               <span className="h-1 w-1 rounded-full bg-slate-400" />
-                              <span className="truncate">{task.name}</span>
+                              <span className="flex-1 truncate">{task.name}</span>
+                              <span className="text-[10px] text-slate-400">→</span>
                             </li>
                           ))}
                           {taskCount > 3 && (
-                            <li className="text-xs text-slate-500 italic">
+                            <li className="px-2 text-xs text-slate-500 italic">
                               +{taskCount - 3} more
                             </li>
                           )}
                         </ul>
                       </div>
                     ) : (
-                      <p className="text-xs text-slate-500 mt-2">No tasks assigned</p>
+                      <p className="mt-2 text-xs text-slate-500">No tasks assigned</p>
                     )}
                   </div>
                 );

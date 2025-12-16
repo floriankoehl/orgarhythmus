@@ -1,9 +1,29 @@
 // orgarhythmus/projects/pages/ProjectMain.jsx
-import { useLoaderData, useNavigate } from "react-router-dom";
-import { Folder, Calendar, User, ArrowLeft, Plus, Settings, Share2, Trash2, Users, AlertTriangle, X } from "lucide-react";
-import { fetch_project_detail, fetchTeamsForProject, fetchTasksForProject, delete_project } from "../../api/org_API";
-import Button from "@mui/material/Button";
-import { useState } from "react";
+import { useLoaderData, useNavigate } from 'react-router-dom';
+import {
+  Folder,
+  Calendar,
+  User,
+  ArrowLeft,
+  Plus,
+  Settings,
+  Share2,
+  Trash2,
+  Users,
+  AlertTriangle,
+  X,
+  Pencil,
+  Check,
+} from 'lucide-react';
+import {
+  fetch_project_detail,
+  fetchTeamsForProject,
+  fetchTasksForProject,
+  delete_project,
+  update_project_api,
+} from '../../api/org_API';
+import Button from '@mui/material/Button';
+import { useState } from 'react';
 
 export async function project_loader({ params }) {
   const { projectId } = params;
@@ -22,46 +42,38 @@ function ProjectStats({ tasks, teams }) {
   const avgPriority =
     totalTasks > 0
       ? (tasks.reduce((sum, t) => sum + (t.priority || 0), 0) / totalTasks).toFixed(1)
-      : "-";
+      : '-';
 
   const avgDifficulty =
     totalTasks > 0
       ? (tasks.reduce((sum, t) => sum + (t.difficulty || 0), 0) / totalTasks).toFixed(1)
-      : "-";
+      : '-';
 
   return (
-    <section className="mb-6 grid grid-cols-2 sm:grid-cols-3 gap-3">
-      <div className="rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm px-3 py-3 shadow-sm">
-        <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-slate-500">
+    <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-3 shadow-sm backdrop-blur-sm">
+        <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
           Tasks
         </p>
-        <p className="mt-1 text-2xl font-semibold text-slate-900">
-          {totalTasks}
-        </p>
+        <p className="mt-1 text-2xl font-semibold text-slate-900">{totalTasks}</p>
         <p className="mt-1 text-xs text-slate-500">Tasks in this project</p>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm px-3 py-3 shadow-sm">
-        <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-slate-500">
+      <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-3 shadow-sm backdrop-blur-sm">
+        <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
           Teams
         </p>
-        <p className="mt-1 text-2xl font-semibold text-slate-900">
-          {totalTeams}
-        </p>
+        <p className="mt-1 text-2xl font-semibold text-slate-900">{totalTeams}</p>
         <p className="mt-1 text-xs text-slate-500">Project teams</p>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm px-3 py-3 shadow-sm">
-        <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-slate-500">
+      <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-3 shadow-sm backdrop-blur-sm">
+        <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
           Unassigned
         </p>
-        <p className="mt-1 text-2xl font-semibold text-slate-900">
-          {unassignedTasks}
-        </p>
+        <p className="mt-1 text-2xl font-semibold text-slate-900">{unassignedTasks}</p>
         <p className="mt-1 text-xs text-slate-500">Without team</p>
       </div>
-
-     
     </section>
   );
 }
@@ -71,39 +83,36 @@ function DeleteProjectModal({ isOpen, projectName, onConfirm, onCancel, isLoadin
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="animate-in fade-in slide-in-from-top-10 duration-300 w-full max-w-md mx-4">
-        <div className="rounded-2xl border border-red-200 bg-white shadow-2xl p-8">
-          
+      <div className="animate-in fade-in slide-in-from-top-10 mx-4 w-full max-w-md duration-300">
+        <div className="rounded-2xl border border-red-200 bg-white p-8 shadow-2xl">
           {/* Close button */}
           <button
             onClick={onCancel}
             disabled={isLoading}
-            className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+            className="absolute top-4 right-4 rounded-lg p-2 transition-colors hover:bg-slate-100 disabled:opacity-50"
           >
             <X size={20} className="text-slate-500" />
           </button>
 
           {/* Icon */}
-          <div className="flex justify-center mb-6">
-            <div className="h-14 w-14 rounded-full bg-red-100 flex items-center justify-center">
+          <div className="mb-6 flex justify-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
               <AlertTriangle size={28} className="text-red-600" />
             </div>
           </div>
 
           {/* Title */}
-          <h2 className="text-2xl font-semibold text-slate-900 text-center mb-2">
-            Delete Project
-          </h2>
+          <h2 className="mb-2 text-center text-2xl font-semibold text-slate-900">Delete Project</h2>
 
           {/* Warning text */}
-          <p className="text-center text-slate-600 mb-6">
+          <p className="mb-6 text-center text-slate-600">
             <span className="font-semibold">Be cautious,</span> this can't be undone.
           </p>
 
           {/* Project name highlight */}
-          <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-100">
+          <div className="mb-6 rounded-lg border border-red-100 bg-red-50 p-4">
             <p className="text-sm text-slate-600">You are about to delete:</p>
-            <p className="text-lg font-semibold text-red-600 mt-1 truncate">{projectName}</p>
+            <p className="mt-1 truncate text-lg font-semibold text-red-600">{projectName}</p>
           </div>
 
           {/* Action buttons */}
@@ -111,18 +120,18 @@ function DeleteProjectModal({ isOpen, projectName, onConfirm, onCancel, isLoadin
             <button
               onClick={onCancel}
               disabled={isLoading}
-              className="flex-1 px-4 py-3 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-900 font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 rounded-lg bg-slate-100 px-4 py-3 font-semibold text-slate-900 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               onClick={onConfirm}
               disabled={isLoading}
-              className="flex-1 px-4 py-3 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-3 font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isLoading ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   Deleting...
                 </>
               ) : (
@@ -139,77 +148,149 @@ function DeleteProjectModal({ isOpen, projectName, onConfirm, onCancel, isLoadin
   );
 }
 
+// test
 export default function ProjectMain() {
   const { project, loaded_teams, loaded_tasks } = useLoaderData();
   const navigate = useNavigate();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [projectName, setProjectName] = useState(project.name);
+  const [saving, setSaving] = useState(false);
 
   const createdDate = project.created_at
-    ? new Date(project.created_at).toLocaleDateString("de-DE", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
+    ? new Date(project.created_at).toLocaleDateString('de-DE', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
       })
-    : "";
+    : '';
 
   async function handleConfirmDelete() {
     try {
       setDeleting(true);
       await delete_project(project.id);
       // Add a small delay to ensure the request completes
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
       // Navigate to orgarhythmus main page (projects list)
-      navigate("/orgarhythmus");
+      navigate('/orgarhythmus');
     } catch (err) {
       console.error(err);
-      alert("Failed to delete project: " + err.message);
+      alert('Failed to delete project: ' + err.message);
       setDeleting(false);
     }
   }
 
+  async function handleSaveName() {
+    if (!projectName.trim()) {
+      alert('Project name cannot be empty');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await update_project_api(project.id, { name: projectName });
+      project.name = projectName; // Update local state
+      setIsEditingName(false);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update project name: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleCancelEdit() {
+    setProjectName(project.name);
+    setIsEditingName(false);
+  }
+
   return (
-    <div className="min-h-screen w-full bg-gradient-to-b from-slate-50 to-slate-100 flex justify-center">
-      <div className="w-full max-w-5xl px-4 py-8 flex flex-col gap-6">
-        
+    <div className="flex min-h-screen w-full justify-center bg-gradient-to-b from-slate-50 to-slate-100">
+      <div className="flex w-full max-w-5xl flex-col gap-6 px-4 py-8">
         {/* Back Button */}
         <button
-          onClick={() => navigate("/orgarhythmus/")}
-          className="group inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white/100 text-slate-900 transition-all duration-200 shadow-sm hover:shadow-md border border-slate-200 w-fit"
+          onClick={() => navigate('/orgarhythmus/')}
+          className="group inline-flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white/80 px-4 py-2 text-slate-900 shadow-sm transition-all duration-200 hover:bg-white/100 hover:shadow-md"
         >
-          <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
+          <ArrowLeft size={16} className="transition-transform group-hover:-translate-x-1" />
           <span className="text-sm font-medium">Zurück</span>
         </button>
 
         {/* Header Section */}
-        <header className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-sm shadow-sm p-6">
-          <div className="flex items-start justify-between gap-4 mb-4">
+        <header className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur-sm">
+          <div className="mb-4 flex items-start justify-between gap-4">
             <div className="flex-1">
-              <h1 className="text-3xl sm:text-4xl font-semibold text-slate-900">
-                {project.name}
-              </h1>
-              <p className="text-slate-600 text-base mt-2 leading-relaxed">
-                {project.description || "Kein Beschreibung hinterlegt. Gestalte dein Projekt!"}
+              {isEditingName ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                    className="flex-1 rounded-lg border border-slate-300 px-4 py-2 text-3xl font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none sm:text-4xl"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveName();
+                      if (e.key === 'Escape') handleCancelEdit();
+                    }}
+                  />
+                  <button
+                    onClick={handleSaveName}
+                    disabled={saving}
+                    className="rounded-lg bg-green-600 p-3 text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Save name"
+                  >
+                    {saving ? (
+                      <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    ) : (
+                      <Check size={20} />
+                    )}
+                  </button>
+                  <button
+                    onClick={handleCancelEdit}
+                    disabled={saving}
+                    className="rounded-lg bg-slate-100 p-3 text-slate-600 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="Cancel"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              ) : (
+                <div className="group flex items-center gap-2">
+                  <h1 className="text-3xl font-semibold text-slate-900 sm:text-4xl">
+                    {projectName}
+                  </h1>
+                  <button
+                    onClick={() => setIsEditingName(true)}
+                    className="rounded-lg p-2 text-slate-400 opacity-0 transition-all group-hover:opacity-100 hover:bg-slate-100 hover:text-slate-600"
+                    title="Edit project name"
+                  >
+                    <Pencil size={20} />
+                  </button>
+                </div>
+              )}
+              <p className="mt-2 text-base leading-relaxed text-slate-600">
+                {project.description || 'Kein Beschreibung hinterlegt. Gestalte dein Projekt!'}
               </p>
             </div>
 
             <div className="flex gap-2">
               <button
                 title="Project settings"
-                className="p-3 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+                className="rounded-lg bg-slate-100 p-3 text-slate-600 transition-colors hover:bg-slate-200"
               >
                 <Settings size={20} />
               </button>
               <button
                 title="Share project"
-                className="p-3 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+                className="rounded-lg bg-slate-100 p-3 text-slate-600 transition-colors hover:bg-slate-200"
               >
                 <Share2 size={20} />
               </button>
               <button
                 title="Delete project"
                 onClick={() => setShowDeleteModal(true)}
-                className="p-3 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 transition-colors"
+                className="rounded-lg bg-red-50 p-3 text-red-600 transition-colors hover:bg-red-100"
               >
                 <Trash2 size={20} />
               </button>
@@ -218,21 +299,21 @@ export default function ProjectMain() {
 
           {/* Meta Information */}
           <div className="flex flex-wrap gap-3">
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
+            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
               <User size={16} className="text-blue-600" />
-              <span className="text-sm text-slate-700 font-medium">{project.owner_username}</span>
+              <span className="text-sm font-medium text-slate-700">{project.owner_username}</span>
             </div>
 
             {createdDate && (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
+              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                 <Calendar size={16} className="text-purple-600" />
                 <span className="text-sm text-slate-700">{createdDate}</span>
               </div>
             )}
 
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
+            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
               <Folder size={16} className="text-emerald-600" />
-              <span className="text-sm text-slate-700 font-mono">ID: {project.id}</span>
+              <span className="font-mono text-sm text-slate-700">ID: {project.id}</span>
             </div>
           </div>
         </header>
@@ -241,25 +322,26 @@ export default function ProjectMain() {
         <ProjectStats tasks={loaded_tasks} teams={loaded_teams} />
 
         {/* Teams & Tasks Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Teams Card */}
-          <section className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-sm shadow-sm p-6">
-            <div className="flex items-center justify-between mb-4">
+          <section className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur-sm">
+            <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
                   <Users size={20} className="text-blue-600" />
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">Teams</h2>
-                  <p className="text-xs text-slate-500">{loaded_teams.length} {loaded_teams.length === 1 ? "Team" : "Teams"}</p>
+                  <p className="text-xs text-slate-500">
+                    {loaded_teams.length} {loaded_teams.length === 1 ? 'Team' : 'Teams'}
+                  </p>
                 </div>
               </div>
               <Button
                 variant="outlined"
                 size="small"
                 onClick={() => navigate(`/orgarhythmus/projects/${project.id}/teams`)}
-                style={{ textTransform: "none", borderRadius: "8px" }}
+                style={{ textTransform: 'none', borderRadius: '8px' }}
               >
                 Manage
               </Button>
@@ -270,13 +352,15 @@ export default function ProjectMain() {
                 {loaded_teams.slice(0, 4).map((team) => (
                   <div
                     key={team.id}
-                    onClick={() => navigate(`/orgarhythmus/projects/${project.id}/teams/${team.id}`)}
-                    className="p-3 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors flex items-center justify-between group cursor-pointer"
+                    onClick={() =>
+                      navigate(`/orgarhythmus/projects/${project.id}/teams/${team.id}`)
+                    }
+                    className="group flex cursor-pointer items-center justify-between rounded-lg bg-slate-50 p-3 transition-colors hover:bg-slate-100"
                   >
                     <div className="flex items-center gap-3">
                       <div
                         className="h-3 w-3 rounded-full"
-                        style={{ backgroundColor: team.color || "#64748b" }}
+                        style={{ backgroundColor: team.color || '#64748b' }}
                       />
                       <span className="text-sm font-medium text-slate-900">{team.name}</span>
                     </div>
@@ -286,13 +370,13 @@ export default function ProjectMain() {
               </div>
             ) : (
               <div className="py-8 text-center">
-                <Users size={32} className="text-slate-300 mx-auto mb-2" />
+                <Users size={32} className="mx-auto mb-2 text-slate-300" />
                 <p className="text-sm text-slate-500">Noch keine Teams erstellt</p>
                 <Button
                   variant="contained"
                   size="small"
                   onClick={() => navigate(`/orgarhythmus/projects/${project.id}/teams`)}
-                  style={{ textTransform: "none", marginTop: "1rem", borderRadius: "8px" }}
+                  style={{ textTransform: 'none', marginTop: '1rem', borderRadius: '8px' }}
                 >
                   Erstes Team erstellen
                 </Button>
@@ -304,7 +388,7 @@ export default function ProjectMain() {
                 fullWidth
                 variant="outlined"
                 onClick={() => navigate(`/orgarhythmus/projects/${project.id}/teams`)}
-                style={{ textTransform: "none", marginTop: "1rem", borderRadius: "8px" }}
+                style={{ textTransform: 'none', marginTop: '1rem', borderRadius: '8px' }}
               >
                 Alle Teams anzeigen →
               </Button>
@@ -312,22 +396,24 @@ export default function ProjectMain() {
           </section>
 
           {/* Tasks Card */}
-          <section className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-sm shadow-sm p-6">
-            <div className="flex items-center justify-between mb-4">
+          <section className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur-sm">
+            <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100">
                   <Folder size={20} className="text-purple-600" />
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">Tasks</h2>
-                  <p className="text-xs text-slate-500">{loaded_tasks.length} {loaded_tasks.length === 1 ? "Task" : "Tasks"}</p>
+                  <p className="text-xs text-slate-500">
+                    {loaded_tasks.length} {loaded_tasks.length === 1 ? 'Task' : 'Tasks'}
+                  </p>
                 </div>
               </div>
               <Button
                 variant="outlined"
                 size="small"
                 onClick={() => navigate(`/orgarhythmus/projects/${project.id}/tasks`)}
-                style={{ textTransform: "none", borderRadius: "8px" }}
+                style={{ textTransform: 'none', borderRadius: '8px' }}
               >
                 Manage
               </Button>
@@ -338,18 +424,24 @@ export default function ProjectMain() {
                 {loaded_tasks.slice(0, 4).map((task) => (
                   <div
                     key={task.id}
-                    className="p-3 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors"
+                    onClick={() =>
+                      navigate(`/orgarhythmus/projects/${project.id}/tasks/${task.id}`)
+                    }
+                    className="cursor-pointer rounded-lg bg-slate-50 p-3 transition-all hover:bg-slate-100 hover:shadow-md"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-900 truncate">{task.name}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-900">{task.name}</p>
                         {task.team && (
-                          <p className="text-xs text-slate-500 mt-1">{task.team.name}</p>
+                          <p className="mt-1 text-xs text-slate-500">{task.team.name}</p>
                         )}
                       </div>
-                      <div className="flex items-center gap-1 text-xs text-slate-500 flex-shrink-0">
-                        <span className="px-2 py-1 bg-blue-50 rounded">P{task.priority || 0}</span>
-                        <span className="px-2 py-1 bg-purple-50 rounded">D{task.difficulty || 0}</span>
+                      <div className="flex flex-shrink-0 items-center gap-1 text-xs text-slate-500">
+                        <span className="rounded bg-blue-50 px-2 py-1">P{task.priority || 0}</span>
+                        <span className="rounded bg-purple-50 px-2 py-1">
+                          D{task.difficulty || 0}
+                        </span>
+                        <span className="text-slate-400">→</span>
                       </div>
                     </div>
                   </div>
@@ -357,13 +449,13 @@ export default function ProjectMain() {
               </div>
             ) : (
               <div className="py-8 text-center">
-                <Folder size={32} className="text-slate-300 mx-auto mb-2" />
+                <Folder size={32} className="mx-auto mb-2 text-slate-300" />
                 <p className="text-sm text-slate-500">Noch keine Tasks erstellt</p>
                 <Button
                   variant="contained"
                   size="small"
                   onClick={() => navigate(`/orgarhythmus/projects/${project.id}/tasks`)}
-                  style={{ textTransform: "none", marginTop: "1rem", borderRadius: "8px" }}
+                  style={{ textTransform: 'none', marginTop: '1rem', borderRadius: '8px' }}
                 >
                   Ersten Task erstellen
                 </Button>
@@ -375,13 +467,12 @@ export default function ProjectMain() {
                 fullWidth
                 variant="outlined"
                 onClick={() => navigate(`/orgarhythmus/projects/${project.id}/tasks`)}
-                style={{ textTransform: "none", marginTop: "1rem", borderRadius: "8px" }}
+                style={{ textTransform: 'none', marginTop: '1rem', borderRadius: '8px' }}
               >
                 Alle Tasks anzeigen →
               </Button>
             )}
           </section>
-
         </div>
       </div>
 

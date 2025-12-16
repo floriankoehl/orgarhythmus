@@ -1,77 +1,52 @@
 // orgarhythmus/projects/pages/ProjectTasks.jsx
 
-import { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import Button from "@mui/material/Button";
-import { Plus } from "lucide-react";
+import { useEffect, useState, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import Button from '@mui/material/Button';
+import { Plus, Filter, X } from 'lucide-react';
 
-import {
-  fetchTasksForProject,
-  fetchTeamsForProject,
-} from "../../api/org_API";
-import SMTaskCard from "../../org_components/TaskCardSM";
-import ProjectCreateTaskForm from "../components/ProjectCreateTaskForm";
+import { fetchTasksForProject, fetchTeamsForProject } from '../../api/org_API';
+import SMTaskCard from '../../org_components/TaskCardSM';
+import ProjectCreateTaskForm from '../components/ProjectCreateTaskForm';
 
-/* ---- Stats, wie in OrgaHome ---- */
+/* ---- Stats ---- */
 function ProjectStats({ tasks, teams }) {
   const totalTasks = tasks.length;
   const totalTeams = teams.length;
   const unassignedTasks = tasks.filter((t) => !t.team).length;
 
-  const avgPriority =
-    totalTasks > 0
-      ? (
-        tasks.reduce((sum, t) => sum + (t.priority || 0), 0) / totalTasks
-      ).toFixed(1)
-      : "-";
-
-  const avgDifficulty =
-    totalTasks > 0
-      ? (
-        tasks.reduce((sum, t) => sum + (t.difficulty || 0), 0) / totalTasks
-      ).toFixed(1)
-      : "-";
-
   return (
-    <section className="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
-      <div className="rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm px-3 py-3 shadow-sm">
-        <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-slate-500">
+    <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-3 shadow-sm backdrop-blur-sm">
+        <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
           Tasks
         </p>
-        <p className="mt-1 text-2xl font-semibold text-slate-900">
-          {totalTasks}
-        </p>
+        <p className="mt-1 text-2xl font-semibold text-slate-900">{totalTasks}</p>
         <p className="mt-1 text-xs text-slate-500">Tasks in this project</p>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm px-3 py-3 shadow-sm">
-        <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-slate-500">
+      <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-3 shadow-sm backdrop-blur-sm">
+        <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
           Teams
         </p>
-        <p className="mt-1 text-2xl font-semibold text-slate-900">
-          {totalTeams}
-        </p>
+        <p className="mt-1 text-2xl font-semibold text-slate-900">{totalTeams}</p>
         <p className="mt-1 text-xs text-slate-500">Project teams</p>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm px-3 py-3 shadow-sm">
-        <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-slate-500">
+      <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-3 shadow-sm backdrop-blur-sm">
+        <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
           Unassigned
         </p>
-        <p className="mt-1 text-2xl font-semibold text-slate-900">
-          {unassignedTasks}
-        </p>
+        <p className="mt-1 text-2xl font-semibold text-slate-900">{unassignedTasks}</p>
         <p className="mt-1 text-xs text-slate-500">Without team</p>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white/80 backdrop-blur-sm px-3 py-3 shadow-sm">
-        <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-slate-500">
-          Avg. Prio / Diff
+      <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-3 shadow-sm backdrop-blur-sm">
+        <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
+          Assigned Persons
         </p>
-        <p className="mt-1 text-2xl font-semibold text-slate-900">
-          {avgPriority} / {avgDifficulty}
-        </p>
-        <p className="mt-1 text-xs text-slate-500">Based on project tasks</p>
+        <p className="mt-1 text-2xl font-semibold text-slate-900">-</p>
+        <p className="mt-1 text-xs text-slate-500">Coming soon</p>
       </div>
     </section>
   );
@@ -86,6 +61,7 @@ export default function ProjectTasks() {
   const [teams, setTeams] = useState([]);
   const [showCreatePanel, setShowCreatePanel] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [selectedTeamIds, setSelectedTeamIds] = useState([]);
 
   const loadData = useCallback(async () => {
     if (!projectId) return;
@@ -100,7 +76,7 @@ export default function ProjectTasks() {
       setTasks(taskData || []);
       setTeams(teamData || []);
     } catch (err) {
-      console.error("Failed to load project tasks/teams:", err);
+      console.error('Failed to load project tasks/teams:', err);
     } finally {
       setLoading(false);
     }
@@ -117,18 +93,54 @@ export default function ProjectTasks() {
     setShowCreatePanel(false);
   }
 
+  // Toggle team filter
+  function toggleTeamFilter(teamId) {
+    if (selectedTeamIds.includes(teamId)) {
+      setSelectedTeamIds(selectedTeamIds.filter((id) => id !== teamId));
+    } else {
+      setSelectedTeamIds([...selectedTeamIds, teamId]);
+    }
+  }
+
+  // Clear all filters
+  function clearFilters() {
+    setSelectedTeamIds([]);
+  }
+
+  // Group tasks by team
+  const groupedTasks = [];
+
+  // Filter teams if any selected
+  const visibleTeams =
+    selectedTeamIds.length > 0 ? teams.filter((team) => selectedTeamIds.includes(team.id)) : teams;
+
+  // Add tasks for each visible team
+  visibleTeams.forEach((team) => {
+    const teamTasks = tasks.filter((task) => task.team?.id === team.id);
+    if (teamTasks.length > 0) {
+      groupedTasks.push({ team, tasks: teamTasks });
+    }
+  });
+
+  // Add unassigned tasks if no filter is active OR if showing all
+  if (selectedTeamIds.length === 0) {
+    const unassignedTasks = tasks.filter((task) => !task.team);
+    if (unassignedTasks.length > 0) {
+      groupedTasks.push({ team: null, tasks: unassignedTasks });
+    }
+  }
+
   return (
-    <div className="min-h-screen w-screen bg-gradient-to-b from-slate-50 to-slate-100 flex justify-center">
+    <div className="flex min-h-screen w-screen justify-center bg-gradient-to-b from-slate-50 to-slate-100">
       <div className="w-full max-w-6xl px-4 py-10">
         {/* Header */}
         <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
               Project #{projectId} – Tasks
             </h1>
-            <p className="text-sm text-slate-600 mt-1">
-              Manage all event tasks inside this project and assign them to
-              project teams.
+            <p className="mt-1 text-sm text-slate-600">
+              Manage all event tasks inside this project and assign them to project teams.
             </p>
           </div>
 
@@ -138,12 +150,12 @@ export default function ProjectTasks() {
               size="medium"
               onClick={() => setShowCreatePanel(true)}
               style={{
-                borderRadius: "9999px",
-                paddingInline: "1.25rem",
-                textTransform: "none",
-                display: "flex",
-                gap: "0.4rem",
-                alignItems: "center",
+                borderRadius: '9999px',
+                paddingInline: '1.25rem',
+                textTransform: 'none',
+                display: 'flex',
+                gap: '0.4rem',
+                alignItems: 'center',
               }}
             >
               <Plus size={18} />
@@ -155,19 +167,19 @@ export default function ProjectTasks() {
         {/* Create Panel */}
         {showCreatePanel && (
           <div className="mb-8">
-            <div className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-sm shadow-md p-4 sm:p-5 relative overflow-hidden">
-              <div className="flex items-start justify-between mb-3">
+            <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-md backdrop-blur-sm sm:p-5">
+              <div className="mb-3 flex items-start justify-between">
                 <div>
-                  <h2 className="text-sm font-semibold tracking-[0.16em] uppercase text-slate-500">
+                  <h2 className="text-sm font-semibold tracking-[0.16em] text-slate-500 uppercase">
                     Create a new project task
                   </h2>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="mt-1 text-xs text-slate-500">
                     Define name, team, priority and difficulty for this project.
                   </p>
                 </div>
                 <button
                   onClick={() => setShowCreatePanel(false)}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
                 >
                   ✕
                 </button>
@@ -189,48 +201,121 @@ export default function ProjectTasks() {
         {/* Stats */}
         <ProjectStats tasks={tasks} teams={teams} />
 
-        {/* Tasks Grid */}
-        <section className="rounded-2xl border border-slate-200 bg-white/70 shadow-sm backdrop-blur-sm p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xs font-semibold tracking-[0.12em] uppercase text-slate-500">
+        {/* Team Filter */}
+        {teams.length > 0 && (
+          <section className="mb-6 rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm backdrop-blur-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Filter size={16} className="text-slate-500" />
+                <h3 className="text-xs font-semibold tracking-[0.12em] text-slate-500 uppercase">
+                  Filter by Team
+                </h3>
+              </div>
+              {selectedTeamIds.length > 0 && (
+                <button
+                  onClick={clearFilters}
+                  className="flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-200"
+                >
+                  <X size={14} />
+                  Clear
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {teams.map((team) => {
+                const isSelected = selectedTeamIds.includes(team.id);
+                return (
+                  <button
+                    key={team.id}
+                    onClick={() => toggleTeamFilter(team.id)}
+                    className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-all ${
+                      isSelected
+                        ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div
+                      className="h-3 w-3 rounded-full"
+                      style={{ backgroundColor: team.color || '#64748b' }}
+                    />
+                    {team.name}
+                    <span className="text-xs text-slate-400">
+                      ({tasks.filter((t) => t.team?.id === team.id).length})
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Tasks Grouped by Team */}
+        <section className="rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm backdrop-blur-sm sm:p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xs font-semibold tracking-[0.12em] text-slate-500 uppercase">
               Project tasks
             </h2>
             <span className="text-xs text-slate-400">
-              {loading
-                ? "Loading…"
-                : hasTasks
-                  ? "Live project overview"
-                  : "Nothing here yet"}
+              {loading ? 'Loading…' : hasTasks ? 'Live project overview' : 'Nothing here yet'}
             </span>
           </div>
 
           {loading ? (
-            <div className="py-10 text-center text-xs text-slate-500">
-              Loading tasks…
-            </div>
+            <div className="py-10 text-center text-xs text-slate-500">Loading tasks…</div>
           ) : hasTasks ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 place-items-stretch">
-              {tasks.map((task) => (
-                <div
-                  key={task.id}
-                  onClick={() => navigate(`/orgarhythmus/projects/${projectId}/tasks/${task.id}`)}
-                  className="p-4 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer border border-slate-200"
+            <div className="space-y-6">
+              {groupedTasks.map((group, idx) => (
+                <section
+                  key={idx}
+                  className="rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm backdrop-blur-sm sm:p-6"
                 >
-                  <SMTaskCard
-                    projectId={projectId}
-                    task={task}
-                    onTaskDeleted={loadData}
-                  />
-                </div>
+                  {/* Team Header */}
+                  <div className="mb-4 flex items-center gap-3">
+                    {group.team ? (
+                      <>
+                        <div
+                          className="h-4 w-4 rounded-full"
+                          style={{ backgroundColor: group.team.color || '#64748b' }}
+                        />
+                        <h2 className="text-lg font-semibold text-slate-900">{group.team.name}</h2>
+                        <span className="text-xs text-slate-400">
+                          {group.tasks.length} {group.tasks.length === 1 ? 'task' : 'tasks'}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="h-4 w-4 rounded-full bg-slate-300" />
+                        <h2 className="text-lg font-semibold text-slate-600">Unassigned Tasks</h2>
+                        <span className="text-xs text-slate-400">
+                          {group.tasks.length} {group.tasks.length === 1 ? 'task' : 'tasks'}
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Tasks Grid */}
+                  <div className="grid grid-cols-1 place-items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {group.tasks.map((task) => (
+                      <div
+                        key={task.id}
+                        onClick={() =>
+                          navigate(`/orgarhythmus/projects/${projectId}/tasks/${task.id}`)
+                        }
+                        className="cursor-pointer rounded-lg border border-slate-200 bg-slate-50 p-4 transition-all hover:border-blue-300 hover:bg-blue-50 hover:shadow-md"
+                      >
+                        <SMTaskCard projectId={projectId} task={task} onTaskDeleted={loadData} />
+                      </div>
+                    ))}
+                  </div>
+                </section>
               ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-14 text-center text-slate-500 text-sm">
+            <div className="flex flex-col items-center justify-center py-14 text-center text-sm text-slate-500">
               <p className="font-medium">No tasks in this project yet.</p>
               <p className="mt-1">
-                Hit{" "}
-                <span className="font-semibold">“New Project Task”</span> to
-                add the first event ✨
+                Hit <span className="font-semibold">“New Project Task”</span> to add the first event
+                ✨
               </p>
             </div>
           )}

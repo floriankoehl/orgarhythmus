@@ -133,6 +133,24 @@ export async function delete_project(projectId) {
   return true;
 }
 
+// update_project_api
+export async function update_project_api(projectId, data) {
+  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/update/`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({}));
+    throw new Error(errorBody.detail || 'Failed to update project');
+  }
+
+  return await res.json();
+}
+
 
 
 //_______________________________________________
