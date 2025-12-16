@@ -154,42 +154,35 @@ function DeleteProjectModal({ isOpen, projectName, onConfirm, onCancel, isLoadin
 
 // test
 export default function ProjectMain() {
-  const { project, loaded_teams, loaded_tasks } = useLoaderData();
+  const { project: initialProject, loaded_teams, loaded_tasks } = useLoaderData();
   const navigate = useNavigate();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
-  const [projectName, setProjectName] = useState(project.name);
+  const [projectName, setProjectName] = useState(initialProject.name);
   const [saving, setSaving] = useState(false);
   const [isEditingDates, setIsEditingDates] = useState(false);
+
+  // Add state for the current dates
+  const [startDate, setStartDate] = useState(initialProject.start_date);
+  const [endDate, setEndDate] = useState(initialProject.end_date);
+
   const [editStartDate, setEditStartDate] = useState(
-    project.start_date ? dayjs(project.start_date) : null,
+    initialProject.start_date ? dayjs(initialProject.start_date) : null,
   );
-  const [editEndDate, setEditEndDate] = useState(project.end_date ? dayjs(project.end_date) : null);
+  const [editEndDate, setEditEndDate] = useState(
+    initialProject.end_date ? dayjs(initialProject.end_date) : null,
+  );
   const [savingDates, setSavingDates] = useState(false);
 
-  const createdDate = project.created_at
-    ? new Date(project.created_at).toLocaleDateString('de-DE', {
+  // Use the state variables for display
+  const createdDate = initialProject.created_at
+    ? new Date(initialProject.created_at).toLocaleDateString('de-DE', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
       })
     : '';
-
-  async function handleConfirmDelete() {
-    try {
-      setDeleting(true);
-      await delete_project(project.id);
-      // Add a small delay to ensure the request completes
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      // Navigate to orgarhythmus main page (projects list)
-      navigate('/orgarhythmus');
-    } catch (err) {
-      console.error(err);
-      alert('Failed to delete project: ' + err.message);
-      setDeleting(false);
-    }
-  }
 
   async function handleSaveName() {
     if (!projectName.trim()) {
@@ -199,8 +192,8 @@ export default function ProjectMain() {
 
     try {
       setSaving(true);
-      await update_project_api(project.id, { name: projectName });
-      project.name = projectName; // Update local state
+      await update_project_api(initialProject.id, { name: projectName });
+      // projectName is already in state, so no need to update
       setIsEditingName(false);
     } catch (err) {
       console.error(err);
@@ -211,19 +204,24 @@ export default function ProjectMain() {
   }
 
   function handleCancelEdit() {
-    setProjectName(project.name);
+    setProjectName(initialProject.name);
     setIsEditingName(false);
   }
 
   async function handleSaveDates() {
     try {
       setSavingDates(true);
-      await update_project_api(project.id, {
-        start_date: editStartDate ? editStartDate.format('YYYY-MM-DD') : null,
-        end_date: editEndDate ? editEndDate.format('YYYY-MM-DD') : null,
+      const newStartDate = editStartDate ? editStartDate.format('YYYY-MM-DD') : null;
+      const newEndDate = editEndDate ? editEndDate.format('YYYY-MM-DD') : null;
+
+      await update_project_api(initialProject.id, {
+        start_date: newStartDate,
+        end_date: newEndDate,
       });
-      project.start_date = editStartDate ? editStartDate.format('YYYY-MM-DD') : null;
-      project.end_date = editEndDate ? editEndDate.format('YYYY-MM-DD') : null;
+
+      // Update state
+      setStartDate(newStartDate);
+      setEndDate(newEndDate);
       setIsEditingDates(false);
     } catch (err) {
       console.error(err);
@@ -234,9 +232,22 @@ export default function ProjectMain() {
   }
 
   function handleCancelDateEdit() {
-    setEditStartDate(project.start_date ? dayjs(project.start_date) : null);
-    setEditEndDate(project.end_date ? dayjs(project.end_date) : null);
+    setEditStartDate(startDate ? dayjs(startDate) : null);
+    setEditEndDate(endDate ? dayjs(endDate) : null);
     setIsEditingDates(false);
+  }
+
+  async function handleConfirmDelete() {
+    try {
+      setDeleting(true);
+      await delete_project(initialProject.id);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      navigate('/orgarhythmus');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete project: ' + err.message);
+      setDeleting(false);
+    }
   }
 
   return (
@@ -304,7 +315,8 @@ export default function ProjectMain() {
                 </div>
               )}
               <p className="mt-2 text-base leading-relaxed text-slate-600">
-                {project.description || 'Kein Beschreibung hinterlegt. Gestalte dein Projekt!'}
+                {initialProject.description ||
+                  'Kein Beschreibung hinterlegt. Gestalte dein Projekt!'}
               </p>
             </div>
 
@@ -337,7 +349,9 @@ export default function ProjectMain() {
               <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                 <User size={16} className="text-blue-600" />
                 <span className="mr-1 text-xs text-slate-500">Owner:</span>
-                <span className="text-sm font-medium text-slate-700">{project.owner_username}</span>
+                <span className="text-sm font-medium text-slate-700">
+                  {initialProject.owner_username}
+                </span>
               </div>
 
               {createdDate && (
@@ -348,7 +362,7 @@ export default function ProjectMain() {
                 </div>
               )}
 
-              {(project.start_date || project.end_date) && (
+              {(startDate || endDate) && (
                 <button
                   onClick={() => setIsEditingDates(true)}
                   className="group flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 transition-all hover:border-blue-400 hover:bg-blue-50"
@@ -359,19 +373,19 @@ export default function ProjectMain() {
                     className="text-slate-600 transition-colors group-hover:text-blue-600"
                   />
                   <div className="flex gap-3">
-                    {project.start_date && (
+                    {startDate && (
                       <div className="flex items-center gap-1">
                         <span className="text-xs text-slate-500">Start:</span>
                         <span className="text-sm text-slate-700">
-                          {new Date(project.start_date).toLocaleDateString('de-DE')}
+                          {new Date(startDate).toLocaleDateString('de-DE')}
                         </span>
                       </div>
                     )}
-                    {project.end_date && (
+                    {endDate && (
                       <div className="flex items-center gap-1">
                         <span className="text-xs text-slate-500">End:</span>
                         <span className="text-sm text-slate-700">
-                          {new Date(project.end_date).toLocaleDateString('de-DE')}
+                          {new Date(endDate).toLocaleDateString('de-DE')}
                         </span>
                       </div>
                     )}
@@ -383,7 +397,7 @@ export default function ProjectMain() {
                 </button>
               )}
 
-              {!project.start_date && !project.end_date && (
+              {!startDate && !endDate && (
                 <button
                   onClick={() => setIsEditingDates(true)}
                   className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-slate-600 transition-all hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600"
@@ -396,7 +410,7 @@ export default function ProjectMain() {
 
               <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                 <Folder size={16} className="text-emerald-600" />
-                <span className="font-mono text-sm text-slate-700">ID: {project.id}</span>
+                <span className="font-mono text-sm text-slate-700">ID: {initialProject.id}</span>
               </div>
             </div>
           ) : (
@@ -465,16 +479,16 @@ export default function ProjectMain() {
           )}
 
           {/* Members Section */}
-          {project.members_data && project.members_data.length > 0 && (
+          {initialProject.members_data && initialProject.members_data.length > 0 && (
             <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/50 p-4">
               <div className="mb-3 flex items-center gap-2">
                 <Users size={16} className="text-slate-600" />
                 <h3 className="text-sm font-semibold text-slate-700">
-                  Project Members ({project.members_data.length})
+                  Project Members ({initialProject.members_data.length})
                 </h3>
               </div>
               <div className="flex flex-wrap gap-2">
-                {project.members_data.map((member) => (
+                {initialProject.members_data.map((member) => (
                   <div
                     key={member.id}
                     className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 shadow-sm"
@@ -491,7 +505,7 @@ export default function ProjectMain() {
         {/* Stats Section */}
         <ProjectStats tasks={loaded_tasks} teams={loaded_teams} />
 
-        {/* Teams & Tasks Grid */}
+        {/* Teams & Tasks Grid - use initialProject.id instead of project.id */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Teams Card */}
           <section className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur-sm">
@@ -510,7 +524,7 @@ export default function ProjectMain() {
               <Button
                 variant="outlined"
                 size="small"
-                onClick={() => navigate(`/orgarhythmus/projects/${project.id}/teams`)}
+                onClick={() => navigate(`/orgarhythmus/projects/${initialProject.id}/teams`)}
                 style={{ textTransform: 'none', borderRadius: '8px' }}
               >
                 Manage
@@ -523,7 +537,7 @@ export default function ProjectMain() {
                   <div
                     key={team.id}
                     onClick={() =>
-                      navigate(`/orgarhythmus/projects/${project.id}/teams/${team.id}`)
+                      navigate(`/orgarhythmus/projects/${initialProject.id}/teams/${team.id}`)
                     }
                     className="group flex cursor-pointer items-center justify-between rounded-lg bg-slate-50 p-3 transition-colors hover:bg-slate-100"
                   >
@@ -545,7 +559,7 @@ export default function ProjectMain() {
                 <Button
                   variant="contained"
                   size="small"
-                  onClick={() => navigate(`/orgarhythmus/projects/${project.id}/teams`)}
+                  onClick={() => navigate(`/orgarhythmus/projects/${initialProject.id}/teams`)}
                   style={{ textTransform: 'none', marginTop: '1rem', borderRadius: '8px' }}
                 >
                   Erstes Team erstellen
@@ -557,7 +571,7 @@ export default function ProjectMain() {
               <Button
                 fullWidth
                 variant="outlined"
-                onClick={() => navigate(`/orgarhythmus/projects/${project.id}/teams`)}
+                onClick={() => navigate(`/orgarhythmus/projects/${initialProject.id}/teams`)}
                 style={{ textTransform: 'none', marginTop: '1rem', borderRadius: '8px' }}
               >
                 Alle Teams anzeigen →
@@ -582,7 +596,7 @@ export default function ProjectMain() {
               <Button
                 variant="outlined"
                 size="small"
-                onClick={() => navigate(`/orgarhythmus/projects/${project.id}/tasks`)}
+                onClick={() => navigate(`/orgarhythmus/projects/${initialProject.id}/tasks`)}
                 style={{ textTransform: 'none', borderRadius: '8px' }}
               >
                 Manage
@@ -595,7 +609,7 @@ export default function ProjectMain() {
                   <div
                     key={task.id}
                     onClick={() =>
-                      navigate(`/orgarhythmus/projects/${project.id}/tasks/${task.id}`)
+                      navigate(`/orgarhythmus/projects/${initialProject.id}/tasks/${task.id}`)
                     }
                     className="cursor-pointer rounded-lg bg-slate-50 p-3 transition-all hover:bg-slate-100 hover:shadow-md"
                   >
@@ -624,7 +638,7 @@ export default function ProjectMain() {
                 <Button
                   variant="contained"
                   size="small"
-                  onClick={() => navigate(`/orgarhythmus/projects/${project.id}/tasks`)}
+                  onClick={() => navigate(`/orgarhythmus/projects/${initialProject.id}/tasks`)}
                   style={{ textTransform: 'none', marginTop: '1rem', borderRadius: '8px' }}
                 >
                   Ersten Task erstellen
@@ -636,7 +650,7 @@ export default function ProjectMain() {
               <Button
                 fullWidth
                 variant="outlined"
-                onClick={() => navigate(`/orgarhythmus/projects/${project.id}/tasks`)}
+                onClick={() => navigate(`/orgarhythmus/projects/${initialProject.id}/tasks`)}
                 style={{ textTransform: 'none', marginTop: '1rem', borderRadius: '8px' }}
               >
                 Alle Tasks anzeigen →
@@ -649,7 +663,7 @@ export default function ProjectMain() {
       {/* Delete Project Modal */}
       <DeleteProjectModal
         isOpen={showDeleteModal}
-        projectName={project.name}
+        projectName={projectName}
         onConfirm={handleConfirmDelete}
         onCancel={() => setShowDeleteModal(false)}
         isLoading={deleting}

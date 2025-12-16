@@ -1,4 +1,5 @@
 import json
+from datetime import date
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -471,33 +472,41 @@ def delete_project(request, pk):
 @permission_classes([IsAuthenticated])
 def update_project(request, pk):
     """
-    Update a project (name, description, etc.)
-    Only owner or members can update.
+    Update a project (name, description, dates, etc.)
+    Only owner can update.
     """
     user = request.user
-    
+
     try:
         project = Project.objects.get(id=pk)
     except Project.DoesNotExist:
         return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
-    
-    # Check if user has access (owner or member)
+
     if not user_has_project_access(user, project):
         return Response({"detail": "You don't have access to this project"}, status=status.HTTP_403_FORBIDDEN)
-    
-    # Only owner can update project settings
+
     if project.owner_id != user.id:
         return Response({"detail": "Only project owner can update project"}, status=status.HTTP_403_FORBIDDEN)
-    
-    # Update fields if provided
+
     data = request.data
+
+    # existing fields
     if "name" in data:
         project.name = data["name"]
     if "description" in data:
         project.description = data["description"]
-    
+
+    # NEW: dates
+    if "start_date" in data:
+        sd = data.get("start_date")
+        project.start_date = date.fromisoformat(sd) if sd else None
+
+    if "end_date" in data:
+        ed = data.get("end_date")
+        project.end_date = date.fromisoformat(ed) if ed else None
+
     project.save()
-    
+
     serializer = ProjectSerializer(project)
     return Response(serializer.data, status=status.HTTP_200_OK)
 
