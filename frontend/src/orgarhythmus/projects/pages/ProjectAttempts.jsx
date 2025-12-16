@@ -1,5 +1,5 @@
 import 'reactflow/dist/style.css';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import ReactFlow, {
   applyNodeChanges,
   applyEdgeChanges,
@@ -15,6 +15,7 @@ import {
   update_attempt_slot_index,
   delete_attempt_dependency,
   reorder_project_teams,
+  fetch_project_detail,
 } from '../../api/org_API';
 import snapSoundFile from '../../../assets/snap.mp3';
 import whipSoundFile from '../../../assets/whip.mp3';
@@ -23,6 +24,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../../auth/AuthContext';
 import { ChevronsDownUp } from 'lucide-react';
 import Button from '@mui/material/Button';
+import dayjs from 'dayjs';
 
 // ________________________GLOBALS AND HELPERS________________________
 
@@ -93,38 +95,12 @@ function get_overall_gap(num_tasks, gap, header_gap) {
   return num_tasks * gap + header_gap - 10;
 }
 
-// getSlotIndexFromX
-function getSlotIndexFromX(x) {
-  const relative = x - TASK_SIDEBAR_WIDTH;
-
-  let idxZero = Math.round(relative / TASK_WIDTH); // 0-based
-  if (idxZero < 0) idxZero = 0;
-  if (idxZero > ENTRIES - 1) idxZero = ENTRIES - 1;
-
-  return idxZero + 1; // 1-based
-}
-
-// getXFromSlotIndex
-function getXFromSlotIndex(slotIndex) {
-  let idxZero = (slotIndex ?? 1) - 1;
-  if (idxZero < 0) idxZero = 0;
-  if (idxZero > ENTRIES - 1) idxZero = ENTRIES - 1;
-
-  return TASK_SIDEBAR_WIDTH + idxZero * TASK_WIDTH;
-}
-
-// snapAttemptX
-function snapAttemptX(x) {
-  const slotIndex = getSlotIndexFromX(x);
-  return getXFromSlotIndex(slotIndex);
-}
-
 // Main Variables
 const isMobile = window.innerWidth <= 768;
 let TASK_HEIGHT = 60;
 let TASK_WIDTH = 60;
 let SETTINGS_HEIGHT = 85;
-const ENTRIES = 25;
+const DEFAULT_ENTRIES = 25; // fallback if no dates
 
 let SIDEBAR_WIDTH = 80;
 let TASK_SIDEBAR_WIDTH = 100;
@@ -135,6 +111,8 @@ const HEADER_BODY_GAP = 10;
 
 // ************** -> ADDED NOW 2: const TEAM_COLLAPSED_HEIGHT ***************** :
 const TEAM_COLLAPSED_HEIGHT = 20;
+const TASK_COLLAPSED_HEIGHT = 8;
+const COLLAPSED_DAY_WIDTH = 12;
 
 // Mobile Task Adjustment
 if (isMobile) {
@@ -144,66 +122,83 @@ if (isMobile) {
   TASK_SIDEBAR_WIDTH = 70;
 }
 
-// Total Width Caluclations
-// Total width including both sidebars & the grid columns
-const COMPONENT_WIDTH = SIDEBAR_WIDTH + TASK_SIDEBAR_WIDTH + ENTRIES * TASK_WIDTH;
-
-// Pixel Map
-// Pixel map must start AFTER both sidebars
-const GRID_OFFSET = SIDEBAR_WIDTH + TASK_SIDEBAR_WIDTH;
-
-// pixelMap
-const pixelMap = Array.from({ length: ENTRIES }, (_, idx) => {
-  const index = idx + 1;
-
-  const beginn = GRID_OFFSET + (index - 1) * TASK_WIDTH;
-  const end = GRID_OFFSET + index * TASK_WIDTH;
-
-  return [index, { beginn, end }];
-}).reduce((obj, [key, value]) => {
-  obj[key] = value;
-  return obj;
-}, {});
-
-// ________________________NODE DEFINITIONS________________________
-
 // TaskHeaderNode
-function TaskHeaderNode() {
+function TaskHeaderNode({ data }) {
+  const {
+    componentWidth,
+    taskWidth,
+    sidebarWidth,
+    taskSidebarWidth,
+    timelineDays = [],
+    entryCount,
+    collapsedDays = {},
+    onToggleDay,
+    pixelMap = {},
+  } = data || {};
+
+  const columns =
+    timelineDays.length > 0 ? timelineDays : Array.from({ length: entryCount }, (_, i) => i + 1);
+
   return (
     <div
       style={{
-        width: COMPONENT_WIDTH,
+        width: componentWidth,
         height: TASK_HEIGHT,
       }}
       className="flex items-center rounded-t-lg border border-slate-300 border-b-slate-300 bg-slate-50 text-slate-700"
     >
-      {/* Team sidebar */}
       <div
-        style={{ width: SIDEBAR_WIDTH }}
+        style={{ width: sidebarWidth }}
         className="flex items-center justify-center border-r border-slate-300 text-xs font-medium"
       >
         Team
       </div>
-
-      {/* Task sidebar */}
       <div
-        style={{ width: TASK_SIDEBAR_WIDTH }}
+        style={{ width: taskSidebarWidth }}
         className="flex items-center justify-center border-r border-slate-300 text-xs font-medium"
       >
         Task
       </div>
 
-      {/* Grid columns */}
       <div className="flex h-full flex-1">
-        {Array.from({ length: ENTRIES }).map((_, idx) => (
-          <div
-            key={idx}
-            style={{ width: TASK_WIDTH }}
-            className="flex items-center justify-center border-l border-slate-200 text-[11px]"
-          >
-            <span className="px-2 py-1 text-lg font-bold text-slate-700">{idx + 1}</span>
-          </div>
-        ))}
+        {columns.map((col, idx) => {
+          const dayIndex = idx + 1;
+          const isCollapsed = !!collapsedDays[dayIndex];
+          const range = pixelMap[dayIndex];
+          const cellWidth = range ? range.end - range.beginn : taskWidth;
+          return (
+            <button
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleDay?.(dayIndex);
+              }}
+              key={idx}
+              style={{ width: cellWidth, pointerEvents: 'auto' }}
+              className={`group flex h-full flex-col items-center justify-center border-l border-slate-200 text-[11px] transition-all ${
+                isCollapsed ? 'bg-slate-100/70' : ''
+              }`}
+            >
+              {dayjs.isDayjs(col) ? (
+                <div
+                  className={`flex flex-col items-center justify-center transition-all ${
+                    isCollapsed ? 'scale-75 -rotate-90 text-slate-500' : ''
+                  }`}
+                >
+                  <span className="text-[11px] font-semibold text-slate-700 group-hover:text-blue-600">
+                    {col.format('DD.MM')}
+                  </span>
+                  <span className="text-[10px] text-slate-400 group-hover:text-blue-500">
+                    {col.format('dd')}
+                  </span>
+                </div>
+              ) : (
+                <span className="px-2 py-1 text-lg font-bold text-slate-700">{col}</span>
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -278,7 +273,7 @@ function TeamNode({ id, data }) {
 
   return (
     <div
-      style={{ width: COMPONENT_WIDTH, height: height }}
+      style={{ width: data.componentWidth, height: height }}
       className="relative flex h-full overflow-hidden rounded-lg border border-slate-300"
     >
       {/* top color strip */}
@@ -334,31 +329,36 @@ function TeamNode({ id, data }) {
 
 // TaskNode
 function TaskNode({ data }) {
+  const { pixelMap = {}, componentWidth, collapsedDays = {}, isTeamCollapsed = false } = data || {};
+  const taskHeight = isTeamCollapsed ? TASK_COLLAPSED_HEIGHT : TASK_HEIGHT;
+
   return (
     <div
-      style={{ width: COMPONENT_WIDTH - SIDEBAR_WIDTH, height: TASK_HEIGHT }}
+      style={{ width: componentWidth - SIDEBAR_WIDTH, height: taskHeight }}
       className="flex h-full w-full border-b border-black/20"
     >
-      {/* Left: task label bar */}
       <div
         style={{ width: TASK_SIDEBAR_WIDTH }}
         className="flex h-full items-center justify-center border-r bg-white/20 text-xs tracking-wide text-black"
       >
-        {data.label}
+        {!isTeamCollapsed && data.label}
       </div>
-
-      {/* Right: pixel slots */}
       <div className="flex h-full flex-1" style={{ pointerEvents: 'none' }}>
-        {Object.entries(pixelMap).map(([index, range]) => (
-          <div
-            key={index}
-            style={{
-              width: range.end - range.beginn,
-              height: '100%',
-            }}
-            className="border border-black/10"
-          />
-        ))}
+        {Object.entries(pixelMap).map(([index, range]) => {
+          const isCollapsed = !!collapsedDays[Number(index)];
+          return (
+            <div
+              key={index}
+              style={{
+                width: range.end - range.beginn,
+                height: '100%',
+              }}
+              className={`border border-black/10 transition-all ${
+                isCollapsed ? 'bg-slate-100 opacity-50' : ''
+              }`}
+            />
+          );
+        })}
       </div>
     </div>
   );
@@ -366,17 +366,30 @@ function TaskNode({ data }) {
 
 // AttemptNode
 function AttemptNode({ data, selected }) {
+  const slotIndex = data.slotIndex || 1;
+  const collapsedDays = data.collapsedDays || {};
+  const isTeamCollapsed = data.isTeamCollapsed || false;
+  const isDayCollapsed = !!collapsedDays[slotIndex];
+  const isCollapsed = isDayCollapsed || isTeamCollapsed;
+
+  const attemptWidth = isDayCollapsed ? COLLAPSED_DAY_WIDTH - 4 : TASK_WIDTH - 15;
+  const attemptHeight = isTeamCollapsed
+    ? 4
+    : isDayCollapsed
+      ? COLLAPSED_DAY_WIDTH - 4
+      : TASK_HEIGHT - 15;
+
   return (
     <div
       className={`m-2 flex items-center justify-center rounded-md border bg-gray-100 text-xs !text-[15px] font-bold text-black shadow-sm shadow-xl shadow-black/2 transition-all duration-150 hover:bg-gray-700 hover:text-white ${selected ? 'scale-105 border-sky-500 shadow-md shadow-black/30' : 'border-slate-300'} `}
       style={{
-        width: TASK_WIDTH - 15,
-        height: TASK_HEIGHT - 15,
+        width: attemptWidth,
+        height: attemptHeight,
         position: 'relative',
         zIndex: 10,
       }}
     >
-      {data.number}
+      {!isCollapsed && data.number}
 
       <Handle
         type="target"
@@ -413,14 +426,7 @@ const nodeTypes = {
   taskHeaderNode: TaskHeaderNode,
 };
 
-// headerNode
-const headerNode = {
-  id: 'task-header',
-  type: 'taskHeaderNode',
-  position: { x: 0, y: 0 },
-  draggable: false,
-  selectable: false,
-};
+// headerNode template removed; we’ll build it inside the component with data
 
 // ________________________COMPONENT________________________
 export default function OrgAttempts() {
@@ -448,6 +454,96 @@ export default function OrgAttempts() {
   const REACTFLOW_HEIGHT = 700;
 
   const [dep_setting_selected, setDep_setting_selected] = useState(true);
+
+  // Collapsed days map: key = day index (1-based), value = true/false
+  const [collapsedDays, setCollapsedDays] = useState({});
+
+  // Timeline derived from project dates
+  const [timelineDays, setTimelineDays] = useState([]);
+  const [entryCount, setEntryCount] = useState(DEFAULT_ENTRIES);
+
+  const componentWidth = useMemo(() => {
+    const base = SIDEBAR_WIDTH + TASK_SIDEBAR_WIDTH;
+    let totalWidth = 0;
+    for (let i = 1; i <= entryCount; i++) {
+      totalWidth += collapsedDays[i] ? COLLAPSED_DAY_WIDTH : TASK_WIDTH;
+    }
+    return base + totalWidth;
+  }, [entryCount, collapsedDays]);
+
+  const pixelMap = useMemo(() => {
+    const GRID_OFFSET = SIDEBAR_WIDTH + TASK_SIDEBAR_WIDTH;
+    let currentX = GRID_OFFSET;
+    return Array.from({ length: entryCount }, (_, idx) => {
+      const index = idx + 1;
+      const beginn = currentX;
+      const width = collapsedDays[index] ? COLLAPSED_DAY_WIDTH : TASK_WIDTH;
+      const end = currentX + width;
+      currentX = end;
+      return [index, { beginn, end }];
+    }).reduce((obj, [k, v]) => ({ ...obj, [k]: v }), {});
+  }, [entryCount, collapsedDays]);
+
+  const getSlotIndexFromX = useCallback(
+    (x) => {
+      const relative = x - TASK_SIDEBAR_WIDTH;
+
+      // Iterate through days to find which slot this X position corresponds to
+      let accumulatedWidth = 0;
+      for (let i = 1; i <= entryCount; i++) {
+        const dayWidth = collapsedDays[i] ? COLLAPSED_DAY_WIDTH : TASK_WIDTH;
+
+        // Check if x falls within this day's range
+        if (relative < accumulatedWidth + dayWidth / 2) {
+          return i;
+        }
+
+        accumulatedWidth += dayWidth;
+      }
+
+      // If we've gone past all days, return the last slot
+      return entryCount;
+    },
+    [entryCount, collapsedDays],
+  );
+
+  const getXFromSlotIndex = useCallback(
+    (slotIndex) => {
+      // Calculate X position by summing up widths of all days before this slot
+      let x = TASK_SIDEBAR_WIDTH;
+      const targetIndex = slotIndex ?? 1;
+
+      for (let i = 1; i < targetIndex; i++) {
+        x += collapsedDays[i] ? COLLAPSED_DAY_WIDTH : TASK_WIDTH;
+      }
+
+      return x;
+    },
+    [collapsedDays],
+  );
+
+  const headerNode = useMemo(
+    () => ({
+      id: 'task-header',
+      type: 'taskHeaderNode',
+      position: { x: 0, y: 0 },
+      draggable: false,
+      selectable: false,
+      data: {
+        componentWidth,
+        taskWidth: TASK_WIDTH,
+        sidebarWidth: SIDEBAR_WIDTH,
+        taskSidebarWidth: TASK_SIDEBAR_WIDTH,
+        timelineDays,
+        entryCount,
+        collapsedDays,
+        pixelMap,
+        onToggleDay: (dayIndex) =>
+          setCollapsedDays((prev) => ({ ...prev, [dayIndex]: !prev[dayIndex] })),
+      },
+    }),
+    [componentWidth, timelineDays, entryCount, collapsedDays, pixelMap],
+  );
 
   // ************** -> ADDED NOW : collapsedByTeamId ***************** :
   const [collapsedByTeamId, setCollapsedByTeamId] = useState({});
@@ -517,39 +613,84 @@ export default function OrgAttempts() {
 
   //     console.log("==========[HIDE PASS] END==========");
   // }, [collapsedByTeamId, groupNodes.length]);
+  // Update task and attempt nodes when team collapse state changes
   useEffect(() => {
     if (!groupNodes.length) return;
 
-    console.log('==========[HIDE PASS] START==========');
-    console.log('[HIDE PASS] collapsedByTeamId:', collapsedByTeamId);
+    console.log('==========[COLLAPSE SYNC] START==========');
+    console.log('[COLLAPSE SYNC] collapsedByTeamId:', collapsedByTeamId);
 
     const collapsedTeamIds = Object.keys(collapsedByTeamId).filter((k) => collapsedByTeamId[k]);
-    console.log('[HIDE PASS] collapsedTeamIds:', collapsedTeamIds);
+    console.log('[COLLAPSE SYNC] collapsedTeamIds:', collapsedTeamIds);
 
-    // ✅ compute collapsed task ids from current taskNodes state (closure)
-    const collapsedTaskIds = new Set(
-      taskNodes.filter((t) => collapsedTeamIds.includes(t.parentNode)).map((t) => t.id),
-    );
+    // Update task nodes with collapse state FIRST, then use that to update teams
+    setTaskNodes((prevTasks) => {
+      const collapsedTaskParents = new Set(collapsedTeamIds);
 
-    console.log('[HIDE PASS] collapsedTaskIds:', Array.from(collapsedTaskIds));
+      // Count tasks per team for height calculation
+      const taskCountByTeam = {};
+      prevTasks.forEach((t) => {
+        taskCountByTeam[t.parentNode] = (taskCountByTeam[t.parentNode] || 0) + 1;
+      });
 
-    // 1) tasks: hide if parent team collapsed
-    setTaskNodes((prevTasks) =>
-      prevTasks.map((t) => ({
-        ...t,
-        hidden: collapsedTeamIds.includes(t.parentNode),
-      })),
-    );
+      // Update team nodes' data.height - ALWAYS store EXPANDED height
+      setGroupNodes((prevTeams) =>
+        prevTeams.map((team) => {
+          const tasksInTeam = taskCountByTeam[team.id] || 0;
+          // Always calculate and store the EXPANDED height, regardless of collapse state
+          const expandedHeight = tasksInTeam * TASK_HEIGHT;
 
-    // 2) attempts: hide if parent task is in collapsedTaskIds
-    setAttemptNodes((prevAttempts) =>
-      prevAttempts.map((a) => ({
-        ...a,
-        hidden: collapsedTaskIds.has(a.parentNode),
-      })),
-    );
+          return {
+            ...team,
+            data: {
+              ...team.data,
+              height: expandedHeight, // Store expanded height so LAYOUT PASS can use it
+            },
+          };
+        }),
+      );
 
-    console.log('==========[HIDE PASS] END==========');
+      // Collect task IDs that belong to collapsed teams
+      const tasksInCollapsedTeams = new Set(
+        prevTasks.filter((t) => collapsedTaskParents.has(t.parentNode)).map((t) => t.id),
+      );
+
+      console.log('[COLLAPSE SYNC] tasksInCollapsedTeams:', Array.from(tasksInCollapsedTeams));
+
+      // Update attempts with collapse state (nested to ensure atomic update)
+      setAttemptNodes((prevAttempts) =>
+        prevAttempts.map((a) => ({
+          ...a,
+          data: {
+            ...a.data,
+            isTeamCollapsed: tasksInCollapsedTeams.has(a.parentNode),
+          },
+        })),
+      );
+
+      // Update task positions based on collapse state
+      return prevTasks.map((t) => {
+        const isTeamCollapsed = collapsedTaskParents.has(t.parentNode);
+
+        // Recalculate Y position within parent team
+        const siblingTasks = prevTasks.filter(
+          (sibling) => sibling.parentNode === t.parentNode && sibling.id <= t.id,
+        );
+        const taskIndex = siblingTasks.length - 1;
+        const newY = taskIndex * (isTeamCollapsed ? TASK_COLLAPSED_HEIGHT : TASK_HEIGHT);
+
+        return {
+          ...t,
+          position: { ...t.position, y: newY },
+          data: {
+            ...t.data,
+            isTeamCollapsed,
+          },
+        };
+      });
+    });
+
+    console.log('==========[COLLAPSE SYNC] END==========');
   }, [collapsedByTeamId, groupNodes.length]);
 
   // ************** -> ADDED NOW 4: Helper: getTeamInsertIndexFromY ***************** :
@@ -713,6 +854,24 @@ export default function OrgAttempts() {
   // __________LOAD DATA
   useEffect(() => {
     async function loadData() {
+      // 1) load project to derive timeline
+      const project = await fetch_project_detail(projectId);
+      if (project.start_date && project.end_date) {
+        const start = dayjs(project.start_date);
+        const end = dayjs(project.end_date);
+        const days = [];
+        let cursor = start;
+        while (cursor.isBefore(end) || cursor.isSame(end, 'day')) {
+          days.push(cursor);
+          cursor = cursor.add(1, 'day');
+        }
+        setTimelineDays(days);
+        setEntryCount(days.length || DEFAULT_ENTRIES);
+      } else {
+        setTimelineDays([]);
+        setEntryCount(DEFAULT_ENTRIES);
+      }
+
       //LOAD TEAMS (& Tasks through Teams)
       async function loadTeams() {
         // ************** -> ADDED NOW: security log: [loadTeams] ***************** :
@@ -750,6 +909,10 @@ export default function OrgAttempts() {
           const updated_group_nodes = all_teams
             .filter((team) => team.tasks && team.tasks.length > 0)
             .map((team) => {
+              const teamNodeId = `team-${team.id}`;
+              const isTeamCollapsed = !!collapsedByTeamId[teamNodeId];
+
+              // Calculate EXPANDED height (always store expanded, LAYOUT PASS handles collapse rendering)
               let team_display_height = team.tasks.length * TASK_HEIGHT;
               // if (team_display_height < 100) {
               //   team_display_height = 100;
@@ -757,7 +920,7 @@ export default function OrgAttempts() {
               if (!team.tasks) return null;
 
               const node = {
-                id: `team-${team.id}`,
+                id: teamNodeId,
                 type: 'teamNode',
                 position: { x: 0, y: currentY }, // 👈 use cumulative Y
                 data: {
@@ -769,7 +932,8 @@ export default function OrgAttempts() {
 
                   // ************** -> ADDED NOW: toggleTeamCollapse & isCollapsed ***************** :
                   toggleTeamCollapse,
-                  isCollapsed: !!collapsedByTeamId[`team-${team.id}`],
+                  isCollapsed: isTeamCollapsed,
+                  componentWidth,
                 },
 
                 draggable: false,
@@ -794,18 +958,24 @@ export default function OrgAttempts() {
           //RENDER TASK NODES
           const updated_task_nodes = all_teams.flatMap((team) => {
             const tasks_of_this_team = team.tasks || [];
+            const teamNodeId = `team-${team.id}`;
+            const isTeamCollapsed = !!collapsedByTeamId[teamNodeId];
 
             return tasks_of_this_team.map((task, taskIndex) => ({
               id: `task-${task.id}`, // globally unique ID
               type: 'taskNode', // must exist in nodeTypes
-              parentNode: `team-${team.id}`, // 👈 put it inside the TeamNode
+              parentNode: teamNodeId, // 👈 put it inside the TeamNode
               extent: 'parent',
               position: {
                 x: SIDEBAR_WIDTH, // left inside content area
-                y: taskIndex * TASK_HEIGHT, // vertical stacking
+                y: taskIndex * (isTeamCollapsed ? TASK_COLLAPSED_HEIGHT : TASK_HEIGHT), // vertical stacking
               },
               data: {
                 label: task.name,
+                componentWidth,
+                pixelMap,
+                collapsedDays,
+                isTeamCollapsed,
                 // you can pass more here:
                 // width: ..., color: ..., etc.
               },
@@ -841,15 +1011,23 @@ export default function OrgAttempts() {
         const updated_attempt_nodes = all_attempts.map((attempt, index) => {
           const x = getXFromSlotIndex(attempt.slot_index); // 👈 use DB value, default inside helper
 
+          // Check if parent task's team is collapsed
+          const taskNodeId = `task-${attempt.task.id}`;
+          const taskNode = taskNodes.find((t) => t.id === taskNodeId);
+          const isTeamCollapsed = taskNode?.data?.isTeamCollapsed || false;
+
           return {
             id: `attempt-${attempt.id}`,
-            parentNode: `task-${attempt.task.id}`,
+            parentNode: taskNodeId,
             extent: 'parent',
             type: 'attemptNode',
             position: { x, y: index * 0 }, // y stays as before
             data: {
               label: attempt.name,
               number: attempt.number,
+              slotIndex: attempt.slot_index,
+              collapsedDays,
+              isTeamCollapsed,
             },
           };
         });
@@ -879,20 +1057,45 @@ export default function OrgAttempts() {
       await loadAttemptDependencies();
     }
     loadData();
+  }, [projectId, navigate, logout, getXFromSlotIndex]); // keep other deps as before
 
-    // ************** -> ADDED NOW: collapsedByTeamId added ***************** :
-    // ************** -> ADDED NOW 2: collapsedByTeamId removed again ***************** :
-  }, [projectId, navigate, logout]);
+  // Update task nodes when collapsedDays or pixelMap changes
+  useEffect(() => {
+    setTaskNodes((prevTasks) =>
+      prevTasks.map((task) => ({
+        ...task,
+        data: {
+          ...task.data,
+          componentWidth,
+          pixelMap,
+          collapsedDays,
+        },
+      })),
+    );
+  }, [collapsedDays, pixelMap, componentWidth]);
+
+  // Update attempt nodes when collapsedDays changes
+  useEffect(() => {
+    setAttemptNodes((prevAttempts) =>
+      prevAttempts.map((attempt) => {
+        const slotIndex = attempt.data?.slotIndex || 1;
+        const newX = getXFromSlotIndex(slotIndex);
+        return {
+          ...attempt,
+          position: { ...attempt.position, x: newX },
+          data: {
+            ...attempt.data,
+            collapsedDays,
+          },
+        };
+      }),
+    );
+  }, [collapsedDays, getXFromSlotIndex]);
 
   // Merge Nodes
   useEffect(() => {
-    setMergedNodes([
-      headerNode,
-      ...groupNodes,
-      ...taskNodes,
-      ...attempt_nodes, // attempts
-    ]);
-  }, [groupNodes, taskNodes, attempt_nodes, dep_setting_selected]);
+    setMergedNodes([headerNode, ...groupNodes, ...taskNodes, ...attempt_nodes]);
+  }, [headerNode, groupNodes, taskNodes, attempt_nodes, dep_setting_selected]);
 
   // onNodesChange
   const onNodesChange = useCallback((changes) => {
@@ -1077,7 +1280,7 @@ export default function OrgAttempts() {
         {/* ReactFlow */}
         {/* IMPORTANT: (height: y_reactflow_size + 50) */}
         <div
-          style={{ width: COMPONENT_WIDTH, height: y_reactflow_size + SETTINGS_HEIGHT }}
+          style={{ width: componentWidth, height: y_reactflow_size + SETTINGS_HEIGHT }}
           className="mx-5 mt-30 mb-5 rounded-xl bg-gray-200 shadow-xl shadow-black/30 sm:mx-10"
         >
           <div style={{ height: SETTINGS_HEIGHT }} className="relative flex w-full flex-col gap-2">
@@ -1140,7 +1343,7 @@ export default function OrgAttempts() {
               }}
               translateExtent={[
                 [0, 0],
-                [COMPONENT_WIDTH, y_reactflow_size],
+                [componentWidth, y_reactflow_size],
               ]}
             ></ReactFlow>
           </div>
