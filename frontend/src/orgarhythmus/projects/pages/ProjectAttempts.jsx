@@ -507,6 +507,11 @@ export default function OrgAttempts() {
   const [dep_setting_selected, setDep_setting_selected] = useState(true);
   const [mode, setMode] = useState('dependency'); // 'order', 'dependency', 'inspect'
 
+  // View options
+  const [hideCollapsedNodes, setHideCollapsedNodes] = useState(false);
+  const [hideEdgesOfCollapsed, setHideEdgesOfCollapsed] = useState(false);
+  const [hideEmptyDays, setHideEmptyDays] = useState(false);
+
   // Collapsed days map: key = day index (1-based), value = true/false
   const [collapsedDays, setCollapsedDays] = useState({});
   const [layoutVersion, setLayoutVersion] = useState(0);
@@ -514,6 +519,17 @@ export default function OrgAttempts() {
   // Timeline derived from project dates
   const [timelineDays, setTimelineDays] = useState([]);
   const [entryCount, setEntryCount] = useState(DEFAULT_ENTRIES);
+
+  // Compute which days have attempts scheduled
+  const daysWithAttempts = useMemo(() => {
+    const days = new Set();
+    all_attempts.forEach((attempt) => {
+      if (attempt.slot_index) {
+        days.add(attempt.slot_index);
+      }
+    });
+    return days;
+  }, [all_attempts]);
 
   const componentWidth = useMemo(() => {
     const base = SIDEBAR_WIDTH + TASK_SIDEBAR_WIDTH;
@@ -1123,6 +1139,46 @@ export default function OrgAttempts() {
     );
   }, [mode, inspectSelectedNodeId]);
 
+  // Filter edges based on hideEdgesOfCollapsed option
+  useEffect(() => {
+    setEdges((prev) =>
+      prev.map((edge) => {
+        if (!hideEdgesOfCollapsed) {
+          // When disabled, ensure edge is visible
+          if (edge.hidden) {
+            return { ...edge, hidden: false };
+          }
+          return edge;
+        }
+
+        // Extract attempt IDs from edge source/target (format: "attempt-123")
+        const sourceAttemptId = edge.source?.replace('attempt-', '');
+        const targetAttemptId = edge.target?.replace('attempt-', '');
+
+        // Find the attempts to get their task IDs
+        const sourceAttempt = all_attempts.find((a) => a.id === parseInt(sourceAttemptId));
+        const targetAttempt = all_attempts.find((a) => a.id === parseInt(targetAttemptId));
+
+        if (!sourceAttempt || !targetAttempt) return edge;
+
+        // Check collapse states
+        const sourceTaskId = `task-${sourceAttempt.task.id}`;
+        const targetTaskId = `task-${targetAttempt.task.id}`;
+        const sourceTeamId = `team-${sourceAttempt.task.team}`;
+        const targetTeamId = `team-${targetAttempt.task.team}`;
+
+        const sourceCollapsed = !!collapsedTasks[sourceTaskId] || !!collapsedByTeamId[sourceTeamId];
+        const targetCollapsed = !!collapsedTasks[targetTaskId] || !!collapsedByTeamId[targetTeamId];
+
+        const shouldHide = sourceCollapsed || targetCollapsed;
+
+        // Only update if the hidden state actually changed
+        if (edge.hidden === shouldHide) return edge;
+        return { ...edge, hidden: shouldHide };
+      }),
+    );
+  }, [hideEdgesOfCollapsed, collapsedByTeamId, collapsedTasks, all_attempts]);
+
   // __________LOAD DATA
   useEffect(() => {
     async function loadData() {
@@ -1309,7 +1365,16 @@ export default function OrgAttempts() {
           };
         });
 
-        setAttemptNodes(updated_attempt_nodes);
+        // Filter out collapsed nodes if hideCollapsedNodes is enabled
+        const filteredAttemptNodes = hideCollapsedNodes
+          ? updated_attempt_nodes.filter((node) => {
+              const isTeamCollapsed = node.data?.isTeamCollapsed || false;
+              const isTaskCollapsed = node.data?.isTaskCollapsed || false;
+              return !isTeamCollapsed && !isTaskCollapsed;
+            })
+          : updated_attempt_nodes;
+
+        setAttemptNodes(filteredAttemptNodes);
       }
 
       // loadAttemptDependencies
@@ -1350,6 +1415,52 @@ export default function OrgAttempts() {
       })),
     );
   }, [collapsedDays, pixelMap, componentWidth]);
+
+  // Re-filter attempt nodes when hideCollapsedNodes changes
+  useEffect(() => {
+    if (!all_attempts.length) return;
+
+    const updated_attempt_nodes = all_attempts.map((attempt, index) => {
+      const x = getXFromSlotIndex(attempt.slot_index);
+      const taskNodeId = `task-${attempt.task.id}`;
+      const taskNode = taskNodes.find((t) => t.id === taskNodeId);
+      const isTeamCollapsed = taskNode?.data?.isTeamCollapsed || false;
+      const isTaskCollapsed = !!collapsedTasks[taskNodeId];
+
+      return {
+        id: `attempt-${attempt.id}`,
+        parentNode: taskNodeId,
+        extent: 'parent',
+        type: 'attemptNode',
+        position: { x, y: index * 0 },
+        data: {
+          label: attempt.name,
+          number: attempt.number,
+          slotIndex: attempt.slot_index,
+          collapsedDays,
+          isTeamCollapsed,
+          isTaskCollapsed,
+        },
+      };
+    });
+
+    const filteredAttemptNodes = hideCollapsedNodes
+      ? updated_attempt_nodes.filter((node) => {
+          const isTeamCollapsed = node.data?.isTeamCollapsed || false;
+          const isTaskCollapsed = node.data?.isTaskCollapsed || false;
+          return !isTeamCollapsed && !isTaskCollapsed;
+        })
+      : updated_attempt_nodes;
+
+    setAttemptNodes(filteredAttemptNodes);
+  }, [
+    hideCollapsedNodes,
+    all_attempts,
+    taskNodes,
+    collapsedTasks,
+    collapsedDays,
+    getXFromSlotIndex,
+  ]);
 
   // Attempts no longer fully recompute on every collapsedDays change;
   // we update selectively in onToggleDay above to reduce lag.
@@ -1635,6 +1746,29 @@ export default function OrgAttempts() {
                 onClick={expandAllDays}
               >
                 Expand All Days
+              </Button>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Button
+                className={`!text-black ${hideCollapsedNodes ? '!bg-blue-400' : '!bg-slate-200'}`}
+                variant="contained"
+                onClick={() => setHideCollapsedNodes(!hideCollapsedNodes)}
+              >
+                {hideCollapsedNodes ? '✓' : ''} Hide Collapsed Nodes
+              </Button>
+              <Button
+                className={`!text-black ${hideEdgesOfCollapsed ? '!bg-blue-400' : '!bg-slate-200'}`}
+                variant="contained"
+                onClick={() => setHideEdgesOfCollapsed(!hideEdgesOfCollapsed)}
+              >
+                {hideEdgesOfCollapsed ? '✓' : ''} Hide Edges of Collapsed
+              </Button>
+              <Button
+                className={`!text-black ${hideEmptyDays ? '!bg-blue-400' : '!bg-slate-200'}`}
+                variant="contained"
+                onClick={() => setHideEmptyDays(!hideEmptyDays)}
+              >
+                {hideEmptyDays ? '✓' : ''} Hide Empty Days
               </Button>
             </div>
             <div className="mb-1">
