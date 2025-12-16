@@ -1416,6 +1416,33 @@ export default function OrgAttempts() {
     );
   }, [collapsedDays, pixelMap, componentWidth]);
 
+  // Automatically collapse/expand empty days when hideEmptyDays changes
+  useEffect(() => {
+    setCollapsedDays((prevCollapsedDays) => {
+      const newCollapsedDays = { ...prevCollapsedDays };
+      let hasChanges = false;
+
+      for (let i = 1; i <= entryCount; i++) {
+        const isEmpty = !daysWithAttempts.has(i);
+        const shouldBeCollapsed = hideEmptyDays && isEmpty;
+        const isCurrentlyCollapsed = !!newCollapsedDays[i];
+
+        if (isEmpty) {
+          // Only modify empty days
+          if (shouldBeCollapsed && !isCurrentlyCollapsed) {
+            newCollapsedDays[i] = true;
+            hasChanges = true;
+          } else if (!shouldBeCollapsed && isCurrentlyCollapsed) {
+            delete newCollapsedDays[i];
+            hasChanges = true;
+          }
+        }
+      }
+
+      return hasChanges ? newCollapsedDays : prevCollapsedDays;
+    });
+  }, [hideEmptyDays, entryCount, daysWithAttempts]);
+
   // Re-filter attempt nodes when hideCollapsedNodes changes
   useEffect(() => {
     if (!all_attempts.length) return;
