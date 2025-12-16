@@ -23,6 +23,10 @@ import {
   update_project_api,
 } from '../../api/org_API';
 import Button from '@mui/material/Button';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import dayjs from 'dayjs';
 import { useState } from 'react';
 
 export async function project_loader({ params }) {
@@ -157,6 +161,12 @@ export default function ProjectMain() {
   const [isEditingName, setIsEditingName] = useState(false);
   const [projectName, setProjectName] = useState(project.name);
   const [saving, setSaving] = useState(false);
+  const [isEditingDates, setIsEditingDates] = useState(false);
+  const [editStartDate, setEditStartDate] = useState(
+    project.start_date ? dayjs(project.start_date) : null,
+  );
+  const [editEndDate, setEditEndDate] = useState(project.end_date ? dayjs(project.end_date) : null);
+  const [savingDates, setSavingDates] = useState(false);
 
   const createdDate = project.created_at
     ? new Date(project.created_at).toLocaleDateString('de-DE', {
@@ -203,6 +213,30 @@ export default function ProjectMain() {
   function handleCancelEdit() {
     setProjectName(project.name);
     setIsEditingName(false);
+  }
+
+  async function handleSaveDates() {
+    try {
+      setSavingDates(true);
+      await update_project_api(project.id, {
+        start_date: editStartDate ? editStartDate.format('YYYY-MM-DD') : null,
+        end_date: editEndDate ? editEndDate.format('YYYY-MM-DD') : null,
+      });
+      project.start_date = editStartDate ? editStartDate.format('YYYY-MM-DD') : null;
+      project.end_date = editEndDate ? editEndDate.format('YYYY-MM-DD') : null;
+      setIsEditingDates(false);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update project dates: ' + err.message);
+    } finally {
+      setSavingDates(false);
+    }
+  }
+
+  function handleCancelDateEdit() {
+    setEditStartDate(project.start_date ? dayjs(project.start_date) : null);
+    setEditEndDate(project.end_date ? dayjs(project.end_date) : null);
+    setIsEditingDates(false);
   }
 
   return (
@@ -298,25 +332,137 @@ export default function ProjectMain() {
           </div>
 
           {/* Meta Information */}
-          <div className="flex flex-wrap gap-3">
-            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-              <User size={16} className="text-blue-600" />
-              <span className="mr-1 text-xs text-slate-500">Owner:</span>
-              <span className="text-sm font-medium text-slate-700">{project.owner_username}</span>
-            </div>
-
-            {createdDate && (
+          {!isEditingDates ? (
+            <div className="flex flex-wrap gap-3">
               <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <Calendar size={16} className="text-purple-600" />
-                <span className="text-sm text-slate-700">{createdDate}</span>
+                <User size={16} className="text-blue-600" />
+                <span className="mr-1 text-xs text-slate-500">Owner:</span>
+                <span className="text-sm font-medium text-slate-700">{project.owner_username}</span>
               </div>
-            )}
 
-            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-              <Folder size={16} className="text-emerald-600" />
-              <span className="font-mono text-sm text-slate-700">ID: {project.id}</span>
+              {createdDate && (
+                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <Calendar size={16} className="text-purple-600" />
+                  <span className="mr-1 text-xs text-slate-500">Created:</span>
+                  <span className="text-sm text-slate-700">{createdDate}</span>
+                </div>
+              )}
+
+              {(project.start_date || project.end_date) && (
+                <button
+                  onClick={() => setIsEditingDates(true)}
+                  className="group flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 transition-all hover:border-blue-400 hover:bg-blue-50"
+                  title="Edit dates"
+                >
+                  <Calendar
+                    size={16}
+                    className="text-slate-600 transition-colors group-hover:text-blue-600"
+                  />
+                  <div className="flex gap-3">
+                    {project.start_date && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-slate-500">Start:</span>
+                        <span className="text-sm text-slate-700">
+                          {new Date(project.start_date).toLocaleDateString('de-DE')}
+                        </span>
+                      </div>
+                    )}
+                    {project.end_date && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-slate-500">End:</span>
+                        <span className="text-sm text-slate-700">
+                          {new Date(project.end_date).toLocaleDateString('de-DE')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <Pencil
+                    size={14}
+                    className="ml-1 opacity-0 transition-opacity group-hover:opacity-100"
+                  />
+                </button>
+              )}
+
+              {!project.start_date && !project.end_date && (
+                <button
+                  onClick={() => setIsEditingDates(true)}
+                  className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-slate-600 transition-all hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600"
+                  title="Add dates"
+                >
+                  <Calendar size={16} />
+                  <span className="text-xs font-medium">Daten hinzufügen</span>
+                </button>
+              )}
+
+              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <Folder size={16} className="text-emerald-600" />
+                <span className="font-mono text-sm text-slate-700">ID: {project.id}</span>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <h3 className="mb-4 text-sm font-semibold text-slate-900">
+                Projektzeitraum bearbeiten
+              </h3>
+              <LocalizationProvider dateAdapter={AdapterDayjs}>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <DatePicker
+                    label="Startdatum (optional)"
+                    value={editStartDate}
+                    onChange={setEditStartDate}
+                    minDate={dayjs()}
+                    slotProps={{
+                      textField: {
+                        size: 'small',
+                        fullWidth: true,
+                      },
+                    }}
+                  />
+
+                  <DatePicker
+                    label="Enddatum (optional)"
+                    value={editEndDate}
+                    onChange={setEditEndDate}
+                    minDate={editStartDate || dayjs()}
+                    slotProps={{
+                      textField: {
+                        size: 'small',
+                        fullWidth: true,
+                      },
+                    }}
+                  />
+                </div>
+              </LocalizationProvider>
+
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={handleSaveDates}
+                  disabled={savingDates}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2 font-medium text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingDates ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      Speichern...
+                    </>
+                  ) : (
+                    <>
+                      <Check size={16} />
+                      Speichern
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleCancelDateEdit}
+                  disabled={savingDates}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-slate-200 px-4 py-2 font-medium text-slate-900 transition-colors hover:bg-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <X size={16} />
+                  Abbrechen
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Members Section */}
           {project.members_data && project.members_data.length > 0 && (

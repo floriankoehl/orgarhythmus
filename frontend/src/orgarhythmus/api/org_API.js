@@ -99,7 +99,7 @@ export async function leave_project_api(projectId) {
 }
 
 // create_project_api
-export async function create_project_api(name, description) {
+export async function create_project_api(name, description, startDate, endDate) {
   const token = localStorage.getItem('access_token');
 
   if (!token) {
@@ -115,6 +115,8 @@ export async function create_project_api(name, description) {
     body: JSON.stringify({
       name,
       description,
+      start_date: startDate || null,
+      end_date: endDate || null,
     }),
   });
 

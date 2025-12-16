@@ -26,6 +26,8 @@ class Project(models.Model):
     members = models.ManyToManyField(User, related_name="projects", blank=True)
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
+    start_date = models.DateField(blank=True, null=True)
+    end_date = models.DateField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

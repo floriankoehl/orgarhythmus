@@ -9,6 +9,10 @@ import {
 } from '../api/org_API';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import dayjs from 'dayjs';
 import { Plus, Folder, Calendar, User, LogIn, LogOut, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -165,6 +169,8 @@ export default function OrgaProjects() {
   // Create form state
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [error, setError] = useState('');
   const [formSubmitting, setFormSubmitting] = useState(false);
 
@@ -215,7 +221,12 @@ export default function OrgaProjects() {
 
     try {
       setFormSubmitting(true);
-      const newProject = await create_project_api(name.trim(), description.trim());
+      const newProject = await create_project_api(
+        name.trim(),
+        description.trim(),
+        startDate || null,
+        endDate || null,
+      );
 
       // Reload projects to get updated data
       await loadProjects();
@@ -223,6 +234,8 @@ export default function OrgaProjects() {
       // Reset form
       setName('');
       setDescription('');
+      setStartDate('');
+      setEndDate('');
     } catch (err) {
       console.error(err);
       setError(err.message || 'Could not create project.');
@@ -322,6 +335,74 @@ export default function OrgaProjects() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
+
+            <LocalizationProvider dateAdapter={AdapterDayjs}>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <DatePicker
+                  label="Startdatum (optional)"
+                  value={startDate ? dayjs(startDate) : null}
+                  onChange={(newValue) =>
+                    setStartDate(newValue ? newValue.format('YYYY-MM-DD') : '')
+                  }
+                  minDate={dayjs()}
+                  slotProps={{
+                    textField: {
+                      size: 'small',
+                      fullWidth: true,
+                      sx: {
+                        '& .MuiOutlinedInput-root': {
+                          borderRadius: '8px',
+                          backgroundColor: 'rgba(249, 250, 251, 0.7)',
+                          transition: 'all 0.2s',
+                          '&:hover': {
+                            backgroundColor: 'rgba(249, 250, 251, 1)',
+                          },
+                          '&.Mui-focused': {
+                            backgroundColor: '#fff',
+                            boxShadow: '0 0 0 3px rgba(34, 197, 94, 0.1)',
+                          },
+                        },
+                        '& .MuiOutlinedInput-input': {
+                          cursor: 'pointer',
+                          fontSize: '0.95rem',
+                        },
+                      },
+                    },
+                  }}
+                />
+
+                <DatePicker
+                  label="Enddatum (optional)"
+                  value={endDate ? dayjs(endDate) : null}
+                  onChange={(newValue) => setEndDate(newValue ? newValue.format('YYYY-MM-DD') : '')}
+                  minDate={startDate ? dayjs(startDate) : dayjs()}
+                  slotProps={{
+                    textField: {
+                      size: 'small',
+                      fullWidth: true,
+                      sx: {
+                        '& .MuiOutlinedInput-root': {
+                          borderRadius: '8px',
+                          backgroundColor: 'rgba(249, 250, 251, 0.7)',
+                          transition: 'all 0.2s',
+                          '&:hover': {
+                            backgroundColor: 'rgba(249, 250, 251, 1)',
+                          },
+                          '&.Mui-focused': {
+                            backgroundColor: '#fff',
+                            boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.1)',
+                          },
+                        },
+                        '& .MuiOutlinedInput-input': {
+                          cursor: 'pointer',
+                          fontSize: '0.95rem',
+                        },
+                      },
+                    },
+                  }}
+                />
+              </div>
+            </LocalizationProvider>
 
             {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
 

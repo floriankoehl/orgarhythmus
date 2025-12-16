@@ -170,7 +170,7 @@ class ProjectSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Project
-        fields = ["id", "name", "description", "created_at", "owner", "owner_username", "members_data"]
+        fields = ["id", "name", "description", "created_at", "owner", "owner_username", "members_data", "start_date", "end_date"]
         read_only_fields = ["id", "created_at", "owner", "owner_username", "members_data"]
 
     def get_members_data(self, obj):
@@ -383,11 +383,13 @@ def leave_project(request, pk):
 def create_project(request):
     """
     Create a new project for the current user.
-    Body: { "name": "...", "description": "..." }
+    Body: { "name": "...", "description": "...", "start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD" }
     """
     data = request.data
     name = data.get("name", "").strip()
     description = data.get("description", "").strip()
+    start_date = data.get("start_date")
+    end_date = data.get("end_date")
 
     if not name:
         return Response(
@@ -399,6 +401,8 @@ def create_project(request):
         owner=request.user,
         name=name,
         description=description or "",
+        start_date=start_date or None,
+        end_date=end_date or None,
     )
     # Optional: Owner auch gleich als Mitglied hinzufügen
     project.members.add(request.user)
