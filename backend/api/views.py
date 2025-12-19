@@ -1013,13 +1013,13 @@ def all_attempts_for_this_project(request, project_id):
     # 1) All attempts whose task belongs to this project
     all_attempts = (
         Attempt.objects
-        .select_related("task")        # so we don't hit the DB again per attempt
+        .select_related("task", "task__team")  # fetch both task and its team to avoid N+1
         .filter(task__project_id=project_id)
     )
 
     # 2) Manually build the structure you showed:
     #    0: {id: 93, name: "c_0", number: 1, slot_index: 2,
-    #        task: {id: 10, name: "c"}}
+    #        task: {id: 10, name: "c", team: {id: 5, name: "...", color: "..."}}}
     data = []
     for a in all_attempts:
         task_obj = a.task  # thanks to select_related
@@ -1031,6 +1031,11 @@ def all_attempts_for_this_project(request, project_id):
             "task": {
                 "id": task_obj.id if task_obj else None,
                 "name": task_obj.name if task_obj else None,
+                "team": {
+                    "id": task_obj.team.id,
+                    "name": task_obj.team.name,
+                    "color": task_obj.team.color,
+                } if task_obj and task_obj.team else None,
             } if task_obj else None,
         })
 
