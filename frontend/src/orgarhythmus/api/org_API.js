@@ -518,6 +518,30 @@ export async function update_attempt_slot_index(attempt_id, slot_index) {
   return await res.json();
 }
 
+// toggle attempt todo
+export async function toggle_attempt_todo(projectId, attemptId, todoId) {
+  const token = localStorage.getItem('access_token');
+  if (!token) throw redirect('/login');
+
+  const res = await fetch(
+    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/attempts/${attemptId}/todos/`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'toggle', todo_id: todoId }),
+    },
+  );
+
+  if (!res.ok) {
+    throw new Error('Failed to toggle todo');
+  }
+
+  return await res.json();
+}
+
 // delete_attempt_dependency
 export async function delete_attempt_dependency(dependency_id) {
   const token = localStorage.getItem('access_token');
@@ -542,3 +566,133 @@ export async function delete_attempt_dependency(dependency_id) {
 
   return await res.json();
 }
+
+// ...existing code...
+export async function fetchAttemptDetail(projectId, attemptId) {
+  const token = localStorage.getItem('access_token');
+  if (!token) throw redirect('/login');
+
+  const res = await fetch(
+    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/attempts/${attemptId}/`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  if (!res.ok) throw new Error('Failed to load attempt');
+  return await res.json();
+}
+
+export async function updateAttempt(projectId, attemptId, payload) {
+  const token = localStorage.getItem('access_token');
+  if (!token) throw redirect('/login');
+
+  const res = await fetch(
+    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/attempts/${attemptId}/`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!res.ok) throw new Error('Failed to update attempt');
+  return await res.json();
+}
+
+export async function createAttemptTodo(projectId, attemptId, text) {
+  const token = localStorage.getItem('access_token');
+  if (!token) throw redirect('/login');
+
+  const res = await fetch(
+    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/attempts/${attemptId}/todos/`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'create', text }),
+    },
+  );
+  if (!res.ok) throw new Error('Failed to create todo');
+  return await res.json();
+}
+
+export async function toggleAttemptTodo(projectId, attemptId, todoId) {
+  const token = localStorage.getItem('access_token');
+  if (!token) throw redirect('/login');
+
+  const res = await fetch(
+    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/attempts/${attemptId}/todos/`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'toggle', todo_id: todoId }),
+    },
+  );
+  if (!res.ok) throw new Error('Failed to toggle todo');
+  return await res.json();
+}
+
+export async function deleteAttemptTodo(projectId, attemptId, todoId) {
+  const token = localStorage.getItem('access_token');
+  if (!token) throw redirect('/login');
+
+  const res = await fetch(
+    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/attempts/${attemptId}/todos/`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'delete', todo_id: todoId }),
+    },
+  );
+  if (!res.ok) throw new Error('Failed to delete todo');
+  return await res.json();
+}
+
+// create_attempt
+export async function createAttempt(projectId, taskId, name) {
+  const token = localStorage.getItem('access_token');
+  if (!token) throw redirect('/login');
+
+  const res = await fetch(`${BASE_URL}/api/orgarhythmus/projects/${projectId}/attempts/`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ task_id: taskId, name: name || '' }),
+  });
+
+  if (!res.ok) throw new Error('Failed to create attempt');
+  return await res.json();
+}
+
+// delete_attempt
+export async function deleteAttempt(projectId, attemptId) {
+  const token = localStorage.getItem('access_token');
+  if (!token) throw redirect('/login');
+
+  const res = await fetch(
+    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/attempts/${attemptId}/delete/`,
+    {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    },
+  );
+
+  if (!res.ok) throw new Error('Failed to delete attempt');
+  return await res.json();
+}
+// ...existing code...

@@ -87,13 +87,26 @@ class Dependency(models.Model):
 class Attempt(models.Model):
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='attempts')
     name = models.CharField(max_length=200, blank=True, null=True)
-    number = models.IntegerField()  # Remove blank=True, null=True if it's always required
+    description = models.TextField(blank=True, null=True, default='')
+    number = models.IntegerField(blank=True, null=True)
     slot_index = models.IntegerField(blank=True, null=True)
+    done = models.BooleanField(default=False)  # NEW
 
     class Meta:
-        unique_together = ('task', 'number')  # Prevent duplicate attempt numbers
-        ordering = ['number']  # Always order by attempt number
+        unique_together = ('task', 'number')
+        ordering = ['number']
 
+    def __str__(self):
+        return self.name or f"Attempt {self.id}"
+
+class AttemptTodo(models.Model):
+    attempt = models.ForeignKey(Attempt, on_delete=models.CASCADE, related_name='todos')
+    text = models.CharField(max_length=500)
+    done = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.text
 
 class AttemptDependency(models.Model):
     vortakt_attempt = models.ForeignKey(Attempt, on_delete=models.CASCADE, related_name='nachtakt_attempts')

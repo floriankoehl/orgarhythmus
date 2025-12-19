@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import date, timedelta
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -26,6 +26,7 @@ from .models import (
     AttemptDependency,
     Task,
     Project,
+    AttemptTodo,
 )
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -248,7 +249,8 @@ class TaskSerializer_TeamView(serializers.ModelSerializer):
 class TaskExpandedSerializer(serializers.ModelSerializer):
     team = BasicTeamSerializer(read_only=True)
     project_id = serializers.IntegerField(source='project.id', read_only=True)
-    
+    attempts = serializers.SerializerMethodField()
+
     class Meta:
         model = Task
         fields = [
@@ -258,6 +260,41 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
             'difficulty',
             'team',
             'project_id',
+            'attempts',
+        ]
+
+    def get_attempts(self, obj):
+        attempts_qs = getattr(obj, "attempts", None)
+        if attempts_qs is None:
+            return []
+
+        # order attempts by slot_index then id to keep a consistent timeline
+        ordered = attempts_qs.all().order_by('slot_index', 'id').prefetch_related('todos')
+        start_date = getattr(getattr(obj, 'project', None), 'start_date', None)
+        return [
+            {
+                "id": a.id,
+                "name": getattr(a, "name", None),
+                "description": getattr(a, "description", None),
+                "number": getattr(a, "number", None),
+                "slot_index": getattr(a, "slot_index", None),
+                "done": getattr(a, "done", False),
+                "scheduled_date": (
+                    (
+                        (start_date + timedelta(days=(a.slot_index - 1))).isoformat()
+                    ) if (start_date and (a.slot_index is not None)) else None
+                ),
+                "todos": [
+                    {
+                        "id": t.id,
+                        "text": t.text,
+                        "done": t.done,
+                        "created_at": t.created_at,
+                    }
+                    for t in (a.todos.all().order_by('-created_at') if hasattr(a, 'todos') else [])
+                ],
+            }
+            for a in ordered
         ]
 
 
@@ -821,9 +858,14 @@ def task_detail_view(request, project_id, task_id):
     user = request.user
 
     try:
-        task = Task.objects.select_related("project", "team").get(
-            id=task_id,
-            project_id=project_id,
+        task = (
+            Task.objects
+            .select_related("project", "team")
+            .prefetch_related("attempts", "attempts__todos")
+            .get(
+                id=task_id,
+                project_id=project_id,
+            )
         )
     except Task.DoesNotExist:
         return Response({"detail": "Task not found."}, status=status.HTTP_404_NOT_FOUND)
@@ -1057,6 +1099,260 @@ def all_attempts_for_this_project(request, project_id):
 
 
 
+
+# create_attempt_view - POST to create new attempt for a task
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_attempt_view(request, project_id):
+    try:
+        project = Project.objects.get(id=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    data = request.data
+    task_id = data.get("task_id")
+    name = data.get("name", "").strip()
+    description = data.get("description", "")
+
+    if not task_id:
+        return Response({"detail": "task_id required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        task = Task.objects.get(id=task_id, project_id=project_id)
+    except Task.DoesNotExist:
+        return Response({"detail": "Task not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    # Create new attempt
+    attempt = Attempt.objects.create(
+        task=task,
+        name=name or f"Attempt {task.attempts.count() + 1}",
+        description=description,
+    )
+    
+    return Response(
+        {
+            "id": attempt.id,
+            "name": attempt.name,
+            "description": attempt.description,
+            "number": attempt.number,
+            "slot_index": attempt.slot_index,
+            "done": attempt.done,
+            "todos": [],
+        },
+        status=status.HTTP_201_CREATED,
+    )
+
+
+# delete_attempt_view - DELETE to remove an attempt
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_attempt_view(request, project_id, attempt_id):
+    try:
+        attempt = Attempt.objects.select_related("task__project").get(
+            id=attempt_id, task__project_id=project_id
+        )
+    except Attempt.DoesNotExist:
+        return Response({"detail": "Attempt not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, attempt.task.project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    attempt_id_copy = attempt.id
+    attempt.delete()
+    
+    return Response(
+        {"id": attempt_id_copy, "status": "deleted"},
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["GET", "PATCH"])
+@permission_classes([IsAuthenticated])
+def attempt_detail_view(request, project_id, attempt_id):
+    try:
+        attempt = Attempt.objects.select_related("task", "task__team", "task__project").get(
+            id=attempt_id, task__project_id=project_id
+        )
+    except Attempt.DoesNotExist:
+        return Response({"detail": "Attempt not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, attempt.task.project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    if request.method == "GET":
+        proj = getattr(attempt.task, 'project', None)
+        start_date = getattr(proj, 'start_date', None)
+        scheduled_date = (
+            (start_date + timedelta(days=(attempt.slot_index - 1))).isoformat()
+        ) if (start_date and (attempt.slot_index is not None)) else None
+
+        # Dependencies: incoming (parents) and outgoing (children)
+        incoming_qs = attempt.vortakt_attempts.select_related(
+            "vortakt_attempt",
+            "vortakt_attempt__task",
+            "vortakt_attempt__task__team",
+        )
+        outgoing_qs = attempt.nachtakt_attempts.select_related(
+            "nachtakt_attempt",
+            "nachtakt_attempt__task",
+            "nachtakt_attempt__task__team",
+        )
+
+        def serialize_other_attempt(other):
+            other_proj = getattr(other.task, 'project', None)
+            other_start = getattr(other_proj, 'start_date', None)
+            other_scheduled = (
+                (other_start + timedelta(days=(other.slot_index - 1))).isoformat()
+            ) if (other_start and (other.slot_index is not None)) else None
+            return {
+                "id": other.id,
+                "name": getattr(other, "name", None),
+                "number": getattr(other, "number", None),
+                "slot_index": getattr(other, "slot_index", None),
+                "done": getattr(other, "done", False),
+                "scheduled_date": other_scheduled,
+                "task": {
+                    "id": other.task.id if other.task else None,
+                    "name": other.task.name if other.task else None,
+                    "team": (
+                        {
+                            "id": other.task.team.id,
+                            "name": other.task.team.name,
+                            "color": other.task.team.color,
+                        }
+                        if (other.task and other.task.team)
+                        else None
+                    ),
+                },
+            }
+        return Response(
+            {
+                "id": attempt.id,
+                "name": attempt.name,
+                "description": attempt.description,
+                "number": attempt.number,
+                "slot_index": attempt.slot_index,
+                "done": attempt.done,
+                "scheduled_date": scheduled_date,
+                "task": {
+                    "id": attempt.task.id,
+                    "name": attempt.task.name,
+                    "team": {
+                        "id": attempt.task.team.id,
+                        "name": attempt.task.team.name,
+                        "color": attempt.task.team.color,
+                    } if attempt.task.team else None,
+                },
+                "todos": [
+                    {"id": t.id, "text": t.text, "done": t.done, "created_at": t.created_at}
+                    for t in attempt.todos.all().order_by("-created_at")
+                ],
+                "incoming_dependencies": [
+                    {
+                        "type": dep.type,
+                        "attempt": serialize_other_attempt(dep.vortakt_attempt),
+                    }
+                    for dep in incoming_qs
+                ],
+                "outgoing_dependencies": [
+                    {
+                        "type": dep.type,
+                        "attempt": serialize_other_attempt(dep.nachtakt_attempt),
+                    }
+                    for dep in outgoing_qs
+                ],
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    if request.method == "PATCH":
+        data = request.data
+        if "done" in data:
+            attempt.done = bool(data.get("done"))
+        if "name" in data:
+            attempt.name = data.get("name") or attempt.name
+        if "description" in data:
+            attempt.description = data.get("description")
+        attempt.save()
+        return Response({"id": attempt.id, "done": attempt.done, "name": attempt.name, "description": attempt.description}, status=status.HTTP_200_OK)
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def attempt_todos_view(request, project_id, attempt_id):
+    try:
+        attempt = Attempt.objects.select_related("task__project").get(id=attempt_id, task__project_id=project_id)
+    except Attempt.DoesNotExist:
+        return Response({"detail": "Attempt not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, attempt.task.project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return Response({"detail": "Invalid JSON"}, status=status.HTTP_400_BAD_REQUEST)
+
+    action = body.get("action")
+    todo_id = body.get("todo_id")
+    text = body.get("text")
+
+    if action == "create":
+        if not text:
+          return Response({"detail": "text required"}, status=status.HTTP_400_BAD_REQUEST)
+        todo = AttemptTodo.objects.create(attempt=attempt, text=text)
+        
+        # Auto-update attempt.done based on todos completion
+        all_todos = attempt.todos.all()
+        if all_todos.exists():
+            all_done = all_todos.filter(done=True).count() == all_todos.count()
+            attempt.done = all_done
+            attempt.save()
+        
+        return Response({"id": todo.id, "text": todo.text, "done": todo.done, "attempt_done": attempt.done}, status=status.HTTP_201_CREATED)
+
+    if action == "toggle":
+        if not todo_id:
+            return Response({"detail": "todo_id required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            todo = AttemptTodo.objects.get(id=todo_id, attempt=attempt)
+        except AttemptTodo.DoesNotExist:
+            return Response({"detail": "Todo not found"}, status=status.HTTP_404_NOT_FOUND)
+        todo.done = not todo.done
+        todo.save()
+        
+        # Auto-update attempt.done based on todos completion
+        all_todos = attempt.todos.all()
+        if all_todos.exists():
+            all_done = all_todos.filter(done=True).count() == all_todos.count()
+            attempt.done = all_done
+            attempt.save()
+        
+        return Response({"id": todo.id, "done": todo.done, "attempt_done": attempt.done}, status=status.HTTP_200_OK)
+
+    if action == "delete":
+        if not todo_id:
+            return Response({"detail": "todo_id required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            todo = AttemptTodo.objects.get(id=todo_id, attempt=attempt)
+        except AttemptTodo.DoesNotExist:
+            return Response({"detail": "Todo not found"}, status=status.HTTP_404_NOT_FOUND)
+        todo.delete()
+        
+        # Auto-update attempt.done based on remaining todos completion
+        all_todos = attempt.todos.all()
+        if all_todos.exists():
+            all_done = all_todos.filter(done=True).count() == all_todos.count()
+            attempt.done = all_done
+        else:
+            attempt.done = False
+        attempt.save()
+        
+        return Response({"id": todo_id, "status": "deleted", "attempt_done": attempt.done}, status=status.HTTP_200_OK)
+
+    return Response({"detail": "Invalid action"}, status=status.HTTP_400_BAD_REQUEST)
 
 
 

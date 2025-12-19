@@ -440,8 +440,7 @@ function AttemptNode({ data, selected }) {
         zIndex: 10,
       }}
     >
-      {!isCollapsed && data.number}
-
+      {!isCollapsed && (typeof data.number === 'number' ? data.number : 'X')}
       <Handle
         type="target"
         position={Position.Left}
@@ -452,7 +451,6 @@ function AttemptNode({ data, selected }) {
           transform: 'translateY(-50%)',
         }}
       />
-
       <Handle
         type="source"
         position={Position.Right}

@@ -204,7 +204,7 @@ export default function NextSteps() {
                       <div className="flex min-w-0 flex-1 items-center justify-center gap-3">
                         {taskTeam && (
                           <div
-                            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-xs font-bold"
+                            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white"
                             style={{ backgroundColor: taskTeam.color }}
                           >
                             {taskTeam.name?.[0]?.toUpperCase() || 'T'}
