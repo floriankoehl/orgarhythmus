@@ -118,7 +118,7 @@ function ProjectStats({ tasks, teams, attempts }) {
             <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
               Avg Difficulty
             </p>
-            <p className="mt-1.5 text-2xl font-bold text-slate-900">{avgDifficulty}</p>
+            -
           </div>
           <Zap size={24} className="text-amber-400" />
         </div>
@@ -210,7 +210,10 @@ export default function ProjectMain() {
   const [isEditingDates, setIsEditingDates] = useState(false);
   const [showCalendar, setShowCalendar] = useState(true); // Default to true
   const [calendarDays, setCalendarDays] = useState(14);
+  const [hideEmptyDays, setHideEmptyDays] = useState(false);
   const [hoveredAttemptId, setHoveredAttemptId] = useState(null);
+  const [showAllTeams, setShowAllTeams] = useState(false);
+  const [showAllTasks, setShowAllTasks] = useState(false);
 
   // Add state for the current dates
   const [startDate, setStartDate] = useState(initialProject.start_date);
@@ -569,14 +572,27 @@ export default function ProjectMain() {
             <div className="flex items-center gap-2">
               <select
                 value={calendarDays}
-                onChange={(e) => setCalendarDays(parseInt(e.target.value))}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCalendarDays(val === 'ALL' ? 'ALL' : parseInt(val));
+                }}
                 className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-300"
               >
                 <option value={7}>7 days</option>
                 <option value={14}>14 days</option>
                 <option value={30}>30 days</option>
                 <option value={60}>60 days</option>
+                <option value={'ALL'}>All</option>
               </select>
+              <label className="ml-1 inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={hideEmptyDays}
+                  onChange={(e) => setHideEmptyDays(e.target.checked)}
+                  className="h-3 w-3 accent-blue-600"
+                />
+                Hide empty
+              </label>
               <button
                 onClick={() => setShowCalendar(!showCalendar)}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
@@ -603,7 +619,6 @@ export default function ProjectMain() {
                   </div>
                 ))}
               </div>
-
               {/* Calendar grid - 7 columns on lg screens, 2-3 on smaller */}
               <div className="relative grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
                 {(() => {
@@ -645,12 +660,37 @@ export default function ProjectMain() {
                   // Get next 14 days
                   const dates = [];
                   let current = new Date(today);
-                  for (let i = 0; i < calendarDays; i++) {
-                    dates.push(new Date(current));
-                    current.setDate(current.getDate() + 1);
+                  let limit = null;
+                  if (calendarDays === 'ALL') {
+                    if (initialProject.end_date) {
+                      limit = new Date(initialProject.end_date);
+                      limit.setHours(0, 0, 0, 0);
+                    } else {
+                      const keys = Object.keys(attemptsByDate);
+                      if (keys.length > 0) {
+                        const maxKey = keys.sort()[keys.length - 1];
+                        const [y, m, d] = maxKey.split('-').map((x) => parseInt(x, 10));
+                        limit = new Date(y, m - 1, d);
+                      } else {
+                        limit = new Date(today.getTime() + 60 * msPerDay);
+                      }
+                    }
+                    while (current <= limit) {
+                      dates.push(new Date(current));
+                      current.setDate(current.getDate() + 1);
+                    }
+                  } else {
+                    for (let i = 0; i < calendarDays; i++) {
+                      dates.push(new Date(current));
+                      current.setDate(current.getDate() + 1);
+                    }
                   }
 
-                  return dates.map((date) => {
+                  const visibleDates = hideEmptyDays
+                    ? dates.filter((d) => (attemptsByDate[fmt(d)] || []).length > 0)
+                    : dates;
+
+                  return visibleDates.map((date) => {
                     const dateKey = fmt(date);
                     const dayAttempts = attemptsByDate[dateKey] || [];
                     const isToday = dateKey === fmt(today);
@@ -685,11 +725,7 @@ export default function ProjectMain() {
                         {dayAttempts.length > 0 ? (
                           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 text-xs">
                             {dayAttempts.map((attempt) => (
-                              <div
-                                key={attempt.id}
-                                className="group/item relative"
-                                onMouseEnter={() => setHoveredAttemptId(attempt.id)}
-                              >
+                              <div key={attempt.id} className="group/item relative">
                                 <div
                                   className="cursor-pointer truncate rounded px-1.5 py-0.5 text-white shadow-sm transition"
                                   style={{
@@ -709,47 +745,15 @@ export default function ProjectMain() {
                             No attempts
                           </div>
                         )}
-
-                        {/* Hover menu: absolutely positioned within day card, not scrolling */}
-                        {hoveredAttempt && (
-                          <div className="absolute top-10 right-2 z-50 space-y-1 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-                            <button
-                              onClick={() =>
-                                navigate(
-                                  `/orgarhythmus/projects/${initialProject.id}/teams/${hoveredAttempt.task?.team?.id}`,
-                                )
-                              }
-                              className="w-full rounded px-2 py-1 text-left text-xs text-slate-700 transition hover:bg-slate-100"
-                            >
-                              → Go to Team
-                            </button>
-                            <button
-                              onClick={() =>
-                                navigate(
-                                  `/orgarhythmus/projects/${initialProject.id}/tasks/${hoveredAttempt.task?.id}`,
-                                )
-                              }
-                              className="w-full rounded px-2 py-1 text-left text-xs text-slate-700 transition hover:bg-slate-100"
-                            >
-                              → Go to Task
-                            </button>
-                            <button
-                              onClick={() =>
-                                navigate(
-                                  `/orgarhythmus/projects/${initialProject.id}/attempts/${hoveredAttempt.id}`,
-                                )
-                              }
-                              className="w-full rounded px-2 py-1 text-left text-xs font-medium text-blue-700 transition hover:bg-blue-100"
-                            >
-                              → Go to Attempt
-                            </button>
-                          </div>
-                        )}
                       </div>
                     );
                   });
                 })()}
               </div>
+              onClick=
+              {() =>
+                navigate(`/orgarhythmus/projects/${initialProject.id}/tasks/${attempt.task?.id}`)
+              }
             </div>
           )}
         </section>
@@ -782,7 +786,7 @@ export default function ProjectMain() {
 
             {loaded_teams.length > 0 ? (
               <div className="space-y-3">
-                {loaded_teams.slice(0, 4).map((team) => (
+                {(showAllTeams ? loaded_teams : loaded_teams.slice(0, 4)).map((team) => (
                   <div
                     key={team.id}
                     onClick={() =>
@@ -820,10 +824,10 @@ export default function ProjectMain() {
               <Button
                 fullWidth
                 variant="outlined"
-                onClick={() => navigate(`/orgarhythmus/projects/${initialProject.id}/teams`)}
+                onClick={() => setShowAllTeams((v) => !v)}
                 style={{ textTransform: 'none', marginTop: '1rem', borderRadius: '8px' }}
               >
-                Alle Teams anzeigen →
+                {showAllTeams ? 'Weniger anzeigen' : 'Alle Teams anzeigen →'}
               </Button>
             )}
           </section>
@@ -854,7 +858,7 @@ export default function ProjectMain() {
 
             {loaded_tasks.length > 0 ? (
               <div className="space-y-3">
-                {loaded_tasks.slice(0, 4).map((task) => (
+                {(showAllTasks ? loaded_tasks : loaded_tasks.slice(0, 4)).map((task) => (
                   <div
                     key={task.id}
                     onClick={() =>
@@ -899,10 +903,10 @@ export default function ProjectMain() {
               <Button
                 fullWidth
                 variant="outlined"
-                onClick={() => navigate(`/orgarhythmus/projects/${initialProject.id}/tasks`)}
+                onClick={() => setShowAllTasks((v) => !v)}
                 style={{ textTransform: 'none', marginTop: '1rem', borderRadius: '8px' }}
               >
-                Alle Tasks anzeigen →
+                {showAllTasks ? 'Weniger anzeigen' : 'Alle Tasks anzeigen →'}
               </Button>
             )}
           </section>
