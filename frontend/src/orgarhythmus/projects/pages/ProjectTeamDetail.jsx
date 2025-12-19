@@ -46,7 +46,8 @@ export default function ProjectTeamDetail() {
   const [project, setProject] = useState(null);
   const [nextSteps, setNextSteps] = useState([]);
   const [viewMode, setViewMode] = useState('steps');
-  const [viewDays, setViewDays] = useState(7);
+  const [viewDays, setViewDays] = useState(14);
+  const [showEmptyDays, setShowEmptyDays] = useState(false);
   // Expansions & details
   const [expandedTaskIds, setExpandedTaskIds] = useState([]);
   const [taskDetails, setTaskDetails] = useState({}); // taskId -> task detail with attempts
@@ -164,12 +165,59 @@ export default function ProjectTeamDetail() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const msPerDay = 24 * 60 * 60 * 1000;
-  const scheduledSteps = scheduledAll.filter((a) => {
-    const d = getScheduledDate(a.slot_index);
-    if (!d) return false;
-    const diff = Math.floor((d.getTime() - today.getTime()) / msPerDay);
-    return diff >= 0 && diff <= viewDays; // within next viewDays
-  });
+
+  // Filter scheduled steps based on viewDays
+  const getFilteredScheduledSteps = () => {
+    if (viewDays === Infinity) {
+      return scheduledAll; // Show ALL
+    }
+    return scheduledAll.filter((a) => {
+      const d = getScheduledDate(a.slot_index);
+      if (!d) return false;
+      const diff = Math.floor((d.getTime() - today.getTime()) / msPerDay);
+      return diff >= 0 && diff <= viewDays;
+    });
+  };
+
+  const scheduledSteps = getFilteredScheduledSteps();
+
+  // Group attempts by date
+  const groupAttemptsByDate = () => {
+    const groups = {};
+    scheduledSteps.forEach((attempt) => {
+      const d = getScheduledDate(attempt.slot_index);
+      if (d) {
+        const dateKey = d.toISOString().split('T')[0]; // YYYY-MM-DD
+        if (!groups[dateKey]) {
+          groups[dateKey] = [];
+        }
+        groups[dateKey].push(attempt);
+      }
+    });
+    return groups;
+  };
+
+  // Get all dates in range (for showing empty days)
+  const getAllDatesInRange = () => {
+    const dates = [];
+    let current = new Date(today);
+    const endDate =
+      viewDays === Infinity
+        ? new Date(scheduledAll[scheduledAll.length - 1]?.scheduled_date || today)
+        : new Date(today.getTime() + viewDays * msPerDay);
+
+    while (current <= endDate) {
+      dates.push(new Date(current));
+      current.setDate(current.getDate() + 1);
+    }
+    return dates;
+  };
+
+  const attemptsByDate = groupAttemptsByDate();
+  const allDates = getAllDatesInRange();
+  const displayDates = showEmptyDays
+    ? allDates
+    : Object.keys(attemptsByDate).map((d) => new Date(d));
 
   const unscheduledSteps = nextSteps.filter(
     (a) => !project?.start_date || !Number.isInteger(a.slot_index) || a.slot_index <= 0,
@@ -427,15 +475,31 @@ export default function ProjectTeamDetail() {
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-slate-600">Next</span>
                 <select
-                  value={viewDays}
-                  onChange={(e) => setViewDays(parseInt(e.target.value) || 7)}
+                  value={viewDays === Infinity ? 'all' : viewDays}
+                  onChange={(e) =>
+                    setViewDays(
+                      e.target.value === 'all' ? Infinity : parseInt(e.target.value) || 14,
+                    )
+                  }
                   className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:border-slate-300"
                 >
                   <option value={3}>3 days</option>
                   <option value={7}>7 days</option>
                   <option value={14}>14 days</option>
                   <option value={30}>30 days</option>
+                  <option value="all">ALL</option>
                 </select>
+                <button
+                  onClick={() => setShowEmptyDays(!showEmptyDays)}
+                  className={`rounded-md px-2 py-1 text-xs font-medium transition ${
+                    showEmptyDays
+                      ? 'bg-blue-600 text-white'
+                      : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                  }`}
+                  title={showEmptyDays ? 'Hide empty days' : 'Show empty days'}
+                >
+                  {showEmptyDays ? 'Hide Empty' : 'Show Empty'}
+                </button>
               </div>
             </div>
 
@@ -446,39 +510,80 @@ export default function ProjectTeamDetail() {
               </div>
             ) : (
               <>
-                {scheduledSteps.length > 0 && (
+                {/* List View - Date first, then name */}
+                {displayDates.length > 0 && (
                   <div className="space-y-3">
-                    {scheduledSteps.map((a) => (
-                      <div
-                        key={a.id}
-                        className="group flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white px-4 py-2.5 transition hover:border-blue-300 hover:bg-blue-50"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-3">
-                            <h3 className="truncate text-sm font-semibold text-slate-900 group-hover:text-blue-700">
-                              {a.task?.name} — {a.name || 'Attempt'} #
-                              {a.slot_index ?? a.number ?? '—'}
-                            </h3>
-                            <div className="inline-flex flex-shrink-0 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
-                              <Calendar size={12} className="text-blue-600" />
-                              <span>{formatScheduledDate(a.slot_index)}</span>
+                    {displayDates.map((date) => {
+                      const dateKey = date.toISOString().split('T')[0];
+                      const attemptsOnDate = attemptsByDate[dateKey] || [];
+                      const hasAttempts = attemptsOnDate.length > 0;
+                      const isToday = dateKey === today.toISOString().split('T')[0];
+
+                      if (!hasAttempts && !showEmptyDays) {
+                        return null;
+                      }
+
+                      return (
+                        <div key={dateKey}>
+                          {/* Attempts for this date - Date and name on same row */}
+                          {hasAttempts ? (
+                            <div className="space-y-2">
+                              {attemptsOnDate.map((attempt) => (
+                                <div
+                                  key={attempt.id}
+                                  className="group flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white px-4 py-2.5 transition hover:border-blue-300 hover:bg-blue-50"
+                                >
+                                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                                    <div
+                                      className={`flex min-w-fit items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold flex-shrink-0 ${
+                                        isToday
+                                          ? 'bg-blue-600 text-white'
+                                          : 'bg-blue-100 text-blue-700'
+                                      }`}
+                                    >
+                                      <Calendar size={12} />
+                                      {date.toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                      })}
+                                    </div>
+                                    <h3 className="min-w-0 truncate text-sm font-semibold text-slate-900 group-hover:text-blue-700">
+                                      {attempt.task?.name} — {attempt.name || 'Attempt'} #
+                                      {attempt.slot_index ?? attempt.number ?? '—'}
+                                    </h3>
+                                  </div>
+                                  <button
+                                    onClick={() =>
+                                      navigate(
+                                        `/orgarhythmus/projects/${projectId}/attempts/${attempt.id}`,
+                                      )
+                                    }
+                                    className="inline-flex flex-shrink-0 items-center gap-1 rounded-lg bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-200"
+                                  >
+                                    <ExternalLink size={14} /> Open
+                                  </button>
+                                </div>
+                              ))}
                             </div>
-                          </div>
+                          ) : (
+                            <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/50 px-4 py-2.5">
+                              <div className="flex min-w-fit items-center gap-1 rounded-lg bg-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-600 flex-shrink-0">
+                                <Calendar size={12} />
+                                {date.toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                })}
+                              </div>
+                              <span className="text-xs font-medium text-slate-500">Empty</span>
+                            </div>
+                          )}
                         </div>
-                        <button
-                          onClick={() =>
-                            navigate(`/orgarhythmus/projects/${projectId}/attempts/${a.id}`)
-                          }
-                          className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-200"
-                        >
-                          <ExternalLink size={14} /> Open
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
-                {unscheduledSteps.length > 0 && (
+                {/* Unscheduled Section */}
                   <div className="mt-6">
                     <h3 className="mb-2 text-xs font-semibold tracking-[0.12em] text-slate-500 uppercase">
                       Unscheduled
@@ -492,8 +597,7 @@ export default function ProjectTeamDetail() {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-3">
                               <h3 className="truncate text-sm font-semibold text-slate-900">
-                                {a.task?.name} — {a.name || 'Attempt'} #
-                                {a.slot_index ?? a.number ?? '—'}
+                                {a.task?.name} — {a.name || 'Attempt'}
                               </h3>
                               <span className="inline-flex flex-shrink-0 items-center rounded-lg bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
                                 No date scheduled
@@ -593,8 +697,7 @@ export default function ProjectTeamDetail() {
                                       }`}
                                     />
                                     <p className="min-w-0 truncate text-sm font-semibold text-slate-900">
-                                      {attempt.name || 'Untitled attempt'} #
-                                      {attempt.slot_index ?? attempt.number ?? '—'}
+                                      {attempt.name || 'Untitled attempt'}
                                     </p>
                                     {attempt.scheduled_date && (
                                       <span className="inline-flex flex-shrink-0 items-center gap-1 rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700">

@@ -1,5 +1,6 @@
 // orgarhythmus/projects/pages/ProjectMain.jsx
 import { useLoaderData, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import {
   Folder,
   Calendar,
@@ -14,11 +15,17 @@ import {
   X,
   Pencil,
   Check,
+  CheckCircle2,
+  Circle,
+  TrendingUp,
+  Target,
+  Zap,
 } from 'lucide-react';
 import {
   fetch_project_detail,
   fetchTeamsForProject,
   fetchTasksForProject,
+  fetch_all_attempts,
   delete_project,
   update_project_api,
 } from '../../api/org_API';
@@ -27,18 +34,18 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import dayjs from 'dayjs';
-import { useState } from 'react';
 
 export async function project_loader({ params }) {
   const { projectId } = params;
   const project = await fetch_project_detail(projectId);
   const loaded_teams = await fetchTeamsForProject(projectId);
   const loaded_tasks = await fetchTasksForProject(projectId);
+  const loaded_attempts = await fetch_all_attempts();
 
-  return { project, loaded_teams, loaded_tasks };
+  return { project, loaded_teams, loaded_tasks, loaded_attempts };
 }
 
-function ProjectStats({ tasks, teams }) {
+function ProjectStats({ tasks, teams, attempts }) {
   const totalTasks = tasks.length;
   const totalTeams = teams.length;
   const unassignedTasks = tasks.filter((t) => !t.team).length;
@@ -53,30 +60,69 @@ function ProjectStats({ tasks, teams }) {
       ? (tasks.reduce((sum, t) => sum + (t.difficulty || 0), 0) / totalTasks).toFixed(1)
       : '-';
 
+  // Calculate completion stats
+  const totalAttempts = (attempts || []).length;
+  const completedAttempts = (attempts || []).filter((a) => a.done).length;
+  const completionRate =
+    totalAttempts > 0 ? Math.round((completedAttempts / totalAttempts) * 100) : 0;
+
+  // Calculate team stats
+  const teamsWithTasks = teams.filter((t) => t.tasks && t.tasks.length > 0).length;
+
   return (
-    <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
-      <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-3 shadow-sm backdrop-blur-sm">
-        <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
-          Tasks
-        </p>
-        <p className="mt-1 text-2xl font-semibold text-slate-900">{totalTasks}</p>
-        <p className="mt-1 text-xs text-slate-500">Tasks in this project</p>
+    <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm backdrop-blur-sm transition hover:border-blue-300 hover:bg-blue-50/50">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
+              Tasks
+            </p>
+            <p className="mt-1.5 text-2xl font-bold text-slate-900">{totalTasks}</p>
+          </div>
+          <Folder size={24} className="text-blue-400" />
+        </div>
+        <p className="mt-1 text-xs text-slate-500">{unassignedTasks} unassigned</p>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-3 shadow-sm backdrop-blur-sm">
-        <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
-          Teams
-        </p>
-        <p className="mt-1 text-2xl font-semibold text-slate-900">{totalTeams}</p>
-        <p className="mt-1 text-xs text-slate-500">Project teams</p>
+      <div className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm transition hover:border-purple-300 hover:bg-purple-50/50">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
+              Teams
+            </p>
+            <p className="mt-1.5 text-2xl font-bold text-slate-900">{totalTeams}</p>
+          </div>
+          <Users size={24} className="text-purple-400" />
+        </div>
+        <p className="mt-1 text-xs text-slate-500">{teamsWithTasks} with tasks</p>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-3 shadow-sm backdrop-blur-sm">
-        <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
-          Unassigned
+      <div className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50/50">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
+              Completion
+            </p>
+            <p className="mt-1.5 text-2xl font-bold text-slate-900">{completionRate}%</p>
+          </div>
+          <CheckCircle2 size={24} className="text-emerald-400" />
+        </div>
+        <p className="mt-1 text-xs text-slate-500">
+          {completedAttempts} of {totalAttempts}
         </p>
-        <p className="mt-1 text-2xl font-semibold text-slate-900">{unassignedTasks}</p>
-        <p className="mt-1 text-xs text-slate-500">Without team</p>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm transition hover:border-amber-300 hover:bg-amber-50/50">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
+              Avg Difficulty
+            </p>
+            <p className="mt-1.5 text-2xl font-bold text-slate-900">{avgDifficulty}</p>
+          </div>
+          <Zap size={24} className="text-amber-400" />
+        </div>
+        <p className="mt-1 text-xs text-slate-500">Out of 10</p>
       </div>
     </section>
   );
@@ -154,7 +200,7 @@ function DeleteProjectModal({ isOpen, projectName, onConfirm, onCancel, isLoadin
 
 // test
 export default function ProjectMain() {
-  const { project: initialProject, loaded_teams, loaded_tasks } = useLoaderData();
+  const { project: initialProject, loaded_teams, loaded_tasks, loaded_attempts } = useLoaderData();
   const navigate = useNavigate();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -162,6 +208,9 @@ export default function ProjectMain() {
   const [projectName, setProjectName] = useState(initialProject.name);
   const [saving, setSaving] = useState(false);
   const [isEditingDates, setIsEditingDates] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(true); // Default to true
+  const [calendarDays, setCalendarDays] = useState(14);
+  const [hoveredAttemptId, setHoveredAttemptId] = useState(null);
 
   // Add state for the current dates
   const [startDate, setStartDate] = useState(initialProject.start_date);
@@ -503,7 +552,199 @@ export default function ProjectMain() {
         </header>
 
         {/* Stats Section */}
-        <ProjectStats tasks={loaded_tasks} teams={loaded_teams} />
+        <ProjectStats tasks={loaded_tasks} teams={loaded_teams} attempts={loaded_attempts} />
+
+        {/* Calendar View Toggle & Timeline */}
+        <section className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-white">
+                <Calendar size={20} />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Project Timeline</h2>
+                <p className="text-xs text-slate-500">Scheduled attempts overview</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={calendarDays}
+                onChange={(e) => setCalendarDays(parseInt(e.target.value))}
+                className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-300"
+              >
+                <option value={7}>7 days</option>
+                <option value={14}>14 days</option>
+                <option value={30}>30 days</option>
+                <option value={60}>60 days</option>
+              </select>
+              <button
+                onClick={() => setShowCalendar(!showCalendar)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                  showCalendar
+                    ? 'bg-blue-600 text-white'
+                    : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                }`}
+              >
+                {showCalendar ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </div>
+
+          {showCalendar && initialProject.start_date && (
+            <div className="space-y-3">
+              {/* Day labels */}
+              <div className="hidden grid-cols-7 gap-2 lg:grid">
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+                  <div
+                    key={day}
+                    className="py-2 text-center text-xs font-bold tracking-wide text-slate-600 uppercase"
+                  >
+                    {day}
+                  </div>
+                ))}
+              </div>
+
+              {/* Calendar grid - 7 columns on lg screens, 2-3 on smaller */}
+              <div className="relative grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
+                {(() => {
+                  const startDate = new Date(initialProject.start_date);
+                  const endDate = initialProject.end_date
+                    ? new Date(initialProject.end_date)
+                    : new Date(startDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const msPerDay = 24 * 60 * 60 * 1000;
+
+                  // Get all attempts for this project
+                  const projectAttempts = (loaded_attempts || []).filter(
+                    (a) =>
+                      a.task?.team?.project?.id === initialProject.id ||
+                      (a.slot_index && a.task?.team),
+                  );
+
+                  // Group by date
+                  const attemptsByDate = {};
+                  projectAttempts.forEach((attempt) => {
+                    if (attempt.slot_index && initialProject.start_date) {
+                      const d = new Date(startDate.getTime() + (attempt.slot_index - 2) * msPerDay);
+                      const dateKey = d.toISOString().split('T')[0];
+                      if (!attemptsByDate[dateKey]) {
+                        attemptsByDate[dateKey] = [];
+                      }
+                      attemptsByDate[dateKey].push(attempt);
+                    }
+                  });
+
+                  // Get next 14 days
+                  const dates = [];
+                  let current = new Date(today);
+                  for (let i = 0; i < calendarDays; i++) {
+                    dates.push(new Date(current));
+                    current.setDate(current.getDate() + 1);
+                  }
+
+                  return dates.map((date) => {
+                    const dateKey = date.toISOString().split('T')[0];
+                    const dayAttempts = attemptsByDate[dateKey] || [];
+                    const isToday = dateKey === today.toISOString().split('T')[0];
+
+                    return (
+                      <div
+                        key={dateKey}
+                        className={`group flex h-40 flex-col rounded-lg border p-3 transition ${
+                          dayAttempts.length > 0
+                            ? 'border-blue-200 bg-blue-50 hover:border-blue-400 hover:bg-blue-100'
+                            : 'border-slate-200 bg-slate-50/50 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="mb-2 flex items-center justify-between gap-1">
+                          <span
+                            className={`flex-shrink-0 rounded px-2 py-1 text-xs font-bold whitespace-nowrap ${
+                              isToday ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
+                          {dayAttempts.length > 0 && (
+                            <span className="flex-shrink-0 text-xs font-semibold text-blue-600 opacity-0 transition group-hover:opacity-100">
+                              {dayAttempts.length}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Scrollable attempts area */}
+                        {dayAttempts.length > 0 ? (
+                          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 text-xs">
+                            {dayAttempts.map((attempt) => (
+                              <div
+                                key={attempt.id}
+                                className="group/item relative"
+                                onMouseEnter={() => setHoveredAttemptId(attempt.id)}
+                                onMouseLeave={() => setHoveredAttemptId(null)}
+                              >
+                                <div
+                                  className="cursor-pointer truncate rounded px-1.5 py-0.5 text-white shadow-sm transition"
+                                  style={{
+                                    backgroundColor: attempt.task?.team?.color || '#64748b',
+                                  }}
+                                  title={`${attempt.task?.name} - Attempt: ${attempt.name}`}
+                                >
+                                  <span className="block truncate font-medium text-white">
+                                    {attempt.task?.name}
+                                  </span>
+                                </div>
+
+                                {/* Hover menu */}
+                                {hoveredAttemptId === attempt.id && (
+                                  <div className="absolute top-full right-0 left-0 z-10 mt-1 space-y-1 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                                    <button
+                                      onClick={() =>
+                                        navigate(
+                                          `/orgarhythmus/projects/${initialProject.id}/teams/${attempt.task?.team?.id}`,
+                                        )
+                                      }
+                                      className="w-full rounded px-2 py-1 text-left text-xs text-slate-700 transition hover:bg-slate-100"
+                                    >
+                                      → Go to Team
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        navigate(
+                                          `/orgarhythmus/projects/${initialProject.id}/tasks/${attempt.task?.id}`,
+                                        )
+                                      }
+                                      className="w-full rounded px-2 py-1 text-left text-xs text-slate-700 transition hover:bg-slate-100"
+                                    >
+                                      → Go to Task
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        navigate(
+                                          `/orgarhythmus/projects/${initialProject.id}/attempts/${attempt.id}`,
+                                        )
+                                      }
+                                      className="w-full rounded px-2 py-1 text-left text-xs font-medium text-blue-700 transition hover:bg-blue-100"
+                                    >
+                                      → Go to Attempt
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex flex-1 items-center justify-center text-xs text-slate-400 italic">
+                            No attempts
+                          </div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          )}
+        </section>
 
         {/* Teams & Tasks Grid - use initialProject.id instead of project.id */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

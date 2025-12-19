@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CheckCircle2, ArrowLeft, Loader2, Trash2, Plus, Edit2, X } from 'lucide-react';
+import {
+  CheckCircle2,
+  ArrowLeft,
+  Loader2,
+  Trash2,
+  Plus,
+  Edit2,
+  X,
+  ExternalLink,
+} from 'lucide-react';
 import {
   fetchAttemptDetail,
   updateAttempt,
@@ -180,18 +189,42 @@ export default function AttemptDetail() {
             </div>
           </div>
 
-          <button
-            onClick={handleToggleDone}
-            disabled={saving}
-            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow transition ${
-              attempt.done
-                ? 'border border-emerald-300 bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50'
-                : 'border border-amber-300 bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50'
-            }`}
-          >
-            <CheckCircle2 size={18} />
-            {attempt.done ? '✓ Done' : 'In Progress'}
-          </button>
+          <div className="flex flex-shrink-0 flex-col gap-2">
+            <button
+              onClick={handleToggleDone}
+              disabled={saving}
+              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow transition ${
+                attempt.done
+                  ? 'border border-emerald-300 bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50'
+                  : 'border border-amber-300 bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50'
+              }`}
+            >
+              <CheckCircle2 size={18} />
+              {attempt.done ? '✓ Done' : 'In Progress'}
+            </button>
+            <div className="flex gap-2">
+              {attempt.task?.id && (
+                <button
+                  onClick={() =>
+                    navigate(`/orgarhythmus/projects/${projectId}/tasks/${attempt.task.id}`)
+                  }
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                >
+                  <ExternalLink size={14} /> Task
+                </button>
+              )}
+              {attempt.task?.team?.id && (
+                <button
+                  onClick={() =>
+                    navigate(`/orgarhythmus/projects/${projectId}/teams/${attempt.task.team.id}`)
+                  }
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                >
+                  <ExternalLink size={14} /> Team
+                </button>
+              )}
+            </div>
+          </div>
         </header>
 
         <section className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur-sm">

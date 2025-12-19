@@ -462,7 +462,7 @@ export default function OrgaProjects() {
                         project={project}
                         isOwner={project.is_owner}
                         isMember={true}
-                        onOpen={() => navigate(`/orgarhythmus/projects/${project.id}`)}
+                        onOpen={() => navigate(`/orgarhythmus/projects/${project.id}/`)}
                         onJoin={() => handleJoinProject(project.id)}
                         onLeave={() => handleLeaveProjectClick(project)}
                         joinLoading={loadingActions[project.id]}
