@@ -570,7 +570,7 @@ export async function delete_attempt_dependency(dependency_id) {
   return await res.json();
 }
 
-// ...existing code...
+// fetchAttemptDetail
 export async function fetchAttemptDetail(projectId, attemptId) {
   const token = localStorage.getItem('access_token');
   if (!token) throw redirect('/login');
@@ -585,6 +585,7 @@ export async function fetchAttemptDetail(projectId, attemptId) {
   return await res.json();
 }
 
+// updateAttempt
 export async function updateAttempt(projectId, attemptId, payload) {
   const token = localStorage.getItem('access_token');
   if (!token) throw redirect('/login');
@@ -604,6 +605,7 @@ export async function updateAttempt(projectId, attemptId, payload) {
   return await res.json();
 }
 
+// createAttemptTodo
 export async function createAttemptTodo(projectId, attemptId, text) {
   const token = localStorage.getItem('access_token');
   if (!token) throw redirect('/login');
@@ -623,6 +625,7 @@ export async function createAttemptTodo(projectId, attemptId, text) {
   return await res.json();
 }
 
+// toggleAttemptTodo
 export async function toggleAttemptTodo(projectId, attemptId, todoId) {
   const token = localStorage.getItem('access_token');
   if (!token) throw redirect('/login');
@@ -642,6 +645,7 @@ export async function toggleAttemptTodo(projectId, attemptId, todoId) {
   return await res.json();
 }
 
+// deleteAttemptTodo
 export async function deleteAttemptTodo(projectId, attemptId, todoId) {
   const token = localStorage.getItem('access_token');
   if (!token) throw redirect('/login');
@@ -661,7 +665,7 @@ export async function deleteAttemptTodo(projectId, attemptId, todoId) {
   return await res.json();
 }
 
-// create_attempt
+// deleteAttempt
 export async function createAttempt(projectId, taskId, name) {
   const token = localStorage.getItem('access_token');
   if (!token) throw redirect('/login');
@@ -679,7 +683,7 @@ export async function createAttempt(projectId, taskId, name) {
   return await res.json();
 }
 
-// delete_attempt
+// deleteAttempt
 export async function deleteAttempt(projectId, attemptId) {
   const token = localStorage.getItem('access_token');
   if (!token) throw redirect('/login');
@@ -698,4 +702,3 @@ export async function deleteAttempt(projectId, attemptId) {
   if (!res.ok) throw new Error('Failed to delete attempt');
   return await res.json();
 }
-// ...existing code...

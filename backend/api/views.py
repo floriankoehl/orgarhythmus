@@ -118,8 +118,8 @@ def register_user(request):
     )
 
 
-# display_single_user
 #TODO maybe outdated
+# display_single_user
 def display_single_user(request, user_id):
     print("user id: ", user_id)
 
@@ -619,7 +619,6 @@ def project_teams_expanded(request, project_id):
     return Response({"teams": serializer.data}, status=status.HTTP_200_OK)
 
 
-
 # project_team_detail (for now only delete)
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
@@ -644,8 +643,6 @@ def project_team_detail(request, project_id, team_id):
     # Delete team
     team.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
-
-
 
 
 # reorder_project_teams
@@ -680,8 +677,6 @@ def reorder_project_teams(request, project_id):
             Team.objects.filter(project_id=project_id, id=team_id).update(line_index=idx)
 
     return Response({"ok": True, "saved_order": order}, status=status.HTTP_200_OK)
-
-
 
 
 # TODO ADDED Teams
@@ -1087,19 +1082,6 @@ def all_attempts_for_this_project(request, project_id):
     return JsonResponse({"attempts": data}, status=200)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 # create_attempt_view - POST to create new attempt for a task
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -1169,6 +1151,7 @@ def delete_attempt_view(request, project_id, attempt_id):
     )
 
 
+#attempt_detail_view
 @api_view(["GET", "PATCH"])
 @permission_classes([IsAuthenticated])
 def attempt_detail_view(request, project_id, attempt_id):
@@ -1279,6 +1262,8 @@ def attempt_detail_view(request, project_id, attempt_id):
         attempt.save()
         return Response({"id": attempt.id, "done": attempt.done, "name": attempt.name, "description": attempt.description}, status=status.HTTP_200_OK)
 
+
+#attempt_todos_view
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def attempt_todos_view(request, project_id, attempt_id):

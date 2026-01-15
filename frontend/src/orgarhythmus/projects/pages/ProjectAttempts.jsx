@@ -27,7 +27,82 @@ import { ChevronsDownUp } from 'lucide-react';
 import Button from '@mui/material/Button';
 import dayjs from 'dayjs';
 
-// ________________________GLOBALS AND HELPERS________________________
+// _________________________GLOBALS____________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+
+// Main Variables
+const isMobile = window.innerWidth <= 768;
+let TASK_HEIGHT = 60;
+let TASK_WIDTH = 60;
+let SETTINGS_HEIGHT = 200;
+const DEFAULT_ENTRIES = 25; // fallback if no dates
+
+let SIDEBAR_WIDTH = 80;
+let TASK_SIDEBAR_WIDTH = 100;
+
+const TEAM_GAP_PADDING_Y = 10;
+const TASK_GAP_PADDING_X = 0;
+const HEADER_BODY_GAP = 10;
+
+// ************** -> ADDED NOW 2: const TEAM_COLLAPSED_HEIGHT ***************** :
+const TASK_COLLAPSED_HEIGHT = 14;
+const TEAM_COLLAPSED_HEIGHT = TASK_COLLAPSED_HEIGHT + 15; // slightly larger to fit header/arrow
+const ATTEMPT_COLLAPSED_HEIGHT = Math.max(6, TASK_COLLAPSED_HEIGHT - 4);
+const COLLAPSED_DAY_WIDTH = 12;
+
+// _________________________HELPERS____________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+
+// ______________SOUND
+
+// playSnapSound
+const snapAudio = new Audio(snapSoundFile);
+snapAudio.volume = 0.2; // super subtle
+function playSnapSound() {
+  // try/catch so it doesn’t explode if browser blocks it
+  try {
+    snapAudio.currentTime = 0;
+    snapAudio.play();
+  } catch (e) {
+    // console.log('Couldnt play snap sound');
+  }
+}
+
+// playWhipSound
+const whipAudio = new Audio(whipSoundFile);
+whipAudio.volume = 0.3; // super subtle
+function playWhipSound() {
+  // try/catch so it doesn’t explode if browser blocks it
+  try {
+    whipAudio.currentTime = 0;
+    whipAudio.play();
+  } catch (e) {
+    // console.log('Couldnt play whip sound');
+  }
+}
+
+// playClackSound
+const clickAudio = new Audio(clackSoundFile);
+clickAudio.volume = 0.4; // super subtle
+function playClackSound() {
+  // try/catch so it doesn’t explode if browser blocks it
+  try {
+    clickAudio.currentTime = 0;
+    clickAudio.play();
+  } catch (e) {
+    // console.log('Couldnt play whip sound');
+  }
+}
 
 // extractAttemptId
 function extractAttemptId(nodeId) {
@@ -51,70 +126,10 @@ function extractTeamId(teamNodeId) {
   return Number.isNaN(num) ? null : num;
 }
 
-// playSnapSound
-const snapAudio = new Audio(snapSoundFile);
-snapAudio.volume = 0.2; // super subtle
-
-function playSnapSound() {
-  // try/catch so it doesn’t explode if browser blocks it
-  try {
-    snapAudio.currentTime = 0;
-    snapAudio.play();
-  } catch (e) {
-    // console.log('Couldnt play snap sound');
-  }
-}
-
-const whipAudio = new Audio(whipSoundFile);
-whipAudio.volume = 0.3; // super subtle
-
-function playWhipSound() {
-  // try/catch so it doesn’t explode if browser blocks it
-  try {
-    whipAudio.currentTime = 0;
-    whipAudio.play();
-  } catch (e) {
-    // console.log('Couldnt play whip sound');
-  }
-}
-
-const clickAudio = new Audio(clackSoundFile);
-clickAudio.volume = 0.4; // super subtle
-
-function playClackSound() {
-  // try/catch so it doesn’t explode if browser blocks it
-  try {
-    clickAudio.currentTime = 0;
-    clickAudio.play();
-  } catch (e) {
-    // console.log('Couldnt play whip sound');
-  }
-}
-
 // get_overall_gap
 function get_overall_gap(num_tasks, gap, header_gap) {
   return num_tasks * gap + header_gap - 10;
 }
-
-// Main Variables
-const isMobile = window.innerWidth <= 768;
-let TASK_HEIGHT = 60;
-let TASK_WIDTH = 60;
-let SETTINGS_HEIGHT = 200;
-const DEFAULT_ENTRIES = 25; // fallback if no dates
-
-let SIDEBAR_WIDTH = 80;
-let TASK_SIDEBAR_WIDTH = 100;
-
-const TEAM_GAP_PADDING_Y = 10;
-const TASK_GAP_PADDING_X = 0;
-const HEADER_BODY_GAP = 10;
-
-// ************** -> ADDED NOW 2: const TEAM_COLLAPSED_HEIGHT ***************** :
-const TASK_COLLAPSED_HEIGHT = 14;
-const TEAM_COLLAPSED_HEIGHT = TASK_COLLAPSED_HEIGHT + 15; // slightly larger to fit header/arrow
-const ATTEMPT_COLLAPSED_HEIGHT = Math.max(6, TASK_COLLAPSED_HEIGHT - 4);
-const COLLAPSED_DAY_WIDTH = 12;
 
 // Mobile Task Adjustment
 if (isMobile) {
@@ -467,6 +482,7 @@ function AttemptNode({ data, selected }) {
 
 // __________NODE TYPES
 
+// DependencyEdge
 // Custom dependency edge with generous invisible hit-path for reliable clicks
 function DependencyEdge({
   id,
