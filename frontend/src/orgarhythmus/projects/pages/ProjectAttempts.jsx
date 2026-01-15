@@ -123,7 +123,7 @@ function extractAttemptId(nodeId) {
   return Number.isNaN(num) ? null : num;
 }
 
-// ADDED NOW 5: Helper extractTeamId  :
+// Helper extractTeamId  :
 function extractTeamId(teamNodeId) {
   if (!teamNodeId?.startsWith('team-')) return null;
   const num = parseInt(teamNodeId.replace('team-', ''), 10);
@@ -663,62 +663,62 @@ export default function OrgAttempts() {
   // _______________________________________________________________________________________________
   // _______________________________________________________________________________________________
 
-  // ________________________ROUTER & AUTH
+  // _____ROUTER & AUTH
   // ____________________________________________
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { logout } = useAuth();
 
-  // ________________________Main Data
+  // _____Main Data
   // ____________________________________________
   const [all_teams, setAll_Teams] = useState([]);
   const [all_tasks, setAll_Tasks] = useState([]);
   const [all_attempts, setAll_Attempts] = useState([]);
 
-  // ________________________Nodes
+  // _____Nodes
   // ____________________________________________
   const [attempt_nodes, setAttemptNodes] = useState([]);
   const [groupNodes, setGroupNodes] = useState([]);
   const [taskNodes, setTaskNodes] = useState([]);
   const [mergedNodes, setMergedNodes] = useState([]);
 
-  // ________________________Edges
+  // _____Edges
   // ____________________________________________
   const [edges, setEdges] = useState([]);
 
-  // ________________________Layout
+  // _____Layout
   // ____________________________________________
   const [y_reactflow_size, setY_reactflow_size] = useState(1000);
   const [overallgap, setOverAllGap] = useState(0);
 
-  // ________________________Selected
+  // _____Selected
   // ____________________________________________
   const [selectedDepId, setSelectedDepId] = useState(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState(null);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [inspectSelectedNodeId, setInspectSelectedNodeId] = useState(null);
 
-  // ________________________Mode
+  // _____Mode
   // ____________________________________________
   const [dep_setting_selected, setDep_setting_selected] = useState(true);
   const [mode, setMode] = useState('dependency'); // 'order', 'dependency', 'inspect'
 
-  // ________________________Options
+  // _____Options
   // ____________________________________________
   const [hideCollapsedNodes, setHideCollapsedNodes] = useState(false);
   const [hideEmptyDays, setHideEmptyDays] = useState(false);
 
-  // ________________________Errors
+  // _____Errors
   // ____________________________________________
   const [errorMessage, setErrorMessage] = useState(null);
   const edgeHighlightTimeout = useRef(null);
   const edgeRestoreRef = useRef(null);
 
-  // ________________________Mystery
+  // _____Mystery
   // ____________________________________________
   const [layoutVersion, setLayoutVersion] = useState(0);
 
-  // ________________________Geometry
+  // _____Geometry
   // ____________________________________________
   // Collapsed days map: key = day index (1-based), value = true/false
   const [collapsedDays, setCollapsedDays] = useState({});
@@ -726,7 +726,7 @@ export default function OrgAttempts() {
   const [collapsedTasks, setCollapsedTasks] = useState({});
   const [teamOrder, setTeamOrder] = useState([]);
 
-  // ________________________Timeline
+  // _____Timeline
   // ____________________________________________
   // Timeline derived from project dates
   const [timelineDays, setTimelineDays] = useState([]);
@@ -742,6 +742,14 @@ export default function OrgAttempts() {
 
   // handleEdgeSelect
   // Ensure dependency edges set selection when clicked from custom edge component
+  /**
+   * Handles edge selection events from dependency edges in the ReactFlow graph.
+   * Parses the edge ID to extract the dependency ID, validates the format, and updates both selected dependency and edge state for UI highlighting and delete operations.
+   *
+   * @param {string} edgeId - The edge ID to process for selection state update
+   * @param {Function} setSelectedDepId - Update selected dependency ID when valid edge clicked
+   * @param {Function} setSelectedEdgeId - Update selected edge ID for visual highlighting
+   */
   const handleEdgeSelect = useCallback(
     (edgeId) => {
       if (!edgeId) return;
@@ -758,6 +766,12 @@ export default function OrgAttempts() {
 
   // daysWithAttempts
   // Compute which days have attempts scheduled
+  /**
+   * Builds a Set of timeline day indices that have attempts scheduled.
+   * Iterates through all attempts and collects their slot index values to enable efficient empty day detection and filtering.
+   *
+   * @param {Array} all_attempts - Recompute set when attempt data or slot assignments change
+   */
   const daysWithAttempts = useMemo(() => {
     const days = new Set();
     all_attempts.forEach((attempt) => {
@@ -769,6 +783,13 @@ export default function OrgAttempts() {
   }, [all_attempts]);
 
   // componentWidth
+  /**
+   * Calculates the total width of the component by summing sidebar widths and entry widths.
+   * Iterates through each timeline entry, applying collapsed width to collapsed days or full width to expanded days.
+   *
+   * @param {number} entryCount - Recalculate width when timeline entry count changes
+   * @param {Object} collapsedDays - Recalculate width when any day's collapse state changes
+   */
   const componentWidth = useMemo(() => {
     const base = SIDEBAR_WIDTH + TASK_SIDEBAR_WIDTH;
     let totalWidth = 0;
@@ -779,6 +800,13 @@ export default function OrgAttempts() {
   }, [entryCount, collapsedDays]);
 
   // pixelMap
+  /**
+   * Maps timeline day indices to their pixel coordinate ranges on the grid.
+   * Calculates cumulative X positions for each day based on collapsed width or full width, enabling pixel-to-slot conversions for node positioning.
+   *
+   * @param {number} entryCount - Recalculate map when timeline entry count changes
+   * @param {Object} collapsedDays - Recalculate positions when any day's collapse state changes
+   */
   const pixelMap = useMemo(() => {
     const GRID_OFFSET = SIDEBAR_WIDTH + TASK_SIDEBAR_WIDTH;
     let currentX = GRID_OFFSET;
@@ -793,6 +821,13 @@ export default function OrgAttempts() {
   }, [entryCount, collapsedDays]);
 
   // getSlotIndexFromX
+  /**
+   * Converts a pixel X position to the corresponding timeline slot index using midpoint matching.
+   * Accumulates day widths and returns the slot where the position falls, defaulting to the last slot if out of range.
+   *
+   * @param {number} entryCount - Recalculate when timeline entry count changes
+   * @param {Object} collapsedDays - Recalculate when any day's collapse state changes
+   */
   const getSlotIndexFromX = useCallback(
     (x) => {
       const relative = x - TASK_SIDEBAR_WIDTH;
@@ -817,6 +852,12 @@ export default function OrgAttempts() {
   );
 
   // getXFromSlotIndex
+  /**
+   * Calculates the pixel X position for a given timeline slot index by summing prior day widths.
+   * Accounts for collapsed width or full width of each preceding day to determine the starting X coordinate.
+   *
+   * @param {Object} collapsedDays - Recalculate position when any day's collapse state changes
+   */
   const getXFromSlotIndex = useCallback(
     (slotIndex) => {
       // Calculate X position by summing up widths of all days before this slot
@@ -883,7 +924,7 @@ export default function OrgAttempts() {
     [componentWidth, timelineDays, entryCount, collapsedDays, pixelMap],
   );
 
-  //  -> ADDED NOW: toggleTeamCollapse  :
+  // toggleTeamCollapse  :
   const toggleTeamCollapse = useCallback(
     (teamNodeId) => {
       // Ensure expanding a team also expands all its tasks
@@ -989,7 +1030,7 @@ export default function OrgAttempts() {
     setLayoutVersion((v) => v + 1);
   }, []);
 
-  //  -> ADDED NOW 3: Helper - getTaskIdsForTeam  :
+  // getTaskIdsForTeam  :
   function getTaskIdsForTeam(taskNodes, teamId) {
     return taskNodes.filter((t) => t.parentNode === teamId).map((t) => t.id);
   }
@@ -1324,10 +1365,26 @@ export default function OrgAttempts() {
     [setTaskNodes],
   );
 
+  // updateTaskDraggableStateEffect
+  /**
+   * Updates task node draggability and selectability based on current mode.
+   * Enables dragging and selection only in order mode.
+   *
+   * @param {string} mode - Enable/disable dragging and selection based on mode
+   * @param {Function} applyTaskInteractivity - Interactivity application function
+   */
   useEffect(() => {
     applyTaskInteractivity(mode);
   }, [mode, applyTaskInteractivity]);
 
+  // updateAttemptDraggableStateEffect
+  /**
+   * Updates attempt node draggability based on current mode.
+   * Disables dragging in inspect mode while maintaining selection for edge highlighting.
+   *
+   * @param {string} mode - Enable/disable dragging based on mode (disable in inspect mode)
+   * @param {number} attempt_nodes.length - Reapply interactivity when attempt count changes
+   */
   // Update attempt nodes draggable state based on mode
   useEffect(() => {
     // Only disable dragging in inspect mode
@@ -1341,7 +1398,15 @@ export default function OrgAttempts() {
     );
   }, [mode, attempt_nodes.length]);
 
+  // highlightInspectEdgesEffect
   // Highlight incoming/outgoing edges when a node is selected in inspect mode
+  /**
+   * Highlights incoming and outgoing edges when a node is selected in inspect mode.
+   * Colors incoming edges red and outgoing edges green for visual dependency tracking.
+   *
+   * @param {string} mode - Activate/deactivate highlighting based on inspect mode
+   * @param {string|null} inspectSelectedNodeId - Update edge colors when selected node changes
+   */
   useEffect(() => {
     if (mode !== 'inspect') {
       // Clear any edge highlighting when not in inspect mode
@@ -1376,7 +1441,16 @@ export default function OrgAttempts() {
     );
   }, [mode, inspectSelectedNodeId]);
 
+  // applyEdgeModePropertiesEffect
   // Keep edges in sync with mode for interactivity/label rendering and selection state
+  /**
+   * Updates edge properties based on current mode and selection state.
+   * Configures dependency mode interactivity and tracks selected edges.
+   *
+   * @param {string} mode - Update edge properties when mode changes
+   * @param {Function} handleEdgeSelect - Attach edge selection handler when callback changes
+   * @param {string|null} selectedEdgeId - Update selection state when selected edge changes
+   */
   useEffect(() => {
     setEdges((prev) =>
       prev.map((e) => ({
@@ -1671,7 +1745,17 @@ export default function OrgAttempts() {
     loadData();
   }, [projectId, navigate, logout, getXFromSlotIndex]); // keep other deps as before
 
+  // refreshTaskDataPropertiesEffect
   // Update task nodes when collapsedDays or pixelMap or mode changes
+  /**
+   * Synchronizes task node data properties with global layout state.
+   * Updates each task's data object to reflect current collapse states, dimensions, and mode.
+   *
+   * @param {Object} collapsedDays - Update task data when day collapse state changes
+   * @param {Object} pixelMap - Update task data when pixel mapping recalculates
+   * @param {number} componentWidth - Update task data when component width changes
+   * @param {string} mode - Update task data when mode changes
+   */
   useEffect(() => {
     setTaskNodes((prevTasks) =>
       prevTasks.map((task) => ({
@@ -1687,7 +1771,14 @@ export default function OrgAttempts() {
     );
   }, [collapsedDays, pixelMap, componentWidth, mode]);
 
+  // refreshTeamModeDataEffect
   // Update team nodes when mode changes
+  /**
+   * Synchronizes team node mode property with global mode state.
+   * Updates each team's data object to reflect the current mode for mode-specific rendering or behavior.
+   *
+   * @param {string} mode - Update team node mode property when mode changes
+   */
   useEffect(() => {
     setGroupNodes((prevTeams) =>
       prevTeams.map((team) => ({
@@ -1702,6 +1793,16 @@ export default function OrgAttempts() {
 
   // Automatically collapse/expand empty days when hideEmptyDays button is toggled
   const prevHideEmptyDaysRef = useRef(hideEmptyDays);
+
+  // toggleEmptyDaysOnButtonEffect
+  /**
+   * Automatically collapses or expands empty timeline days when hideEmptyDays option is toggled.
+   * Uses ref tracking to detect button press changes and selectively modifies only empty days without affecting manually collapsed days.
+   *
+   * @param {boolean} hideEmptyDays - Trigger collapse/expand of empty days when option toggles
+   * @param {number} entryCount - Recalculate when timeline length changes to include new days
+   * @param {Set} daysWithAttempts - Determine which days are empty and eligible for auto-collapse
+   */
   useEffect(() => {
     // Only run when hideEmptyDays actually changes (button press), not on mount or other deps
     if (prevHideEmptyDaysRef.current === hideEmptyDays) return;
@@ -1733,7 +1834,19 @@ export default function OrgAttempts() {
     });
   }, [hideEmptyDays, entryCount, daysWithAttempts]);
 
+  // refreshAttemptNodesVisibilityEffect
   // Re-filter attempt nodes when hideCollapsedNodes changes
+  /**
+   * Rebuilds and filters attempt nodes based on collapse state visibility option.
+   * Reconstructs all attempt nodes from raw data with current positions and collapse flags, then conditionally filters out nodes under collapsed parents when hideCollapsedNodes is enabled.
+   *
+   * @param {boolean} hideCollapsedNodes - Toggle visibility filter on/off for collapsed parent nodes
+   * @param {Array} all_attempts - Rebuild nodes when attempt data changes (additions/deletions/modifications)
+   * @param {Array} taskNodes - Recalculate parent collapse states when task structure changes
+   * @param {Object} collapsedTasks - Update collapse flags when individual task collapse state changes
+   * @param {Object} collapsedDays - Recalculate X positions when day collapse affects width calculations
+   * @param {Function} getXFromSlotIndex - Reposition nodes when position calculation logic changes
+   */
   useEffect(() => {
     if (!all_attempts.length) return;
 
@@ -1783,6 +1896,18 @@ export default function OrgAttempts() {
   // we update selectively in onToggleDay above to reduce lag.
 
   // Merge Nodes
+  // combineAllNodesForRenderEffect
+  /**
+   * Combines all node types into a single array for ReactFlow rendering.
+   * Merges header, team, task, and attempt nodes, with optional debug logging in dependency mode to verify interactivity states.
+   *
+   * @param {Object} headerNode - Include timeline header node in merged array
+   * @param {Array} groupNodes - Include team nodes in merged array
+   * @param {Array} taskNodes - Include task nodes in merged array
+   * @param {Array} attempt_nodes - Include attempt nodes in merged array
+   * @param {boolean} dep_setting_selected - Re-merge when dependency setting changes (legacy dependency)
+   * @param {string} mode - Trigger debug logging when mode changes to verify node interactivity
+   */
   useEffect(() => {
     const merged = [headerNode, ...groupNodes, ...taskNodes, ...attempt_nodes];
 
