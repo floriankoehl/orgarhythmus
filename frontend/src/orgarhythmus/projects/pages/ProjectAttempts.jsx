@@ -874,6 +874,17 @@ export default function OrgAttempts() {
   );
 
   // headerNode
+  /**
+   * Creates the timeline header node for ReactFlow containing layout configuration and day toggle handler.
+   * Provides layout dimensions, timeline data, and collapse state to the header component; handles toggling
+   * individual days while selectively updating attempt node positions for days after the toggled day.
+   *
+   * @param {number} componentWidth - Recalculate when total component width changes from day collapse/expansion
+   * @param {Array} timelineDays - Recalculate when timeline dates change from project date updates
+   * @param {number} entryCount - Recalculate when number of timeline entries changes
+   * @param {Object} collapsedDays - Recalculate when any day's collapse state changes for header display
+   * @param {Object} pixelMap - Recalculate when pixel coordinate mapping changes from collapse/expansion
+   */
   const headerNode = useMemo(
     () => ({
       id: 'task-header',
@@ -925,6 +936,12 @@ export default function OrgAttempts() {
   );
 
   // toggleTeamCollapse  :
+  /**
+   * Toggles a team's collapse state and automatically expands all child tasks when the team is expanded.
+   * Tracks which tasks belong to the team and syncs their collapse states to prevent orphaned collapsed tasks inside an expanded team.
+   *
+   * @param {Array} taskNodes - Find tasks belonging to team and determine which need expansion when team expands
+   */
   const toggleTeamCollapse = useCallback(
     (teamNodeId) => {
       // Ensure expanding a team also expands all its tasks
@@ -954,6 +971,11 @@ export default function OrgAttempts() {
     [taskNodes],
   );
 
+  // toggleTaskCollapse
+  /**
+   * Toggles a task's collapse state in the hierarchy and updates the collapsed tasks map.
+   * Flips the boolean flag for the task ID, allowing UI components to conditionally hide task content and update layout.
+   */
   const toggleTaskCollapse = useCallback((taskNodeId) => {
     // console.log('[toggleTaskCollapse] called for:', taskNodeId);
     setCollapsedTasks((prev) => ({
@@ -965,6 +987,12 @@ export default function OrgAttempts() {
   // ________________________Bulk controls
   // ____________________________________________
   // collapseAllTeams
+  /**
+   * Collapses all team nodes in the hierarchy at once.
+   * Iterates through all group nodes and sets their collapse state to true, enabling bulk collapse operations from the UI button.
+   *
+   * @param {Array} groupNodes - Recalculate when team structure changes to collapse all current teams
+   */
   const collapseAllTeams = useCallback(() => {
     setCollapsedByTeamId(() => {
       const next = {};
@@ -976,6 +1004,13 @@ export default function OrgAttempts() {
   }, [groupNodes]);
 
   // expandAllTeams
+  /**
+   * Expands all team nodes and their child tasks at once.
+   * Sets all team and task collapse states to false, ensuring child tasks are expanded when parent teams are expanded for consistency.
+   *
+   * @param {Array} groupNodes - Recalculate when team structure changes to expand all current teams
+   * @param {Array} taskNodes - Recalculate when task structure changes to expand all current tasks
+   */
   const expandAllTeams = useCallback(() => {
     setCollapsedByTeamId(() => {
       const next = {};
@@ -997,6 +1032,12 @@ export default function OrgAttempts() {
   }, [groupNodes, taskNodes]);
 
   // collapseAllTasks
+  /**
+   * Collapses all task nodes in the hierarchy at once.
+   * Iterates through all task nodes and sets their collapse state to true, enabling bulk collapse operations from the UI button.
+   *
+   * @param {Array} taskNodes - Recalculate when task structure changes to collapse all current tasks
+   */
   const collapseAllTasks = useCallback(() => {
     setCollapsedTasks(() => {
       const next = {};
@@ -1008,11 +1049,21 @@ export default function OrgAttempts() {
   }, [taskNodes]);
 
   // expandAllTasks
+  /**
+   * Expands all task nodes in the hierarchy at once by clearing all collapse state.
+   * Resets the collapsedTasks map to an empty object, enabling all tasks to display their full content immediately.
+   */
   const expandAllTasks = useCallback(() => {
     setCollapsedTasks({});
   }, []);
 
   // collapseAllDays
+  /**
+   * Collapses all timeline days at once and triggers layout recalculation.
+   * Iterates through all timeline entries and sets their collapse state to true, then increments layout version to force position updates.
+   *
+   * @param {number} entryCount - Recalculate when timeline entry count changes to collapse all current days
+   */
   const collapseAllDays = useCallback(() => {
     setCollapsedDays(() => {
       const next = {};
@@ -1025,18 +1076,37 @@ export default function OrgAttempts() {
   }, [entryCount]);
 
   // expandAllDays
+  /**
+   * Expands all timeline days at once and triggers layout recalculation.
+   * Resets the collapsedDays map to empty object, then increments layout version to force position updates for all day widths.
+   */
   const expandAllDays = useCallback(() => {
     setCollapsedDays({});
     setLayoutVersion((v) => v + 1);
   }, []);
 
-  // getTaskIdsForTeam  :
+  // getTaskIdsForTeam
+  /**
+   * Returns array of task IDs that belong to a specific team.
+   * Filters task nodes by parentNode match and extracts their ID values for bulk operations.
+   *
+   * @param {Array} taskNodes - Task node array to filter by team membership
+   * @param {string|number} teamId - Team ID to match against task parentNode values
+   */
   function getTaskIdsForTeam(taskNodes, teamId) {
     return taskNodes.filter((t) => t.parentNode === teamId).map((t) => t.id);
   }
 
   // updateTaskPositionsEffect
   // Recalculate and update task positions based on all collapse states
+  /**
+   * Recalculates and updates task node Y positions based on current collapse states.
+   * Groups tasks by parent team, applies effective heights (collapsed or expanded) per collapse state, then repositions all tasks with updated Y coordinates and collapse flags.
+   *
+   * @param {Object} collapsedTasks - Recalculate positions when any task collapse state changes
+   * @param {Object} collapsedByTeamId - Recalculate positions when any team collapse state changes to apply team-level height
+   * @param {Object} collapsedDays - Trigger position sync when day collapse states change for consistency
+   */
   useEffect(() => {
     if (!taskNodes.length) return;
 
@@ -1090,6 +1160,13 @@ export default function OrgAttempts() {
 
   // syncTaskPositionsEffect
   // When days are toggled, force a complete task position recalculation
+  /**
+   * Recalculates task node Y positions when timeline days are collapsed or expanded.
+   * Groups tasks by parent team, computes effective heights per collapse state, and repositions tasks with Y updates only when positions change to minimize rerenders.
+   *
+   * @param {Object} collapsedDays - Trigger recalculation when any day collapse state changes to propagate position updates
+   * @param {number} taskNodes.length - Re-run when task count changes to account for new or removed tasks
+   */
   useEffect(() => {
     if (!taskNodes.length) return;
 
@@ -1136,18 +1213,15 @@ export default function OrgAttempts() {
 
   // updateNodeHierarchyStateEffect
   // Update attempt flags and team heights after task positions are recalculated
-
-  // Propagates collapse state through the hierarchy:
-  // hides attempts if their parent task or team is collapsed,
-  // recalculates each team's height by summing child tasks, and triggers a layout update.
-
-  // Dependencies:
-
-  // taskNodes — Re-run when task structure changes (additions/removals) to recalculate team heights
-  // collapsedTasks — Re-run when individual task collapse state changes to update attempt visibility and heights
-  // collapsedByTeamId — Re-run when team collapse state changes to hide/show attempts and update team dimensions
-  // collapsedDays — (safety/consistency) included to ensure layout syncs if day collapse affects overall state
-  // Net effect: Maintains 3-level hierarchy consistency whenever any collapse state at any level changes.
+  /**
+   * Propagates collapse state through the 3-level hierarchy and recalculates team heights based on task collapse states.
+   * Updates attempt visibility flags based on parent task/team collapse state, computes per-team height tallies (expanded vs collapsed), then increments layout version to force position updates.
+   *
+   * @param {Array} taskNodes - Recalculate when task structure changes (additions/removals) to update team heights from task count
+   * @param {Object} collapsedTasks - Recalculate when any task collapse state changes to update attempt visibility and team height totals
+   * @param {Object} collapsedByTeamId - Recalculate when any team collapse state changes to update attempt visibility and effective team heights
+   * @param {Object} collapsedDays - Included for consistency to ensure layout syncs with day collapse state changes
+   */
   useEffect(() => {
     if (!taskNodes.length || !groupNodes.length) return;
 
@@ -1210,7 +1284,16 @@ export default function OrgAttempts() {
     setLayoutVersion((v) => v + 1);
   }, [taskNodes, collapsedTasks, collapsedByTeamId, collapsedDays]);
 
-  //  -> ADDED NOW 4: Helper: getTeamInsertIndexFromY  :
+  //  Helper: getTeamInsertIndexFromY
+  /**
+   * Determines the insertion index for a team being dropped based on Y coordinate.
+   * Iterates through ordered teams accumulating their effective heights (collapsed or expanded), then returns the index where dropY position falls before a team's midpoint.
+   *
+   * @param {number} dropY - Drop position Y coordinate to evaluate against team midpoints
+   * @param {Array} orderedTeamIds - Ordered team IDs to check against in sequence
+   * @param {Array} groupNodes - Team nodes array containing height and collapse data
+   * @param {Object} collapsedByTeamId - Map of team collapse states to determine effective heights
+   */
   function getTeamInsertIndexFromY(dropY, orderedTeamIds, groupNodes, collapsedByTeamId) {
     let currentY = TASK_HEIGHT + HEADER_BODY_GAP;
 
@@ -1306,6 +1389,14 @@ export default function OrgAttempts() {
     });
   }, [collapsedByTeamId, teamOrder, layoutVersion, groupNodes.length]);
 
+  // applyTeamInteractivity
+  /**
+   * Updates all team nodes' draggability and selectability based on current mode.
+   * Sets both properties to true only when currentMode is 'order',
+   * enabling drag-and-drop reordering, otherwise disables both for other modes.
+   *
+   * @param {string} currentMode - Current operation mode ('order', 'dependency', 'inspect') to determine interactivity state
+   */
   const applyTeamInteractivity = useCallback(
     (currentMode) => {
       const draggingEnabled = currentMode === 'order';
