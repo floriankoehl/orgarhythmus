@@ -1432,7 +1432,14 @@ export default function OrgAttempts() {
     applyTeamInteractivity(mode);
   }, [mode, applyTeamInteractivity]);
 
+  // applyTaskInteractivity
   // Apply task interactivity based on mode
+  /**
+   * Updates all task nodes' draggability and selectability based on current mode.
+   * Sets both properties to true only when currentMode is 'order', enabling drag-and-drop reordering, otherwise disables both for other modes.
+   *
+   * @param {string} currentMode - Current operation mode ('order', 'dependency', 'inspect') to determine interactivity state
+   */
   const applyTaskInteractivity = useCallback(
     (currentMode) => {
       const draggingEnabled = currentMode === 'order';
@@ -1563,7 +1570,16 @@ export default function OrgAttempts() {
     );
   }, [mode, handleEdgeSelect, selectedEdgeId]);
 
+  // highlightEdges
   // Temporarily highlight edges (even if currently hidden) and restore their previous state after 1s
+  /**
+   * Temporarily highlights specific edges by making them visible with pink styling and then restores their previous state.
+   * Captures current hidden and style properties in a snapshot,
+   * applies highlight styling with '#f43f5e' stroke, then uses a 3-second timeout to
+   * restore all edges to their saved state and clears any pending timeout.
+   *
+   * @param {Array<string>} edgeIds - Array of edge IDs to highlight; edges not in this array remain unchanged
+   */
   const highlightEdges = useCallback(
     (edgeIds) => {
       if (!edgeIds?.length) return;
@@ -1612,7 +1628,16 @@ export default function OrgAttempts() {
     [setEdges],
   );
 
-  // __________LOAD DATA
+  // ______LOAD DATA
+  /**
+   * Loads all required data for the project timeline and constructs ReactFlow nodes and edges for rendering the organizational hierarchy and dependencies.
+   * Orchestrates three sequential async operations: derives timeline from project dates, constructs team and task node hierarchy in sorted order with cumulative positioning, then loads attempts and dependencies with collapse state filtering.
+   *
+   * @param {string} projectId - Reload all data when project changes
+   * @param {Function} navigate - Handle auth redirects on permission errors during data fetch
+   * @param {Function} logout - Clear auth state on unauthorized access (401/403) responses
+   * @param {Function} getXFromSlotIndex - Position attempt nodes using current slot-to-X conversion logic
+   */
   useEffect(() => {
     async function loadData() {
       // 1) load project to derive timeline
@@ -1882,6 +1907,13 @@ export default function OrgAttempts() {
     );
   }, [mode]);
 
+  // prevHideEmptyDaysRef
+  /**
+   * Stores previous hideEmptyDays state to detect button press changes between renders.
+   * Enables distinction between mount/remount and actual button toggles to selectively modify only empty days without affecting manual collapses.
+   *
+   * @param {boolean} hideEmptyDays - Initial ref value tied to hideEmptyDays state for comparison on next render
+   */
   // Automatically collapse/expand empty days when hideEmptyDays button is toggled
   const prevHideEmptyDaysRef = useRef(hideEmptyDays);
 
