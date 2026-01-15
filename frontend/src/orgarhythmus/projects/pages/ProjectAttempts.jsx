@@ -49,7 +49,7 @@ const TEAM_GAP_PADDING_Y = 10;
 const TASK_GAP_PADDING_X = 0;
 const HEADER_BODY_GAP = 10;
 
-// ************** -> ADDED NOW 2: const TEAM_COLLAPSED_HEIGHT ***************** :
+//  -> ADDED NOW 2: const TEAM_COLLAPSED_HEIGHT  :
 const TASK_COLLAPSED_HEIGHT = 14;
 const TEAM_COLLAPSED_HEIGHT = TASK_COLLAPSED_HEIGHT + 15; // slightly larger to fit header/arrow
 const ATTEMPT_COLLAPSED_HEIGHT = Math.max(6, TASK_COLLAPSED_HEIGHT - 4);
@@ -63,7 +63,8 @@ const COLLAPSED_DAY_WIDTH = 12;
 // _______________________________________________________________________________________________
 // _______________________________________________________________________________________________
 
-// ______________SOUND
+// ________________________SOUND
+// ____________________________________________
 
 // playSnapSound
 const snapAudio = new Audio(snapSoundFile);
@@ -104,6 +105,9 @@ function playClackSound() {
   }
 }
 
+// ________________________Extract Ids
+// ____________________________________________
+
 // extractAttemptId
 function extractAttemptId(nodeId) {
   if (!nodeId) return null;
@@ -119,24 +123,19 @@ function extractAttemptId(nodeId) {
   return Number.isNaN(num) ? null : num;
 }
 
-// ************** -> ADDED NOW 5: Helper extractTeamId ***************** :
+// ADDED NOW 5: Helper extractTeamId  :
 function extractTeamId(teamNodeId) {
   if (!teamNodeId?.startsWith('team-')) return null;
   const num = parseInt(teamNodeId.replace('team-', ''), 10);
   return Number.isNaN(num) ? null : num;
 }
 
+// ________________________Layout
+// ____________________________________________
+
 // get_overall_gap
 function get_overall_gap(num_tasks, gap, header_gap) {
   return num_tasks * gap + header_gap - 10;
-}
-
-// Mobile Task Adjustment
-if (isMobile) {
-  TASK_HEIGHT = 45;
-  TASK_WIDTH = 45;
-  SIDEBAR_WIDTH = 70;
-  TASK_SIDEBAR_WIDTH = 70;
 }
 
 // TaskHeaderNode
@@ -221,14 +220,33 @@ function TaskHeaderNode({ data }) {
   );
 }
 
+// Mobile Task Adjustment (OUT)
+// if (isMobile) {
+//   TASK_HEIGHT = 45;
+//   TASK_WIDTH = 45;
+//   SIDEBAR_WIDTH = 70;
+//   TASK_SIDEBAR_WIDTH = 70;
+// }
+
+// _________________________NODES & EDGES____________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+
+// ________________________Nodes
+// ____________________________________________
+
 // TeamNode
 function TeamNode({ id, data }) {
-  // ************** -> ADDED NOW: DEBUG [TeamNode render] ***************** :
+  //  -> ADDED NOW: DEBUG [TeamNode render]  :
   // console.log('[TeamNode render]', id, 'data.isCollapsed =', data.isCollapsed);
 
   const [collapsed, setCollapsed] = useState(false);
 
-  // ************** -> ADDED NOW 2: height calculation inside teamnode ***************** :
+  //  -> ADDED NOW 2: height calculation inside teamnode  :
   // const [height, setHeight] = useState(data.height);
   const collapsedHeight = data.collapsedHeight ?? TEAM_COLLAPSED_HEIGHT;
   const height = data.isCollapsed ? collapsedHeight : data.height;
@@ -330,7 +348,7 @@ function TeamNode({ id, data }) {
           style={{ zIndex: 50, pointerEvents: 'auto' }}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
-            // ************** -> ADDED NOW: toggleTeamCollapse call while onclick ***************** :
+            //  -> ADDED NOW: toggleTeamCollapse call while onclick  :
             // e.stopPropagation();
             // handleCollapse();
             // playClackSound()
@@ -480,7 +498,8 @@ function AttemptNode({ data, selected }) {
   );
 }
 
-// __________NODE TYPES
+// ________________________Edges
+// ____________________________________________
 
 // DependencyEdge
 // Custom dependency edge with generous invisible hit-path for reliable clicks
@@ -620,49 +639,108 @@ const edgeTypes = {
   dependencyEdge: DependencyEdge,
 };
 
+// _________________________COMPONENT____________________________
+// _________________________COMPONENT____________________________
+// _________________________COMPONENT____________________________
+// _________________________COMPONENT____________________________
+// _________________________COMPONENT____________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
 // headerNode template removed; we’ll build it inside the component with data
 
 // ________________________COMPONENT________________________
 export default function OrgAttempts() {
-  // console.log('________________________________\n');
+  const REACTFLOW_HEIGHT = 700;
+  // _________________________STATES____________________________
+  // _______________________________________________________________________________________________
+  // _______________________________________________________________________________________________
+  // _______________________________________________________________________________________________
+  // _______________________________________________________________________________________________
+  // _______________________________________________________________________________________________
+  // _______________________________________________________________________________________________
 
-  // States & Variables
+  // ________________________ROUTER & AUTH
+  // ____________________________________________
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { logout } = useAuth();
 
+  // ________________________Main Data
+  // ____________________________________________
   const [all_teams, setAll_Teams] = useState([]);
   const [all_tasks, setAll_Tasks] = useState([]);
   const [all_attempts, setAll_Attempts] = useState([]);
+
+  // ________________________Nodes
+  // ____________________________________________
   const [attempt_nodes, setAttemptNodes] = useState([]);
   const [groupNodes, setGroupNodes] = useState([]);
   const [taskNodes, setTaskNodes] = useState([]);
   const [mergedNodes, setMergedNodes] = useState([]);
+
+  // ________________________Edges
+  // ____________________________________________
+  const [edges, setEdges] = useState([]);
+
+  // ________________________Layout
+  // ____________________________________________
   const [y_reactflow_size, setY_reactflow_size] = useState(1000);
   const [overallgap, setOverAllGap] = useState(0);
 
-  const [edges, setEdges] = useState([]);
+  // ________________________Selected
+  // ____________________________________________
   const [selectedDepId, setSelectedDepId] = useState(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState(null);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [inspectSelectedNodeId, setInspectSelectedNodeId] = useState(null);
 
-  const REACTFLOW_HEIGHT = 700;
-
+  // ________________________Mode
+  // ____________________________________________
   const [dep_setting_selected, setDep_setting_selected] = useState(true);
   const [mode, setMode] = useState('dependency'); // 'order', 'dependency', 'inspect'
 
-  // View options
+  // ________________________Options
+  // ____________________________________________
   const [hideCollapsedNodes, setHideCollapsedNodes] = useState(false);
-  // TEMP: hideEdgesOfCollapsed disabled during investigation
-  // const [hideEdgesOfCollapsed, setHideEdgesOfCollapsed] = useState(false);
   const [hideEmptyDays, setHideEmptyDays] = useState(false);
 
-  // Error message state
+  // ________________________Errors
+  // ____________________________________________
   const [errorMessage, setErrorMessage] = useState(null);
   const edgeHighlightTimeout = useRef(null);
   const edgeRestoreRef = useRef(null);
 
+  // ________________________Mystery
+  // ____________________________________________
+  const [layoutVersion, setLayoutVersion] = useState(0);
+
+  // ________________________Geometry
+  // ____________________________________________
+  // Collapsed days map: key = day index (1-based), value = true/false
+  const [collapsedDays, setCollapsedDays] = useState({});
+  const [collapsedByTeamId, setCollapsedByTeamId] = useState({});
+  const [collapsedTasks, setCollapsedTasks] = useState({});
+  const [teamOrder, setTeamOrder] = useState([]);
+
+  // ________________________Timeline
+  // ____________________________________________
+  // Timeline derived from project dates
+  const [timelineDays, setTimelineDays] = useState([]);
+  const [entryCount, setEntryCount] = useState(DEFAULT_ENTRIES);
+
+  // _________________________HOOKS____________________________
+  // _______________________________________________________________________________________________
+  // _______________________________________________________________________________________________
+  // _______________________________________________________________________________________________
+  // _______________________________________________________________________________________________
+  // _______________________________________________________________________________________________
+  // _______________________________________________________________________________________________
+
+  // handleEdgeSelect
   // Ensure dependency edges set selection when clicked from custom edge component
   const handleEdgeSelect = useCallback(
     (edgeId) => {
@@ -678,14 +756,7 @@ export default function OrgAttempts() {
     [setSelectedDepId, setSelectedEdgeId],
   );
 
-  // Collapsed days map: key = day index (1-based), value = true/false
-  const [collapsedDays, setCollapsedDays] = useState({});
-  const [layoutVersion, setLayoutVersion] = useState(0);
-
-  // Timeline derived from project dates
-  const [timelineDays, setTimelineDays] = useState([]);
-  const [entryCount, setEntryCount] = useState(DEFAULT_ENTRIES);
-
+  // daysWithAttempts
   // Compute which days have attempts scheduled
   const daysWithAttempts = useMemo(() => {
     const days = new Set();
@@ -697,6 +768,7 @@ export default function OrgAttempts() {
     return days;
   }, [all_attempts]);
 
+  // componentWidth
   const componentWidth = useMemo(() => {
     const base = SIDEBAR_WIDTH + TASK_SIDEBAR_WIDTH;
     let totalWidth = 0;
@@ -706,6 +778,7 @@ export default function OrgAttempts() {
     return base + totalWidth;
   }, [entryCount, collapsedDays]);
 
+  // pixelMap
   const pixelMap = useMemo(() => {
     const GRID_OFFSET = SIDEBAR_WIDTH + TASK_SIDEBAR_WIDTH;
     let currentX = GRID_OFFSET;
@@ -719,6 +792,7 @@ export default function OrgAttempts() {
     }).reduce((obj, [k, v]) => ({ ...obj, [k]: v }), {});
   }, [entryCount, collapsedDays]);
 
+  // getSlotIndexFromX
   const getSlotIndexFromX = useCallback(
     (x) => {
       const relative = x - TASK_SIDEBAR_WIDTH;
@@ -742,6 +816,7 @@ export default function OrgAttempts() {
     [entryCount, collapsedDays],
   );
 
+  // getXFromSlotIndex
   const getXFromSlotIndex = useCallback(
     (slotIndex) => {
       // Calculate X position by summing up widths of all days before this slot
@@ -757,6 +832,7 @@ export default function OrgAttempts() {
     [collapsedDays],
   );
 
+  // headerNode
   const headerNode = useMemo(
     () => ({
       id: 'task-header',
@@ -807,14 +883,7 @@ export default function OrgAttempts() {
     [componentWidth, timelineDays, entryCount, collapsedDays, pixelMap],
   );
 
-  // ************** -> ADDED NOW : collapsedByTeamId ***************** :
-  const [collapsedByTeamId, setCollapsedByTeamId] = useState({});
-  const [collapsedTasks, setCollapsedTasks] = useState({});
-
-  // ************** -> ADDED NOW 4: teamOrder useState ***************** :
-  const [teamOrder, setTeamOrder] = useState([]);
-
-  // ************** -> ADDED NOW: toggleTeamCollapse ***************** :
+  //  -> ADDED NOW: toggleTeamCollapse  :
   const toggleTeamCollapse = useCallback(
     (teamNodeId) => {
       // Ensure expanding a team also expands all its tasks
@@ -852,7 +921,9 @@ export default function OrgAttempts() {
     }));
   }, []);
 
-  // Bulk controls
+  // ________________________Bulk controls
+  // ____________________________________________
+  // collapseAllTeams
   const collapseAllTeams = useCallback(() => {
     setCollapsedByTeamId(() => {
       const next = {};
@@ -863,6 +934,7 @@ export default function OrgAttempts() {
     });
   }, [groupNodes]);
 
+  // expandAllTeams
   const expandAllTeams = useCallback(() => {
     setCollapsedByTeamId(() => {
       const next = {};
@@ -883,6 +955,7 @@ export default function OrgAttempts() {
     });
   }, [groupNodes, taskNodes]);
 
+  // collapseAllTasks
   const collapseAllTasks = useCallback(() => {
     setCollapsedTasks(() => {
       const next = {};
@@ -893,10 +966,12 @@ export default function OrgAttempts() {
     });
   }, [taskNodes]);
 
+  // expandAllTasks
   const expandAllTasks = useCallback(() => {
     setCollapsedTasks({});
   }, []);
 
+  // collapseAllDays
   const collapseAllDays = useCallback(() => {
     setCollapsedDays(() => {
       const next = {};
@@ -908,56 +983,18 @@ export default function OrgAttempts() {
     setLayoutVersion((v) => v + 1);
   }, [entryCount]);
 
+  // expandAllDays
   const expandAllDays = useCallback(() => {
     setCollapsedDays({});
     setLayoutVersion((v) => v + 1);
   }, []);
 
-  // ************** -> ADDED NOW 3: Helper - getTaskIdsForTeam ***************** :
+  //  -> ADDED NOW 3: Helper - getTaskIdsForTeam  :
   function getTaskIdsForTeam(taskNodes, teamId) {
     return taskNodes.filter((t) => t.parentNode === teamId).map((t) => t.id);
   }
 
-  // ************** -> ADDED NOW 3: Sinks hidden flags:  ***************** :
-  // useEffect(() => {
-  //     if (!groupNodes.length) return;
-
-  //     console.log("==========[HIDE PASS] START==========");
-  //     console.log("[HIDE PASS] collapsedByTeamId:", collapsedByTeamId);
-
-  //     // Build a Set of all task ids that belong to collapsed teams
-  //     const collapsedTeamIds = Object.keys(collapsedByTeamId).filter((k) => collapsedByTeamId[k]);
-  //     console.log("[HIDE PASS] collapsedTeamIds:", collapsedTeamIds);
-
-  //     const collapsedTaskIds = new Set();
-
-  //     // 1) update taskNodes.hidden
-  //     setTaskNodes((prevTasks) => {
-  //         // collect task ids for collapsed teams
-  //         collapsedTeamIds.forEach((teamId) => {
-  //             prevTasks.forEach((t) => {
-  //                 if (t.parentNode === teamId) collapsedTaskIds.add(t.id);
-  //             });
-  //         });
-
-  //         console.log("[HIDE PASS] collapsedTaskIds:", Array.from(collapsedTaskIds));
-
-  //         return prevTasks.map((t) => {
-  //             const shouldHide = collapsedTeamIds.includes(t.parentNode);
-  //             return shouldHide ? { ...t, hidden: true } : { ...t, hidden: false };
-  //         });
-  //     });
-
-  //     // 2) update attempt_nodes.hidden (attempt_nodes state!)
-  //     setAttemptNodes((prevAttempts) =>
-  //         prevAttempts.map((a) => {
-  //             const shouldHide = collapsedTaskIds.has(a.parentNode);
-  //             return shouldHide ? { ...a, hidden: true } : { ...a, hidden: false };
-  //         })
-  //     );
-
-  //     console.log("==========[HIDE PASS] END==========");
-  // }, [collapsedByTeamId, groupNodes.length]);
+  // updateTaskPositionsEffect
   // Recalculate and update task positions based on all collapse states
   useEffect(() => {
     if (!taskNodes.length) return;
@@ -1010,6 +1047,7 @@ export default function OrgAttempts() {
     });
   }, [collapsedTasks, collapsedByTeamId, collapsedDays]);
 
+  // syncTaskPositionsEffect
   // When days are toggled, force a complete task position recalculation
   useEffect(() => {
     if (!taskNodes.length) return;
@@ -1055,7 +1093,20 @@ export default function OrgAttempts() {
     });
   }, [collapsedDays, taskNodes.length]);
 
+  // updateNodeHierarchyStateEffect
   // Update attempt flags and team heights after task positions are recalculated
+
+  // Propagates collapse state through the hierarchy:
+  // hides attempts if their parent task or team is collapsed,
+  // recalculates each team's height by summing child tasks, and triggers a layout update.
+
+  // Dependencies:
+
+  // taskNodes — Re-run when task structure changes (additions/removals) to recalculate team heights
+  // collapsedTasks — Re-run when individual task collapse state changes to update attempt visibility and heights
+  // collapsedByTeamId — Re-run when team collapse state changes to hide/show attempts and update team dimensions
+  // collapsedDays — (safety/consistency) included to ensure layout syncs if day collapse affects overall state
+  // Net effect: Maintains 3-level hierarchy consistency whenever any collapse state at any level changes.
   useEffect(() => {
     if (!taskNodes.length || !groupNodes.length) return;
 
@@ -1118,7 +1169,7 @@ export default function OrgAttempts() {
     setLayoutVersion((v) => v + 1);
   }, [taskNodes, collapsedTasks, collapsedByTeamId, collapsedDays]);
 
-  // ************** -> ADDED NOW 4: Helper: getTeamInsertIndexFromY ***************** :
+  //  -> ADDED NOW 4: Helper: getTeamInsertIndexFromY  :
   function getTeamInsertIndexFromY(dropY, orderedTeamIds, groupNodes, collapsedByTeamId) {
     let currentY = TASK_HEIGHT + HEADER_BODY_GAP;
 
@@ -1133,19 +1184,6 @@ export default function OrgAttempts() {
 
       const midY = currentY + effectiveHeight / 2;
 
-      // console.log(
-      //   '[REORDER CHECK]',
-      //   id,
-      //   'range:',
-      //   currentY,
-      //   '→',
-      //   currentY + effectiveHeight,
-      //   'mid:',
-      //   midY,
-      //   'dropY:',
-      //   dropY,
-      // );
-
       if (dropY < midY) {
         return i;
       }
@@ -1156,55 +1194,16 @@ export default function OrgAttempts() {
     return orderedTeamIds.length;
   }
 
-  // ************** -> ADDED NOW 4: Updated this effect (order aware) ***************** :
-  // ************** -> ADDED NOW 2: useEffect - runs when collapse map changes ***************** :
-  // useEffect(() => {
-  //     if (!groupNodes.length) return;
-
-  //     console.log("==========[LAYOUT PASS] START==========");
-  //     console.log("[LAYOUT PASS] collapsedByTeamId:", collapsedByTeamId);
-
-  //     setGroupNodes((prev) => {
-  //         let currentY = TASK_HEIGHT + HEADER_BODY_GAP;
-  //         const next = prev.map((node) => {
-  //             const isCollapsed = !!collapsedByTeamId[node.id];
-
-  //             const expandedHeight = node.data?.height ?? 0;
-  //             const effectiveHeight = isCollapsed ? TEAM_COLLAPSED_HEIGHT : expandedHeight;
-
-  //             console.log(
-  //                 "[LAYOUT PASS] team:",
-  //                 node.id,
-  //                 "collapsed:",
-  //                 isCollapsed,
-  //                 "expandedHeight:",
-  //                 expandedHeight,
-  //                 "effectiveHeight:",
-  //                 effectiveHeight,
-  //                 "newY:",
-  //                 currentY
-  //             );
-
-  //             const updated = {
-  //                 ...node,
-  //                 position: { ...node.position, y: currentY },
-  //                 data: {
-  //                     ...node.data,
-  //                     isCollapsed, // keep data in sync too
-  //                 },
-  //             };
-
-  //             currentY += effectiveHeight + TEAM_GAP_PADDING_Y;
-  //             return updated;
-  //         });
-
-  //         console.log("==========[LAYOUT PASS] END==========");
-  //         return next;
-  //     });
-
-  //     // optional: update reactflow container height too
-  //     // (we’ll verify the packing first, then adjust height precisely)
-  // }, [collapsedByTeamId]);
+  // layoutTeamNodesEffect
+  /**
+   * Positions team nodes vertically based on team order and collapse states.
+   * Applies cumulative Y positioning with effective heights and updates node data.
+   *
+   * @param {Object} collapsedByTeamId - Hide/show attempts and update team dimensions
+   * @param {Array} teamOrder - Team ordering sequence
+   * @param {number} layoutVersion - Layout recalculation trigger
+   * @param {number} groupNodes.length - Team count for recalculation
+   */
   useEffect(() => {
     if (!groupNodes.length) return;
     if (!teamOrder.length) return;
@@ -1289,6 +1288,14 @@ export default function OrgAttempts() {
     [setGroupNodes],
   );
 
+  // updateTeamDraggableStateEffect
+  /**
+   * Updates team node draggability and selectability based on current mode.
+   * Enables dragging and selection only in order mode.
+   *
+   * @param {string} mode - Enable/disable dragging and selection based on mode
+   * @param {Function} applyTeamInteractivity - Interactivity application function
+   */
   useEffect(() => {
     applyTeamInteractivity(mode);
   }, [mode, applyTeamInteractivity]);
@@ -1391,51 +1398,6 @@ export default function OrgAttempts() {
     );
   }, [mode, handleEdgeSelect, selectedEdgeId]);
 
-  /*
-   * TEMPORARILY DISABLED: hideEdgesOfCollapsed effect
-   * Reason: Investigating edge click issues in dependency mode. Hiding edges here can
-   *         interfere with click hit-testing and with temporary highlighting.
-   *         Restore once the root cause is resolved.
-   */
-  // useEffect(() => {
-  //   setEdges((prev) =>
-  //     prev.map((edge) => {
-  //       if (!hideEdgesOfCollapsed) {
-  //         // When disabled, ensure edge is visible
-  //         if (edge.hidden) {
-  //           return { ...edge, hidden: false };
-  //         }
-  //         return edge;
-  //       }
-  //
-  //       // Extract attempt IDs from edge source/target (format: "attempt-123")
-  //       const sourceAttemptId = edge.source?.replace('attempt-', '');
-  //       const targetAttemptId = edge.target?.replace('attempt-', '');
-  //
-  //       // Find the attempts to get their task IDs
-  //       const sourceAttempt = all_attempts.find((a) => a.id === parseInt(sourceAttemptId));
-  //       const targetAttempt = all_attempts.find((a) => a.id === parseInt(targetAttemptId));
-  //
-  //       if (!sourceAttempt || !targetAttempt) return edge;
-  //
-  //       // Check collapse states
-  //       const sourceTaskId = `task-${sourceAttempt.task.id}`;
-  //       const targetTaskId = `task-${targetAttempt.task.id}`;
-  //       const sourceTeamId = `team-${sourceAttempt.task.team}`;
-  //       const targetTeamId = `team-${targetAttempt.task.team}`;
-  //
-  //       const sourceCollapsed = !!collapsedTasks[sourceTaskId] || !!collapsedByTeamId[sourceTeamId];
-  //       const targetCollapsed = !!collapsedTasks[targetTaskId] || !!collapsedByTeamId[targetTeamId];
-  //
-  //       const shouldHide = sourceCollapsed || targetCollapsed;
-  //
-  //       // Only update if the hidden state actually changed
-  //       if (edge.hidden === shouldHide) return edge;
-  //       return { ...edge, hidden: shouldHide };
-  //     }),
-  //   );
-  // }, [hideEdgesOfCollapsed, collapsedByTeamId, collapsedTasks, all_attempts]);
-
   // Temporarily highlight edges (even if currently hidden) and restore their previous state after 1s
   const highlightEdges = useCallback(
     (edgeIds) => {
@@ -1508,7 +1470,7 @@ export default function OrgAttempts() {
 
       //LOAD TEAMS (& Tasks through Teams)
       async function loadTeams() {
-        // ************** -> ADDED NOW: security log: [loadTeams] ***************** :
+        //  -> ADDED NOW: security log: [loadTeams]  :
         // console.log('[loadTeams] collapsedByTeamId:', collapsedByTeamId);
 
         try {
@@ -1564,7 +1526,7 @@ export default function OrgAttempts() {
                   setTaskNodes,
                   setAttemptNodes,
 
-                  // ************** -> ADDED NOW: toggleTeamCollapse & isCollapsed ***************** :
+                  //  -> ADDED NOW: toggleTeamCollapse & isCollapsed  :
                   toggleTeamCollapse,
                   isCollapsed: isTeamCollapsed,
                   componentWidth,
@@ -1584,7 +1546,7 @@ export default function OrgAttempts() {
 
           setGroupNodes(updated_group_nodes);
 
-          // ************** -> ADDED NOW 4: initialOrder ***************** :
+          //  -> ADDED NOW 4: initialOrder  :
           const initialOrder = updated_group_nodes.map((n) => n.id);
           // console.log('[teamOrder:init]', initialOrder);
           setTeamOrder(initialOrder);
@@ -1863,7 +1825,7 @@ export default function OrgAttempts() {
       if (mode === 'inspect') return;
 
       playSnapSound();
-      // ************** -> ADDED NOW 4: onNodeDragStop for group nodes ***************** :
+      //  -> ADDED NOW 4: onNodeDragStop for group nodes  :
       if (node.type === 'teamNode') {
         // console.log('==========[TEAM DROP]==========');
         // console.log('[TEAM DROP] node:', node.id);
@@ -2064,7 +2026,7 @@ export default function OrgAttempts() {
         }
       })();
 
-      // ************** -> ADDED NOW 4: dependency list update:  ***************** :
+      //  -> ADDED NOW 4: dependency list update:   :
       // }, [setMergedNodes]);
     },
     [
