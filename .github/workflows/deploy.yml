@@ -15,6 +15,12 @@ jobs:
           cd /home/floriankoehl/Network
           git pull
 
+      - name: Run backend tests
+        run: |
+          set -e
+          cd /home/floriankoehl/Network/backend
+          python manage.py test
+
       - name: Build frontend and deploy to Nginx
         run: |
           cd /home/floriankoehl/Network/frontend
@@ -28,4 +34,3 @@ jobs:
         run: |
           cd /home/floriankoehl/Network
           docker compose up --build -d backend
-
