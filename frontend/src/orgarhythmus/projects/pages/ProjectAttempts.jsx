@@ -36,7 +36,7 @@ import dayjs from 'dayjs';
 // _______________________________________________________________________________________________
 
 // Main Variables
-const isMobile = window.innerWidth <= 768;
+// const isMobile = window.innerWidth <= 768;
 let TASK_HEIGHT = 60;
 let TASK_WIDTH = 60;
 let SETTINGS_HEIGHT = 200;
@@ -46,10 +46,10 @@ let SIDEBAR_WIDTH = 80;
 let TASK_SIDEBAR_WIDTH = 100;
 
 const TEAM_GAP_PADDING_Y = 10;
-const TASK_GAP_PADDING_X = 0;
+// const TASK_GAP_PADDING_X = 2000;
 const HEADER_BODY_GAP = 10;
 
-//  -> ADDED NOW 2: const TEAM_COLLAPSED_HEIGHT  :
+// const TEAM_COLLAPSED_HEIGHT  :
 const TASK_COLLAPSED_HEIGHT = 14;
 const TEAM_COLLAPSED_HEIGHT = TASK_COLLAPSED_HEIGHT + 15; // slightly larger to fit header/arrow
 const ATTEMPT_COLLAPSED_HEIGHT = Math.max(6, TASK_COLLAPSED_HEIGHT - 4);
@@ -109,6 +109,12 @@ function playClackSound() {
 // ____________________________________________
 
 // extractAttemptId
+/**
+ * Extracts the numeric attempt ID from a ReactFlow node identifier.
+ * Handles both prefixed format ("attempt-19") and plain numeric strings ("19"), returning null for invalid inputs.
+ *
+ * @param {string|number|null} nodeId — ReactFlow node identifier to parse for attempt ID
+ */
 function extractAttemptId(nodeId) {
   if (!nodeId) return null;
 
@@ -124,6 +130,12 @@ function extractAttemptId(nodeId) {
 }
 
 // Helper extractTeamId  :
+/**
+ * Extracts the numeric team ID from a ReactFlow node identifier.
+ * Handles both prefixed format ("team-19") and plain numeric strings ("19"), returning null for invalid inputs.
+ *
+ * @param {string|number|null} teamNodeId — ReactFlow node identifier to parse for team ID
+ */
 function extractTeamId(teamNodeId) {
   if (!teamNodeId?.startsWith('team-')) return null;
   const num = parseInt(teamNodeId.replace('team-', ''), 10);
@@ -134,11 +146,36 @@ function extractTeamId(teamNodeId) {
 // ____________________________________________
 
 // get_overall_gap
+/**
+ * Calculates total vertical spacing for the layout by combining task gaps with header gap.
+ * Multiplies task count by individual gap size, adds header gap, then applies a 10px padding adjustment.
+ *
+ * @param {number} num_tasks — number of tasks to calculate spacing for
+ * @param {number} gap — individual gap size between tasks in pixels
+ * @param {number} header_gap — additional gap for header section in pixels
+ */
 function get_overall_gap(num_tasks, gap, header_gap) {
   return num_tasks * gap + header_gap - 10;
 }
 
+// _________________________NODES & EDGES____________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+// _______________________________________________________________________________________________
+
+// ________________________Nodes
+// ____________________________________________
+
 // TaskHeaderNode
+/**
+ * Renders the timeline header row displaying team/task labels and interactive day columns.
+ * Maps timeline dates or numeric indices to clickable cells that toggle day collapse states, with width calculated from pixel mapping and collapse state for responsive layout.
+ *
+ * @param {Object} data — layout configuration, timeline dates, collapse states, and toggle handler for the header component
+ */
 function TaskHeaderNode({ data }) {
   const {
     componentWidth,
@@ -219,25 +256,6 @@ function TaskHeaderNode({ data }) {
     </div>
   );
 }
-
-// Mobile Task Adjustment (OUT)
-// if (isMobile) {
-//   TASK_HEIGHT = 45;
-//   TASK_WIDTH = 45;
-//   SIDEBAR_WIDTH = 70;
-//   TASK_SIDEBAR_WIDTH = 70;
-// }
-
-// _________________________NODES & EDGES____________________________
-// _______________________________________________________________________________________________
-// _______________________________________________________________________________________________
-// _______________________________________________________________________________________________
-// _______________________________________________________________________________________________
-// _______________________________________________________________________________________________
-// _______________________________________________________________________________________________
-
-// ________________________Nodes
-// ____________________________________________
 
 // TeamNode
 function TeamNode({ id, data }) {
@@ -502,7 +520,22 @@ function AttemptNode({ data, selected }) {
 // ____________________________________________
 
 // DependencyEdge
-// Custom dependency edge with generous invisible hit-path for reliable clicks
+/**
+ * Renders a custom dependency edge with interactive selection features and visual feedback.
+ * Draws a Bezier curve between nodes with a wide invisible hit zone for easy clicking,
+ * plus a centered label dot that highlights when selected or hovered in dependency mode.
+ *
+ * @param {string} id — unique edge identifier for selection callbacks
+ * @param {number} sourceX — X coordinate of edge starting point
+ * @param {number} sourceY — Y coordinate of edge starting point
+ * @param {number} targetX — X coordinate of edge ending point
+ * @param {number} targetY — Y coordinate of edge ending point
+ * @param {string} sourcePosition — ReactFlow position anchor for source node
+ * @param {string} targetPosition — ReactFlow position anchor for target node
+ * @param {boolean} selected — ReactFlow selection state for the edge
+ * @param {Object} style — style properties including stroke color and width
+ * @param {Object} data — edge data containing isDependencyMode flag, isSelected state, and onSelect callback
+ */
 function DependencyEdge({
   id,
   sourceX,
@@ -1030,7 +1063,7 @@ export default function OrgAttempts() {
       return next;
     });
   }, [groupNodes, taskNodes]);
-
+  //
   // collapseAllTasks
   /**
    * Collapses all task nodes in the hierarchy at once.
@@ -1476,6 +1509,7 @@ export default function OrgAttempts() {
   }, [mode, applyTaskInteractivity]);
 
   // updateAttemptDraggableStateEffect
+  // Update attempt nodes draggable state based on mode
   /**
    * Updates attempt node draggability based on current mode.
    * Disables dragging in inspect mode while maintaining selection for edge highlighting.
@@ -1483,7 +1517,6 @@ export default function OrgAttempts() {
    * @param {string} mode - Enable/disable dragging based on mode (disable in inspect mode)
    * @param {number} attempt_nodes.length - Reapply interactivity when attempt count changes
    */
-  // Update attempt nodes draggable state based on mode
   useEffect(() => {
     // Only disable dragging in inspect mode
     const attemptDraggingEnabled = mode !== 'inspect';
@@ -2052,11 +2085,25 @@ export default function OrgAttempts() {
   }, [headerNode, groupNodes, taskNodes, attempt_nodes, dep_setting_selected, mode]);
 
   // onNodesChange
+  /**
+   * Handles ReactFlow node change events by applying position and state updates to the merged nodes array.
+   * Uses ReactFlow's built-in applyNodeChanges utility to process drag positions, selections, and other node mutations.
+   *
+   * @param {Array} changes — array of node change objects from ReactFlow containing position, selection, or visibility updates
+   */
   const onNodesChange = useCallback((changes) => {
     setMergedNodes((nds) => applyNodeChanges(changes, nds));
   }, []);
 
-  // onNodeDragStart - block dragging entirely in inspect mode
+  // onNodeDragStart
+  // block dragging entirely in inspect mode
+  /**
+   * Blocks node dragging when the component is in inspect mode.
+   * Intercepts ReactFlow drag start events and prevents default drag behavior if the current mode is 'inspect'.
+   *
+   * @param {Event} event — ReactFlow drag start event to preventDefault when in inspect mode
+   * @param {Object} node — ReactFlow node object being dragged (contains id, type, position, data)
+   */
   const onNodeDragStart = useCallback(
     (event, node) => {
       if (mode === 'inspect') {

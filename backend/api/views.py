@@ -1,23 +1,18 @@
 import json
 from datetime import date, timedelta
-
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
-
 from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-
 from rest_framework.decorators import api_view, permission_classes
 from django.views.decorators.http import require_GET
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework import status, serializers
-
 from django.forms.models import model_to_dict
-
 from .models import (
     Comment,
     Team,
@@ -33,7 +28,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
-
 from .models import Team
 from django.conf import settings
 
