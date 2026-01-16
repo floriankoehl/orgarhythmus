@@ -14,3 +14,8 @@ class TeamModelTest(TestCase):
         project = Project.objects.create(name="Test Project", owner=user)
         team = Team.objects.create(name="Backend Team", project=project)
         self.assertEqual(str(team), "Backend Team")
+
+
+    def test_team_without_project(self):
+        with self.assertRaises(IntegrityError):
+            Team.objects.create(name="Orphan Team").save()

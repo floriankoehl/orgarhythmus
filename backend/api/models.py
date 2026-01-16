@@ -37,8 +37,7 @@ class Project(models.Model):
 class Team(models.Model):
     name = models.CharField(max_length=200, blank=True, null=True)
     color = models.CharField(max_length=200, blank=True, null=True)
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="teams", default=1, null=True,
-        blank=True, )
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="teams")
     line_index = models.IntegerField(blank=True, null=True)
     
 
