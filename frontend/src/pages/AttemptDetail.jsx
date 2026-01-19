@@ -206,7 +206,7 @@ export default function AttemptDetail() {
               {attempt.task?.id && (
                 <button
                   onClick={() =>
-                    navigate(`/orgarhythmus/projects/${projectId}/tasks/${attempt.task.id}`)
+                    navigate(`/projects/${projectId}/tasks/${attempt.task.id}`)
                   }
                   className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
                 >
@@ -216,7 +216,7 @@ export default function AttemptDetail() {
               {attempt.task?.team?.id && (
                 <button
                   onClick={() =>
-                    navigate(`/orgarhythmus/projects/${projectId}/teams/${attempt.task.team.id}`)
+                    navigate(`/projects/${projectId}/teams/${attempt.task.team.id}`)
                   }
                   className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
                 >
@@ -345,7 +345,7 @@ export default function AttemptDetail() {
                         )}
                         <button
                           onClick={() =>
-                            navigate(`/orgarhythmus/projects/${projectId}/attempts/${a.id}`)
+                            navigate(`/projects/${projectId}/attempts/${a.id}`)
                           }
                           className="text-xs font-medium text-blue-600 transition hover:text-blue-700 hover:underline"
                         >
@@ -395,7 +395,7 @@ export default function AttemptDetail() {
                         )}
                         <button
                           onClick={() =>
-                            navigate(`/orgarhythmus/projects/${projectId}/attempts/${a.id}`)
+                            navigate(`/projects/${projectId}/attempts/${a.id}`)
                           }
                           className="text-xs font-medium text-blue-600 transition hover:text-blue-700 hover:underline"
                         >

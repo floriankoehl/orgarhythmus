@@ -1173,28 +1173,63 @@ def delete_attempt_dependency(request):
     return JsonResponse({"id": dep_id, "status": "deleted"}, status=200)
 
 
-# all_attempts_for_this_project
+# # all_attempts_for_this_project
+# @api_view(["GET"])
+# @permission_classes([IsAuthenticated])
+# def all_attempts_for_this_project(request, project_id):
+#     # 1) All attempts whose task belongs to this project
+#     all_attempts = (
+#         Attempt.objects
+#         .select_related("task", "task__team")  # fetch both task and its team to avoid N+1
+#         .filter(task__project_id=project_id)
+#     )
+
+#     # 2) Manually build the structure you showed:
+#     #    0: {id: 93, name: "c_0", number: 1, slot_index: 2,
+#     #        task: {id: 10, name: "c", team: {id: 5, name: "...", color: "..."}}}
+#     data = []
+#     for a in all_attempts:
+#         task_obj = a.task  # thanks to select_related
+#         data.append({
+#             "id": a.id,
+#             "name": getattr(a, "name", None),
+#             "number": getattr(a, "number", None),
+#             "slot_index": getattr(a, "slot_index", None),
+#             "task": {
+#                 "id": task_obj.id if task_obj else None,
+#                 "name": task_obj.name if task_obj else None,
+#                 "team": {
+#                     "id": task_obj.team.id,
+#                     "name": task_obj.team.name,
+#                     "color": task_obj.team.color,
+#                 } if task_obj and task_obj.team else None,
+#             } if task_obj else None,
+#         })
+
+#     # 3) Wrap in {"attempts": ...} so your frontend can keep doing
+#     #    const all_attempts2 = await fetch_all_attempts();
+#     #    all_attempts2.attempts.map(...)
+#     return JsonResponse({"attempts": data}, status=200)
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def all_attempts_for_this_project(request, project_id):
-    # 1) All attempts whose task belongs to this project
     all_attempts = (
         Attempt.objects
-        .select_related("task", "task__team")  # fetch both task and its team to avoid N+1
+        .select_related("task", "task__team")
+        .prefetch_related("task__assigned_members")
         .filter(task__project_id=project_id)
     )
 
-    # 2) Manually build the structure you showed:
-    #    0: {id: 93, name: "c_0", number: 1, slot_index: 2,
-    #        task: {id: 10, name: "c", team: {id: 5, name: "...", color: "..."}}}
     data = []
     for a in all_attempts:
-        task_obj = a.task  # thanks to select_related
+        task_obj = a.task
         data.append({
             "id": a.id,
             "name": getattr(a, "name", None),
             "number": getattr(a, "number", None),
             "slot_index": getattr(a, "slot_index", None),
+            "done": getattr(a, "done", False),
             "task": {
                 "id": task_obj.id if task_obj else None,
                 "name": task_obj.name if task_obj else None,
@@ -1203,12 +1238,13 @@ def all_attempts_for_this_project(request, project_id):
                     "name": task_obj.team.name,
                     "color": task_obj.team.color,
                 } if task_obj and task_obj.team else None,
+                "assigned_members_data": [
+                    {"id": u.id, "username": u.username, "email": u.email}
+                    for u in task_obj.assigned_members.all()
+                ] if task_obj else [],
             } if task_obj else None,
         })
 
-    # 3) Wrap in {"attempts": ...} so your frontend can keep doing
-    #    const all_attempts2 = await fetch_all_attempts();
-    #    all_attempts2.attempts.map(...)
     return JsonResponse({"attempts": data}, status=200)
 
 
@@ -1927,6 +1963,47 @@ def delete_notification(request, notification_id):
     notif.delete()
     
     return Response({"status": "Notification deleted"}, status=status.HTTP_204_NO_CONTENT)
+
+
+# Demo Date endpoints
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def demo_date_view(request):
+    """
+    GET: Retrieve current demo date
+    POST: Update demo date
+    """
+    from .models import DemoDate
+    from datetime import datetime
+    
+    if request.method == "GET":
+        demo_date = DemoDate.objects.first()
+        if not demo_date:
+            demo_date = DemoDate.objects.create()
+        return Response({"date": demo_date.date}, status=status.HTTP_200_OK)
+    
+    elif request.method == "POST":
+        data = request.data
+        date_str = data.get("date")
+        
+        if not date_str:
+            return Response({"detail": "date required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            # Parse the date string (YYYY-MM-DD format)
+            from datetime import datetime as dt
+            new_date = dt.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response({"detail": "Invalid date format. Use YYYY-MM-DD"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        demo_date = DemoDate.objects.first()
+        if not demo_date:
+            demo_date = DemoDate.objects.create(date=new_date)
+        else:
+            demo_date.date = new_date
+            demo_date.save()
+        
+        return Response({"date": demo_date.date}, status=status.HTTP_200_OK)
 
 
 

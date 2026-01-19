@@ -854,3 +854,39 @@ export async function deleteNotification(notificationId) {
   
   return await res.json();
 }
+
+//_______________________________________________
+//_______________________________________________
+//____________________DEMO_DATE__________________
+//_______________________________________________
+//_______________________________________________
+
+// Get current demo date from backend
+export async function getDemoDate() {
+  const res = await authFetch('/api/demo-date/');
+  
+  if (!res.ok) {
+    throw new Error('Failed to fetch demo date');
+  }
+  
+  const data = await res.json();
+  return data.date;
+}
+
+// Set demo date on backend
+export async function setDemoDate(date) {
+  const res = await authFetch('/api/demo-date/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ date: date.format('YYYY-MM-DD') }),
+  });
+  
+  if (!res.ok) {
+    throw new Error('Failed to set demo date');
+  }
+  
+  const data = await res.json();
+  return data.date;
+}

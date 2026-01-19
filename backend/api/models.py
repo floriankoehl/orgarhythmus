@@ -5,6 +5,7 @@ from django.contrib.auth.models import User
 from django.db.models import SET_NULL
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from datetime import date as date_class
 User = get_user_model()
 
 class Comment(models.Model):
@@ -147,6 +148,26 @@ class Notification(models.Model):
     
     def __str__(self):
         return f"{self.title} - {self.user.username}"
+
+
+# Demo Date Model - stores the simulated "current date" for testing
+class DemoDate(models.Model):
+    date = models.DateField(default=date_class.today)
+    
+    class Meta:
+        verbose_name_plural = "Demo Date"
+    
+    def __str__(self):
+        return f"Demo Date: {self.date}"
+    
+    @classmethod
+    def get_current_date(cls):
+        """Get the current demo date (or actual date if no demo date set)"""
+        try:
+            demo = cls.objects.first()
+            return demo.date if demo else date_class.today()
+        except:
+            return date_class.today()
 
 
 

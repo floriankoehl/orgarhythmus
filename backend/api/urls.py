@@ -49,6 +49,10 @@ urlpatterns = [
     path("notifications/<int:notification_id>/read/", views.mark_notification_as_read, name="mark_notification_as_read"),
     path("notifications/read-all/", views.mark_all_notifications_as_read, name="mark_all_notifications_as_read"),
     path("notifications/<int:notification_id>/delete/", views.delete_notification, name="delete_notification"),
+    
+    # Demo Date
+    path("demo-date/", views.demo_date_view, name="demo_date"),
+    
     #Attempts
     path("projects/<int:project_id>/attempts/", views.create_attempt_view, name="create_attempt"),
     path("projects/<int:project_id>/attempts/<int:attempt_id>/", views.attempt_detail_view),

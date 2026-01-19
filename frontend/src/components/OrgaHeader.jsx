@@ -9,6 +9,7 @@ import { useNotifications } from "../auth/NotificationContext";
 import ReplayIcon from '@mui/icons-material/Replay';
 import { Folder, Bell } from 'lucide-react';
 import NotificationsPanel from './NotificationsPanel';
+import DemoDateDisplay from './DemoDateDisplay';
 
 
 export default function OrgaHeader() {
@@ -107,6 +108,9 @@ export default function OrgaHeader() {
 
           {!loadingUser && isAuthenticated && (
             <div className="flex items-center gap-3 ml-4">
+
+              {/* Demo Date Display */}
+              <DemoDateDisplay />
 
               {/* Notifications Bell */}
               <button

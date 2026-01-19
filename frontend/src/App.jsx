@@ -1,6 +1,7 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { NotificationProvider } from './auth/NotificationContext';
+import { DemoDateProvider } from './auth/DemoDateContext';
 
 // import Layout from './layouts/MainLayout.jsx';
 import OrgaLayout from './layouts/OrgaLayout.jsx';
@@ -85,9 +86,11 @@ const router = createBrowserRouter([
 export default function App() {
   return (
     <AuthProvider>
-      <NotificationProvider>
-        <RouterProvider router={router} />
-      </NotificationProvider>
+      <DemoDateProvider>
+        <NotificationProvider>
+          <RouterProvider router={router} />
+        </NotificationProvider>
+      </DemoDateProvider>
     </AuthProvider>
   );
 }

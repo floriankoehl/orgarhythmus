@@ -1,252 +1,613 @@
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   fetch_all_attempts,
   fetch_project_detail,
+  project_teams_expanded,
 } from '../api/org_API.js';
-import { useEffect, useState } from 'react';
-import { Calendar, Loader2 } from 'lucide-react';
-//
-export default function NextSteps() {
+import { useAuth } from '../auth/AuthContext';
+import { useDemoDate } from '../auth/DemoDateContext';
+import { useEffect, useState, useMemo } from 'react';
+import {
+  Calendar,
+  Loader2,
+  Filter,
+  X,
+  Users,
+  CheckCircle2,
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
+import dayjs from 'dayjs';
+import isBetween from 'dayjs/plugin/isBetween';
+import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
+
+dayjs.extend(isBetween);
+dayjs.extend(isSameOrAfter);
+
+export default function CalendarPage() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
+  const { demoDate } = useDemoDate();
+
+  // Data
   const [projectData, setProjectData] = useState(null);
   const [attemptsData, setAttemptsData] = useState([]);
+  const [teamsData, setTeamsData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showCalendar, setShowCalendar] = useState(true);
-  const [calendarDays, setCalendarDays] = useState(14);
-  const [hideEmptyDays, setHideEmptyDays] = useState(false);
-  const [hoveredAttemptId, setHoveredAttemptId] = useState(null);
 
-  const getDateFromSlotIndex = (slotIndex, startDate) => {
-    if (!startDate) return null;
-    const start = new Date(startDate);
-    const daysToAdd = slotIndex - 1; // slot_index 1 = start_date
-    const resultDate = new Date(start.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
-    return resultDate.toLocaleDateString('de-AT', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'numeric',
-    });
-  };
+  // Filters & View
+  const [selectedTeamIds, setSelectedTeamIds] = useState([]);
+  const [viewMode, setViewMode] = useState('all'); // 'all', 'my-tasks', 'my-teams'
+  const [currentMonth, setCurrentMonth] = useState(dayjs());
+  const [hideEmptyDays, setHideEmptyDays] = useState(false);
+
+  // UI
+  const [hoveredAttemptId, setHoveredAttemptId] = useState(null);
+  const [expandedDate, setExpandedDate] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        // load project detail
-        const projectDetail = await fetch_project_detail(projectId);
-        setProjectData(projectDetail);
-        console.log('Project Detail:', projectDetail);
-
-        // load attempts
-        const attempts = await fetch_all_attempts(projectId);
-        setAttemptsData(attempts);
-        console.log('All Attempts:', attempts);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
     loadData();
   }, [projectId]);
 
+  async function loadData() {
+    try {
+      const [project, attempts, teams] = await Promise.all([
+        fetch_project_detail(projectId),
+        fetch_all_attempts(projectId),
+        project_teams_expanded(projectId),
+      ]);
+      console.log('Teams data from API:', teams);
+      console.log('Sample team members:', teams?.[0]);
+      console.log('Attempts data from API:', attempts);
+      console.log('Sample attempt task:', attempts?.[0]?.task);
+      console.log('Current user:', user);
+      setProjectData(project);
+      setAttemptsData(attempts || []);
+      setTeamsData(teams || []);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Determine calendar range
+  const getCalendarRange = () => {
+    if (!projectData?.start_date) {
+      return {
+        start: dayjs().startOf('month'),
+        end: dayjs().add(3, 'month').endOf('month'),
+      };
+    }
+
+    const projectStart = dayjs(projectData.start_date).startOf('month');
+    const projectEnd = projectData.end_date
+      ? dayjs(projectData.end_date).endOf('month')
+      : dayjs(projectData.start_date).add(3, 'month').endOf('month');
+
+    return { start: projectStart, end: projectEnd };
+  };
+
+  const calendarRange = getCalendarRange();
+
+  // Filter attempts based on view mode and team selection
+  const filteredAttempts = useMemo(() => {
+    let filtered = attemptsData.filter((attempt) => {
+      if (!attempt.slot_index || attempt.slot_index <= 0) return false;
+      if (!projectData?.start_date) return false;
+
+      const attemptDate = dayjs(projectData.start_date).add(attempt.slot_index - 1, 'day');
+      return attemptDate.isBetween(calendarRange.start, calendarRange.end, null, '[]');
+    });
+
+    // Apply team filter
+    if (selectedTeamIds.length > 0) {
+      filtered = filtered.filter((attempt) =>
+        selectedTeamIds.includes(attempt.task?.team?.id),
+      );
+    }
+
+    // Apply view mode filter
+    if (viewMode === 'my-tasks' && user) {
+      filtered = filtered.filter((attempt) => {
+        const assignedMembers = attempt.task?.assigned_members_data || [];
+        return assignedMembers.some((m) => m.id === user.id);
+      });
+    } else if (viewMode === 'my-teams' && user) {
+      filtered = filtered.filter((attempt) => {
+        const teamId = attempt.task?.team?.id;
+        if (!teamId) return false;
+        const team = teamsData.find((t) => t.id === teamId);
+        const teamMembers = team?.members_data || [];
+        return teamMembers.some((m) => m.id === user.id);
+      });
+    }
+
+    return filtered;
+  }, [attemptsData, selectedTeamIds, viewMode, user, projectData, calendarRange]);
+
+  // Group attempts by date
+  const attemptsByDate = useMemo(() => {
+    const grouped = {};
+    filteredAttempts.forEach((attempt) => {
+      if (attempt.slot_index && projectData?.start_date) {
+        const attemptDate = dayjs(projectData.start_date)
+          .add(attempt.slot_index - 1, 'day')
+          .format('YYYY-MM-DD');
+        if (!grouped[attemptDate]) {
+          grouped[attemptDate] = [];
+        }
+        grouped[attemptDate].push(attempt);
+      }
+    });
+    return grouped;
+  }, [filteredAttempts, projectData]);
+
+  // Get all dates in current month
+  const daysInMonth = useMemo(() => {
+    const days = [];
+    const start = currentMonth.startOf('month');
+    const end = currentMonth.endOf('month');
+    let current = start;
+
+    while (current.isBefore(end) || current.isSame(end, 'day')) {
+      days.push(current);
+      current = current.add(1, 'day');
+    }
+
+    return days;
+  }, [currentMonth]);
+
+  // Check if user is member of team
+  const isTeamMember = (teamId) => {
+    if (!user) return false;
+    const team = teamsData.find((t) => t.id === teamId);
+    const teamMembers = team?.members_data || [];
+    return teamMembers.some((m) => m.id === user.id);
+  };
+
+  // Toggle team filter
+  const toggleTeamFilter = (teamId) => {
+    setSelectedTeamIds((prev) =>
+      prev.includes(teamId) ? prev.filter((id) => id !== teamId) : [...prev, teamId],
+    );
+  };
+
+  // Clear filters
+  const clearFilters = () => {
+    setSelectedTeamIds([]);
+    setViewMode('all');
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-slate-50 to-slate-100">
+        <Loader2 className="animate-spin text-slate-400" size={32} />
+      </div>
+    );
+  }
+
+  const today = demoDate;
+  const uniqueTeams = Array.from(
+    new Map(teamsData.map((team) => [team.id, team])).values(),
+  ).sort((a, b) => (a.line_index ?? 0) - (b.line_index ?? 0));
+
   return (
     <div className="flex min-h-screen w-full justify-center bg-gradient-to-b from-slate-50 to-slate-100 px-4">
-      <div className="flex w-full max-w-7xl flex-col gap-6 py-8">        {/* Calendar View Toggle & Timeline */}
-        <section className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-white">
-                <Calendar size={20} />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">Project Timeline</h2>
-                <p className="text-xs text-slate-500">Scheduled attempts overview</p>
-              </div>
+      <div className="flex w-full max-w-7xl flex-col gap-2 py-4">
+        {/* Integrated Header */}
+        <header className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white shadow">
+              <Calendar size={18} />
             </div>
-            <div className="flex items-center gap-2">
-              <select
-                value={calendarDays}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setCalendarDays(val === 'ALL' ? 'ALL' : parseInt(val));
-                }}
-                className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-300"
-              >
-                <option value={7}>7 days</option>
-                <option value={14}>14 days</option>
-                <option value={30}>30 days</option>
-                <option value={60}>60 days</option>
-                <option value={'ALL'}>All</option>
-              </select>
-              <label className="ml-1 inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={hideEmptyDays}
-                  onChange={(e) => setHideEmptyDays(e.target.checked)}
-                  className="h-3 w-3 accent-blue-600"
-                />
-                Hide empty
-              </label>
-              <button
-                onClick={() => setShowCalendar(!showCalendar)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  showCalendar
-                    ? 'bg-blue-600 text-white'
-                    : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                }`}
-              >
-                {showCalendar ? 'Hide' : 'Show'}
-              </button>
-            </div>
+            <h1 className="text-lg font-semibold text-slate-900">Project Calendar</h1>
           </div>
 
-          {showCalendar && projectData?.start_date && (
-            <div className="space-y-3">
-              {/* Day labels */}
-              <div className="hidden grid-cols-7 gap-2 lg:grid">
-                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
-                  <div
-                    key={day}
-                    className="py-2 text-center text-xs font-bold tracking-wide text-slate-600 uppercase"
-                  >
-                    {day}
-                  </div>
-                ))}
+          {/* Month in center */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentMonth(currentMonth.subtract(1, 'month'))}
+              className="rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+            >
+              <ChevronLeft size={13} />
+            </button>
+            <div className="min-w-32 text-center">
+              <h2 className="text-sm font-semibold text-slate-900">{currentMonth.format('MMMM YYYY')}</h2>
+            </div>
+            <button
+              onClick={() => setCurrentMonth(dayjs())}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+            >
+              Today
+            </button>
+            <button
+              onClick={() => setCurrentMonth(currentMonth.add(1, 'month'))}
+              className="rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+            >
+              <ChevronRight size={13} />
+            </button>
+          </div>
+
+          {/* View Mode Toggle */}
+          <div className="flex gap-1.5">
+            {isAuthenticated && (
+              <>
+                <button
+                  onClick={() => setViewMode('all')}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                    viewMode === 'all'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setViewMode('my-tasks')}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                    viewMode === 'my-tasks'
+                      ? 'bg-green-600 text-white shadow-md'
+                      : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                  }`}
+                >
+                  My Tasks
+                </button>
+                <button
+                  onClick={() => setViewMode('my-teams')}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                    viewMode === 'my-teams'
+                      ? 'bg-purple-600 text-white shadow-md'
+                      : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                  }`}
+                >
+                  My Teams
+                </button>
+              </>
+            )}
+          </div>
+        </header>
+
+        {/* Calendar Grid */}
+        <section className="rounded-xl border border-slate-200 bg-white/90 p-4 shadow-sm backdrop-blur-sm">
+          {/* Day Headers */}
+          <div className="mb-3 grid grid-cols-7 gap-2">
+            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+              <div
+                key={day}
+                className="py-2 text-center text-xs font-bold tracking-wide text-slate-600 uppercase"
+              >
+                {day}
               </div>
-              {/* Calendar grid - 7 columns on lg screens, 2-3 on smaller */}
-              <div className="relative grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
-                {(() => {
-                  const startDate = new Date(projectData.start_date);
-                  const endDate = projectData.end_date
-                    ? new Date(projectData.end_date)
-                    : new Date(startDate.getTime() + 30 * 24 * 60 * 60 * 1000);
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-                  const msPerDay = 24 * 60 * 60 * 1000;
+            ))}
+          </div>
 
-                  // Get all attempts for this project
-                  const projectAttempts = (attemptsData || []).filter(
-                    (a) =>
-                      a.task?.team?.project?.id === projectData.id ||
-                      (a.slot_index && a.task?.team),
-                  );
+          {/* Calendar Days */}
+          <div className="grid grid-cols-7 gap-2">
+            {/* Empty cells for days before month starts */}
+            {Array.from({ length: currentMonth.startOf('month').day() || 7 }).map((_, i) => (
+              <div key={`empty-start-${i}`} className="min-h-32 rounded-lg bg-slate-50/30" />
+            ))}
 
-                  // Group by date (use local date keys to avoid TZ drift)
-                  const attemptsByDate = {};
-                  const fmt = (d) => {
-                    const y = d.getFullYear();
-                    const m = String(d.getMonth() + 1).padStart(2, '0');
-                    const da = String(d.getDate()).padStart(2, '0');
-                    return `${y}-${m}-${da}`;
-                  };
-                  projectAttempts.forEach((attempt) => {
-                    if (attempt.slot_index && projectData.start_date) {
-                      const d = new Date(startDate.getTime() + (attempt.slot_index - 1) * msPerDay);
-                      d.setHours(0, 0, 0, 0);
-                      const dateKey = fmt(d);
-                      if (!attemptsByDate[dateKey]) {
-                        attemptsByDate[dateKey] = [];
-                      }
-                      attemptsByDate[dateKey].push(attempt);
-                    }
-                  });
+            {/* Days of month */}
+            {daysInMonth.map((day) => {
+              const dateKey = day.format('YYYY-MM-DD');
+              const dayAttempts = attemptsByDate[dateKey] || [];
+              const isToday = day.isSame(today, 'day');
+              const isCurrentMonth = day.isSame(currentMonth, 'month');
+              const isExpanded = expandedDate === dateKey;
 
-                  // Get next N days
-                  const dates = [];
-                  let current = new Date(today);
-                  let limit = null;
-                  if (calendarDays === 'ALL') {
-                    if (projectData.end_date) {
-                      limit = new Date(projectData.end_date);
-                      limit.setHours(0, 0, 0, 0);
-                    } else {
-                      const keys = Object.keys(attemptsByDate);
-                      if (keys.length > 0) {
-                        const maxKey = keys.sort()[keys.length - 1];
-                        const [y, m, d] = maxKey.split('-').map((x) => parseInt(x, 10));
-                        limit = new Date(y, m - 1, d);
-                      } else {
-                        limit = new Date(today.getTime() + 60 * msPerDay);
-                      }
-                    }
-                    while (current <= limit) {
-                      dates.push(new Date(current));
-                      current.setDate(current.getDate() + 1);
-                    }
-                  } else {
-                    for (let i = 0; i < calendarDays; i++) {
-                      dates.push(new Date(current));
-                      current.setDate(current.getDate() + 1);
-                    }
-                  }
-
-                  const visibleDates = hideEmptyDays
-                    ? dates.filter((d) => (attemptsByDate[fmt(d)] || []).length > 0)
-                    : dates;
-
-                  return visibleDates.map((date) => {
-                    const dateKey = fmt(date);
-                    const dayAttempts = attemptsByDate[dateKey] || [];
-                    const isToday = dateKey === fmt(today);
-                    const hoveredAttempt = dayAttempts.find((a) => a.id === hoveredAttemptId);
-
-                    return (
-                      <div
-                        key={dateKey}
-                        className={`group relative flex h-40 flex-col rounded-lg border p-3 transition ${
-                          dayAttempts.length > 0
-                            ? 'border-blue-200 bg-blue-50 hover:border-blue-400 hover:bg-blue-100'
-                            : 'border-slate-200 bg-slate-50/50 hover:border-slate-300'
+              return (
+                <div
+                  key={dateKey}
+                  className={`relative min-h-32 rounded-lg border transition ${
+                    isToday
+                      ? 'border-blue-400 bg-blue-50'
+                      : dayAttempts.length > 0
+                        ? 'border-slate-300 bg-white'
+                        : 'border-slate-200 bg-slate-50/40'
+                  } ${!isCurrentMonth ? 'opacity-40' : ''}`}
+                >
+                  {/* Day Number */}
+                  <div className="flex items-center justify-between px-2.5 py-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-semibold ${
+                          isToday
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-200 text-slate-700'
                         }`}
-                        onMouseLeave={() => setHoveredAttemptId(null)}
                       >
-                        <div className="mb-2 flex items-center justify-between gap-1">
-                          <span
-                            className={`flex-shrink-0 rounded px-2 py-1 text-xs font-bold whitespace-nowrap ${
-                              isToday ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'
-                            }`}
-                          >
-                            {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </span>
-                          {dayAttempts.length > 0 && (
-                            <span className="flex-shrink-0 text-xs font-semibold text-blue-600 opacity-0 transition group-hover:opacity-100">
-                              {dayAttempts.length}
-                            </span>
-                          )}
-                        </div>
+                        {day.date()}
+                      </span>
+                      {dayAttempts.length > 0 && (
+                        <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                          {dayAttempts.length}
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
-                        {/* Scrollable attempts area */}
-                        {dayAttempts.length > 0 ? (
-                          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 text-xs">
-                            {dayAttempts.map((attempt) => (
-                              <div key={attempt.id} className="group/item relative">
-                                <div
-                                  className="cursor-pointer truncate rounded px-1.5 py-0.5 text-white shadow-sm transition"
-                                  style={{
-                                    backgroundColor: attempt.task?.team?.color || '#64748b',
-                                  }}
-                                  title={`${attempt.task?.name} - Attempt: ${attempt.name}`}
-                                >
-                                  <span className="block truncate font-medium text-black">
-                                    {attempt.task?.name}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
+                  {/* Attempts Preview */}
+                  {dayAttempts.length > 0 && (
+                    <div
+                      className="cursor-pointer px-2.5 pb-2"
+                      onClick={() =>
+                        setExpandedDate(isExpanded ? null : dateKey)
+                      }
+                    >
+                      <div className="space-y-1">
+                        {dayAttempts.slice(0, 2).map((attempt) => (
+                          <div
+                            key={attempt.id}
+                            className="group relative flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition hover:shadow-md"
+                            style={{
+                              backgroundColor: attempt.task?.team?.color + '20',
+                              borderLeft: `3px solid ${attempt.task?.team?.color || '#64748b'}`,
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/projects/${projectId}/attempts/${attempt.id}`);
+                            }}
+                          >
+                            <div className="min-w-0 flex-1 truncate">
+                              <p className="truncate font-semibold text-slate-900">
+                                {attempt.task?.name}
+                              </p>
+                              <p className="truncate text-slate-600">
+                                {attempt.name || 'Untitled'}
+                              </p>
+                            </div>
+                            {attempt.done && (
+                              <CheckCircle2
+                                size={13}
+                                className="flex-shrink-0 text-emerald-600"
+                              />
+                            )}
                           </div>
-                        ) : (
-                          <div className="flex flex-1 items-center justify-center text-xs text-slate-400 italic">
-                            No attempts
-                          </div>
+                        ))}
+                        {dayAttempts.length > 2 && (
+                          <button
+                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-100"
+                            onClick={() =>
+                              setExpandedDate(isExpanded ? null : dateKey)
+                            }
+                          >
+                            +{dayAttempts.length - 2} more
+                          </button>
                         )}
                       </div>
-                    );
-                  });
-                })()}
+                    </div>
+                  )}
+
+                  {/* Empty State */}
+                  {dayAttempts.length === 0 && hideEmptyDays && (
+                    <div className="flex h-20 items-center justify-center px-2">
+                      <p className="text-xs text-slate-400 italic">No events</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Empty cells for days after month ends */}
+            {Array.from({
+              length: 7 - ((daysInMonth.length + (currentMonth.startOf('month').day() || 7)) % 7),
+            }).map((_, i) => (
+              <div key={`empty-end-${i}`} className="min-h-32 rounded-lg bg-slate-50/30" />
+            ))}
+          </div>
+        </section>
+
+        {/* Expanded Date View Modal */}
+        {expandedDate && attemptsByDate[expandedDate] && (
+          <section className="rounded-2xl border border-blue-200 bg-blue-50/50 p-6 shadow-md backdrop-blur-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  {dayjs(expandedDate).format('dddd, MMMM D, YYYY')}
+                </h2>
+                <p className="mt-1 text-xs text-slate-600">
+                  {attemptsByDate[expandedDate].length} event
+                  {attemptsByDate[expandedDate].length !== 1 ? 's' : ''}
+                </p>
               </div>
+              <button
+                onClick={() => setExpandedDate(null)}
+                className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-100"
+              >
+                <X size={18} />
+              </button>
             </div>
-          )}
-        </section>      </div>
+
+            <div className="space-y-3">
+              {attemptsByDate[expandedDate].map((attempt) => {
+                const teamId = attempt.task?.team?.id;
+                const isMemberOfTeam = teamId ? isTeamMember(teamId) : false;
+                const assignedMembers = attempt.task?.assigned_members_data || [];
+                const isAssigned = user ? assignedMembers.some((m) => m.id === user.id) : false;
+
+                return (
+                  <div
+                    key={attempt.id}
+                    onClick={() => navigate(`/projects/${projectId}/attempts/${attempt.id}`)}
+                    className="group cursor-pointer rounded-lg border border-slate-200 bg-white p-4 transition hover:border-blue-400 hover:shadow-md"
+                  >
+                    <div className="mb-2 flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="h-3 w-3 flex-shrink-0 rounded-full"
+                            style={{
+                              backgroundColor: attempt.task?.team?.color || '#64748b',
+                            }}
+                          />
+                          <h3 className="truncate text-sm font-semibold text-slate-900">
+                            {attempt.task?.name}
+                          </h3>
+                        </div>
+                        <p className="mt-1 truncate text-xs text-slate-600">
+                          {attempt.name || 'Untitled attempt'} • Step {attempt.slot_index}
+                        </p>
+                      </div>
+                      <div className="flex flex-shrink-0 items-center gap-2">
+                        {attempt.done ? (
+                          <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
+                            <CheckCircle2 size={12} />
+                            Done
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
+                            <AlertCircle size={12} />
+                            Pending
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Badges */}
+                    <div className="flex flex-wrap gap-2">
+                      {isAssigned && (
+                        <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
+                          Assigned to you
+                        </span>
+                      )}
+                      {isMemberOfTeam && isAuthenticated && (
+                        <span className="rounded-full bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">
+                          Your team
+                        </span>
+                      )}
+                      {attempt.task?.priority && (
+                        <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
+                          P{attempt.task.priority}
+                        </span>
+                      )}
+                      {attempt.task?.difficulty && (
+                        <span className="rounded-full bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">
+                          D{attempt.task.difficulty}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Team Info */}
+                    <div className="mt-3 flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                      <div
+                        className="h-2 w-2 rounded-full"
+                        style={{
+                          backgroundColor: attempt.task?.team?.color || '#64748b',
+                        }}
+                      />
+                      <span className="text-xs font-medium text-slate-700">
+                        {attempt.task?.team?.name || 'No team'}
+                      </span>
+                      {attempt.task?.team?.members_data?.length > 0 && (
+                        <span className="ml-auto text-xs text-slate-500">
+                          {attempt.task.team.members_data.length} member
+                          {attempt.task.team.members_data.length !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Empty State */}
+        {filteredAttempts.length === 0 && (
+          <section className="rounded-2xl border border-slate-200 bg-white/70 p-12 text-center shadow-sm backdrop-blur-sm">
+            <Calendar size={48} className="mx-auto mb-4 text-slate-300" />
+            <h3 className="text-lg font-semibold text-slate-900">No events scheduled</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              {selectedTeamIds.length > 0
+                ? 'Try adjusting your team filter'
+                : viewMode === 'my-tasks'
+                  ? 'You are not assigned to any tasks yet'
+                  : viewMode === 'my-teams'
+                    ? 'You are not a member of any teams yet'
+                    : 'Create tasks and schedule attempts to populate this calendar'}
+            </p>
+          </section>
+        )}
+
+        {/* Floating Filter Button & Panel */}
+        {uniqueTeams.length > 0 && (
+          <div className="fixed right-6 bottom-6 z-40 flex flex-col items-end gap-3">
+            {/* Collapsible Filter Panel */}
+            {showFilters && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg backdrop-blur-sm w-80 max-h-96 overflow-y-auto">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Filter size={14} className="text-slate-600" />
+                    <h3 className="text-xs font-semibold tracking-[0.12em] text-slate-600 uppercase">
+                      Filter by Team
+                    </h3>
+                    {selectedTeamIds.length > 0 && (
+                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
+                        {selectedTeamIds.length}
+                      </span>
+                    )}
+                  </div>
+                  {(selectedTeamIds.length > 0 || viewMode !== 'all') && (
+                    <button
+                      onClick={clearFilters}
+                      className="flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-200"
+                    >
+                      <X size={12} />
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  {uniqueTeams.map((team) => {
+                    const isSelected = selectedTeamIds.includes(team.id);
+                    const isMember = isTeamMember(team.id);
+
+                    return (
+                      <button
+                        key={team.id}
+                        onClick={() => toggleTeamFilter(team.id)}
+                        className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-all text-left ${
+                          isSelected
+                            ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div
+                          className="h-2 w-2 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: team.color || '#64748b' }}
+                        />
+                        <span className="flex-1">{team.name}</span>
+                        {isMember && isAuthenticated && (
+                          <Users size={12} className="text-blue-600 flex-shrink-0" title="You are a member" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Filter Button */}
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg transition hover:bg-blue-700 active:scale-95 relative"
+              title="Toggle filters"
+            >
+              <Filter size={20} />
+              {selectedTeamIds.length > 0 && (
+                <span className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-semibold text-white">
+                  {selectedTeamIds.length}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
