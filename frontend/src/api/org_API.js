@@ -359,6 +359,28 @@ export async function updateTeam(projectId, teamId, payload) {
   return await res.json();
 }
 
+// Get all teams for current user (across all projects)
+export async function fetchUserTeams() {
+  const res = await authFetch(`/api/user/teams/`);
+  
+  if (!res.ok) {
+    throw new Error('Failed to fetch user teams');
+  }
+  
+  return await res.json();
+}
+
+// Get all tasks assigned to current user (across all projects)
+export async function fetchUserTasks() {
+  const res = await authFetch(`/api/user/tasks/`);
+  
+  if (!res.ok) {
+    throw new Error('Failed to fetch user tasks');
+  }
+  
+  return await res.json();
+}
+
 //____________________TASKS______________________
 //_______________________________________________
 //_______________________________________________
@@ -431,6 +453,36 @@ export async function updateTask(projectId, taskId, payload) {
 
   if (!res.ok) {
     throw new Error('Failed to update task');
+  }
+
+  return await res.json();
+}
+
+// Assign a user to a task
+export async function assignTaskMember(projectId, taskId, userId) {
+  const res = await authFetch(`/api/projects/${projectId}/tasks/${taskId}/assign/`, {
+    method: 'POST',
+    body: JSON.stringify({ user_id: userId }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to assign member to task');
+  }
+
+  return await res.json();
+}
+
+// Unassign a user from a task
+export async function unassignTaskMember(projectId, taskId, userId) {
+  const res = await authFetch(`/api/projects/${projectId}/tasks/${taskId}/assign/`, {
+    method: 'DELETE',
+    body: JSON.stringify({ user_id: userId }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to unassign member from task');
   }
 
   return await res.json();

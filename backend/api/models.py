@@ -56,6 +56,7 @@ class Task(models.Model):
     team = models.ForeignKey(Team, on_delete=SET_NULL, null=True, blank=True, related_name="tasks")
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tasks", default=1, null=True,
         blank=True, )
+    assigned_members = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="assigned_tasks", blank=True)
     
 
 

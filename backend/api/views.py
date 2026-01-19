@@ -286,6 +286,7 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
     team = BasicTeamSerializer(read_only=True)
     project_id = serializers.IntegerField(source='project.id', read_only=True)
     attempts = serializers.SerializerMethodField()
+    assigned_members_data = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -297,7 +298,11 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
             'team',
             'project_id',
             'attempts',
+            'assigned_members_data',
         ]
+
+    def get_assigned_members_data(self, obj):
+        return [{"id": u.id, "username": u.username, "email": u.email} for u in obj.assigned_members.all()]
 
     def get_attempts(self, obj):
         attempts_qs = getattr(obj, "attempts", None)
@@ -942,6 +947,74 @@ def task_detail_view(request, project_id, task_id):
         
         serializer = TaskExpandedSerializer(task)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# Assign or unassign a member to/from a task
+@api_view(["POST", "DELETE"])
+@permission_classes([IsAuthenticated])
+def assign_task_member(request, project_id, task_id):
+    """
+    POST: Assign a user to a task
+    DELETE: Unassign a user from a task
+    
+    Body: { "user_id": <id> }
+    """
+    user = request.user
+    
+    try:
+        task = Task.objects.select_related("project").get(id=task_id, project_id=project_id)
+    except Task.DoesNotExist:
+        return Response({"detail": "Task not found."}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Permission check: user must have access to the project
+    if not user_has_project_access(user, task.project):
+        return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
+    
+    # Get the user to assign/unassign
+    target_user_id = request.data.get("user_id")
+    if not target_user_id:
+        return Response({"detail": "user_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        target_user = User.objects.get(id=target_user_id)
+    except User.DoesNotExist:
+        return Response({"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Check if target user has access to the project
+    if not user_has_project_access(target_user, task.project):
+        return Response(
+            {"detail": "Target user does not have access to this project."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    if request.method == "POST":
+        # Assign user to task
+        if task.assigned_members.filter(id=target_user.id).exists():
+            return Response(
+                {"detail": "User is already assigned to this task."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        task.assigned_members.add(target_user)
+        message = f"User {target_user.username} assigned to task."
+    
+    else:  # DELETE
+        # Unassign user from task
+        if not task.assigned_members.filter(id=target_user.id).exists():
+            return Response(
+                {"detail": "User is not assigned to this task."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        task.assigned_members.remove(target_user)
+        message = f"User {target_user.username} unassigned from task."
+    
+    # Return updated task with assigned members
+    serializer = TaskExpandedSerializer(task)
+    return Response({
+        "message": message,
+        "task": serializer.data
+    }, status=status.HTTP_200_OK)
 
 
 
@@ -1672,12 +1745,63 @@ def dummy_data(request):
     return JsonResponse({"ok": True, "data": data})
 
 
+# Get all teams for the current user (across all projects)
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def user_teams(request):
+    """
+    Get all teams that the current user is a member of, across all projects.
+    """
+    user = request.user
+    teams = Team.objects.filter(members=user).select_related('project').order_by('project__name', 'name')
+    
+    result = []
+    for team in teams:
+        result.append({
+            'id': team.id,
+            'name': team.name,
+            'color': team.color,
+            'line_index': team.line_index,
+            'project': {
+                'id': team.project.id,
+                'name': team.project.name,
+            } if team.project else None,
+            'member_count': team.members.count(),
+        })
+    
+    return Response(result, status=status.HTTP_200_OK)
 
 
-
-
-
-
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def user_tasks(request):
+    """
+    Get all tasks that the current user is assigned to, across all projects.
+    """
+    user = request.user
+    tasks = Task.objects.filter(assigned_members=user).select_related('project', 'team').order_by('project__name', 'name')
+    
+    result = []
+    for task in tasks:
+        result.append({
+            'id': task.id,
+            'name': task.name,
+            'difficulty': task.difficulty,
+            'priority': task.priority,
+            'asking': task.asking,
+            'project': {
+                'id': task.project.id,
+                'name': task.project.name,
+            } if task.project else None,
+            'team': {
+                'id': task.team.id,
+                'name': task.team.name,
+                'color': task.team.color,
+            } if task.team else None,
+            'assigned_members_count': task.assigned_members.count(),
+        })
+    
+    return Response(result, status=status.HTTP_200_OK)
 
 
 

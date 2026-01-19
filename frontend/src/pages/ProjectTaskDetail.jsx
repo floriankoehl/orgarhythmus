@@ -12,6 +12,9 @@ import {
   ChevronRight,
   ExternalLink,
   Plus,
+  Users,
+  UserPlus,
+  UserMinus,
 } from 'lucide-react';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
@@ -19,6 +22,7 @@ import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
+import { useAuth } from '../auth/AuthContext';
 
 import {
   fetchSingleTask,
@@ -27,14 +31,19 @@ import {
   toggle_attempt_todo,
   createAttempt,
   deleteAttempt,
+  assignTaskMember,
+  unassignTaskMember,
+  fetch_project_detail,
 } from '../api/org_API.js';
 
 export default function ProjectTaskDetail() {
   const { projectId, taskId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [task, setTask] = useState(null);
   const [teams, setTeams] = useState([]);
+  const [projectMembers, setProjectMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -51,6 +60,10 @@ export default function ProjectTaskDetail() {
   // Attempt create/delete
   const [creatingAttempt, setCreatingAttempt] = useState(false);
   const [deletingAttemptId, setDeletingAttemptId] = useState(null);
+  
+  // Member assignment
+  const [assigningMemberId, setAssigningMemberId] = useState(null);
+  const [unassigningMemberId, setUnassigningMemberId] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -60,13 +73,15 @@ export default function ProjectTaskDetail() {
     try {
       setLoading(true);
       setError(null);
-      const [taskData, teamsData] = await Promise.all([
+      const [taskData, teamsData, projectData] = await Promise.all([
         fetchSingleTask(projectId, taskId),
         fetchTeamsForProject(projectId),
+        fetch_project_detail(projectId),
       ]);
 
       setTask(taskData);
       setTeams(teamsData);
+      setProjectMembers(projectData.members_data || []);
       setEditName(taskData.name || '');
       setEditTeamId(taskData.team?.id || null);
       setEditPriority(taskData.priority || 0);
@@ -177,6 +192,32 @@ export default function ProjectTaskDetail() {
       });
     } catch (err) {
       setError('Failed to toggle todo');
+    }
+  }
+
+  async function handleAssignMember(userId) {
+    setAssigningMemberId(userId);
+    try {
+      const result = await assignTaskMember(projectId, taskId, userId);
+      setTask(result.task);
+      setError(null);
+    } catch (err) {
+      setError(err.message || 'Failed to assign member');
+    } finally {
+      setAssigningMemberId(null);
+    }
+  }
+
+  async function handleUnassignMember(userId) {
+    setUnassigningMemberId(userId);
+    try {
+      const result = await unassignTaskMember(projectId, taskId, userId);
+      setTask(result.task);
+      setError(null);
+    } catch (err) {
+      setError(err.message || 'Failed to unassign member');
+    } finally {
+      setUnassigningMemberId(null);
     }
   }
 
@@ -394,6 +435,90 @@ export default function ProjectTaskDetail() {
               <div className="font-mono text-xs text-slate-500">ID: {task?.id}</div>
             </div>
           )}
+
+          {/* Assigned Members Section */}
+          <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users size={16} className="text-slate-600" />
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Assigned Members ({task?.assigned_members_data?.length || 0})
+                </h3>
+              </div>
+            </div>
+
+            {/* Currently Assigned Members */}
+            {task?.assigned_members_data && task.assigned_members_data.length > 0 && (
+              <div className="mb-4 flex flex-wrap gap-2">
+                {task.assigned_members_data.map((member) => (
+                  <div
+                    key={member.id}
+                    className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5"
+                  >
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+                      {member.username?.[0]?.toUpperCase()}
+                    </div>
+                    <span className="text-xs font-semibold text-blue-900">{member.username}</span>
+                    <button
+                      onClick={() => handleUnassignMember(member.id)}
+                      disabled={unassigningMemberId === member.id}
+                      className="ml-1 rounded p-1 text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                      title="Unassign"
+                    >
+                      {unassigningMemberId === member.id ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <X size={12} />
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Available Project Members to Assign */}
+            {projectMembers.length > 0 && (
+              <div>
+                <h4 className="mb-2 text-xs font-semibold text-slate-600 uppercase">
+                  Assign Project Members
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {projectMembers
+                    .filter(
+                      (member) =>
+                        !task?.assigned_members_data?.some((am) => am.id === member.id),
+                    )
+                    .map((member) => (
+                      <button
+                        key={member.id}
+                        onClick={() => handleAssignMember(member.id)}
+                        disabled={assigningMemberId === member.id}
+                        className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 disabled:opacity-50"
+                      >
+                        {assigningMemberId === member.id ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <UserPlus size={14} />
+                        )}
+                        <span>{member.username}</span>
+                        {member.id === user?.id && (
+                          <span className="text-slate-500">(you)</span>
+                        )}
+                      </button>
+                    ))}
+                </div>
+                {projectMembers.every((member) =>
+                  task?.assigned_members_data?.some((am) => am.id === member.id),
+                ) && (
+                  <p className="text-xs italic text-slate-500">All project members assigned</p>
+                )}
+              </div>
+            )}
+
+            {projectMembers.length === 0 && (
+              <p className="text-xs italic text-slate-500">No project members available</p>
+            )}
+          </div>
         </header>
 
         {/* Attempts for this Task */}

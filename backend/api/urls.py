@@ -34,12 +34,15 @@ urlpatterns = [
     path("projects/<int:project_id>/teams/reorder/", views.reorder_project_teams, name="reorder_project_teams",),
     path("projects/<int:project_id>/teams/<int:team_id>/join/", views.join_team, name="join_team"),
     path("projects/<int:project_id>/teams/<int:team_id>/leave/", views.leave_team, name="leave_team"),
+    path("user/teams/", views.user_teams, name="user_teams"),  # Get all teams for current user
 
     #Tasks
+    path("user/tasks/", views.user_tasks, name="user_tasks"),  # Get all tasks assigned to current user
     path("projects/<int:project_id>/tasks/", views.project_tasks, name="project_tasks", ),
     #TODO ADDED TASK
     path("projects/<int:project_id>/tasks/<int:task_id>/detail/", views.task_detail_view, name="task_detail_view"),  # ADD THIS
     path('projects/<int:project_id>/tasks/<int:task_id>/delete/', views.delete_task_by_id),
+    path("projects/<int:project_id>/tasks/<int:task_id>/assign/", views.assign_task_member, name="assign_task_member"),
     
     #Attempts
     path("projects/<int:project_id>/attempts/", views.create_attempt_view, name="create_attempt"),
