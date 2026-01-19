@@ -44,6 +44,11 @@ urlpatterns = [
     path('projects/<int:project_id>/tasks/<int:task_id>/delete/', views.delete_task_by_id),
     path("projects/<int:project_id>/tasks/<int:task_id>/assign/", views.assign_task_member, name="assign_task_member"),
     
+    #Notifications
+    path("notifications/", views.user_notifications, name="user_notifications"),  # Get all notifications
+    path("notifications/<int:notification_id>/read/", views.mark_notification_as_read, name="mark_notification_as_read"),
+    path("notifications/read-all/", views.mark_all_notifications_as_read, name="mark_all_notifications_as_read"),
+    path("notifications/<int:notification_id>/delete/", views.delete_notification, name="delete_notification"),
     #Attempts
     path("projects/<int:project_id>/attempts/", views.create_attempt_view, name="create_attempt"),
     path("projects/<int:project_id>/attempts/<int:attempt_id>/", views.attempt_detail_view),

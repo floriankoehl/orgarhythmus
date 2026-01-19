@@ -86,12 +86,12 @@ export default function ProfilePage() {
       <div className="w-full max-w-5xl flex flex-col gap-6">
         
         {/* Back Button */}
-        <button
+        {/* <button
           onClick={() => navigate("/landing")}
           className="group inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/80 hover:bg-white/100 text-slate-900 transition-all duration-200 shadow-sm hover:shadow-md border border-slate-200 w-fit"
         >
           <span className="text-sm font-medium">← Back</span>
-        </button>
+        </button> */}
 
         {/* Profile Header Card */}
         <header className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-sm shadow-sm p-8">

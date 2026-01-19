@@ -123,6 +123,33 @@ class AttemptDependency(models.Model):
         unique_together = ('vortakt_attempt', 'nachtakt_attempt')
 
 
+class Notification(models.Model):
+    # Action types for extensibility
+    NOTIFICATION_TYPES = [
+        ('task_assigned', 'Task Assigned'),
+        ('task_unassigned', 'Task Unassigned'),
+        ('team_joined', 'Team Joined'),
+        ('team_left', 'Team Left'),
+        ('general', 'General Notification'),
+    ]
+    
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
+    action_type = models.CharField(max_length=50, choices=NOTIFICATION_TYPES, default='general')
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+    related_task = models.ForeignKey(Task, on_delete=models.CASCADE, null=True, blank=True, related_name="notifications")
+    related_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="notifications_about")
+    read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.title} - {self.user.username}"
+
+
+
 
 
 

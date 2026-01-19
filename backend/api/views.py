@@ -22,6 +22,7 @@ from .models import (
     Task,
     Project,
     AttemptTodo,
+    Notification,
 )
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -997,6 +998,16 @@ def assign_task_member(request, project_id, task_id):
         
         task.assigned_members.add(target_user)
         message = f"User {target_user.username} assigned to task."
+        
+        # Create notification for the assigned user
+        Notification.objects.create(
+            user=target_user,
+            action_type='task_assigned',
+            title='Task Assigned',
+            message=f"You have been assigned to task '{task.name}' by {user.username}",
+            related_task=task,
+            related_user=user
+        )
     
     else:  # DELETE
         # Unassign user from task
@@ -1008,6 +1019,16 @@ def assign_task_member(request, project_id, task_id):
         
         task.assigned_members.remove(target_user)
         message = f"User {target_user.username} unassigned from task."
+        
+        # Create notification for the unassigned user
+        Notification.objects.create(
+            user=target_user,
+            action_type='task_unassigned',
+            title='Task Unassigned',
+            message=f"You have been unassigned from task '{task.name}' by {user.username}",
+            related_task=task,
+            related_user=user
+        )
     
     # Return updated task with assigned members
     serializer = TaskExpandedSerializer(task)
@@ -1802,6 +1823,111 @@ def user_tasks(request):
         })
     
     return Response(result, status=status.HTTP_200_OK)
+
+
+#____________________NOTIFICATIONS______________________
+#_______________________________________________
+#_______________________________________________
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def user_notifications(request):
+    """
+    Get all notifications for the current user, optionally filtered by read status.
+    Query params: ?read=true/false to filter by read status
+    """
+    user = request.user
+    read_param = request.query_params.get('read')
+    
+    notifications = Notification.objects.filter(user=user)
+    
+    # Filter by read status if provided
+    if read_param is not None:
+        if read_param.lower() == 'true':
+            notifications = notifications.filter(read=True)
+        elif read_param.lower() == 'false':
+            notifications = notifications.filter(read=False)
+    
+    result = []
+    for notif in notifications:
+        result.append({
+            'id': notif.id,
+            'action_type': notif.action_type,
+            'title': notif.title,
+            'message': notif.message,
+            'read': notif.read,
+            'created_at': notif.created_at,
+            'related_task': {
+                'id': notif.related_task.id,
+                'name': notif.related_task.name,
+            } if notif.related_task else None,
+            'related_user': {
+                'id': notif.related_user.id,
+                'username': notif.related_user.username,
+            } if notif.related_user else None,
+        })
+    
+    return Response(result, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def mark_notification_as_read(request, notification_id):
+    """
+    Mark a notification as read.
+    """
+    user = request.user
+    
+    try:
+        notif = Notification.objects.get(id=notification_id, user=user)
+    except Notification.DoesNotExist:
+        return Response(
+            {"detail": "Notification not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    notif.read = True
+    notif.save()
+    
+    return Response({"status": "Notification marked as read"}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def mark_all_notifications_as_read(request):
+    """
+    Mark all unread notifications as read for current user.
+    """
+    user = request.user
+    updated = Notification.objects.filter(user=user, read=False).update(read=True)
+    
+    return Response(
+        {"status": f"Marked {updated} notifications as read"},
+        status=status.HTTP_200_OK
+    )
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_notification(request, notification_id):
+    """
+    Delete a notification.
+    """
+    user = request.user
+    
+    try:
+        notif = Notification.objects.get(id=notification_id, user=user)
+    except Notification.DoesNotExist:
+        return Response(
+            {"detail": "Notification not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    notif.delete()
+    
+    return Response({"status": "Notification deleted"}, status=status.HTTP_204_NO_CONTENT)
+
 
 
 

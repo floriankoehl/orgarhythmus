@@ -7,14 +7,18 @@ import ListIcon from '@mui/icons-material/List';
 import PlayCircleIcon from '@mui/icons-material/PlayCircle';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { useAuth } from '../auth/AuthContext';
+import { useNotifications } from '../auth/NotificationContext';
 import NumbersIcon from '@mui/icons-material/Numbers';
-import { PanelsTopLeft } from 'lucide-react';
+import { PanelsTopLeft, Bell } from 'lucide-react';
 import ScheduleIcon from '@mui/icons-material/Schedule';
+import NotificationsPanel from './NotificationsPanel';
 
 export default function ProjectHeader({}) {
   // Controls whether the mobile menu is open or closed
   const [isOpen, setIsOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const { user, isAuthenticated, loadingUser, logout } = useAuth();
+  const { unreadCount } = useNotifications();
   const { projectId } = useParams();
 
   // Central definition of your nav items, so it's easy to change later
@@ -136,6 +140,21 @@ export default function ProjectHeader({}) {
 
           {!loadingUser && isAuthenticated && (
             <div className="ml-4 flex items-center gap-3">
+              {/* Notifications Bell */}
+              <button
+                onClick={() => setNotificationsOpen(true)}
+                className="relative flex items-center justify-center h-10 w-10 rounded-full px-2 transition-all duration-200
+                  bg-slate-800/70 text-slate-200 hover:bg-slate-700 hover:text-white hover:scale-105"
+                title="Notifications"
+              >
+                <Bell size={20} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 h-6 w-6 bg-red-600 text-white text-xs font-bold rounded-full flex items-center justify-center animate-bounce shadow-lg border-2 border-slate-900">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
               <NavLink
                 key={user.username}
                 to="/profile"
@@ -285,6 +304,9 @@ export default function ProjectHeader({}) {
           ))}
         </nav>
       </div>
+
+      {/* Notifications Panel */}
+      <NotificationsPanel isOpen={notificationsOpen} onClose={() => setNotificationsOpen(false)} />
     </header>
   );
 }

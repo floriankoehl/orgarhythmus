@@ -1,4 +1,6 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { AuthProvider } from './auth/AuthContext';
+import { NotificationProvider } from './auth/NotificationContext';
 
 // import Layout from './layouts/MainLayout.jsx';
 import OrgaLayout from './layouts/OrgaLayout.jsx';
@@ -81,5 +83,11 @@ const router = createBrowserRouter([
 ]);
 
 export default function App() {
-  return <RouterProvider router={router} />;
+  return (
+    <AuthProvider>
+      <NotificationProvider>
+        <RouterProvider router={router} />
+      </NotificationProvider>
+    </AuthProvider>
+  );
 }

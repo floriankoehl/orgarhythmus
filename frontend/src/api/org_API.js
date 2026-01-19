@@ -792,3 +792,65 @@ export async function deleteAttempt(projectId, attemptId) {
   if (!res.ok) throw new Error('Failed to delete attempt');
   return await res.json();
 }
+//____________________NOTIFICATIONS______________________
+//_______________________________________________
+//_______________________________________________
+
+// Fetch all notifications for current user
+export async function fetchUserNotifications(readFilter = null) {
+  const res = await authFetch(`/api/notifications/${readFilter ? `?read=${readFilter}` : ''}`);
+  
+  if (!res.ok) {
+    throw new Error('Failed to fetch notifications');
+  }
+  
+  return await res.json();
+}
+
+// Mark a single notification as read
+export async function markNotificationAsRead(notificationId) {
+  const res = await authFetch(`/api/notifications/${notificationId}/read/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+  
+  if (!res.ok) {
+    throw new Error('Failed to mark notification as read');
+  }
+  
+  return await res.json();
+}
+
+// Mark all notifications as read
+export async function markAllNotificationsAsRead() {
+  const res = await authFetch(`/api/notifications/read-all/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+  
+  if (!res.ok) {
+    throw new Error('Failed to mark all notifications as read');
+  }
+  
+  return await res.json();
+}
+
+// Delete a notification
+export async function deleteNotification(notificationId) {
+  const res = await authFetch(`/api/notifications/${notificationId}/delete/`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+  
+  if (!res.ok) {
+    throw new Error('Failed to delete notification');
+  }
+  
+  return await res.json();
+}
