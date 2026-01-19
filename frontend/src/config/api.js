@@ -10,6 +10,6 @@ const isLocal =
 const DEV_BASE_URL = "";  // Changed!
 
 // Für Production (Pi + Cloudflare)
-const PROD_BASE_URL = "https://api.floriankoehl.com";
+const PROD_BASE_URL = "https://api.orgarhythmus.org";
 
 export const BASE_URL = isLocal ? DEV_BASE_URL : PROD_BASE_URL;
