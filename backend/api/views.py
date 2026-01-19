@@ -36,7 +36,7 @@ from django.conf import settings
 
 
 #____________________________________________________
-#__________________AUTHENTICATION____________________
+#__________________AUTHENTICATION & USER____________________
 #____________________________________________________
 
 # check_auth (HELPER)
@@ -148,6 +148,43 @@ def get_current_user(request):
 
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def join_team(request, project_id, team_id):
+    try:
+        team = Team.objects.select_related("project").get(id=team_id, project_id=project_id)
+    except Team.DoesNotExist:
+        return Response({"detail": "Team not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, team.project):
+        return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
+
+    if team.members.filter(id=request.user.id).exists():
+        return Response({"detail": "Already a member of this team."}, status=status.HTTP_400_BAD_REQUEST)
+
+    team.members.add(request.user)
+    serializer = TeamExpandedSerializer(team)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def leave_team(request, project_id, team_id):
+    try:
+        team = Team.objects.select_related("project").get(id=team_id, project_id=project_id)
+    except Team.DoesNotExist:
+        return Response({"detail": "Team not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, team.project):
+        return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
+
+    if not team.members.filter(id=request.user.id).exists():
+        return Response({"detail": "You are not a member of this team."}, status=status.HTTP_400_BAD_REQUEST)
+
+    team.members.remove(request.user)
+    serializer = TeamExpandedSerializer(team)
+    return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 #_______________________________________________________________________________________________
@@ -194,6 +231,7 @@ class TaskSerializer(serializers.ModelSerializer):
 # TeamExpandedSerializer
 class TeamExpandedSerializer(serializers.ModelSerializer):
     tasks = TaskSerializer(many=True, read_only=True)  # uses related_name="tasks"
+    members_data = serializers.SerializerMethodField()
 
     class Meta:
         model = Team
@@ -203,7 +241,11 @@ class TeamExpandedSerializer(serializers.ModelSerializer):
             "color",
             "line_index",
             "tasks",
+            "members_data",
         ]
+
+    def get_members_data(self, obj):
+        return [{"id": u.id, "username": u.username, "email": u.email} for u in obj.members.all()]
 
 
 # BasicTeamSerializer

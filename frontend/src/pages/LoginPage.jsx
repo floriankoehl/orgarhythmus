@@ -41,7 +41,7 @@ export default function LoginPage() {
 
       setStatus("Logged in! Redirecting...");
       // 4) Redirect after a brief moment
-      setTimeout(() => navigate("/orgarhythmus"), 500);
+      setTimeout(() => navigate("/"), 500);
     } catch (err) {
       setError(err.message || "Login failed");
       setStatus("");

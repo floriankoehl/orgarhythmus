@@ -48,8 +48,8 @@ export default function ProjectHeader({}) {
     },
     {
       key: 'next-steps',
-      to: projectId ? `/projects/${projectId}/next_steps` : '/projects', // fallback
-      label: 'Next Steps',
+      to: projectId ? `/projects/${projectId}/calender` : '/projects', // fallback
+      label: 'Calender',
       icon: <ScheduleIcon fontSize="small" />,
     },
   ];

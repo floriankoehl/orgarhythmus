@@ -28,6 +28,44 @@ function getCurrentProjectIdFromLocation() {
   return projectId;
 }
 
+
+
+//_______________________________________________
+//_______________________________________________
+//____________________USERS______________________
+//_______________________________________________
+//_______________________________________________
+
+// ...existing code...
+export async function joinTeam(projectId, teamId) {
+  const res = await authFetch(`/api/projects/${projectId}/teams/${teamId}/join/`, { method: 'POST' });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to join team');
+  }
+  return await res.json();
+}
+
+export async function leaveTeam(projectId, teamId) {
+  const res = await authFetch(`/api/projects/${projectId}/teams/${teamId}/leave/`, { method: 'POST' });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to leave team');
+  }
+  return await res.json();
+}
+// ...existing code...
+
+
+
+
+
+
+
+
+
+
+
 //_______________________________________________
 //_______________________________________________
 //___________________PROJECT_____________________
@@ -190,9 +228,9 @@ export async function update_project_api(projectId, data) {
   return await res.json();
 }
 
-//_______________________________________________
-//_______________________________________________
 //____________________TEAMS______________________
+//_______________________________________________
+//_______________________________________________
 //_______________________________________________
 //_______________________________________________
 
@@ -321,9 +359,9 @@ export async function updateTeam(projectId, teamId, payload) {
   return await res.json();
 }
 
-//_______________________________________________
-//_______________________________________________
 //____________________TASKS______________________
+//_______________________________________________
+//_______________________________________________
 //_______________________________________________
 //_______________________________________________
 
@@ -398,9 +436,9 @@ export async function updateTask(projectId, taskId, payload) {
   return await res.json();
 }
 
-//_______________________________________________
-//_______________________________________________
 //__________________ATTEMPTS____________________
+//_______________________________________________
+//_______________________________________________
 //_______________________________________________
 //_______________________________________________
 

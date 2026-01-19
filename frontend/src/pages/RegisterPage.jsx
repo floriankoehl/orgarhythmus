@@ -80,7 +80,7 @@ export default function RegisterPage() {
 
       setStatus("Account created! Redirecting...");
       // 5) Redirect after a brief moment
-      setTimeout(() => navigate("/orgarhythmus"), 500);
+      setTimeout(() => navigate("/"), 500);
     } catch (err) {
       setError(err.message || "Registration failed");
       setStatus("");

@@ -32,6 +32,8 @@ urlpatterns = [
     path("projects/<int:project_id>/teams/<int:team_id>/", views.project_team_detail),
     path("projects/<int:project_id>/project_teams_expanded/", views.project_teams_expanded, name="project_teams_expanded", ), 
     path("projects/<int:project_id>/teams/reorder/", views.reorder_project_teams, name="reorder_project_teams",),
+    path("projects/<int:project_id>/teams/<int:team_id>/join/", views.join_team, name="join_team"),
+    path("projects/<int:project_id>/teams/<int:team_id>/leave/", views.leave_team, name="leave_team"),
 
     #Tasks
     path("projects/<int:project_id>/tasks/", views.project_tasks, name="project_tasks", ),

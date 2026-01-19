@@ -304,7 +304,7 @@ export default function ProjectMain() {
 
   return (
     <div className="flex min-h-screen w-full justify-center bg-gradient-to-b from-slate-50 to-slate-100">
-      <div className="flex w-full max-w-5xl flex-col gap-6 px-4 py-8">
+      <div className="flex w-full max-w-7xl flex-col gap-6 px-4 py-8">
         {/* Back Button */}
         <button
           onClick={() => navigate('/')}

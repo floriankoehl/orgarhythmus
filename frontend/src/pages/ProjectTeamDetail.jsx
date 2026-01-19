@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
-
+import { useAuth } from '../auth/AuthContext';
 import {
   fetchSingleTeam,
   updateTeam,
@@ -25,11 +25,14 @@ import {
   fetchSingleTask,
   fetchAttemptDetail,
   toggleAttemptTodo,
+  joinTeam,
+  leaveTeam,
 } from '../api/org_API.js';
 
 export default function ProjectTeamDetail() {
   const { projectId, teamId } = useParams();
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
 
   const [team, setTeam] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -53,6 +56,8 @@ export default function ProjectTeamDetail() {
   const [taskDetails, setTaskDetails] = useState({}); // taskId -> task detail with attempts
   const [expandedAttemptIds, setExpandedAttemptIds] = useState([]);
   const [attemptDetails, setAttemptDetails] = useState({}); // attemptId -> attempt detail with todos
+  const [joining, setJoining] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
     loadTeam();
@@ -116,6 +121,36 @@ export default function ProjectTeamDetail() {
     setIsEditing(false);
     setShowColorPicker(false);
     setError(null);
+  }
+
+  const isMember = isAuthenticated && team?.members_data?.some((m) => m.id === user?.id);
+
+  async function handleJoinTeam() {
+    if (!projectId || !teamId) return;
+    try {
+      setJoining(true);
+      const updated = await joinTeam(projectId, teamId);
+      setTeam(updated);
+      setError(null);
+    } catch (err) {
+      setError(err.message || 'Failed to join team.');
+    } finally {
+      setJoining(false);
+    }
+  }
+
+  async function handleLeaveTeam() {
+    if (!projectId || !teamId) return;
+    try {
+      setLeaving(true);
+      const updated = await leaveTeam(projectId, teamId);
+      setTeam(updated);
+      setError(null);
+    } catch (err) {
+      setError(err.message || 'Failed to leave team.');
+    } finally {
+      setLeaving(false);
+    }
   }
 
   if (loading) {
@@ -386,34 +421,63 @@ export default function ProjectTeamDetail() {
             )}
 
             {/* Action Buttons */}
-            <div className="flex gap-2">
-              {!isEditing ? (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="rounded-lg bg-blue-50 p-3 text-blue-600 transition-colors hover:bg-blue-100"
-                  title="Edit team"
-                >
-                  <Edit2 size={20} />
-                </button>
-              ) : (
-                <>
-                  <button
-                    onClick={handleCancelEdit}
-                    className="rounded-lg bg-slate-100 p-3 text-slate-600 transition-colors hover:bg-slate-200"
-                    title="Cancel"
+            <div className="flex flex-col gap-2">
+              {/* Join/Leave Team Buttons */}
+              <div className="flex items-center gap-2">
+                {!isMember && isAuthenticated && (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    disabled={joining}
+                    onClick={handleJoinTeam}
+                    style={{ textTransform: 'none', borderRadius: '8px' }}
                   >
-                    <X size={20} />
-                  </button>
-                  <button
-                    onClick={handleSave}
-                    disabled={saving || !editName.trim()}
-                    className="rounded-lg bg-green-500 p-3 text-white transition-colors hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Save changes"
+                    {joining ? 'Joining…' : 'Join Team'}
+                  </Button>
+                )}
+                {isMember && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    disabled={leaving}
+                    onClick={handleLeaveTeam}
+                    style={{ textTransform: 'none', borderRadius: '8px' }}
                   >
-                    {saving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
+                    {leaving ? 'Leaving…' : 'Leave Team'}
+                  </Button>
+                )}
+              </div>
+
+              {/* Edit/Save Buttons */}
+              <div className="flex gap-2">
+                {!isEditing ? (
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="rounded-lg bg-blue-50 p-3 text-blue-600 transition-colors hover:bg-blue-100"
+                    title="Edit team"
+                  >
+                    <Edit2 size={20} />
                   </button>
-                </>
-              )}
+                ) : (
+                  <>
+                    <button
+                      onClick={handleCancelEdit}
+                      className="rounded-lg bg-slate-100 p-3 text-slate-600 transition-colors hover:bg-slate-200"
+                      title="Cancel"
+                    >
+                      <X size={20} />
+                    </button>
+                    <button
+                      onClick={handleSave}
+                      disabled={saving || !editName.trim()}
+                      className="rounded-lg bg-green-500 p-3 text-white transition-colors hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Save changes"
+                    >
+                      {saving ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
@@ -428,6 +492,33 @@ export default function ProjectTeamDetail() {
             <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
               <span className="font-mono text-sm text-slate-700">Team ID: {team?.id}</span>
             </div>
+          </div>
+
+          {/* Team Members Section */}
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <h3 className="mb-3 text-sm font-semibold text-slate-900">Members ({team?.members_data?.length || 0})</h3>
+            {team?.members_data && team.members_data.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {team.members_data.map((member) => (
+                  <div
+                    key={member.id}
+                    className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5"
+                  >
+                    <div className="h-6 w-6 rounded-full bg-blue-600 flex items-center justify-center text-xs font-bold text-white">
+                      {member.username?.[0]?.toUpperCase() || '?'}
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs font-semibold text-blue-900">{member.username}</span>
+                      {member.email && (
+                        <span className="text-xs text-blue-700">{member.email}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-500 italic">No members yet</p>
+            )}
           </div>
         </header>
 
@@ -584,39 +675,38 @@ export default function ProjectTeamDetail() {
                 )}
 
                 {/* Unscheduled Section */}
-                  <div className="mt-6">
-                    <h3 className="mb-2 text-xs font-semibold tracking-[0.12em] text-slate-500 uppercase">
-                      Unscheduled
-                    </h3>
-                    <div className="space-y-3">
-                      {unscheduledSteps.map((a) => (
-                        <div
-                          key={a.id}
-                          className="group flex items-center justify-between gap-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 transition hover:border-amber-400"
-                        >
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-3">
-                              <h3 className="truncate text-sm font-semibold text-slate-900">
-                                {a.task?.name} — {a.name || 'Attempt'}
-                              </h3>
-                              <span className="inline-flex flex-shrink-0 items-center rounded-lg bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
-                                No date scheduled
-                              </span>
-                            </div>
+                <div className="mt-6">
+                  <h3 className="mb-2 text-xs font-semibold tracking-[0.12em] text-slate-500 uppercase">
+                    Unscheduled
+                  </h3>
+                  <div className="space-y-3">
+                    {unscheduledSteps.map((a) => (
+                      <div
+                        key={a.id}
+                        className="group flex items-center justify-between gap-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 transition hover:border-amber-400"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-3">
+                            <h3 className="truncate text-sm font-semibold text-slate-900">
+                              {a.task?.name} — {a.name || 'Attempt'}
+                            </h3>
+                            <span className="inline-flex flex-shrink-0 items-center rounded-lg bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                              No date scheduled
+                            </span>
                           </div>
-                          <button
-                            onClick={() =>
-                              navigate(`/projects/${projectId}/attempts/${a.id}`)
-                            }
-                            className="inline-flex items-center gap-1 rounded-lg bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800 transition hover:bg-amber-200"
-                          >
-                            <ExternalLink size={14} /> Open
-                          </button>
                         </div>
-                      ))}
-                    </div>
+                        <button
+                          onClick={() =>
+                            navigate(`/projects/${projectId}/attempts/${a.id}`)
+                          }
+                          className="inline-flex items-center gap-1 rounded-lg bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800 transition hover:bg-amber-200"
+                        >
+                          <ExternalLink size={14} /> Open
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                )}
+                </div>
               </>
             )}
           </section>

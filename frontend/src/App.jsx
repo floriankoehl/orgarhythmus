@@ -13,8 +13,9 @@ import ProjectTeams from './pages/ProjectTeams.jsx';
 import ProjectTasks from './pages/ProjectTasks.jsx';
 import ProjectTeamDetail from './pages/ProjectTeamDetail.jsx';
 import ProjectTaskDetail from './pages/ProjectTaskDetail.jsx';
-import NextSteps from './pages/NextSteps.jsx';
+import Calender from './pages/Calender.jsx';
 import AttemptDetail from './pages/AttemptDetail.jsx';
+
 
 
 
@@ -41,7 +42,7 @@ const router = createBrowserRouter([
           { path: 'tasks', element: <ProjectTasks /> },
           { path: 'tasks/:taskId', element: <ProjectTaskDetail /> },
           { path: 'attempts', element: <ProjectAttemptsWrapper /> },
-          { path: 'next_steps', element: <NextSteps /> },
+          { path: 'calender', element: <Calender /> },
           { path: 'attempts/:attemptId', element: <AttemptDetail /> },
         ],
       },
