@@ -135,7 +135,7 @@ export default function ProjectTeamDetail() {
         <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
           <p className="text-red-700">{error}</p>
           <Button
-            onClick={() => navigate(`/orgarhythmus/projects/${projectId}/teams`)}
+            onClick={() => navigate(`/projects/${projectId}/teams`)}
             style={{ marginTop: '1rem', textTransform: 'none' }}
           >
             Back to Teams
@@ -299,7 +299,7 @@ export default function ProjectTeamDetail() {
       <div className="flex w-full max-w-5xl flex-col gap-6 px-4 py-8">
         {/* Back Button */}
         <button
-          onClick={() => navigate(`/orgarhythmus/projects/${projectId}/teams`)}
+          onClick={() => navigate(`/projects/${projectId}/teams`)}
           className="group inline-flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white/80 px-4 py-2 text-slate-900 shadow-sm transition-all duration-200 hover:bg-white/100 hover:shadow-md"
         >
           <ArrowLeft size={16} className="transition-transform group-hover:-translate-x-1" />
@@ -555,7 +555,7 @@ export default function ProjectTeamDetail() {
                                   <button
                                     onClick={() =>
                                       navigate(
-                                        `/orgarhythmus/projects/${projectId}/attempts/${attempt.id}`,
+                                        `/projects/${projectId}/attempts/${attempt.id}`,
                                       )
                                     }
                                     className="inline-flex flex-shrink-0 items-center gap-1 rounded-lg bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-200"
@@ -606,7 +606,7 @@ export default function ProjectTeamDetail() {
                           </div>
                           <button
                             onClick={() =>
-                              navigate(`/orgarhythmus/projects/${projectId}/attempts/${a.id}`)
+                              navigate(`/projects/${projectId}/attempts/${a.id}`)
                             }
                             className="inline-flex items-center gap-1 rounded-lg bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800 transition hover:bg-amber-200"
                           >
@@ -665,7 +665,7 @@ export default function ProjectTeamDetail() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/orgarhythmus/projects/${projectId}/tasks/${task.id}`);
+                            navigate(`/projects/${projectId}/tasks/${task.id}`);
                           }}
                           className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-200"
                         >
@@ -718,7 +718,7 @@ export default function ProjectTeamDetail() {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       navigate(
-                                        `/orgarhythmus/projects/${projectId}/attempts/${attempt.id}`,
+                                        `/projects/${projectId}/attempts/${attempt.id}`,
                                       );
                                     }}
                                     className="flex-shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200"

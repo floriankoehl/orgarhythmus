@@ -158,7 +158,7 @@ export default function ProfilePage() {
               {projects.map((project) => (
                 <div
                   key={project.id}
-                  onClick={() => navigate(`/orgarhythmus/projects/${project.id}`)}
+                  onClick={() => navigate(`/projects/${project.id}`)}
                   className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white hover:shadow-lg transition-all duration-200 p-5 cursor-pointer group flex flex-col gap-4"
                 >
                   {/* Project Header */}

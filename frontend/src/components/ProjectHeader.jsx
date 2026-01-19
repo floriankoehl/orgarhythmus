@@ -70,7 +70,7 @@ export default function ProjectHeader({}) {
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2 md:py-3">
         {/* LEFT: Logo / App Title */}
         <NavLink
-          to="/orgarhythmus"
+          to="/"
           className="flex items-center gap-3 text-slate-100 transition-colors hover:text-cyan-300"
           onClick={() => setIsOpen(false)}
         >

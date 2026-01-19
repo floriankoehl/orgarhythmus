@@ -299,7 +299,7 @@ export default function ProjectTasks() {
                       <div
                         key={task.id}
                         onClick={() =>
-                          navigate(`/orgarhythmus/projects/${projectId}/tasks/${task.id}`)
+                          navigate(`/projects/${projectId}/tasks/${task.id}`)
                         }
                         className="cursor-pointer rounded-lg border border-slate-200 bg-slate-50 p-4 transition-all hover:border-blue-300 hover:bg-blue-50 hover:shadow-md"
                       >

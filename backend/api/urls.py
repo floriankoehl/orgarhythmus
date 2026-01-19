@@ -15,40 +15,40 @@ urlpatterns = [
     
 
     #Projects
-    path('orgarhythmus/projects/', views.list_projects),
-    path('orgarhythmus/projects/all/', views.list_all_projects),  # NEW
-    path('orgarhythmus/projects/create/', views.create_project),
-    path("orgarhythmus/projects/<int:pk>/", views.get_project),
-    path("orgarhythmus/projects/<int:pk>/update/", views.update_project),
-    path("orgarhythmus/projects/<int:pk>/delete/", views.delete_project),
-    path("orgarhythmus/projects/<int:pk>/join/", views.join_project),  # NEW
-    path("orgarhythmus/projects/<int:pk>/leave/", views.leave_project),  # NEW
+    path('projects/', views.list_projects),
+    path('projects/all/', views.list_all_projects),  # NEW
+    path('projects/create/', views.create_project),
+    path("projects/<int:pk>/", views.get_project),
+    path("projects/<int:pk>/update/", views.update_project),
+    path("projects/<int:pk>/delete/", views.delete_project),
+    path("projects/<int:pk>/join/", views.join_project),  # NEW
+    path("projects/<int:pk>/leave/", views.leave_project),  # NEW
 
 
     #Teams
-    path("orgarhythmus/projects/<int:project_id>/teams/", views.project_teams, name="project_teams" ), 
+    path("projects/<int:project_id>/teams/", views.project_teams, name="project_teams" ), 
     #TODO ADDED TEAM
-    path("orgarhythmus/projects/<int:project_id>/teams/<int:team_id>/detail/", views.team_detail_view, name="team_detail_view"),  # ADD THIS
-    path("orgarhythmus/projects/<int:project_id>/teams/<int:team_id>/", views.project_team_detail),
-    path("orgarhythmus/projects/<int:project_id>/project_teams_expanded/", views.project_teams_expanded, name="project_teams_expanded", ), 
-    path("orgarhythmus/projects/<int:project_id>/teams/reorder/", views.reorder_project_teams, name="reorder_project_teams",),
+    path("projects/<int:project_id>/teams/<int:team_id>/detail/", views.team_detail_view, name="team_detail_view"),  # ADD THIS
+    path("projects/<int:project_id>/teams/<int:team_id>/", views.project_team_detail),
+    path("projects/<int:project_id>/project_teams_expanded/", views.project_teams_expanded, name="project_teams_expanded", ), 
+    path("projects/<int:project_id>/teams/reorder/", views.reorder_project_teams, name="reorder_project_teams",),
 
     #Tasks
-    path("orgarhythmus/projects/<int:project_id>/tasks/", views.project_tasks, name="project_tasks", ),
+    path("projects/<int:project_id>/tasks/", views.project_tasks, name="project_tasks", ),
     #TODO ADDED TASK
-    path("orgarhythmus/projects/<int:project_id>/tasks/<int:task_id>/detail/", views.task_detail_view, name="task_detail_view"),  # ADD THIS
-    path('orgarhythmus/projects/<int:project_id>/tasks/<int:task_id>/delete/', views.delete_task_by_id),
+    path("projects/<int:project_id>/tasks/<int:task_id>/detail/", views.task_detail_view, name="task_detail_view"),  # ADD THIS
+    path('projects/<int:project_id>/tasks/<int:task_id>/delete/', views.delete_task_by_id),
     
     #Attempts
-    path("orgarhythmus/projects/<int:project_id>/attempts/", views.create_attempt_view, name="create_attempt"),
-    path("orgarhythmus/projects/<int:project_id>/attempts/<int:attempt_id>/", views.attempt_detail_view),
-    path("orgarhythmus/projects/<int:project_id>/attempts/<int:attempt_id>/delete/", views.delete_attempt_view, name="delete_attempt"),
-    path("orgarhythmus/projects/<int:project_id>/attempts/<int:attempt_id>/todos/", views.attempt_todos_view),
-    path('orgarhythmus/add_attempt_dependency/', views.add_attempt_dependency),
-    path('orgarhythmus/all_attempt_dependencies/', views.list_attempt_dependencies),
-    path('orgarhythmus/update_attempt_slot_index/', views.update_attempt_slot_index),  
-    path("orgarhythmus/delete_attempt_dependency/", views.delete_attempt_dependency),  
-    path("orgarhythmus/projects/<int:project_id>/all_attempts_for_this_project/", views.all_attempts_for_this_project, name="all_attempts_for_this_project", ),
+    path("projects/<int:project_id>/attempts/", views.create_attempt_view, name="create_attempt"),
+    path("projects/<int:project_id>/attempts/<int:attempt_id>/", views.attempt_detail_view),
+    path("projects/<int:project_id>/attempts/<int:attempt_id>/delete/", views.delete_attempt_view, name="delete_attempt"),
+    path("projects/<int:project_id>/attempts/<int:attempt_id>/todos/", views.attempt_todos_view),
+    path('add_attempt_dependency/', views.add_attempt_dependency),
+    path('all_attempt_dependencies/', views.list_attempt_dependencies),
+    path('update_attempt_slot_index/', views.update_attempt_slot_index),  
+    path("delete_attempt_dependency/", views.delete_attempt_dependency),  
+    path("projects/<int:project_id>/all_attempts_for_this_project/", views.all_attempts_for_this_project, name="all_attempts_for_this_project", ),
 
 
 

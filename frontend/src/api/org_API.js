@@ -10,7 +10,7 @@ import { authFetch } from '../auth'; // Pfad ggf. anpassen
 
 // getCurrentProjectIdFromLocation (helper)
 function getCurrentProjectIdFromLocation() {
-  // Beispiel-Pfad: /orgarhythmus/projects/1/attempts
+  // Beispiel-Pfad: /projects/1/attempts
   const path = window.location.pathname;
   const parts = path.split('/').filter(Boolean);
   // ["orgarhythmus", "projects", "1", "attempts"]
@@ -42,7 +42,7 @@ export async function fetch_all_projects() {
     throw redirect('/login');
   }
 
-  const res = await fetch(`${BASE_URL}/api/orgarhythmus/projects/`, {
+  const res = await fetch(`${BASE_URL}/api/projects/`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -61,7 +61,7 @@ export async function fetch_all_projects() {
 
 // NEW: fetch_all_projects_browsable
 export async function fetch_all_projects_browsable() {
-  const res = await authFetch('/api/orgarhythmus/projects/all/');
+  const res = await authFetch('/api/projects/all/');
 
   if (!res.ok) {
     throw new Error('Failed to fetch all projects');
@@ -72,7 +72,7 @@ export async function fetch_all_projects_browsable() {
 
 // NEW: join_project_api
 export async function join_project_api(projectId) {
-  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/join/`, {
+  const res = await authFetch(`/api/projects/${projectId}/join/`, {
     method: 'POST',
   });
 
@@ -86,7 +86,7 @@ export async function join_project_api(projectId) {
 
 // NEW: leave_project_api
 export async function leave_project_api(projectId) {
-  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/leave/`, {
+  const res = await authFetch(`/api/projects/${projectId}/leave/`, {
     method: 'POST',
   });
 
@@ -106,7 +106,7 @@ export async function create_project_api(name, description, startDate, endDate) 
     throw redirect('/login');
   }
 
-  const res = await fetch(`${BASE_URL}/api/orgarhythmus/projects/create/`, {
+  const res = await fetch(`${BASE_URL}/api/projects/create/`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -141,7 +141,7 @@ export async function fetch_project_detail(projectId) {
     throw redirect('/login');
   }
 
-  const res = await fetch(`${BASE_URL}/api/orgarhythmus/projects/${projectId}/`, {
+  const res = await fetch(`${BASE_URL}/api/projects/${projectId}/`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -161,7 +161,7 @@ export async function fetch_project_detail(projectId) {
 // TODO ADDED
 // delete_project
 export async function delete_project(projectId) {
-  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/delete/`, {
+  const res = await authFetch(`/api/projects/${projectId}/delete/`, {
     method: 'DELETE',
   });
 
@@ -174,7 +174,7 @@ export async function delete_project(projectId) {
 
 // update_project_api
 export async function update_project_api(projectId, data) {
-  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/update/`, {
+  const res = await authFetch(`/api/projects/${projectId}/update/`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -198,7 +198,7 @@ export async function update_project_api(projectId, data) {
 
 // project_teams_expanded
 export async function project_teams_expanded(projectId) {
-  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/project_teams_expanded/`);
+  const res = await authFetch(`/api/projects/${projectId}/project_teams_expanded/`);
 
   if (res.status === 401 || res.status === 403) {
     const err = new Error('unauthorized');
@@ -218,7 +218,7 @@ export async function project_teams_expanded(projectId) {
 
 // fetchTeamsForProject
 export async function fetchTeamsForProject(projectId) {
-  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/teams/`, {
+  const res = await authFetch(`/api/projects/${projectId}/teams/`, {
     method: 'GET',
   });
 
@@ -231,7 +231,7 @@ export async function fetchTeamsForProject(projectId) {
 
 // createTeamForProject
 export async function createTeamForProject(projectId, payload) {
-  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/teams/`, {
+  const res = await authFetch(`/api/projects/${projectId}/teams/`, {
     method: 'POST',
     body: JSON.stringify(payload),
     // Content-Type setzt authFetch automatisch
@@ -246,7 +246,7 @@ export async function createTeamForProject(projectId, payload) {
 
 // deleteTeamForProject
 export async function deleteTeamForProject(projectId, teamId) {
-  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/teams/${teamId}/`, {
+  const res = await authFetch(`/api/projects/${projectId}/teams/${teamId}/`, {
     method: 'DELETE',
   });
 
@@ -269,7 +269,7 @@ export async function deleteTeamForProject(projectId, teamId) {
 
 // reorder_project_teams
 export async function reorder_project_teams(projectId, order) {
-  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/teams/reorder/`, {
+  const res = await authFetch(`/api/projects/${projectId}/teams/reorder/`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -295,7 +295,7 @@ export async function reorder_project_teams(projectId, order) {
 // TODO ADDED Team
 // fetchSingleTeam
 export async function fetchSingleTeam(projectId, teamId) {
-  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/teams/${teamId}/detail/`, {
+  const res = await authFetch(`/api/projects/${projectId}/teams/${teamId}/detail/`, {
     method: 'GET',
   });
 
@@ -309,7 +309,7 @@ export async function fetchSingleTeam(projectId, teamId) {
 // TODO ADDED Team
 // updateTeam
 export async function updateTeam(projectId, teamId, payload) {
-  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/teams/${teamId}/detail/`, {
+  const res = await authFetch(`/api/projects/${projectId}/teams/${teamId}/detail/`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
   });
@@ -329,7 +329,7 @@ export async function updateTeam(projectId, teamId, payload) {
 
 // delete_task
 export async function delete_task(projectId, id) {
-  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/tasks/${id}/delete/`, {
+  const res = await authFetch(`/api/projects/${projectId}/tasks/${id}/delete/`, {
     method: 'DELETE',
   });
 
@@ -343,7 +343,7 @@ export async function delete_task(projectId, id) {
 
 // fetchTasksForProject
 export async function fetchTasksForProject(projectId) {
-  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/tasks/`, {
+  const res = await authFetch(`/api/projects/${projectId}/tasks/`, {
     method: 'GET',
   });
 
@@ -358,7 +358,7 @@ export async function fetchTasksForProject(projectId) {
 
 // createTaskForProject
 export async function createTaskForProject(projectId, payload) {
-  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/tasks/`, {
+  const res = await authFetch(`/api/projects/${projectId}/tasks/`, {
     method: 'POST',
     body: JSON.stringify(payload),
     // Content-Type kommt von authFetch
@@ -373,7 +373,7 @@ export async function createTaskForProject(projectId, payload) {
 
 // fetchSingleTask
 export async function fetchSingleTask(projectId, taskId) {
-  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/tasks/${taskId}/detail/`, {
+  const res = await authFetch(`/api/projects/${projectId}/tasks/${taskId}/detail/`, {
     method: 'GET',
   });
 
@@ -386,7 +386,7 @@ export async function fetchSingleTask(projectId, taskId) {
 
 // updateTask
 export async function updateTask(projectId, taskId, payload) {
-  const res = await authFetch(`/api/orgarhythmus/projects/${projectId}/tasks/${taskId}/detail/`, {
+  const res = await authFetch(`/api/projects/${projectId}/tasks/${taskId}/detail/`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
   });
@@ -417,7 +417,7 @@ export async function fetch_all_attempts(projectIdFromParam) {
   }
 
   const res = await fetch(
-    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/all_attempts_for_this_project/`,
+    `${BASE_URL}/api/projects/${projectId}/all_attempts_for_this_project/`,
     {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -459,7 +459,7 @@ export async function add_attempt_dependency(vortakt_attempt_id, nachtakt_attemp
     throw redirect('/login');
   }
 
-  const res = await fetch(`${BASE_URL}/api/orgarhythmus/add_attempt_dependency/`, {
+  const res = await fetch(`${BASE_URL}/api/add_attempt_dependency/`, {
     method: 'POST', // 👈 important
     headers: {
       Authorization: `Bearer ${token}`,
@@ -485,7 +485,7 @@ export async function fetch_all_attempt_dependencies() {
     throw redirect('/login');
   }
 
-  const res = await fetch(`${BASE_URL}/api/orgarhythmus/all_attempt_dependencies/`, {
+  const res = await fetch(`${BASE_URL}/api/all_attempt_dependencies/`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -504,7 +504,7 @@ export async function update_attempt_slot_index(attempt_id, slot_index) {
   const token = localStorage.getItem('access_token');
   if (!token) throw redirect('/login');
 
-  const res = await fetch(`${BASE_URL}/api/orgarhythmus/update_attempt_slot_index/`, {
+  const res = await fetch(`${BASE_URL}/api/update_attempt_slot_index/`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -527,7 +527,7 @@ export async function toggle_attempt_todo(projectId, attemptId, todoId) {
   if (!token) throw redirect('/login');
 
   const res = await fetch(
-    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/attempts/${attemptId}/todos/`,
+    `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/todos/`,
     {
       method: 'POST',
       headers: {
@@ -553,7 +553,7 @@ export async function delete_attempt_dependency(dependency_id) {
     throw redirect('/login');
   }
 
-  const res = await fetch(`${BASE_URL}/api/orgarhythmus/delete_attempt_dependency/`, {
+  const res = await fetch(`${BASE_URL}/api/delete_attempt_dependency/`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -576,7 +576,7 @@ export async function fetchAttemptDetail(projectId, attemptId) {
   if (!token) throw redirect('/login');
 
   const res = await fetch(
-    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/attempts/${attemptId}/`,
+    `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/`,
     {
       headers: { Authorization: `Bearer ${token}` },
     },
@@ -591,7 +591,7 @@ export async function updateAttempt(projectId, attemptId, payload) {
   if (!token) throw redirect('/login');
 
   const res = await fetch(
-    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/attempts/${attemptId}/`,
+    `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/`,
     {
       method: 'PATCH',
       headers: {
@@ -611,7 +611,7 @@ export async function createAttemptTodo(projectId, attemptId, text) {
   if (!token) throw redirect('/login');
 
   const res = await fetch(
-    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/attempts/${attemptId}/todos/`,
+    `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/todos/`,
     {
       method: 'POST',
       headers: {
@@ -631,7 +631,7 @@ export async function toggleAttemptTodo(projectId, attemptId, todoId) {
   if (!token) throw redirect('/login');
 
   const res = await fetch(
-    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/attempts/${attemptId}/todos/`,
+    `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/todos/`,
     {
       method: 'POST',
       headers: {
@@ -651,7 +651,7 @@ export async function deleteAttemptTodo(projectId, attemptId, todoId) {
   if (!token) throw redirect('/login');
 
   const res = await fetch(
-    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/attempts/${attemptId}/todos/`,
+    `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/todos/`,
     {
       method: 'POST',
       headers: {
@@ -670,7 +670,7 @@ export async function createAttempt(projectId, taskId, name) {
   const token = localStorage.getItem('access_token');
   if (!token) throw redirect('/login');
 
-  const res = await fetch(`${BASE_URL}/api/orgarhythmus/projects/${projectId}/attempts/`, {
+  const res = await fetch(`${BASE_URL}/api/projects/${projectId}/attempts/`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -689,7 +689,7 @@ export async function deleteAttempt(projectId, attemptId) {
   if (!token) throw redirect('/login');
 
   const res = await fetch(
-    `${BASE_URL}/api/orgarhythmus/projects/${projectId}/attempts/${attemptId}/delete/`,
+    `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/delete/`,
     {
       method: 'DELETE',
       headers: {

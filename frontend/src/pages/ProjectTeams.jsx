@@ -257,7 +257,7 @@ export default function ProjectTeams() {
                 return (
                   <div
                     key={team.id}
-                    onClick={() => navigate(`/orgarhythmus/projects/${projectId}/teams/${team.id}`)}
+                    onClick={() => navigate(`/projects/${projectId}/teams/${team.id}`)}
                     className="flex cursor-pointer flex-col gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow transition hover:shadow-lg"
                   >
                     <div className="h-2 w-full rounded" style={{ backgroundColor: team.color }} />
@@ -306,7 +306,7 @@ export default function ProjectTeams() {
                               key={task.id}
                               onClick={(e) => {
                                 e.stopPropagation(); // Prevent team card click
-                                navigate(`/orgarhythmus/projects/${projectId}/tasks/${task.id}`);
+                                navigate(`/projects/${projectId}/tasks/${task.id}`);
                               }}
                               className="-mx-2 flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-xs text-slate-600 transition-colors hover:bg-slate-50"
                             >

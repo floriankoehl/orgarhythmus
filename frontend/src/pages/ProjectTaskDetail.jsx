@@ -197,7 +197,7 @@ export default function ProjectTaskDetail() {
         <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
           <p className="text-red-700">{error}</p>
           <Button
-            onClick={() => navigate(`/orgarhythmus/projects/${projectId}/tasks`)}
+            onClick={() => navigate(`/projects/${projectId}/tasks`)}
             style={{ marginTop: '1rem', textTransform: 'none' }}
           >
             Back to Tasks
@@ -218,7 +218,7 @@ export default function ProjectTaskDetail() {
       <div className="flex w-full max-w-5xl flex-col gap-6 py-8">
         {/* Back Button */}
         <button
-          onClick={() => navigate(`/orgarhythmus/projects/${projectId}/tasks`)}
+          onClick={() => navigate(`/projects/${projectId}/tasks`)}
           className="group inline-flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white/80 px-4 py-2 text-slate-900 shadow-sm transition-all duration-200 hover:bg-white/100 hover:shadow-md"
         >
           <ArrowLeft size={16} className="transition-transform group-hover:-translate-x-1" />
@@ -253,7 +253,7 @@ export default function ProjectTaskDetail() {
                 {currentTeam && (
                   <div
                     onClick={() =>
-                      navigate(`/orgarhythmus/projects/${projectId}/teams/${currentTeam.id}`)
+                      navigate(`/projects/${projectId}/teams/${currentTeam.id}`)
                     }
                     className="flex w-fit cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 transition-all hover:border-blue-300 hover:bg-blue-50 hover:shadow-md"
                   >
@@ -538,7 +538,7 @@ export default function ProjectTaskDetail() {
                     <div className="border-t border-slate-200 bg-slate-50 px-4 py-2">
                       <button
                         onClick={() =>
-                          navigate(`/orgarhythmus/projects/${projectId}/attempts/${attempt.id}`)
+                          navigate(`/projects/${projectId}/attempts/${attempt.id}`)
                         }
                         className="text-xs font-medium text-blue-600 transition-colors hover:text-blue-700 hover:underline"
                       >
