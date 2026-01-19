@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.db.models import SET_NULL
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from datetime import date as date_class
+from datetime import date as date_class, timedelta
 User = get_user_model()
 
 class Comment(models.Model):
@@ -68,7 +68,7 @@ class Task(models.Model):
         if is_new:
             for i in range(3):
                 name = f"{self.name}_{i}"
-                Attempt.objects.create(task=self, name=name, number=i+1)
+                Attempt.objects.create(task=self, name=name, number=i+1, slot_index=i)
 
 
 
@@ -102,6 +102,22 @@ class Attempt(models.Model):
 
     def __str__(self):
         return self.name or f"Attempt {self.id}"
+    
+    @property
+    def calculated_date(self):
+        """
+        Calculate the date for this attempt based on the project's start_date and this attempt's slot_index.
+        Returns None if project start_date is not set or slot_index is None.
+        """
+        if not self.task or not self.task.project:
+            return None
+        
+        project = self.task.project
+        if not project.start_date or self.slot_index is None:
+            return None
+        
+        # Add slot_index days to project start_date
+        return project.start_date + timedelta(days=self.slot_index)
 
 class AttemptTodo(models.Model):
     attempt = models.ForeignKey(Attempt, on_delete=models.CASCADE, related_name='todos')
@@ -131,6 +147,9 @@ class Notification(models.Model):
         ('task_unassigned', 'Task Unassigned'),
         ('team_joined', 'Team Joined'),
         ('team_left', 'Team Left'),
+        ('attempt_upcoming', 'Attempt Upcoming'),
+        ('attempt_today', 'Attempt Today'),
+        ('attempt_overdue', 'Attempt Overdue'),
         ('general', 'General Notification'),
     ]
     
@@ -139,6 +158,7 @@ class Notification(models.Model):
     title = models.CharField(max_length=200)
     message = models.TextField()
     related_task = models.ForeignKey(Task, on_delete=models.CASCADE, null=True, blank=True, related_name="notifications")
+    related_attempt = models.ForeignKey(Attempt, on_delete=models.CASCADE, null=True, blank=True, related_name="notifications")
     related_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="notifications_about")
     read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { X, Bell, CheckCircle2, Clock, Trash2, Check } from 'lucide-react';
+import { X, Bell, CheckCircle2, Clock, Check } from 'lucide-react';
 import { useNotifications } from '../auth/NotificationContext';
 
 export default function NotificationsPanel({ isOpen, onClose }) {
-  const { notifications, loadingNotifications, markAsRead, deleteNotification } = useNotifications();
-  const [filter, setFilter] = useState('all'); // 'all', 'unread'
+  const { notifications, loadingNotifications, markAsRead } = useNotifications();
+  const [filter, setFilter] = useState('unread'); // 'all', 'unread' - default to unread
 
   const filteredNotifications = filter === 'unread'
     ? notifications.filter(n => !n.read)
@@ -164,13 +164,6 @@ export default function NotificationsPanel({ isOpen, onClose }) {
                               <Check size={16} />
                             </button>
                           )}
-                          <button
-                            onClick={() => deleteNotification(notif.id)}
-                            className="p-1.5 hover:bg-white/50 rounded-lg transition-colors text-slate-500 hover:text-red-600"
-                            title="Delete"
-                          >
-                            <Trash2 size={16} />
-                          </button>
                         </div>
                       </div>
                     </div>

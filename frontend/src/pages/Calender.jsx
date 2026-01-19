@@ -288,7 +288,8 @@ export default function CalendarPage() {
           {/* Calendar Days */}
           <div className="grid grid-cols-7 gap-2">
             {/* Empty cells for days before month starts */}
-            {Array.from({ length: currentMonth.startOf('month').day() || 7 }).map((_, i) => (
+            {/* dayjs returns 0 for Sunday, but we want Monday as first day, so we adjust with (day - 1 + 7) % 7 */}
+            {Array.from({ length: (currentMonth.startOf('month').day() - 1 + 7) % 7 }).map((_, i) => (
               <div key={`empty-start-${i}`} className="min-h-32 rounded-lg bg-slate-50/30" />
             ))}
 
@@ -395,7 +396,7 @@ export default function CalendarPage() {
 
             {/* Empty cells for days after month ends */}
             {Array.from({
-              length: 7 - ((daysInMonth.length + (currentMonth.startOf('month').day() || 7)) % 7),
+              length: 7 - (((daysInMonth.length + (currentMonth.startOf('month').day() - 1 + 7) % 7)) % 7),
             }).map((_, i) => (
               <div key={`empty-end-${i}`} className="min-h-32 rounded-lg bg-slate-50/30" />
             ))}

@@ -1965,13 +1965,138 @@ def delete_notification(request, notification_id):
     return Response({"status": "Notification deleted"}, status=status.HTTP_204_NO_CONTENT)
 
 
+def check_and_create_attempt_notifications(current_date):
+    """
+    Check for attempts that are:
+    1. Overdue (calculated_date before today and not done)
+    2. Today (calculated_date is today)
+    3. Upcoming (calculated_date is tomorrow or day after tomorrow)
+    
+    Create notifications for assigned members and project owner.
+    """
+    from .models import Attempt, Notification
+    
+    # Subtract 1 day to send notifications one day early
+    current_date = current_date - timedelta(days=-1)
+    
+    today = current_date
+    tomorrow = current_date + timedelta(days=1)
+    day_after_tomorrow = current_date + timedelta(days=2)
+    
+    # Find all attempts with calculated dates
+    all_attempts = Attempt.objects.filter(
+        task__isnull=False,
+        task__project__isnull=False,
+        done=False
+    ).select_related('task__project', 'task__team').prefetch_related('task__assigned_members')
+    
+    # Separate attempts by their calculated dates
+    overdue_attempts = [
+        attempt for attempt in all_attempts 
+        if attempt.calculated_date and attempt.calculated_date < today
+    ]
+    
+    today_attempts = [
+        attempt for attempt in all_attempts 
+        if attempt.calculated_date == today
+    ]
+    
+    upcoming_attempts = [
+        attempt for attempt in all_attempts 
+        if attempt.calculated_date in [tomorrow, day_after_tomorrow]
+    ]
+    
+    # Create notifications for overdue attempts
+    for attempt in overdue_attempts:
+        assigned_members = list(attempt.task.assigned_members.all())
+        project_owner = attempt.task.project.owner
+        
+        # Notify assigned members
+        for member in assigned_members:
+            Notification.objects.create(
+                user=member,
+                action_type='attempt_overdue',
+                title=f"Attempt Overdue: {attempt.task.name}",
+                message=f"The attempt '{attempt.name}' for task '{attempt.task.name}' was due yesterday and is not yet marked as done.",
+                related_task=attempt.task,
+                related_attempt=attempt
+            )
+        
+        # Always notify project owner
+        if project_owner and project_owner not in assigned_members:
+            Notification.objects.create(
+                user=project_owner,
+                action_type='attempt_overdue',
+                title=f"Attempt Overdue: {attempt.task.name}",
+                message=f"The attempt '{attempt.name}' for task '{attempt.task.name}' was due yesterday and is not yet marked as done.",
+                related_task=attempt.task,
+                related_attempt=attempt
+            )
+    
+    # Create notifications for today's attempts
+    for attempt in today_attempts:
+        assigned_members = list(attempt.task.assigned_members.all())
+        project_owner = attempt.task.project.owner
+        
+        # Notify assigned members
+        for member in assigned_members:
+            Notification.objects.create(
+                user=member,
+                action_type='attempt_today',
+                title=f"Attempt Today: {attempt.task.name}",
+                message=f"The attempt '{attempt.name}' for task '{attempt.task.name}' is due today.",
+                related_task=attempt.task,
+                related_attempt=attempt
+            )
+        
+        # Always notify project owner
+        if project_owner and project_owner not in assigned_members:
+            Notification.objects.create(
+                user=project_owner,
+                action_type='attempt_today',
+                title=f"Attempt Today: {attempt.task.name}",
+                message=f"The attempt '{attempt.name}' for task '{attempt.task.name}' is due today.",
+                related_task=attempt.task,
+                related_attempt=attempt
+            )
+    
+    # Create notifications for upcoming attempts
+    for attempt in upcoming_attempts:
+        assigned_members = list(attempt.task.assigned_members.all())
+        project_owner = attempt.task.project.owner
+        
+        # Notify assigned members
+        for member in assigned_members:
+            display_date = (attempt.calculated_date - timedelta(days=1)).strftime('%Y-%m-%d')
+            Notification.objects.create(
+                user=member,
+                action_type='attempt_upcoming',
+                title=f"Upcoming Attempt: {attempt.task.name}",
+                message=f"The attempt '{attempt.name}' for task '{attempt.task.name}' is coming up on {display_date}.",
+                related_task=attempt.task,
+                related_attempt=attempt
+            )
+        
+        # Always notify project owner
+        if project_owner and project_owner not in assigned_members:
+            display_date = (attempt.calculated_date - timedelta(days=1)).strftime('%Y-%m-%d')
+            Notification.objects.create(
+                user=project_owner,
+                action_type='attempt_upcoming',
+                title=f"Upcoming Attempt: {attempt.task.name}",
+                message=f"The attempt '{attempt.name}' for task '{attempt.task.name}' is coming up on {display_date}.",
+                related_task=attempt.task,
+                related_attempt=attempt
+            )
+
+
 # Demo Date endpoints
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def demo_date_view(request):
     """
     GET: Retrieve current demo date
-    POST: Update demo date
+    POST: Update demo date and check for attempt notifications
     """
     from .models import DemoDate
     from datetime import datetime
@@ -2003,7 +2128,11 @@ def demo_date_view(request):
             demo_date.date = new_date
             demo_date.save()
         
+        # Check for and create attempt notifications using the saved date
+        check_and_create_attempt_notifications(demo_date.date)
+        
         return Response({"date": demo_date.date}, status=status.HTTP_200_OK)
+
 
 
 
