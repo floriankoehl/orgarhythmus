@@ -284,8 +284,9 @@ export default function OrgaProjects() {
   const hasMemberProjects = memberProjects && memberProjects.length > 0;
   const hasOtherProjects = otherProjects && otherProjects.length > 0;
 
+  // bg-gradient-to-b from-slate-50 to-slate-100
   return (
-    <div className="flex min-h-screen w-screen justify-center bg-gradient-to-b from-slate-50 to-slate-100">
+    <div className="flex min-h-screen w-screen justify-center bg-red-300 ">
       <div className="flex w-full max-w-6xl flex-col gap-6 px-4 py-8">
         {/* Header */}
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
