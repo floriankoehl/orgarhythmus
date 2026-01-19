@@ -1,6 +1,6 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 
-import Layout from './layouts/MainLayout.jsx';
+// import Layout from './layouts/MainLayout.jsx';
 import OrgaLayout from './layouts/OrgaLayout.jsx';
 import LoginPage from './pages/LoginPage';
 import ProfilePage from './pages/ProfilePage';
