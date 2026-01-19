@@ -27,7 +27,7 @@ import {
   toggle_attempt_todo,
   createAttempt,
   deleteAttempt,
-} from '../orgarhythmus/api/org_API';
+} from '../api/org_API.js';
 
 export default function ProjectTaskDetail() {
   const { projectId, taskId } = useParams();

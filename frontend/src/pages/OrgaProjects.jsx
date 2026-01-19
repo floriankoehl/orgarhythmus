@@ -6,7 +6,7 @@ import {
   fetch_all_projects_browsable,
   join_project_api,
   leave_project_api,
-} from '../orgarhythmus/api/org_API';
+} from '../api/org_API.js';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';

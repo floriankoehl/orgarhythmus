@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Button from "@mui/material/Button";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { delete_task } from "../orgarhythmus/api/org_API";
+import { delete_task } from '../api/org_API.js';
 
 export default function SMTaskCard({ projectId, task, onTaskDeleted }) {
   const [showVortakte, setShowVortakte] = useState(false);

@@ -5,7 +5,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Button from '@mui/material/Button';
 import { Plus, Filter, X } from 'lucide-react';
 
-import { fetchTasksForProject, fetchTeamsForProject } from '../orgarhythmus/api/org_API';
+import { fetchTasksForProject, fetchTeamsForProject } from '../api/org_API.js';
 import SMTaskCard from '../components/TaskCardSM';
 import ProjectCreateTaskForm from '../components/ProjectCreateTaskForm';
 

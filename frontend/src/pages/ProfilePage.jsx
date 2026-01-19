@@ -2,7 +2,7 @@
 import { useAuth } from "../auth/AuthContext";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { fetch_all_projects } from "../orgarhythmus/api/org_API";
+import { fetch_all_projects } from '../api/org_API.js';
 import { User, Mail, Calendar, Folder, LogOut, ArrowRight, Loader2 } from "lucide-react";
 import Button from "@mui/material/Button";
 

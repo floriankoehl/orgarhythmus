@@ -1,6 +1,6 @@
-import { BASE_URL } from '../../config/api';
+import { BASE_URL } from '../config/api';
 import { redirect } from 'react-router-dom';
-import { authFetch } from '../../auth'; // Pfad ggf. anpassen
+import { authFetch } from '../auth'; // Pfad ggf. anpassen
 
 //_______________________________________________
 //_______________________________________________

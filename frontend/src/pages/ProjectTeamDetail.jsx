@@ -25,7 +25,7 @@ import {
   fetchSingleTask,
   fetchAttemptDetail,
   toggleAttemptTodo,
-} from '../orgarhythmus/api/org_API';
+} from '../api/org_API.js';
 
 export default function ProjectTeamDetail() {
   const { projectId, teamId } = useParams();
