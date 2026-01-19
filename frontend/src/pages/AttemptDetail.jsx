@@ -16,7 +16,7 @@ import {
   createAttemptTodo,
   toggleAttemptTodo,
   deleteAttemptTodo,
-} from '../../api/org_API';
+} from '../api/org_API.js';
 
 export default function AttemptDetail() {
   const { projectId, attemptId } = useParams();

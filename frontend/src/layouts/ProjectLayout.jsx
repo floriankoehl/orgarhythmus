@@ -1,6 +1,6 @@
 // orgarhythmus/org_layouts/ProjectLayout.jsx
 import { Outlet, useParams } from "react-router-dom";
-import ProjectHeader from "../projects/components/ProjectHeader"
+import ProjectHeader from "../components/ProjectHeader"
 
 export default function ProjectLayout() {
   const { projectId } = useParams();

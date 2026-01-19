@@ -1,5 +1,5 @@
 import { Outlet } from "react-router-dom";
-import OrgaHeader from "../org_components/OrgaHeader";
+import OrgaHeader from "../components/OrgaHeader";
 
 export default function OrgaLayout() {
   return (

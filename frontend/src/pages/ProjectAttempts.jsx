@@ -17,12 +17,13 @@ import {
   delete_attempt_dependency,
   reorder_project_teams,
   fetch_project_detail,
-} from '../../api/org_API';
-import snapSoundFile from '../../../assets/snap.mp3';
-import whipSoundFile from '../../../assets/whip.mp3';
-import clackSoundFile from '../../../assets/clack.mp3';
+} from '../api/org_API.js';
+// import snapSoundFile from '../../../assets/snap.mp3';
+import snapSoundFile from '../assets/snap.mp3';
+import whipSoundFile from '../assets/whip.mp3';
+import clackSoundFile from '../assets/clack.mp3';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useAuth } from '../../../auth/AuthContext';
+import { useAuth } from '../auth/AuthContext';
 import { ChevronsDownUp } from 'lucide-react';
 import Button from '@mui/material/Button';
 import dayjs from 'dayjs';

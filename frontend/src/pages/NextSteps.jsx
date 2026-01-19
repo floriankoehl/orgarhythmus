@@ -3,7 +3,7 @@ import {
   fetch_all_attempts,
   project_teams_expanded,
   fetch_project_detail,
-} from '../../api/org_API';
+} from '../api/org_API.js';
 import { useEffect, useState } from 'react';
 import { Filter, X, Calendar, Loader2 } from 'lucide-react';
 

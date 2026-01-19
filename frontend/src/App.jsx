@@ -1,20 +1,20 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 
 import Layout from './layouts/MainLayout.jsx';
-import OrgaLayout from './orgarhythmus/org_layouts/OrgaLayout.jsx';
+import OrgaLayout from './layouts/OrgaLayout.jsx';
 import LoginPage from './pages/LoginPage';
 import ProfilePage from './pages/ProfilePage';
 import RegisterPage from './pages/RegisterPage';
-import ProjectAttemptsWrapper from './orgarhythmus/projects/pages/ProjectAttemptsWrapper.jsx';
-import ProjectLayout from './orgarhythmus/org_layouts/ProjectLayout.jsx';
-import ProjectMain, { project_loader } from './orgarhythmus/projects/pages/ProjectMain.jsx';
-import OrgaProjects from './orgarhythmus/pages/OrgaProjects.jsx';
-import ProjectTeams from './orgarhythmus/projects/pages/ProjectTeams.jsx';
-import ProjectTasks from './orgarhythmus/projects/pages/ProjectTasks.jsx';
-import ProjectTeamDetail from './orgarhythmus/projects/pages/ProjectTeamDetail.jsx';
-import ProjectTaskDetail from './orgarhythmus/projects/pages/ProjectTaskDetail.jsx';
-import NextSteps from './orgarhythmus/projects/pages/NextSteps.jsx';
-import AttemptDetail from './orgarhythmus/projects/pages/AttemptDetail.jsx';
+import ProjectAttemptsWrapper from './pages/ProjectAttemptsWrapper.jsx';
+import ProjectLayout from './layouts/ProjectLayout.jsx';
+import ProjectMain, { project_loader } from './pages/ProjectMain.jsx';
+import OrgaProjects from './pages/OrgaProjects.jsx';
+import ProjectTeams from './pages/ProjectTeams.jsx';
+import ProjectTasks from './pages/ProjectTasks.jsx';
+import ProjectTeamDetail from './pages/ProjectTeamDetail.jsx';
+import ProjectTaskDetail from './pages/ProjectTaskDetail.jsx';
+import NextSteps from './pages/NextSteps.jsx';
+import AttemptDetail from './pages/AttemptDetail.jsx';
 
 
 

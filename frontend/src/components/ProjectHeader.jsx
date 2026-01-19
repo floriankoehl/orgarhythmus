@@ -6,7 +6,7 @@ import Diversity3Icon from '@mui/icons-material/Diversity3';
 import ListIcon from '@mui/icons-material/List';
 import PlayCircleIcon from '@mui/icons-material/PlayCircle';
 import LogoutIcon from '@mui/icons-material/Logout';
-import { useAuth } from '../../../auth/AuthContext';
+import { useAuth } from '../auth/AuthContext';
 import NumbersIcon from '@mui/icons-material/Numbers';
 import { PanelsTopLeft } from 'lucide-react';
 import ScheduleIcon from '@mui/icons-material/Schedule';

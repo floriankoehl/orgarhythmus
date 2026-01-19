@@ -6,7 +6,7 @@ import {
   project_teams_expanded, // Change this
   createTeamForProject,
   deleteTeamForProject,
-} from '../../api/org_API';
+} from '../orgarhythmus/api/org_API';
 
 import { Users, Plus, Trash2, Loader2 } from 'lucide-react';
 

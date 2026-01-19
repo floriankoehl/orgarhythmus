@@ -28,7 +28,7 @@ import {
   fetch_all_attempts,
   delete_project,
   update_project_api,
-} from '../../api/org_API';
+} from '../orgarhythmus/api/org_API';
 import Button from '@mui/material/Button';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
