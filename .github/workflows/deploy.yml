@@ -1,4 +1,4 @@
-name: Deploy to Raspberry Pi
+name: Deploy OrgaRhythmus (Docker)
 
 on:
   push:
@@ -10,27 +10,12 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - name: Pull latest code on Raspberry Pi
+      - name: Pull latest code
         run: |
-          cd /home/floriankoehl/Network
+          cd /home/floriankoehl/orgarhythmus
           git pull
 
-      - name: Run backend tests (Docker)
+      - name: Build & start containers
         run: |
-          cd /home/floriankoehl/Network
-          docker compose build backend
-          docker compose run --rm backend python manage.py test
-
-      - name: Build frontend and deploy to Nginx
-        run: |
-          cd /home/floriankoehl/Network/frontend
-          npm install
-          npm run build
-          rm -rf /var/www/app/*
-          cp -r dist/* /var/www/app/
-          sudo systemctl reload nginx
-
-      - name: Rebuild and restart backend container
-        run: |
-          cd /home/floriankoehl/Network
-          docker compose up --build -d backend
+          cd /home/floriankoehl/orgarhythmus
+          docker compose up -d --build

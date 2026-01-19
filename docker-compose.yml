@@ -1,24 +1,21 @@
-# docker-compose.yml  (remove the obsolete "version" key)
-
 services:
   backend:
     build: ./backend
-    container_name: network-backend
+    container_name: orgarhythmus-backend
     ports:
-      - "8000:8000"                 # host:container
-    volumes:
-      - ./backend:/app              # live code sync for Django
-    command: >
-        sh -c "python manage.py migrate && gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120"
+      - "9000:8000"   # host:container (Cloudflare -> localhost:9000)
     env_file:
       - .env
     environment:
-      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend,orgarhythmus.org,www.orgarhythmus.org,api.orgarhythmus.org
+    command: >
+      sh -c "python manage.py migrate &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120"
 
   frontend:
     build: ./frontend
-    container_name: react-frontend
+    container_name: orgarhythmus-frontend
     ports:
-      - "80:80"
+      - "8081:80"     # host:container (Cloudflare -> localhost:8081)
     depends_on:
       - backend
