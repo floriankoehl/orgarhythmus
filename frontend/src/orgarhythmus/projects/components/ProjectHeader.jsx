@@ -21,20 +21,20 @@ export default function ProjectHeader({}) {
   const navItems = [
     {
       key: 'project_main',
-      to: `/orgarhythmus/projects/${projectId}/`,
+      to: `/projects/${projectId}/`,
       label: 'Project',
       icon: <PanelsTopLeft size={16} color="white" />,
       end: true,
     },
     {
       key: 'project-teams',
-      to: projectId ? `/orgarhythmus/projects/${projectId}/teams` : '/orgarhythmus/projects',
+      to: projectId ? `/projects/${projectId}/teams` : '/projects',
       label: 'Teams',
       icon: <Diversity3Icon className="!h-[17px] text-white" />,
     },
     {
       key: 'tasks',
-      to: projectId ? `/orgarhythmus/projects/${projectId}/tasks` : '/orgarhythmus/projects',
+      to: projectId ? `/projects/${projectId}/tasks` : '/projects',
       label: 'Tasks',
       icon: <ListIcon fontSize="small" />,
       // end: true,
@@ -42,13 +42,13 @@ export default function ProjectHeader({}) {
 
     {
       key: 'attempts',
-      to: projectId ? `/orgarhythmus/projects/${projectId}/attempts` : '/orgarhythmus/projects', // fallback
+      to: projectId ? `/projects/${projectId}/attempts` : '/projects', // fallback
       label: 'Attempts',
       icon: <NumbersIcon fontSize="small" />,
     },
     {
       key: 'next-steps',
-      to: projectId ? `/orgarhythmus/projects/${projectId}/next_steps` : '/orgarhythmus/projects', // fallback
+      to: projectId ? `/projects/${projectId}/next_steps` : '/projects', // fallback
       label: 'Next Steps',
       icon: <ScheduleIcon fontSize="small" />,
     },

@@ -14,16 +14,7 @@ export default function OrgaHeader() {
   const { user, isAuthenticated, loadingUser, logout } = useAuth();
 
 
-  const navItems = [
-    // { to: "/orgarhythmus", label: "Tasks", icon: <ListIcon fontSize="small" />, end: true },
-    // { to: "/orgarhythmus/all_teams", label: "Teams", icon: <Diversity3Icon fontSize="small" /> },
-    // { to: "/orgarhythmus/dependencies", label: "Dependencies", icon: <ListOrdered fontSize="small" /> },
-    // { to: "/orgarhythmus/attempts", label: "Attempts", icon: <NumbersIcon fontSize="small" /> },
-    { to: "/orgarhythmus", label: "Projects", icon: <Folder size={18} /> },
-    { to: "/landing", label: "Go back", icon: <ReplayIcon fontSize="small" /> },
 
-
-  ];
 
   const linkBaseClasses =
     "flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200";
@@ -43,7 +34,7 @@ export default function OrgaHeader() {
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2 md:py-3">
         {/* LEFT: Logo / App Title */}
         <NavLink
-          to="/orgarhythmus"
+          to="/"
           className="flex items-center gap-2 text-slate-100 hover:text-cyan-300 transition-colors"
           onClick={() => setIsOpen(false)} // close menu if on mobile
         >
@@ -63,7 +54,7 @@ export default function OrgaHeader() {
 
         {/* RIGHT: Desktop Nav */}
         <nav className="hidden items-center gap-2 md:flex">
-          {navItems.map((item) => (
+          {/* {navItems.map((item) => (
 
             <NavLink
               key={item.to}
@@ -76,7 +67,7 @@ export default function OrgaHeader() {
               </span>
               <span>{item.label}</span>
             </NavLink>
-          ))}
+          ))} */}
 
           {/* SHOW REGISTER ONLY WHEN NOT LOGGED IN */}
 
@@ -190,7 +181,7 @@ export default function OrgaHeader() {
             <div className="flex mb-3 gap-4">
               <div className="w-1/2">
                 <NavLink
-                  to="/login"
+                  to="/orgarhythmus/login"
                   className={({ isActive }) => getLinkClasses(isActive)}
                   onClick={() => setIsOpen(false)}
                 >
@@ -264,32 +255,7 @@ export default function OrgaHeader() {
 
 
 
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              // For mobile: full-width "pills"
-              className={({ isActive }) =>
-                [
-                  "flex items-center justify-between rounded-xl px-3 py-2 text-sm font-medium transition-all",
-                  isActive
-                    ? "bg-cyan-500/90 text-slate-900 shadow-md"
-                    : "bg-slate-900/80 text-slate-200 hover:bg-slate-800 hover:text-white",
-                ].join(" ")
-              }
-              onClick={() => setIsOpen(false)} // close menu after navigation
-            >
-              <div className="flex items-center gap-3">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-800/70">
-                  {item.icon}
-                </span>
-                <span>{item.label}</span>
-              </div>
-              {/* Tiny accent dot to the right */}
-              <span className="h-2 w-2 rounded-full bg-cyan-400/90" />
-            </NavLink>
-          ))}
+
 
 
         </nav>

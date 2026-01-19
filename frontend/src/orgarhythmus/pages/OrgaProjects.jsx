@@ -1,4 +1,4 @@
-// orgarhythmus/projects/components/OrgaProjects.jsx
+// projects/components/OrgaProjects.jsx
 import { useEffect, useState } from 'react';
 import {
   fetch_all_projects,
@@ -463,7 +463,7 @@ export default function OrgaProjects() {
                         project={project}
                         isOwner={project.is_owner}
                         isMember={true}
-                        onOpen={() => navigate(`/orgarhythmus/projects/${project.id}/`)}
+                        onOpen={() => navigate(`/projects/${project.id}/`)}
                         onJoin={() => handleJoinProject(project.id)}
                         onLeave={() => handleLeaveProjectClick(project)}
                         joinLoading={loadingActions[project.id]}
@@ -496,7 +496,7 @@ export default function OrgaProjects() {
                         project={project}
                         isOwner={project.is_owner}
                         isMember={project.is_member}
-                        onOpen={() => navigate(`/orgarhythmus/projects/${project.id}`)}
+                        onOpen={() => navigate(`/projects/${project.id}`)}
                         onJoin={() => handleJoinProject(project.id)}
                         onLeave={() => handleLeaveProjectClick(project)}
                         joinLoading={loadingActions[project.id]}

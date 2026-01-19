@@ -1,4 +1,4 @@
-// orgarhythmus/projects/pages/ProjectMain.jsx
+// projects/pages/ProjectMain.jsx
 import { useLoaderData, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import {
@@ -307,7 +307,7 @@ export default function ProjectMain() {
       <div className="flex w-full max-w-5xl flex-col gap-6 px-4 py-8">
         {/* Back Button */}
         <button
-          onClick={() => navigate('/orgarhythmus/')}
+          onClick={() => navigate('/')}
           className="group inline-flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white/80 px-4 py-2 text-slate-900 shadow-sm transition-all duration-200 hover:bg-white/100 hover:shadow-md"
         >
           <ArrowLeft size={16} className="transition-transform group-hover:-translate-x-1" />
@@ -752,7 +752,7 @@ export default function ProjectMain() {
               </div>
               onClick=
               {() =>
-                navigate(`/orgarhythmus/projects/${initialProject.id}/tasks/${attempt.task?.id}`)
+                navigate(`/projects/${initialProject.id}/tasks/${attempt.task?.id}`)
               }
             </div>
           )}
@@ -777,7 +777,7 @@ export default function ProjectMain() {
               <Button
                 variant="outlined"
                 size="small"
-                onClick={() => navigate(`/orgarhythmus/projects/${initialProject.id}/teams`)}
+                onClick={() => navigate(`/projects/${initialProject.id}/teams`)}
                 style={{ textTransform: 'none', borderRadius: '8px' }}
               >
                 Manage
@@ -790,7 +790,7 @@ export default function ProjectMain() {
                   <div
                     key={team.id}
                     onClick={() =>
-                      navigate(`/orgarhythmus/projects/${initialProject.id}/teams/${team.id}`)
+                      navigate(`/projects/${initialProject.id}/teams/${team.id}`)
                     }
                     className="group flex cursor-pointer items-center justify-between rounded-lg bg-slate-50 p-3 transition-colors hover:bg-slate-100"
                   >
@@ -812,7 +812,7 @@ export default function ProjectMain() {
                 <Button
                   variant="contained"
                   size="small"
-                  onClick={() => navigate(`/orgarhythmus/projects/${initialProject.id}/teams`)}
+                  onClick={() => navigate(`/projects/${initialProject.id}/teams`)}
                   style={{ textTransform: 'none', marginTop: '1rem', borderRadius: '8px' }}
                 >
                   Erstes Team erstellen
@@ -849,7 +849,7 @@ export default function ProjectMain() {
               <Button
                 variant="outlined"
                 size="small"
-                onClick={() => navigate(`/orgarhythmus/projects/${initialProject.id}/tasks`)}
+                onClick={() => navigate(`/projects/${initialProject.id}/tasks`)}
                 style={{ textTransform: 'none', borderRadius: '8px' }}
               >
                 Manage
@@ -862,7 +862,7 @@ export default function ProjectMain() {
                   <div
                     key={task.id}
                     onClick={() =>
-                      navigate(`/orgarhythmus/projects/${initialProject.id}/tasks/${task.id}`)
+                      navigate(`/projects/${initialProject.id}/tasks/${task.id}`)
                     }
                     className="cursor-pointer rounded-lg bg-slate-50 p-3 transition-all hover:bg-slate-100 hover:shadow-md"
                   >
@@ -891,7 +891,7 @@ export default function ProjectMain() {
                 <Button
                   variant="contained"
                   size="small"
-                  onClick={() => navigate(`/orgarhythmus/projects/${initialProject.id}/tasks`)}
+                  onClick={() => navigate(`/projects/${initialProject.id}/tasks`)}
                   style={{ textTransform: 'none', marginTop: '1rem', borderRadius: '8px' }}
                 >
                   Ersten Task erstellen
