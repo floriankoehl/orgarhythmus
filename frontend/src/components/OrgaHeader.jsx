@@ -204,7 +204,7 @@ export default function OrgaHeader() {
             <div className="flex mb-3 gap-4">
               <div className="w-1/2">
                 <NavLink
-                  to="/orgarhythmus/login"
+                  to="/login"
                   className={({ isActive }) => getLinkClasses(isActive)}
                   onClick={() => setIsOpen(false)}
                 >
