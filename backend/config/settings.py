@@ -32,7 +32,12 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "backend", "app.floriankoehl.com", "api.floriankoehl.com"]
+ALLOWED_HOSTS = [
+    "localhost", "127.0.0.1", "backend",
+    "orgarhythmus.org", "www.orgarhythmus.org",
+    "api.orgarhythmus.org",
+]
+
 
 
 # Application definition
@@ -171,16 +176,17 @@ if DEBUG:
 else:
     # Production - only allow your domain
     CORS_ALLOWED_ORIGINS = [
-        "https://app.floriankoehl.com",
-    ]
+    "https://orgarhythmus.org",
+    "https://www.orgarhythmus.org",]
+
 
 # CSRF Settings
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost",
-    "https://app.floriankoehl.com",
-    "https://api.floriankoehl.com",
+    "https://orgarhythmus.org",
+    "https://api.orgarhythmus.org",
 ]
 
 # Cookie Settings
