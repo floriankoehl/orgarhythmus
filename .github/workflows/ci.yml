@@ -1,12 +1,11 @@
-name: Deploy OrgaRhythmus (Docker)
+name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
-  deploy:
+  test:
     runs-on: self-hosted
 
     steps:
@@ -15,7 +14,8 @@ jobs:
           cd /home/floriankoehl/orgarhythmus
           git pull
 
-      - name: Build & start containers
+      - name: Run backend tests
         run: |
           cd /home/floriankoehl/orgarhythmus
-          docker compose up -d --build
+          docker compose build backend
+          docker compose run --rm backend python manage.py test
