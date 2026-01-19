@@ -1,4 +1,9 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { useState } from 'react';
+import { Bell } from 'lucide-react';
+import NotificationsPanel from './components/NotificationsPanel';
+import { useAuth } from './auth/AuthContext';
+import { useNotifications } from './auth/NotificationContext';
 import { AuthProvider } from './auth/AuthContext';
 import { NotificationProvider } from './auth/NotificationContext';
 import { DemoDateProvider } from './auth/DemoDateContext';
@@ -84,11 +89,41 @@ const router = createBrowserRouter([
 ]);
 
 export default function App() {
+  function AppShell() {
+    const { isAuthenticated, loadingUser } = useAuth();
+    const { unreadCount } = useNotifications();
+    const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+    return (
+      <>
+        <RouterProvider router={router} />
+        {/* Mobile Floating Notifications Button (global, not in headers) */}
+        {!loadingUser && isAuthenticated && (
+          <>
+            <button
+              onClick={() => setNotificationsOpen(true)}
+              className="md:hidden fixed right-4 bottom-4 z-[60] flex h-10 w-10 items-center justify-center rounded-full bg-slate-800/80 text-slate-200 shadow-lg border border-slate-700 hover:bg-slate-700 hover:text-white"
+              title="Notifications"
+            >
+              <Bell size={20} />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-6 w-6 bg-red-600 text-white text-xs font-bold rounded-full flex items-center justify-center shadow-lg border-2 border-slate-900">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+            <NotificationsPanel isOpen={notificationsOpen} onClose={() => setNotificationsOpen(false)} />
+          </>
+        )}
+      </>
+    );
+  }
+
   return (
     <AuthProvider>
       <DemoDateProvider>
         <NotificationProvider>
-          <RouterProvider router={router} />
+          <AppShell />
         </NotificationProvider>
       </DemoDateProvider>
     </AuthProvider>

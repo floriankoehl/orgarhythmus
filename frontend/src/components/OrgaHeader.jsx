@@ -198,6 +198,12 @@ export default function OrgaHeader() {
 
 
         <nav className="space-y-1 border-t border-slate-800/70 bg-slate-950/95 px-4 pb-4 pt-2">
+          {/* Mobile Demo Date Control */}
+          {!loadingUser && isAuthenticated && (
+            <div className="mb-3">
+              <DemoDateDisplay />
+            </div>
+          )}
           {/* MOBILE USER INFO */}
 
           {!loadingUser && !isAuthenticated && (
@@ -277,6 +283,8 @@ export default function OrgaHeader() {
 
         </nav>
       </div>
+
+      {/* Mobile Floating Notifications Button moved to AppShell (global) */}
 
       {/* Notifications Panel */}
       <NotificationsPanel isOpen={notificationsOpen} onClose={() => setNotificationsOpen(false)} />

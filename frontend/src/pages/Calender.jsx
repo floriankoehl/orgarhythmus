@@ -62,6 +62,7 @@ export default function CalendarPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [newTodoText, setNewTodoText] = useState({});
   const [confirmDoneAttemptId, setConfirmDoneAttemptId] = useState(null);
+  const [mobileSelectedDate, setMobileSelectedDate] = useState(dayjs(demoDate));
 
   useEffect(() => {
     loadData();
@@ -87,6 +88,28 @@ export default function CalendarPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  // Helpers for mobile weekly navigation (Monday-first week)
+  function getMondayStart(date) {
+    const d = dayjs(date);
+    const weekday = d.day(); // 0=Sun, 1=Mon, ... 6=Sat
+    return d.subtract((weekday + 6) % 7, 'day'); // shift to Monday
+  }
+
+  function clampDateToRange(d, range) {
+    let x = d;
+    if (x.isBefore(range.start)) x = range.start;
+    if (x.isAfter(range.end)) x = range.end;
+    return x;
+  }
+
+  const mobileWeekStart = useMemo(() => getMondayStart(mobileSelectedDate), [mobileSelectedDate]);
+
+  function navigateMobileWeek(offset) {
+    const target = dayjs(mobileSelectedDate).add(offset, 'week');
+    const clamped = clampDateToRange(target, calendarRange);
+    setMobileSelectedDate(clamped);
   }
 
   // Determine calendar range
@@ -520,26 +543,239 @@ export default function CalendarPage() {
           </div>
         </header>
 
+        {/* Mobile Weekly/Day View */}
+        <div className="sm:hidden rounded-xl border border-slate-200 bg-white/90 p-4 shadow-sm backdrop-blur-sm">
+          {/* Week Navigation */}
+          <div className="flex items-center justify-between mb-3">
+            <button
+              onClick={() => navigateMobileWeek(-1)}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+            >
+              <ChevronLeft size={13} />
+            </button>
+            <div className="text-sm font-semibold text-slate-900">
+              {mobileWeekStart.format('MMM D')} – {mobileWeekStart.add(6, 'day').format('MMM D')}
+            </div>
+            <button
+              onClick={() => navigateMobileWeek(1)}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+            >
+              <ChevronRight size={13} />
+            </button>
+          </div>
+
+          {/* Days Row */}
+          <div className="grid grid-cols-7 gap-1 mb-3">
+            {Array.from({ length: 7 }).map((_, i) => {
+              const day = mobileWeekStart.add(i, 'day');
+              const dateKey = day.format('YYYY-MM-DD');
+              const dayAttempts = attemptsByDate[dateKey] || [];
+              const isSelected = day.isSame(mobileSelectedDate, 'day');
+              return (
+                <button
+                  key={`mobile-day-${dateKey}`}
+                  onClick={() => setMobileSelectedDate(day)}
+                  className={`flex flex-col items-center justify-center rounded-lg border px-2 py-2 text-xs transition ${
+                    isSelected ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                  }`}
+                >
+                  <span className="font-semibold">{day.format('dd').charAt(0)}</span>
+                  <span className="mt-1 flex h-6 w-6 items-center justify-center rounded-lg bg-slate-200 text-slate-700 font-semibold">
+                    {day.date()}
+                  </span>
+                  {dayAttempts.length > 0 && (
+                    <span className="mt-1 inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+                      {dayAttempts.length}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Selected Day Attempts */}
+          {(() => {
+            const selectedKey = dayjs(mobileSelectedDate).format('YYYY-MM-DD');
+            const dayAttempts = attemptsByDate[selectedKey] || [];
+            if (dayAttempts.length === 0) {
+              return (
+                <div className="rounded-lg border border-slate-200 bg-white p-4 text-center">
+                  <p className="text-xs text-slate-500">No events</p>
+                </div>
+              );
+            }
+            return (
+              <div className="space-y-3">
+                {dayAttempts.map((attempt) => {
+                  const teamId = attempt.task?.team?.id;
+                  const isMemberOfTeam = teamId ? isTeamMember(teamId) : false;
+                  const assignedMembers = attempt.task?.assigned_members_data || [];
+                  const isAssigned = user ? assignedMembers.some((m) => m.id === user.id) : false;
+                  const showMembers = showMembersForAttempt === attempt.id;
+                  const showTodos = showTodosForAttempt === attempt.id;
+                  return (
+                    <div key={attempt.id} className="rounded-lg border border-slate-200 bg-white transition hover:border-blue-300 hover:shadow-sm">
+                      <div className="p-3">
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <div className="h-3 w-3 flex-shrink-0 rounded-full" style={{ backgroundColor: attempt.task?.team?.color || '#64748b' }} />
+                              <h3 className="truncate text-sm font-semibold text-slate-900">{attempt.task?.name}</h3>
+                            </div>
+                            <p className="mt-0.5 text-xs text-slate-600">{attempt.name || 'Untitled attempt'}</p>
+                          </div>
+                          <div className="flex flex-shrink-0 items-center gap-2">
+                            {attempt.done ? (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleMarkInProgress(attempt.id); }}
+                                className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 transition"
+                              >
+                                <CheckCircle2 size={12} /> Done
+                              </button>
+                            ) : (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setConfirmDoneAttemptId(attempt.id); }}
+                                className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-200 transition"
+                              >
+                                <AlertCircle size={12} /> Pending
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {assignedMembers.length > 0 && (
+                            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                              {assignedMembers.length} member{assignedMembers.length !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                          {isAssigned && (
+                            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">Assigned to you</span>
+                          )}
+                          {isMemberOfTeam && isAuthenticated && (
+                            <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">Your team</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex border-t border-slate-200 text-xs">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setShowMembersForAttempt(showMembers ? null : attempt.id); }}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 font-medium text-slate-700 hover:bg-slate-50 transition border-r border-slate-200"
+                        >
+                          {showMembers ? <ChevronUp size={13} /> : <ChevronDown size={13} />} {showMembers ? 'Hide' : 'Show'} Members
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setShowTodosForAttempt(showTodos ? null : attempt.id); }}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 font-medium text-slate-700 hover:bg-slate-50 transition border-r border-slate-200"
+                        >
+                          {showTodos ? <ChevronUp size={13} /> : <ChevronDown size={13} />} {showTodos ? 'Hide' : 'Show'} Todos
+                        </button>
+                        <button
+                          onClick={() => navigate(`/projects/${projectId}/attempts/${attempt.id}`)}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 font-medium text-blue-700 hover:bg-blue-50 transition"
+                        >
+                          Full Page →
+                        </button>
+                      </div>
+                      {showMembers && (
+                        <div className="border-t border-slate-200 p-3 bg-slate-50/50">
+                          <div className="rounded-lg bg-white border border-slate-200 p-2.5">
+                            <div className="text-xs font-semibold text-slate-700 mb-2">Assigned Members</div>
+                            {assignedMembers.length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5 mb-2.5">
+                                {assignedMembers.map((member) => (
+                                  <span key={member.id} className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 flex items-center gap-1 cursor-pointer hover:bg-blue-200 transition" onClick={(e) => { e.stopPropagation(); handleRemoveMember(attempt.id, member.id); }}>
+                                    {member.username}
+                                    <span className="text-blue-500">×</span>
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-slate-500 mb-2.5">No members assigned yet</p>
+                            )}
+                            <select
+                              onChange={(e) => { e.stopPropagation(); handleAddMember(attempt.id, parseInt(e.target.value)); }}
+                              onClick={(e) => e.stopPropagation()}
+                              value=""
+                              className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400 transition cursor-pointer"
+                            >
+                              <option value="">+ Add member from project</option>
+                              {projectData?.members_data?.map((member) => {
+                                const isAlreadyAssigned = assignedMembers.some(m => m.id === member.id);
+                                return (
+                                  <option key={member.id} value={member.id} disabled={isAlreadyAssigned}>
+                                    {member.username} {isAlreadyAssigned ? '(assigned)' : ''}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </div>
+                        </div>
+                      )}
+                      {showTodos && (
+                        <div className="border-t border-slate-200 p-3 bg-slate-50/50">
+                          <div className="rounded-lg bg-white border border-slate-200 p-2.5">
+                            <div className="text-xs font-semibold text-slate-700 mb-2">Todos ({attempt.todos?.filter(t => t.done).length || 0}/{attempt.todos?.length || 0})</div>
+                            {attempt.todos && attempt.todos.length > 0 && (
+                              <div className="space-y-1.5 mb-2.5">
+                                {attempt.todos.map((todo) => (
+                                  <div key={todo.id} onClick={(e) => { e.stopPropagation(); handleToggleTodo(attempt.id, todo.id); }} className="flex items-start gap-2 p-1.5 rounded hover:bg-slate-50 cursor-pointer transition group">
+                                    {todo.done ? (
+                                      <CheckSquare size={15} className="flex-shrink-0 text-emerald-600 mt-0.5" />
+                                    ) : (
+                                      <Square size={15} className="flex-shrink-0 text-slate-400 group-hover:text-slate-600 mt-0.5" />
+                                    )}
+                                    <span className={`text-xs flex-1 ${todo.done ? 'text-slate-500 line-through' : 'text-slate-700'}`}>{todo.text}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div className="flex gap-1.5">
+                              <input
+                                type="text"
+                                value={newTodoText[attempt.id] || ''}
+                                onChange={(e) => { e.stopPropagation(); setNewTodoText(prev => ({ ...prev, [attempt.id]: e.target.value })); }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleAddTodo(attempt.id); } }}
+                                onClick={(e) => e.stopPropagation()}
+                                placeholder="Add a new todo..."
+                                className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 placeholder-slate-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                              />
+                              <button onClick={(e) => { e.stopPropagation(); handleAddTodo(attempt.id); }} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-slate-700 hover:bg-slate-50 transition">
+                                <Plus size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
+
         {/* Calendar Grid */}
-        <section className="rounded-xl border border-slate-200 bg-white/90 p-4 shadow-sm backdrop-blur-sm">
+        <div className="hidden sm:block w-full overflow-x-auto snap-x snap-mandatory">
+          <section className="rounded-xl border border-slate-200 bg-white/90 p-4 shadow-sm backdrop-blur-sm min-w-[720px] sm:min-w-[900px]">
           {/* Day Headers */}
-          <div className="mb-3 grid grid-cols-7 gap-2">
+          <div className="mb-3 sticky top-0 z-10 bg-white/90 backdrop-blur-sm grid grid-cols-7 gap-1 sm:gap-2">
             {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
               <div
                 key={day}
-                className="py-2 text-center text-xs font-bold tracking-wide text-slate-600 uppercase"
+                className="py-2 text-center text-[11px] sm:text-xs font-bold tracking-wide text-slate-600 uppercase"
               >
-                {day}
+                <span className="hidden sm:inline">{day}</span>
+                <span className="sm:hidden">{day.charAt(0)}</span>
               </div>
             ))}
           </div>
 
           {/* Calendar Days */}
-          <div className="grid grid-cols-7 gap-2">
+          <div className="grid grid-cols-7 gap-1 sm:gap-2">
             {/* Empty cells for days before month starts */}
             {/* dayjs returns 0 for Sunday, but we want Monday as first day, so we adjust with (day - 1 + 7) % 7 */}
             {Array.from({ length: (currentMonth.startOf('month').day() - 1 + 7) % 7 }).map((_, i) => (
-              <div key={`empty-start-${i}`} className="min-h-32 rounded-lg bg-slate-50/30" />
+              <div key={`empty-start-${i}`} className="min-h-24 sm:min-h-32 rounded-lg bg-slate-50/30" />
             ))}
 
             {/* Days of month */}
@@ -553,7 +789,7 @@ export default function CalendarPage() {
               return (
                 <div
                   key={dateKey}
-                  className={`relative min-h-32 rounded-lg border transition ${
+                  className={`relative min-h-24 sm:min-h-32 rounded-lg border transition snap-start ${
                     isToday
                       ? 'border-blue-400 bg-blue-50'
                       : dayAttempts.length > 0
@@ -565,7 +801,7 @@ export default function CalendarPage() {
                   <div className="flex items-center justify-between px-2.5 py-1.5">
                     <div className="flex items-center gap-1.5">
                       <span
-                        className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-semibold ${
+                        className={`flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-lg text-xs font-semibold ${
                           isToday
                             ? 'bg-blue-600 text-white'
                             : 'bg-slate-200 text-slate-700'
@@ -593,7 +829,7 @@ export default function CalendarPage() {
                   {/* Attempts Preview */}
                   {dayAttempts.length > 0 && (
                     <div
-                      className="cursor-pointer px-2.5 pb-2 overflow-y-auto max-h-28"
+                      className="cursor-pointer px-2.5 pb-2 overflow-y-auto max-h-24 sm:max-h-28"
                       onClick={() =>
                         setExpandedDate(isExpanded ? null : dateKey)
                       }
@@ -647,10 +883,11 @@ export default function CalendarPage() {
             {Array.from({
               length: 7 - (((daysInMonth.length + (currentMonth.startOf('month').day() - 1 + 7) % 7)) % 7),
             }).map((_, i) => (
-              <div key={`empty-end-${i}`} className="min-h-32 rounded-lg bg-slate-50/30" />
+              <div key={`empty-end-${i}`} className="min-h-24 sm:min-h-32 rounded-lg bg-slate-50/30" />
             ))}
           </div>
-        </section>
+          </section>
+        </div>
 
         {/* Expanded Date View Modal */}
         {/* Expanded Date Modal */}
@@ -951,7 +1188,7 @@ export default function CalendarPage() {
 
         {/* Floating Filter Button & Panel */}
         {uniqueTeams.length > 0 && (
-          <div className="fixed right-6 bottom-6 z-40 flex flex-col items-end gap-3">
+          <div className="fixed left-6 bottom-6 z-40 flex flex-col items-start gap-3">
             {/* Collapsible Filter Panel */}
             {showFilters && (
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-lg backdrop-blur-sm w-80 max-h-96 overflow-y-auto">
