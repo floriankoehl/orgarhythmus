@@ -19,3 +19,7 @@ class TeamModelTest(TestCase):
     def test_team_without_project(self):
         with self.assertRaises(IntegrityError):
             Team.objects.create(name="Orphan Team").save()
+
+
+#
+# Additional tests can be added here for other models and functionalities
