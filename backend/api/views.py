@@ -299,6 +299,7 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
             'team',
             'project_id',
             'attempts',
+            'assigned_members',
             'assigned_members_data',
         ]
 
@@ -944,6 +945,25 @@ def task_detail_view(request, project_id, task_id):
         if "difficulty" in data:
             task.difficulty = data["difficulty"]
         
+        if "assigned_members" in data:
+            # Update assigned members
+            member_ids = data["assigned_members"]
+            if isinstance(member_ids, list):
+                # Validate that all users exist and have access to the project
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                users = []
+                for user_id in member_ids:
+                    try:
+                        member = User.objects.get(id=user_id)
+                        if user_has_project_access(member, task.project):
+                            users.append(member)
+                    except User.DoesNotExist:
+                        pass
+                
+                # Set the assigned members
+                task.assigned_members.set(users)
+        
         task.save()
         
         serializer = TaskExpandedSerializer(task)
@@ -1217,7 +1237,7 @@ def all_attempts_for_this_project(request, project_id):
     all_attempts = (
         Attempt.objects
         .select_related("task", "task__team")
-        .prefetch_related("task__assigned_members")
+        .prefetch_related("task__assigned_members", "todos")
         .filter(task__project_id=project_id)
     )
 
@@ -1230,6 +1250,14 @@ def all_attempts_for_this_project(request, project_id):
             "number": getattr(a, "number", None),
             "slot_index": getattr(a, "slot_index", None),
             "done": getattr(a, "done", False),
+            "todos": [
+                {
+                    "id": todo.id,
+                    "text": todo.text,
+                    "done": todo.done,
+                }
+                for todo in a.todos.all()
+            ],
             "task": {
                 "id": task_obj.id if task_obj else None,
                 "name": task_obj.name if task_obj else None,
@@ -1238,6 +1266,7 @@ def all_attempts_for_this_project(request, project_id):
                     "name": task_obj.team.name,
                     "color": task_obj.team.color,
                 } if task_obj and task_obj.team else None,
+                "assigned_members": [u.id for u in task_obj.assigned_members.all()] if task_obj else [],
                 "assigned_members_data": [
                     {"id": u.id, "username": u.username, "email": u.email}
                     for u in task_obj.assigned_members.all()
@@ -1421,6 +1450,10 @@ def attempt_detail_view(request, project_id, attempt_id):
         data = request.data
         if "done" in data:
             attempt.done = bool(data.get("done"))
+            # If marking as done, delete all notifications for this attempt
+            if attempt.done:
+                from .models import Notification
+                Notification.objects.filter(related_attempt=attempt).delete()
         if "name" in data:
             attempt.name = data.get("name") or attempt.name
         if "description" in data:

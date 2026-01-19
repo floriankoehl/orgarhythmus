@@ -3,6 +3,10 @@ import {
   fetch_all_attempts,
   fetch_project_detail,
   project_teams_expanded,
+  toggleAttemptTodo,
+  createAttemptTodo,
+  assignTaskMember,
+  unassignTaskMember,
 } from '../api/org_API.js';
 import { useAuth } from '../auth/AuthContext';
 import { useDemoDate } from '../auth/DemoDateContext';
@@ -17,6 +21,12 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  Info,
+  ChevronDown,
+  ChevronUp,
+  Square,
+  CheckSquare,
+  Plus,
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import isBetween from 'dayjs/plugin/isBetween';
@@ -42,11 +52,16 @@ export default function CalendarPage() {
   const [viewMode, setViewMode] = useState('all'); // 'all', 'my-tasks', 'my-teams'
   const [currentMonth, setCurrentMonth] = useState(dayjs());
   const [hideEmptyDays, setHideEmptyDays] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false); // Toggle to show/hide completed attempts
 
   // UI
   const [hoveredAttemptId, setHoveredAttemptId] = useState(null);
   const [expandedDate, setExpandedDate] = useState(null);
+  const [showMembersForAttempt, setShowMembersForAttempt] = useState(null);
+  const [showTodosForAttempt, setShowTodosForAttempt] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [newTodoText, setNewTodoText] = useState({});
+  const [confirmDoneAttemptId, setConfirmDoneAttemptId] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -103,6 +118,11 @@ export default function CalendarPage() {
       return attemptDate.isBetween(calendarRange.start, calendarRange.end, null, '[]');
     });
 
+    // Filter by completion status - hide done attempts by default
+    if (!showCompleted) {
+      filtered = filtered.filter((attempt) => !attempt.done);
+    }
+
     // Apply team filter
     if (selectedTeamIds.length > 0) {
       filtered = filtered.filter((attempt) =>
@@ -127,7 +147,7 @@ export default function CalendarPage() {
     }
 
     return filtered;
-  }, [attemptsData, selectedTeamIds, viewMode, user, projectData, calendarRange]);
+  }, [attemptsData, selectedTeamIds, viewMode, user, projectData, calendarRange, showCompleted]);
 
   // Group attempts by date
   const attemptsByDate = useMemo(() => {
@@ -180,6 +200,235 @@ export default function CalendarPage() {
   const clearFilters = () => {
     setSelectedTeamIds([]);
     setViewMode('all');
+    setShowCompleted(false);
+  };
+
+  // Handle adding a member to an attempt
+  const handleAddMember = async (attemptId, memberId) => {
+    try {
+      // Find the attempt to get the task ID
+      const attempt = attemptsData.find(a => a.id === attemptId);
+      if (!attempt || !attempt.task) {
+        console.error('Attempt or task not found');
+        return;
+      }
+
+      console.log('Adding member:', { attemptId, memberId, taskId: attempt.task.id });
+
+      // Use the same API as ProjectTaskDetail
+      const result = await assignTaskMember(projectId, attempt.task.id, memberId);
+      
+      console.log('Member added successfully:', result);
+      
+      // Update all attempts that share this task
+      setAttemptsData(prev =>
+        prev.map(a =>
+          a.task?.id === attempt.task.id
+            ? {
+                ...a,
+                task: result.task,
+              }
+            : a
+        )
+      );
+    } catch (error) {
+      console.error('Error adding member:', error);
+    }
+  };
+
+  // Handle removing a member from an attempt
+  const handleRemoveMember = async (attemptId, memberId) => {
+    try {
+      // Find the attempt to get the task ID
+      const attempt = attemptsData.find(a => a.id === attemptId);
+      if (!attempt || !attempt.task) {
+        console.error('Attempt or task not found');
+        return;
+      }
+
+      console.log('Removing member:', { attemptId, memberId, taskId: attempt.task.id });
+
+      // Use the same API as ProjectTaskDetail
+      const result = await unassignTaskMember(projectId, attempt.task.id, memberId);
+      
+      console.log('Member removed successfully:', result);
+      
+      // Update all attempts that share this task
+      setAttemptsData(prev =>
+        prev.map(a =>
+          a.task?.id === attempt.task.id
+            ? {
+                ...a,
+                task: result.task,
+              }
+            : a
+        )
+      );
+    } catch (error) {
+      console.error('Error removing member:', error);
+    }
+  };
+
+  // Handle toggling a todo and auto-complete attempt if all todos are done
+  const handleToggleTodo = async (attemptId, todoId) => {
+    try {
+      // Toggle the todo
+      await toggleAttemptTodo(projectId, attemptId, todoId);
+
+      // Update local state
+      setAttemptsData(prev =>
+        prev.map(a => {
+          if (a.id === attemptId) {
+            const updatedTodos = a.todos.map(todo =>
+              todo.id === todoId ? { ...todo, done: !todo.done } : todo
+            );
+            
+            // Check if all todos are now done
+            const allTodosDone = updatedTodos.length > 0 && updatedTodos.every(t => t.done);
+            // Check if any todo is not done
+            const anyTodoNotDone = updatedTodos.some(t => !t.done);
+            
+            // Determine the new done status
+            let newDoneStatus = a.done;
+            if (allTodosDone && !a.done) {
+              newDoneStatus = true;
+              handleCompleteAttempt(attemptId);
+            } else if (anyTodoNotDone && a.done) {
+              newDoneStatus = false;
+              handleMarkInProgress(attemptId);
+            }
+            
+            return {
+              ...a,
+              todos: updatedTodos,
+              done: newDoneStatus,
+            };
+          }
+          return a;
+        })
+      );
+    } catch (error) {
+      console.error('Error toggling todo:', error);
+    }
+  };
+
+  // Handle marking attempt as done
+  const handleCompleteAttempt = async (attemptId) => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+          },
+          body: JSON.stringify({
+            done: true,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        setAttemptsData(prev =>
+          prev.map(a =>
+            a.id === attemptId ? { ...a, done: true } : a
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Error completing attempt:', error);
+    }
+  };
+
+  // Handle marking attempt as in progress
+  const handleMarkInProgress = async (attemptId) => {
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+          },
+          body: JSON.stringify({
+            done: false,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        setAttemptsData(prev =>
+          prev.map(a =>
+            a.id === attemptId ? { ...a, done: false } : a
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Error marking attempt as in progress:', error);
+    }
+  };
+
+  // Handle adding a new todo
+  const handleAddTodo = async (attemptId) => {
+    const text = newTodoText[attemptId]?.trim();
+    if (!text) return;
+
+    try {
+      const newTodo = await createAttemptTodo(projectId, attemptId, text);
+      
+      // Update local state
+      setAttemptsData(prev =>
+        prev.map(a =>
+          a.id === attemptId
+            ? { ...a, todos: [...(a.todos || []), newTodo] }
+            : a
+        )
+      );
+      
+      // Clear input
+      setNewTodoText(prev => ({ ...prev, [attemptId]: '' }));
+    } catch (error) {
+      console.error('Error adding todo:', error);
+    }
+  };
+
+  // Handle marking attempt as done with all todos
+  const handleMarkAsDoneWithTodos = async (attemptId) => {
+    try {
+      const attempt = attemptsData.find(a => a.id === attemptId);
+      if (!attempt) return;
+
+      const todos = attempt.todos || [];
+      const undoneTodos = todos.filter(t => !t.done);
+
+      // Mark all undone todos as done
+      await Promise.all(
+        undoneTodos.map(todo => toggleAttemptTodo(projectId, attemptId, todo.id))
+      );
+
+      // Mark attempt as done
+      await handleCompleteAttempt(attemptId);
+
+      // Update local state
+      setAttemptsData(prev =>
+        prev.map(a =>
+          a.id === attemptId
+            ? {
+                ...a,
+                done: true,
+                todos: a.todos.map(t => ({ ...t, done: true })),
+              }
+            : a
+        )
+      );
+
+      // Close confirmation modal
+      setConfirmDoneAttemptId(null);
+    } catch (error) {
+      console.error('Error marking attempt as done:', error);
+    }
   };
 
   if (loading) {
@@ -312,7 +561,7 @@ export default function CalendarPage() {
                         : 'border-slate-200 bg-slate-50/40'
                   } ${!isCurrentMonth ? 'opacity-40' : ''}`}
                 >
-                  {/* Day Number */}
+                  {/* Day Number & Info Button */}
                   <div className="flex items-center justify-between px-2.5 py-1.5">
                     <div className="flex items-center gap-1.5">
                       <span
@@ -330,23 +579,34 @@ export default function CalendarPage() {
                         </span>
                       )}
                     </div>
+                    {dayAttempts.length > 0 && (
+                      <button
+                        onClick={() => setExpandedDate(isExpanded ? null : dateKey)}
+                        className="p-1.5 rounded-lg bg-blue-100 hover:bg-blue-200 transition text-blue-600 hover:text-blue-700 shadow-sm"
+                        title="View all attempts"
+                      >
+                        <Info size={16} />
+                      </button>
+                    )}
                   </div>
 
                   {/* Attempts Preview */}
                   {dayAttempts.length > 0 && (
                     <div
-                      className="cursor-pointer px-2.5 pb-2"
+                      className="cursor-pointer px-2.5 pb-2 overflow-y-auto max-h-28"
                       onClick={() =>
                         setExpandedDate(isExpanded ? null : dateKey)
                       }
                     >
                       <div className="space-y-1">
-                        {dayAttempts.slice(0, 2).map((attempt) => (
+                        {dayAttempts.map((attempt) => (
                           <div
                             key={attempt.id}
-                            className="group relative flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition hover:shadow-md"
+                            className={`group relative flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition hover:shadow-md ${
+                              attempt.done ? 'opacity-50' : ''
+                            }`}
                             style={{
-                              backgroundColor: attempt.task?.team?.color + '20',
+                              backgroundColor: attempt.task?.team?.color + (attempt.done ? '10' : '20'),
                               borderLeft: `3px solid ${attempt.task?.team?.color || '#64748b'}`,
                             }}
                             onClick={(e) => {
@@ -355,10 +615,9 @@ export default function CalendarPage() {
                             }}
                           >
                             <div className="min-w-0 flex-1 truncate">
-                              <p className="truncate font-semibold text-slate-900">
-                                {attempt.task?.name}
-                              </p>
-                              <p className="truncate text-slate-600">
+                              <p className={`truncate font-semibold ${
+                                attempt.done ? 'text-slate-500 line-through' : 'text-slate-900'
+                              }`}>
                                 {attempt.name || 'Untitled'}
                               </p>
                             </div>
@@ -370,16 +629,6 @@ export default function CalendarPage() {
                             )}
                           </div>
                         ))}
-                        {dayAttempts.length > 2 && (
-                          <button
-                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-100"
-                            onClick={() =>
-                              setExpandedDate(isExpanded ? null : dateKey)
-                            }
-                          >
-                            +{dayAttempts.length - 2} more
-                          </button>
-                        )}
                       </div>
                     </div>
                   )}
@@ -404,118 +653,283 @@ export default function CalendarPage() {
         </section>
 
         {/* Expanded Date View Modal */}
+        {/* Expanded Date Modal */}
         {expandedDate && attemptsByDate[expandedDate] && (
-          <section className="rounded-2xl border border-blue-200 bg-blue-50/50 p-6 shadow-md backdrop-blur-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">
-                  {dayjs(expandedDate).format('dddd, MMMM D, YYYY')}
-                </h2>
-                <p className="mt-1 text-xs text-slate-600">
-                  {attemptsByDate[expandedDate].length} event
-                  {attemptsByDate[expandedDate].length !== 1 ? 's' : ''}
-                </p>
-              </div>
-              <button
-                onClick={() => setExpandedDate(null)}
-                className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-100"
-              >
-                <X size={18} />
-              </button>
-            </div>
+          <>
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40"
+              onClick={() => setExpandedDate(null)}
+            />
+            {/* Modal */}
+            <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+              <section className="rounded-2xl border border-blue-200 bg-white shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+                <div className="sticky top-0 bg-white rounded-t-2xl mb-4 flex items-center justify-between p-6 border-b border-slate-200">
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-900">
+                      {dayjs(expandedDate).format('dddd, MMMM D, YYYY')}
+                    </h2>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {attemptsByDate[expandedDate].length} event
+                      {attemptsByDate[expandedDate].length !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setExpandedDate(null)}
+                    className="rounded-lg border border-slate-200 bg-slate-100 p-2 text-slate-600 transition hover:bg-slate-200"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
 
-            <div className="space-y-3">
+                <div className="space-y-3 px-6 pb-6">
               {attemptsByDate[expandedDate].map((attempt) => {
                 const teamId = attempt.task?.team?.id;
                 const isMemberOfTeam = teamId ? isTeamMember(teamId) : false;
                 const assignedMembers = attempt.task?.assigned_members_data || [];
                 const isAssigned = user ? assignedMembers.some((m) => m.id === user.id) : false;
 
+                const showMembers = showMembersForAttempt === attempt.id;
+                const showTodos = showTodosForAttempt === attempt.id;
+
                 return (
                   <div
                     key={attempt.id}
-                    onClick={() => navigate(`/projects/${projectId}/attempts/${attempt.id}`)}
-                    className="group cursor-pointer rounded-lg border border-slate-200 bg-white p-4 transition hover:border-blue-400 hover:shadow-md"
+                    className="rounded-lg border border-slate-200 bg-white transition hover:border-blue-300 hover:shadow-sm"
                   >
-                    <div className="mb-2 flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="h-3 w-3 flex-shrink-0 rounded-full"
-                            style={{
-                              backgroundColor: attempt.task?.team?.color || '#64748b',
-                            }}
-                          />
-                          <h3 className="truncate text-sm font-semibold text-slate-900">
-                            {attempt.task?.name}
-                          </h3>
+                    {/* Header */}
+                    <div className="p-3">
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-3 w-3 flex-shrink-0 rounded-full"
+                              style={{
+                                backgroundColor: attempt.task?.team?.color || '#64748b',
+                              }}
+                            />
+                            <h3 className="truncate text-sm font-semibold text-slate-900">
+                              {attempt.task?.name}
+                            </h3>
+                          </div>
+                          <p className="mt-0.5 text-xs text-slate-600">
+                            {attempt.name || 'Untitled attempt'}
+                          </p>
                         </div>
-                        <p className="mt-1 truncate text-xs text-slate-600">
-                          {attempt.name || 'Untitled attempt'} • Step {attempt.slot_index}
-                        </p>
+                        <div className="flex flex-shrink-0 items-center gap-2">
+                          {attempt.done ? (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMarkInProgress(attempt.id);
+                              }}
+                              className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-200 transition cursor-pointer"
+                            >
+                              <CheckCircle2 size={12} />
+                              Done
+                            </button>
+                          ) : (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmDoneAttemptId(attempt.id);
+                              }}
+                              className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-200 transition cursor-pointer"
+                            >
+                              <AlertCircle size={12} />
+                              Pending
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex flex-shrink-0 items-center gap-2">
-                        {attempt.done ? (
-                          <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
-                            <CheckCircle2 size={12} />
-                            Done
+
+                      {/* Quick Info */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {assignedMembers.length > 0 && (
+                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                            {assignedMembers.length} member{assignedMembers.length !== 1 ? 's' : ''}
                           </span>
-                        ) : (
-                          <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
-                            <AlertCircle size={12} />
-                            Pending
+                        )}
+                        {isAssigned && (
+                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                            Assigned to you
+                          </span>
+                        )}
+                        {isMemberOfTeam && isAuthenticated && (
+                          <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+                            Your team
+                          </span>
+                        )}
+                        {attempt.task?.priority && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                            P{attempt.task.priority}
+                          </span>
+                        )}
+                        {attempt.task?.difficulty && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                            D{attempt.task.difficulty}
                           </span>
                         )}
                       </div>
                     </div>
 
-                    {/* Badges */}
-                    <div className="flex flex-wrap gap-2">
-                      {isAssigned && (
-                        <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
-                          Assigned to you
-                        </span>
-                      )}
-                      {isMemberOfTeam && isAuthenticated && (
-                        <span className="rounded-full bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">
-                          Your team
-                        </span>
-                      )}
-                      {attempt.task?.priority && (
-                        <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700">
-                          P{attempt.task.priority}
-                        </span>
-                      )}
-                      {attempt.task?.difficulty && (
-                        <span className="rounded-full bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700">
-                          D{attempt.task.difficulty}
-                        </span>
-                      )}
+                    {/* Action Buttons */}
+                    <div className="flex border-t border-slate-200 text-xs">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowMembersForAttempt(showMembers ? null : attempt.id);
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 font-medium text-slate-700 hover:bg-slate-50 transition border-r border-slate-200"
+                      >
+                        {showMembers ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                        {showMembers ? 'Hide' : 'Show'} Members
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowTodosForAttempt(showTodos ? null : attempt.id);
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 font-medium text-slate-700 hover:bg-slate-50 transition border-r border-slate-200"
+                      >
+                        {showTodos ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                        {showTodos ? 'Hide' : 'Show'} Todos
+                      </button>
+                      <button
+                        onClick={() => navigate(`/projects/${projectId}/attempts/${attempt.id}`)}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 font-medium text-blue-700 hover:bg-blue-50 transition"
+                      >
+                        Full Page →
+                      </button>
                     </div>
 
-                    {/* Team Info */}
-                    <div className="mt-3 flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
-                      <div
-                        className="h-2 w-2 rounded-full"
-                        style={{
-                          backgroundColor: attempt.task?.team?.color || '#64748b',
-                        }}
-                      />
-                      <span className="text-xs font-medium text-slate-700">
-                        {attempt.task?.team?.name || 'No team'}
-                      </span>
-                      {attempt.task?.team?.members_data?.length > 0 && (
-                        <span className="ml-auto text-xs text-slate-500">
-                          {attempt.task.team.members_data.length} member
-                          {attempt.task.team.members_data.length !== 1 ? 's' : ''}
-                        </span>
-                      )}
-                    </div>
+                    {/* Members Section */}
+                    {showMembers && (
+                      <div className="border-t border-slate-200 p-3 bg-slate-50/50">
+                        <div className="rounded-lg bg-white border border-slate-200 p-2.5">
+                          <div className="text-xs font-semibold text-slate-700 mb-2">Assigned Members</div>
+                          {assignedMembers.length > 0 ? (
+                            <div className="flex flex-wrap gap-1.5 mb-2.5">
+                              {assignedMembers.map((member) => (
+                                <span 
+                                  key={member.id} 
+                                  className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 flex items-center gap-1 cursor-pointer hover:bg-blue-200 transition"
+                                  title={`Click to remove ${member.username}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveMember(attempt.id, member.id);
+                                  }}
+                                >
+                                  {member.username}
+                                  <span className="text-blue-500">×</span>
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-slate-500 mb-2.5">No members assigned yet</p>
+                          )}
+                          
+                          {/* Add Member Dropdown */}
+                          <select
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleAddMember(attempt.id, parseInt(e.target.value));
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            value=""
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400 transition cursor-pointer"
+                          >
+                            <option value="">+ Add member from project</option>
+                            {projectData?.members_data?.map((member) => {
+                              const isAlreadyAssigned = assignedMembers.some(m => m.id === member.id);
+                              return (
+                                <option 
+                                  key={member.id} 
+                                  value={member.id}
+                                  disabled={isAlreadyAssigned}
+                                >
+                                  {member.username} {isAlreadyAssigned ? '(assigned)' : ''}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Todos Section */}
+                    {showTodos && (
+                      <div className="border-t border-slate-200 p-3 bg-slate-50/50">
+                        <div className="rounded-lg bg-white border border-slate-200 p-2.5">
+                          <div className="text-xs font-semibold text-slate-700 mb-2">
+                            Todos ({attempt.todos?.filter(t => t.done).length || 0}/{attempt.todos?.length || 0})
+                          </div>
+                          {attempt.todos && attempt.todos.length > 0 && (
+                            <div className="space-y-1.5 mb-2.5">
+                              {attempt.todos.map((todo) => (
+                                <div
+                                  key={todo.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleTodo(attempt.id, todo.id);
+                                  }}
+                                  className="flex items-start gap-2 p-1.5 rounded hover:bg-slate-50 cursor-pointer transition group"
+                                >
+                                  {todo.done ? (
+                                    <CheckSquare size={15} className="flex-shrink-0 text-emerald-600 mt-0.5" />
+                                  ) : (
+                                    <Square size={15} className="flex-shrink-0 text-slate-400 group-hover:text-slate-600 mt-0.5" />
+                                  )}
+                                  <span className={`text-xs flex-1 ${
+                                    todo.done ? 'text-slate-500 line-through' : 'text-slate-700'
+                                  }`}>
+                                    {todo.text}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          
+                          {/* Add Todo Input */}
+                          <div className="flex gap-1.5">
+                            <input
+                              type="text"
+                              value={newTodoText[attempt.id] || ''}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                setNewTodoText(prev => ({ ...prev, [attempt.id]: e.target.value }));
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleAddTodo(attempt.id);
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              placeholder="Add a new todo..."
+                              className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 placeholder-slate-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            />
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddTodo(attempt.id);
+                              }}
+                              className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-slate-700 hover:bg-slate-50 transition"
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
+                </div>
+              </section>
             </div>
-          </section>
+          </>
         )}
 
         {/* Empty State */}
@@ -545,7 +959,7 @@ export default function CalendarPage() {
                   <div className="flex items-center gap-2">
                     <Filter size={14} className="text-slate-600" />
                     <h3 className="text-xs font-semibold tracking-[0.12em] text-slate-600 uppercase">
-                      Filter by Team
+                      Filters
                     </h3>
                     {selectedTeamIds.length > 0 && (
                       <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">
@@ -553,7 +967,7 @@ export default function CalendarPage() {
                       </span>
                     )}
                   </div>
-                  {(selectedTeamIds.length > 0 || viewMode !== 'all') && (
+                  {(selectedTeamIds.length > 0 || viewMode !== 'all' || showCompleted) && (
                     <button
                       onClick={clearFilters}
                       className="flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-200"
@@ -562,6 +976,26 @@ export default function CalendarPage() {
                       Clear
                     </button>
                   )}
+                </div>
+
+                {/* Show Completed Toggle */}
+                <div className="mb-4 pb-4 border-b border-slate-200">
+                  <button
+                    onClick={() => setShowCompleted(!showCompleted)}
+                    className={`w-full flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-all text-left ${
+                      showCompleted
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    <CheckCircle2 size={14} className="flex-shrink-0" />
+                    <span className="flex-1">Show Completed Attempts</span>
+                  </button>
+                </div>
+
+                {/* Team Filter */}
+                <div className="mb-2">
+                  <h4 className="text-xs font-semibold text-slate-600 mb-2">Filter by Team</h4>
                 </div>
                 <div className="flex flex-col gap-2">
                   {uniqueTeams.map((team) => {
@@ -607,6 +1041,50 @@ export default function CalendarPage() {
               )}
             </button>
           </div>
+        )}
+
+        {/* Confirmation Modal for Marking as Done */}
+        {confirmDoneAttemptId && (
+          <>
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50"
+              onClick={() => setConfirmDoneAttemptId(null)}
+            />
+            {/* Modal */}
+            <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+              <div className="rounded-xl border border-slate-200 bg-white shadow-2xl max-w-md w-full p-6">
+                <div className="mb-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+                      <AlertCircle size={20} className="text-amber-600" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      Mark as Done?
+                    </h3>
+                  </div>
+                  <p className="text-sm text-slate-600">
+                    This will mark the attempt as complete and automatically check all todos as done.
+                  </p>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setConfirmDoneAttemptId(null)}
+                    className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleMarkAsDoneWithTodos(confirmDoneAttemptId)}
+                    className="flex-1 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                  >
+                    Confirm
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>

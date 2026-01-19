@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Bell, CheckCircle2, Clock, Check } from 'lucide-react';
+import { X, Bell, CheckCircle2, Clock, Check, AlertCircle } from 'lucide-react';
 import { useNotifications } from '../auth/NotificationContext';
 
 export default function NotificationsPanel({ isOpen, onClose }) {
@@ -10,8 +10,21 @@ export default function NotificationsPanel({ isOpen, onClose }) {
     ? notifications.filter(n => !n.read)
     : notifications;
 
+  // Sort notifications: overdue first, then by creation date
+  const sortedNotifications = [...filteredNotifications].sort((a, b) => {
+    if (a.action_type === 'attempt_overdue' && b.action_type !== 'attempt_overdue') return -1;
+    if (a.action_type !== 'attempt_overdue' && b.action_type === 'attempt_overdue') return 1;
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+
   const getNotificationIcon = (actionType) => {
     switch (actionType) {
+      case 'attempt_overdue':
+        return <AlertCircle size={18} className="text-red-600" />;
+      case 'attempt_today':
+        return <AlertCircle size={18} className="text-orange-600" />;
+      case 'attempt_upcoming':
+        return <Clock size={16} className="text-blue-500" />;
       case 'task_assigned':
         return <CheckCircle2 size={16} className="text-blue-500" />;
       case 'task_unassigned':
@@ -26,9 +39,17 @@ export default function NotificationsPanel({ isOpen, onClose }) {
   };
 
   const getNotificationColor = (actionType, read) => {
+    if (actionType === 'attempt_overdue') {
+      return 'bg-red-50 border-l-4 border-red-600';
+    }
+    if (actionType === 'attempt_today') {
+      return 'bg-orange-50 border-l-4 border-orange-600';
+    }
     if (read) return 'bg-slate-50';
     
     switch (actionType) {
+      case 'attempt_upcoming':
+        return 'bg-blue-50 border-l-4 border-blue-400';
       case 'task_assigned':
         return 'bg-blue-50 border-l-4 border-blue-400';
       case 'task_unassigned':
@@ -40,6 +61,16 @@ export default function NotificationsPanel({ isOpen, onClose }) {
       default:
         return 'bg-slate-50';
     }
+  };
+
+  const getTitleColor = (actionType) => {
+    if (actionType === 'attempt_overdue') {
+      return 'text-red-900 font-bold';
+    }
+    if (actionType === 'attempt_today') {
+      return 'text-orange-900 font-bold';
+    }
+    return 'text-slate-900 font-semibold';
   };
 
   const formatTime = (timestamp) => {
@@ -120,9 +151,9 @@ export default function NotificationsPanel({ isOpen, onClose }) {
               <div className="h-8 w-8 border-2 border-slate-200 border-t-slate-900 rounded-full animate-spin" />
               <p className="text-sm text-slate-500 mt-3">Loading...</p>
             </div>
-          ) : filteredNotifications.length > 0 ? (
+          ) : sortedNotifications.length > 0 ? (
             <div className="divide-y divide-slate-200">
-              {filteredNotifications.map((notif) => (
+              {sortedNotifications.map((notif) => (
                 <div
                   key={notif.id}
                   className={`p-4 transition-colors ${getNotificationColor(notif.action_type, notif.read)}`}
@@ -137,7 +168,7 @@ export default function NotificationsPanel({ isOpen, onClose }) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <h3 className="font-semibold text-slate-900 text-sm">
+                          <h3 className={`text-sm ${getTitleColor(notif.action_type)}`}>
                             {notif.title}
                           </h3>
                           <p className="text-sm text-slate-700 mt-1 line-clamp-2">
