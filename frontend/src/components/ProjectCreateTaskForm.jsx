@@ -5,6 +5,7 @@ import TextField from "@mui/material/TextField";
 import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
 import Button from "@mui/material/Button";
+import { UserPlus, X } from "lucide-react";
 import { createTaskForProject } from '../api/org_API.js';
 
 const numbers = [1, 2, 3, 4, 5];
@@ -12,51 +13,63 @@ const numbers = [1, 2, 3, 4, 5];
 export default function ProjectCreateTaskForm({
   projectId,
   teams,
+  projectMembers = [],
   onCreated,
 }) {
   const [name, setName] = useState("");
-  const [priority, setPriority] = useState(0);
-  const [difficulty, setDifficulty] = useState(0);
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState(3);
+  const [difficulty, setDifficulty] = useState(3);
   const [teamId, setTeamId] = useState("");
-  const [approval, setApproval] = useState(false); // falls du das später nutzt
+  const [approval, setApproval] = useState(false);
+  const [selectedMembers, setSelectedMembers] = useState([]);
 
-  const isCreateDisabled =
-    !name.trim() || priority === 0 || difficulty === 0;
+  const isCreateDisabled = !name.trim();
+
+  function toggleMember(memberId) {
+    setSelectedMembers((prev) =>
+      prev.includes(memberId)
+        ? prev.filter((id) => id !== memberId)
+        : [...prev, memberId]
+    );
+  }
 
   async function handleCreate() {
     if (isCreateDisabled) return;
 
     await createTaskForProject(projectId, {
       name,
+      description,
       priority,
       difficulty,
       approval,
       team_id: teamId || null,
-      // wenn du „Events“ im Backend markieren willst:
-      // type: "event",
+      assigned_members: selectedMembers,
     });
 
     if (onCreated) onCreated();
 
     setName("");
-    setPriority(0);
-    setDifficulty(0);
+    setDescription("");
+    setPriority(3);
+    setDifficulty(3);
     setTeamId("");
+    setSelectedMembers([]);
   }
 
   return (
     <div
       className="
-        w-full max-w-md
+        w-full
         rounded-2xl border border-slate-200
         bg-white/80 backdrop-blur-sm
         shadow-sm hover:shadow-md
         transition-shadow duration-150
-        px-4 py-5 sm:px-5
+        px-4 py-5 sm:px-6
       "
     >
-      <div className="flex flex-col gap-3">
-        <h1 className="mb-1 text-lg sm:text-xl font-semibold text-slate-900">
+      <div className="flex flex-col gap-4">
+        <h1 className="mb-2 text-lg sm:text-xl font-semibold text-slate-900">
           Create Project Task
         </h1>
 
@@ -69,6 +82,20 @@ export default function ProjectCreateTaskForm({
           variant="outlined"
           size="small"
           fullWidth
+        />
+
+        {/* Description */}
+        <TextField
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          id="project-task-description"
+          label="Description"
+          variant="outlined"
+          size="small"
+          fullWidth
+          multiline
+          rows={3}
+          placeholder="Add a description for this task..."
         />
 
         {/* Team (nur Teams dieses Projekts) */}
@@ -100,13 +127,12 @@ export default function ProjectCreateTaskForm({
         </div>
 
         {/* Priority & Difficulty */}
-        <div className="flex flex-col sm:flex-row gap-3 mt-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <TextField
             label="Priority"
             select
             size="small"
             value={priority}
-            sx={{ minWidth: 120, flex: 1 }}
             onChange={(e) => setPriority(Number(e.target.value))}
             fullWidth
           >
@@ -122,7 +148,6 @@ export default function ProjectCreateTaskForm({
             select
             size="small"
             value={difficulty}
-            sx={{ minWidth: 120, flex: 1 }}
             onChange={(e) => setDifficulty(Number(e.target.value))}
             fullWidth
           >
@@ -133,10 +158,42 @@ export default function ProjectCreateTaskForm({
             ))}
           </TextField>
         </div>
+
+        {/* Assign Members */}
+        {projectMembers.length > 0 && (
+          <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+            <span className="text-xs font-semibold text-blue-700 uppercase tracking-wider">
+              Assign Members (Optional)
+            </span>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {projectMembers.map((member) => {
+                const isSelected = selectedMembers.includes(member.id);
+                return (
+                  <button
+                    key={member.id}
+                    onClick={() => toggleMember(member.id)}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                      isSelected
+                        ? 'border-blue-600 bg-blue-600 text-white'
+                        : 'border-blue-300 bg-white text-blue-700 hover:bg-blue-100'
+                    }`}
+                  >
+                    {isSelected ? (
+                      <X size={14} />
+                    ) : (
+                      <UserPlus size={14} />
+                    )}
+                    <span>{member.username}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Footer / Button */}
-      <div className="mt-4 flex justify-end">
+      <div className="mt-6 flex justify-end">
         <Button
           onClick={handleCreate}
           variant="contained"

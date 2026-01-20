@@ -50,6 +50,7 @@ export default function ProjectTaskDetail() {
   // Edit mode
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
   const [editTeamId, setEditTeamId] = useState(null);
   const [editPriority, setEditPriority] = useState(0);
   const [editDifficulty, setEditDifficulty] = useState(0);
@@ -83,6 +84,7 @@ export default function ProjectTaskDetail() {
       setTeams(teamsData);
       setProjectMembers(projectData.members_data || []);
       setEditName(taskData.name || '');
+      setEditDescription(taskData.description || '');
       setEditTeamId(taskData.team?.id || null);
       setEditPriority(taskData.priority || 0);
       setEditDifficulty(taskData.difficulty || 0);
@@ -106,6 +108,7 @@ export default function ProjectTaskDetail() {
 
       const updated = await updateTask(projectId, taskId, {
         name: editName.trim(),
+        description: editDescription.trim(),
         team_id: editTeamId,
         priority: editPriority,
         difficulty: editDifficulty,
@@ -127,6 +130,7 @@ export default function ProjectTaskDetail() {
 
   function handleCancelEdit() {
     setEditName(task?.name || '');
+    setEditDescription(task?.description || '');
     setEditTeamId(task?.team?.id || null);
     setEditPriority(task?.priority || 0);
     setEditDifficulty(task?.difficulty || 0);
@@ -321,6 +325,17 @@ export default function ProjectTaskDetail() {
                   fullWidth
                 />
 
+                <TextField
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  label="Description"
+                  size="small"
+                  fullWidth
+                  multiline
+                  rows={3}
+                  placeholder="Add a description for this task..."
+                />
+
                 <FormControl fullWidth size="small">
                   <InputLabel>Assign Team</InputLabel>
                   <Select
@@ -433,6 +448,22 @@ export default function ProjectTaskDetail() {
 
               {/* Task ID */}
               <div className="font-mono text-xs text-slate-500">ID: {task?.id}</div>
+            </div>
+          )}
+
+          {/* Task Description Section */}
+          {!isEditing && (
+            <div className="mt-6 rounded-lg border border-slate-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Description</span>
+              </div>
+              {task?.description ? (
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                  {task.description}
+                </p>
+              ) : (
+                <p className="italic text-slate-500">No description provided</p>
+              )}
             </div>
           )}
 

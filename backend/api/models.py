@@ -51,6 +51,7 @@ class Team(models.Model):
 
 class Task(models.Model):
     name = models.CharField(max_length=200, blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
     difficulty = models.CharField(max_length=200, blank=True, null=True)
     priority = models.CharField(max_length=200, blank=True, null=True)
     asking = models.CharField(max_length=200, blank=True, null=True)

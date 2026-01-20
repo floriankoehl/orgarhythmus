@@ -222,6 +222,7 @@ class TaskSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
+            "description",
             "difficulty",
             "priority",
             "asking",
@@ -272,6 +273,7 @@ class TaskSerializer_TeamView(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
+            "description",
             "difficulty",
             "priority",
             "asking",
@@ -294,6 +296,7 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'name',
+            'description',
             'priority',
             'difficulty',
             'team',
@@ -856,8 +859,10 @@ def project_tasks(request, project_id):
 
         priority = payload.get("priority") or 0
         difficulty = payload.get("difficulty") or 0
+        description = (payload.get("description") or "").strip()
         approval = bool(payload.get("approval", False))
         team_id = payload.get("team_id")
+        assigned_member_ids = payload.get("assigned_members", [])
 
         team = None
         if team_id:
@@ -873,10 +878,27 @@ def project_tasks(request, project_id):
             project=project,
             team=team,
             name=name,
+            description=description,
             priority=priority,
             difficulty=difficulty,
             asking=approval,
         )
+
+        # Assign members to the task if provided
+        if assigned_member_ids and isinstance(assigned_member_ids, list):
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            users = []
+            for user_id in assigned_member_ids:
+                try:
+                    member = User.objects.get(id=user_id)
+                    if user_has_project_access(member, project):
+                        users.append(member)
+                except User.DoesNotExist:
+                    pass
+            
+            if users:
+                task.assigned_members.set(users)
 
         serializer = TaskSerializer_TeamView(task)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -944,6 +966,9 @@ def task_detail_view(request, project_id, task_id):
         
         if "difficulty" in data:
             task.difficulty = data["difficulty"]
+        
+        if "description" in data:
+            task.description = data["description"].strip() if data["description"] else ""
         
         if "assigned_members" in data:
             # Update assigned members

@@ -5,7 +5,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Button from '@mui/material/Button';
 import { Plus, Filter, X } from 'lucide-react';
 
-import { fetchTasksForProject, fetchTeamsForProject } from '../api/org_API.js';
+import { fetchTasksForProject, fetchTeamsForProject, fetch_project_detail } from '../api/org_API.js';
 import SMTaskCard from '../components/TaskCardSM';
 import ProjectCreateTaskForm from '../components/ProjectCreateTaskForm';
 
@@ -59,6 +59,7 @@ export default function ProjectTasks() {
 
   const [tasks, setTasks] = useState([]);
   const [teams, setTeams] = useState([]);
+  const [projectMembers, setProjectMembers] = useState([]);
   const [showCreatePanel, setShowCreatePanel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedTeamIds, setSelectedTeamIds] = useState([]);
@@ -68,13 +69,15 @@ export default function ProjectTasks() {
 
     setLoading(true);
     try {
-      const [taskData, teamData] = await Promise.all([
+      const [taskData, teamData, projectData] = await Promise.all([
         fetchTasksForProject(projectId),
         fetchTeamsForProject(projectId),
+        fetch_project_detail(projectId),
       ]);
 
       setTasks(taskData || []);
       setTeams(teamData || []);
+      setProjectMembers(projectData.members_data || []);
     } catch (err) {
       console.error('Failed to load project tasks/teams:', err);
     } finally {
@@ -191,6 +194,7 @@ export default function ProjectTasks() {
                 <ProjectCreateTaskForm
                   projectId={projectId}
                   teams={teams}
+                  projectMembers={projectMembers}
                   onCreated={handleTaskCreated}
                 />
               </div>
