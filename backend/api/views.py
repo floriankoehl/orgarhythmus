@@ -1334,6 +1334,13 @@ def create_attempt_view(request, project_id):
         description=description,
     )
     
+    # Automatically create a "complete task" todo for the attempt
+    AttemptTodo.objects.create(
+        attempt=attempt,
+        text="complete task",
+        done=False,
+    )
+    
     return Response(
         {
             "id": attempt.id,
@@ -1342,7 +1349,13 @@ def create_attempt_view(request, project_id):
             "number": attempt.number,
             "slot_index": attempt.slot_index,
             "done": attempt.done,
-            "todos": [],
+            "todos": [
+                {
+                    "id": attempt.todos.first().id,
+                    "text": "complete task",
+                    "done": False,
+                }
+            ],
         },
         status=status.HTTP_201_CREATED,
     )

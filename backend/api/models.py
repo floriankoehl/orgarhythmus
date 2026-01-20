@@ -69,7 +69,13 @@ class Task(models.Model):
         if is_new:
             for i in range(3):
                 name = f"{self.name}_{i}"
-                Attempt.objects.create(task=self, name=name, number=i+1, slot_index=i)
+                attempt = Attempt.objects.create(task=self, name=name, number=i+1, slot_index=i)
+                # Automatically create a "complete task" todo for each attempt
+                AttemptTodo.objects.create(
+                    attempt=attempt,
+                    text="complete task",
+                    done=False,
+                )
 
 
 
