@@ -2465,7 +2465,7 @@ export default function OrgAttempts() {
                                         text-sm font-medium 
                                         hover:bg-red-600 
                                         shadow-sm">
-                            Delete selected dependency
+                            Delete selected dependency//
                         </button>
                     </div>
                 )} */}
