@@ -66,6 +66,65 @@ urlpatterns = [
 
 
 
+
+
+
+    # Categories and Ideas
+    path("get_all_categories/", views.get_all_categories),
+    path("create_category/", views.create_category),
+    path("bring_to_front_category/", views.bring_to_front_category),
+    path("delete_category/", views.delete_category),
+    path("set_position_category/", views.set_position_category),
+    path("set_area_category/", views.set_area_category),
+
+    path("get_all_ideas/", views.get_all_ideas),
+    path("create_idea/", views.create_idea),
+    path("delete_idea/", views.delete_idea),
+    path("safe_order/", views.safe_order),
+    path("assign_idea_to_category/", views.assign_idea_to_category),
+    path("rename_category/", views.rename_category),
+    path("update_idea_title/", views.update_idea_title),
+    path("update_idea_headline/", views.update_idea_headline),
+    path("toggle_archive_category/", views.toggle_archive_category),
+
+    # Legend Types
+    path("get_all_legend_types/", views.get_all_legend_types),
+    path("create_legend_type/", views.create_legend_type),
+    path("update_legend_type/", views.update_legend_type),
+    path("delete_legend_type/", views.delete_legend_type),
+    path("assign_idea_legend_type/", views.assign_idea_legend_type),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     #AUTHENTICATION
     path('auth/me/', views.get_current_user),  # Nur für eingeloggte User
     path('auth/check/', views.check_auth),

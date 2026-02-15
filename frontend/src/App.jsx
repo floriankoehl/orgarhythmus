@@ -23,6 +23,7 @@ import ProjectTeamDetail from './pages/ProjectTeamDetail.jsx';
 import ProjectTaskDetail from './pages/ProjectTaskDetail.jsx';
 import Calender from './pages/Calender.jsx';
 import AttemptDetail from './pages/AttemptDetail.jsx';
+import IdeaFactory from './pages/IdeaFactory';
 
 
 
@@ -45,6 +46,7 @@ const router = createBrowserRouter([
             element: <ProjectMain />,
             loader: project_loader,
           },
+          { path: 'ideas', element: <IdeaFactory /> },
           { path: 'teams', element: <ProjectTeams /> },
           { path: 'teams/:teamId', element: <ProjectTeamDetail /> },
           { path: 'tasks', element: <ProjectTasks /> },

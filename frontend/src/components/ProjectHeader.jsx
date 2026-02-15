@@ -13,6 +13,7 @@ import { PanelsTopLeft, Bell } from 'lucide-react';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import NotificationsPanel from './NotificationsPanel';
 import DemoDateDisplay from './DemoDateDisplay';
+import ModelTrainingIcon from '@mui/icons-material/ModelTraining';
 
 export default function ProjectHeader({}) {
   // Controls whether the mobile menu is open or closed
@@ -30,6 +31,12 @@ export default function ProjectHeader({}) {
       label: 'Project',
       icon: <PanelsTopLeft size={16} color="white" />,
       end: true,
+    },
+    {
+      key: 'project-ideas',
+      to: projectId ? `/projects/${projectId}/ideas` : '/projects',
+      label: 'Ideas',
+      icon: <ModelTrainingIcon className="!h-[17px] text-white" />,
     },
     {
       key: 'project-teams',
@@ -83,7 +90,7 @@ export default function ProjectHeader({}) {
             <PlayCircleIcon />
           </span>
 
-          <div className="flex flex-col leading-tight">
+          {/* <div className="flex flex-col leading-tight">
             <span className="text-sm font-semibold tracking-[0.15em] text-cyan-300 uppercase">
               Orgarhythmus
             </span>
@@ -92,7 +99,7 @@ export default function ProjectHeader({}) {
                 Project <span className="ml-1 font-semibold">#{projectId}</span>
               </div>
             )}
-          </div>
+          </div> */}
 
           {/* NEW: small project badge if we are inside a project */}
         </NavLink>
