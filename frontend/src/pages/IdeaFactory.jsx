@@ -523,11 +523,16 @@ export default function IdeaFactory() {
   };
 
   const create_idea = async () => {
-    if (!ideaName.trim()) return;
+    // Allow creating with just headline, just idea text, or both
+    if (!ideaName.trim() && !ideaHeadline.trim()) return;
     await authFetchIdea(`${API}/create_idea/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idea_name: ideaName, description: "", headline: ideaHeadline }),
+      body: JSON.stringify({ 
+        idea_name: ideaName.trim() || ideaHeadline.trim(), 
+        description: "", 
+        headline: ideaHeadline 
+      }),
     });
     setIdeaName("");
     setIdeaHeadline("");
@@ -951,12 +956,28 @@ export default function IdeaFactory() {
                     [ideaId]: !prev[ideaId],
                   }));
                 }}
-                className="cursor-pointer flex-shrink-0 text-sm mt-0"
-                style={{ color: legendType ? legendType.color : "#374151" }}
+                className="cursor-pointer flex-shrink-0"
+                style={{ 
+                  color: legendType ? legendType.color : "#374151",
+                  width: 0,
+                  height: 0,
+                  display: 'inline-block',
+                  borderStyle: 'solid',
+                  marginTop: '4px',
+                  ...(isIdeaCollapsed
+                    ? {
+                        // Right-pointing triangle
+                        borderWidth: '6px 0 6px 10px',
+                        borderColor: `transparent transparent transparent ${legendType ? legendType.color : "#374151"}`,
+                      }
+                    : {
+                        // Down-pointing triangle
+                        borderWidth: '10px 6px 0 6px',
+                        borderColor: `${legendType ? legendType.color : "#374151"} transparent transparent transparent`,
+                      }),
+                }}
                 title={`${isIdeaCollapsed ? "Expand" : "Collapse"} - ${legendType ? legendType.name : "Unassigned"}`}
-              >
-                {isIdeaCollapsed ? '▶' : '▼'}
-              </span>
+              />
               <div className="break-words whitespace-pre-wrap">
                 {isIdeaCollapsed ? (
                   getDisplayText()
@@ -1064,6 +1085,27 @@ export default function IdeaFactory() {
                     setIdeaHeadline(e.target.value);
                   }
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (editingIdeaId) {
+                      update_idea_title_api(
+                        editingIdeaId, 
+                        editingIdeaTitle || editingIdeaHeadline, 
+                        editingIdeaHeadline
+                      );
+                      setEditingIdeaId(null);
+                      setEditingIdeaTitle("");
+                      setEditingIdeaHeadline("");
+                    } else {
+                      create_idea();
+                    }
+                  } else if (e.key === "Escape" && editingIdeaId) {
+                    setEditingIdeaId(null);
+                    setEditingIdeaTitle("");
+                    setEditingIdeaHeadline("");
+                  }
+                }}
                 id="idea-headline"
                 label="Headline (optional)"
                 variant="outlined"
@@ -1133,7 +1175,7 @@ export default function IdeaFactory() {
                     </button>
                   </>
                 ) : (
-                  ideaName.trim() && (
+                  (ideaName.trim() || ideaHeadline.trim()) && (
                     <button
                       onClick={create_idea}
                       className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
@@ -1417,9 +1459,10 @@ export default function IdeaFactory() {
                           titleAccess="Restore"
                         />
                         <DeleteForeverIcon
-                          onClick={() =>
+                          onClick={(e) => {
+                            e.stopPropagation();
                             confirm_delete_category(cat.id, cat.name)
-                          }
+                          }}
                           className="hover:text-red-500! cursor-pointer"
                           style={{ fontSize: 18 }}
                         />
@@ -1552,7 +1595,6 @@ export default function IdeaFactory() {
                       <span
                         onClick={(e) => {
                           e.stopPropagation();
-                          // Toggle all ideas in this category
                           const catIdeasList = categoryOrders[category_key] || [];
                           const allCollapsed = catIdeasList.every((id) => collapsedIdeas[id]);
                           const newState = {};
@@ -1565,7 +1607,15 @@ export default function IdeaFactory() {
                         className="text-xs text-amber-700 hover:text-amber-900 cursor-pointer px-1"
                         title={(categoryOrders[category_key] || []).every((id) => collapsedIdeas[id]) ? "Expand all ideas" : "Collapse all ideas"}
                       >
-                        {(categoryOrders[category_key] || []).every((id) => collapsedIdeas[id]) ? '▼' : '▲'}
+                        <span style={{
+                          display: 'inline-block',
+                          width: 0,
+                          height: 0,
+                          borderStyle: 'solid',
+                          ...((categoryOrders[category_key] || []).every((id) => collapsedIdeas[id])
+                            ? { borderWidth: '6px 4px 0 4px', borderColor: 'currentColor transparent transparent transparent' }
+                            : { borderWidth: '0 4px 6px 4px', borderColor: 'transparent transparent currentColor transparent' }),
+                        }} />
                       </span>
                       {/* Type filter button */}
                       <span

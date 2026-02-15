@@ -1111,7 +1111,7 @@ def add_attempt_dependency(request):
     # ✅ use the correct model: AttemptDependency
     vortakt_dependency, created = AttemptDependency.objects.get_or_create(
         vortakt_attempt=vortakt_attempt,
-        nachtakt_attempt=nachakt_attempt
+        nachtakt_attempt=nachtakt_attempt
     )
 
     print("Attempt Dependency added", vortakt_dependency)
@@ -1755,16 +1755,20 @@ def create_category(request, project_id):
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
-    input_name = request.data.get("name")
-    if not input_name: 
-        return Response({"error": "Name is required"}, status=400)
+    name = request.data.get("name", "New Category").strip()
+    max_z = Category.objects.filter(project=project).aggregate(models.Max('z_index'))['z_index__max']
+    next_z = (max_z + 1) if max_z is not None else 0
 
-    category, created = Category.objects.get_or_create(project=project, name=input_name)
-    category_serialized = CategorySerializer(category).data
-    if created: 
-        return Response({"status": "created", "category": category_serialized}, status=201)
-    else: 
-        return Response({"status": "category already existed", "category": category_serialized}, status=200)
+    category = Category.objects.create(
+        project=project,
+        name=name,
+        x=50,
+        y=50,
+        width=max(250, len(name) * 9 + 80),
+        height=200,
+        z_index=next_z,
+    )
+    return Response({"created": True, "category": CategorySerializer(category).data})
 
 
 # set_position_category
