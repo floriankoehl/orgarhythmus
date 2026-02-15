@@ -1104,7 +1104,7 @@ def add_attempt_dependency(request):
 
     try:
         vortakt_attempt = Attempt.objects.get(id=vortakt_attempt_id)
-        nachakt_attempt = Attempt.objects.get(id=nachtakt_attempt_id)
+        nachtakt_attempt = Attempt.objects.get(id=nachtakt_attempt_id)
     except Attempt.DoesNotExist:
         return JsonResponse({"error": "One of the attempts does not exist"}, status=404)
 
@@ -1119,7 +1119,7 @@ def add_attempt_dependency(request):
     return JsonResponse({
         "id": vortakt_dependency.id,
         "vortakt": vortakt_attempt.id,
-        "nachtakt": nachakt_attempt.id,
+        "nachtakt": nachtakt_attempt.id,
         "status": "success" if created else "already_exists",
         "created": created,
     })
