@@ -59,7 +59,7 @@ INSTALLED_APPS = [
     'api',
 ]
 
-
+# test
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
@@ -102,7 +102,7 @@ DATABASES = {
 }
 
 
-# 
+# '
 
 
 # Password validation
