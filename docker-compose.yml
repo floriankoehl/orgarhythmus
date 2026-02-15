@@ -8,6 +8,8 @@ services:
       - .env
     environment:
       - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend,orgarhythmus.org,www.orgarhythmus.org,api.orgarhythmus.org
+    volumes:
+      - db-data:/app/db    # persist SQLite database
     command: >
       sh -c "python manage.py migrate &&
              gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120"
@@ -18,4 +20,7 @@ services:
     ports:
       - "8081:80"     # host:container (Cloudflare -> localhost:8081)
     depends_on:
-      - backend #
+      - backend
+
+volumes:
+  db-data:

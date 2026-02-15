@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # STEP 6: Copy your whole backend project into the container
 COPY . .
 
+# STEP 6b: Ensure the db directory exists for the mounted volume
+RUN mkdir -p /app/db
+
 # STEP 7: Tell Docker which port Django will run on
 EXPOSE 8000
 
