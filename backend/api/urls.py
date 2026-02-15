@@ -69,30 +69,9 @@ urlpatterns = [
 
 
 
-    # Categories and Ideas
-    path("get_all_categories/", views.get_all_categories),
-    path("create_category/", views.create_category),
-    path("bring_to_front_category/", views.bring_to_front_category),
-    path("delete_category/", views.delete_category),
-    path("set_position_category/", views.set_position_category),
-    path("set_area_category/", views.set_area_category),
 
-    path("get_all_ideas/", views.get_all_ideas),
-    path("create_idea/", views.create_idea),
-    path("delete_idea/", views.delete_idea),
-    path("safe_order/", views.safe_order),
-    path("assign_idea_to_category/", views.assign_idea_to_category),
-    path("rename_category/", views.rename_category),
-    path("update_idea_title/", views.update_idea_title),
-    path("update_idea_headline/", views.update_idea_headline),
-    path("toggle_archive_category/", views.toggle_archive_category),
 
-    # Legend Types
-    path("get_all_legend_types/", views.get_all_legend_types),
-    path("create_legend_type/", views.create_legend_type),
-    path("update_legend_type/", views.update_legend_type),
-    path("delete_legend_type/", views.delete_legend_type),
-    path("assign_idea_legend_type/", views.assign_idea_legend_type),
+
 
 
 
@@ -133,12 +112,37 @@ urlpatterns = [
     path('auth/register/', views.register_user, name='register_user'),
     path('users/<int:user_id>/', views.display_single_user),
 
-    # Other Website stuff
-    path('echo/<str:text>/', views.echo_view),
-    path('comments/write/', views.write_comment),
-    path('comments/all_comments/', views.all_comments),
-    path('company/network_connection/<int:comp_id>/', views.network_connection),
-    path('skills/dummy_data/', views.dummy_data),
+    # # Other Website stuff
+    # path('echo/<str:text>/', views.echo_view),
+    # path('comments/write/', views.write_comment),
+    # path('comments/all_comments/', views.all_comments),
+    # path('company/network_connection/<int:comp_id>/', views.network_connection),
+    # path('skills/dummy_data/', views.dummy_data),
+
+    # Categories and Ideas (project-scoped only)
+    path("projects/<int:project_id>/get_all_categories/", views.get_all_categories),
+    path("projects/<int:project_id>/create_category/", views.create_category),
+    path("projects/<int:project_id>/bring_to_front_category/", views.bring_to_front_category),
+    path("projects/<int:project_id>/delete_category/", views.delete_category),
+    path("projects/<int:project_id>/set_position_category/", views.set_position_category),
+    path("projects/<int:project_id>/set_area_category/", views.set_area_category),
+
+    path("projects/<int:project_id>/get_all_ideas/", views.get_all_ideas),
+    path("projects/<int:project_id>/create_idea/", views.create_idea),
+    path("projects/<int:project_id>/delete_idea/", views.delete_idea),
+    path("projects/<int:project_id>/safe_order/", views.safe_order),
+    path("projects/<int:project_id>/assign_idea_to_category/", views.assign_idea_to_category),
+    path("projects/<int:project_id>/rename_category/", views.rename_category),
+    path("projects/<int:project_id>/update_idea_title/", views.update_idea_title),
+    path("projects/<int:project_id>/update_idea_headline/", views.update_idea_headline),
+    path("projects/<int:project_id>/toggle_archive_category/", views.toggle_archive_category),
+
+    # Legend Types (project-scoped)
+    path("projects/<int:project_id>/get_all_legend_types/", views.get_all_legend_types),
+    path("projects/<int:project_id>/create_legend_type/", views.create_legend_type),
+    path("projects/<int:project_id>/update_legend_type/", views.update_legend_type),
+    path("projects/<int:project_id>/delete_legend_type/", views.delete_legend_type),
+    path("projects/<int:project_id>/assign_idea_legend_type/", views.assign_idea_legend_type),
 
 #
 ]

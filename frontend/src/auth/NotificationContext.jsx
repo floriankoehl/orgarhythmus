@@ -1,104 +1,114 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
-import { fetchUserNotifications, markNotificationAsRead, deleteNotification } from '../api/org_API.js';
+import { BASE_URL } from '../config/api';
 
 const NotificationContext = createContext();
 
 export function useNotifications() {
-  const context = useContext(NotificationContext);
-  if (!context) {
-    throw new Error('useNotifications must be used within NotificationProvider');
-  }
-  return context;
+  return useContext(NotificationContext);
 }
 
 export function NotificationProvider({ children }) {
-  const { user, isAuthenticated } = useAuth();
   const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loadingNotifications, setLoadingNotifications] = useState(false);
-  const [error, setError] = useState(null);
-  const [lastChecked, setLastChecked] = useState(null);
+  const [loadingNotifications, setLoadingNotifications] = useState(true); // ADD THIS
+  const { isAuthenticated } = useAuth();
 
-  // Fetch notifications
-  const loadNotifications = useCallback(async () => {
-    if (!isAuthenticated || !user) return;
-
-    try {
-      setLoadingNotifications(true);
-      const data = await fetchUserNotifications();
-      setNotifications(data || []);
-      const unread = (data || []).filter(n => !n.read).length;
-      setUnreadCount(unread);
-      setLastChecked(new Date());
-      setError(null);
-    } catch (err) {
-      console.error('Failed to load notifications:', err);
-      setError(err.message);
-    } finally {
-      setLoadingNotifications(false);
-    }
-  }, [isAuthenticated, user]);
-
-  // Load notifications on mount and when user changes
-  useEffect(() => {
-    loadNotifications();
-  }, [isAuthenticated, user]);
-
-  // Poll for new notifications every 30 seconds
-  useEffect(() => {
+  const fetchNotifications = useCallback(async () => {
     if (!isAuthenticated) return;
 
-    const interval = setInterval(() => {
-      loadNotifications();
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [isAuthenticated, loadNotifications]);
-
-  // Mark notification as read
-  const handleMarkAsRead = useCallback(async (notificationId) => {
+    setLoadingNotifications(true); // ADD THIS
     try {
-      await markNotificationAsRead(notificationId);
-      setNotifications(prev =>
-        prev.map(n =>
-          n.id === notificationId ? { ...n, read: true } : n
-        )
+      const token = localStorage.getItem('access_token');
+      if (!token) return;
+
+      const res = await fetch(
+        `${BASE_URL}/api/notifications/`,
+        { headers: { Authorization: `Bearer ${token}` } }
       );
-      setUnreadCount(prev => Math.max(0, prev - 1));
+
+      if (!res.ok) throw new Error('Failed to load notifications');
+
+      const data = await res.json();
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data.notifications)
+          ? data.notifications
+          : Array.isArray(data.results)
+            ? data.results
+            : [];
+      setNotifications(list);
+    } catch (err) {
+      console.error('Failed to load notifications:', err);
+      setNotifications([]);
+    } finally {
+      setLoadingNotifications(false); // ADD THIS
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    fetchNotifications();
+    // Poll every 30 seconds
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
+  const unreadCount = Array.isArray(notifications)
+    ? notifications.filter((n) => !n.read).length
+    : 0;
+
+  const markAsRead = async (notificationId) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      await fetch(
+        `${BASE_URL}/api/notifications/${notificationId}/read/`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
+      );
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+      );
     } catch (err) {
       console.error('Failed to mark notification as read:', err);
     }
-  }, []);
+  };
 
-  // Delete notification
-  const handleDeleteNotification = useCallback(async (notificationId) => {
+  const markAllAsRead = async () => {
     try {
-      await deleteNotification(notificationId);
-      setNotifications(prev => prev.filter(n => n.id !== notificationId));
-      // Update unread count if the deleted notification was unread
-      const deletedNotif = notifications.find(n => n.id === notificationId);
-      if (deletedNotif && !deletedNotif.read) {
-        setUnreadCount(prev => Math.max(0, prev - 1));
-      }
+      const token = localStorage.getItem('access_token');
+      await fetch(
+        `${BASE_URL}/api/notifications/read-all/`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
+      );
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    } catch (err) {
+      console.error('Failed to mark all as read:', err);
+    }
+  };
+
+  const deleteNotification = async (notificationId) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      await fetch(
+        `${BASE_URL}/api/notifications/${notificationId}/delete/`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
+      );
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
     } catch (err) {
       console.error('Failed to delete notification:', err);
     }
-  }, [notifications]);
-
-  const value = {
-    notifications,
-    unreadCount,
-    loadingNotifications,
-    error,
-    lastChecked,
-    loadNotifications,
-    markAsRead: handleMarkAsRead,
-    deleteNotification: handleDeleteNotification,
   };
 
   return (
-    <NotificationContext.Provider value={value}>
+    <NotificationContext.Provider
+      value={{
+        notifications,
+        loadingNotifications, // ADD THIS
+        unreadCount,
+        fetchNotifications,
+        markAsRead,
+        markAllAsRead,
+        deleteNotification,
+      }}
+    >
       {children}
     </NotificationContext.Provider>
   );

@@ -3,7 +3,16 @@ import { X, Bell, CheckCircle2, Clock, Check, AlertCircle } from 'lucide-react';
 import { useNotifications } from '../auth/NotificationContext';
 
 export default function NotificationsPanel({ isOpen, onClose }) {
-  const { notifications, loadingNotifications, markAsRead } = useNotifications();
+  const {
+    notifications: rawNotifications,
+    loadingNotifications = false, // ADD default value as safety
+    markAsRead,
+    markAllAsRead,
+    deleteNotification,
+  } = useNotifications();
+  
+  // Ensure notifications is always an array
+  const notifications = Array.isArray(rawNotifications) ? rawNotifications : [];
   const [filter, setFilter] = useState('unread'); // 'all', 'unread' - default to unread
 
   const filteredNotifications = filter === 'unread'

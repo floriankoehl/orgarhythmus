@@ -1607,20 +1607,117 @@ class IdeaSerializer(serializers.ModelSerializer):
         fields = ["id", "title", "headline", "description", "category", "order_index", "legend_type_id"]
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_idea(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    title = request.data.get("idea_name", "").strip()
+    description = request.data.get("description", "")
+    headline = request.data.get("headline", "").strip()
+    if not title:
+        return Response({"error": "Title is required"}, status=400)
+
+    from django.db.models import Max
+    max_order = Idea.objects.filter(project=project).aggregate(Max('order_index'))['order_index__max']
+    next_order = (max_order + 1) if max_order is not None else 0
+
+    idea = Idea.objects.create(
+        project=project,
+        title=title,
+        description=description,
+        headline=headline,
+        order_index=next_order,
+    )
+    return Response({"created": True, "idea": IdeaSerializer(idea).data})
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_idea(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    idea_id = request.data.get("id")
+    Idea.objects.filter(id=idea_id, project=project).delete()
+    return Response({"deleted": True})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def safe_order(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    new_order = request.data.get("order", [])
+    category_id = request.data.get("category_id")  # None for unassigned list
+
+    for index, idea_id in enumerate(new_order):
+        updates = {"order_index": index}
+        if category_id is not None:
+            # ensure category is in this project
+            if not Category.objects.filter(id=category_id, project=project).exists():
+                return Response({"error": "Category not in project"}, status=400)
+            updates["category_id"] = category_id
+        else:
+            updates["category"] = None
+        Idea.objects.filter(id=idea_id, project=project).update(**updates)
+    return Response({"successful": True})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def assign_idea_to_category(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    idea_id = request.data.get("idea_id")
+    category_id = request.data.get("category_id")  # None to unassign
+
+    idea = get_object_or_404(Idea, id=idea_id, project=project)
+
+    if category_id is not None:
+        category = get_object_or_404(Category, id=category_id, project=project)
+        idea.category = category
+        max_order = Idea.objects.filter(project=project, category=category).aggregate(
+            db_models.Max('order_index')
+        )['order_index__max']
+        idea.order_index = (max_order + 1) if max_order is not None else 0
+    else:
+        idea.category = None
+        max_order = Idea.objects.filter(project=project, category__isnull=True).aggregate(
+            db_models.Max('order_index')
+        )['order_index__max']
+        idea.order_index = (max_order + 1) if max_order is not None else 0
+    idea.save()
+    return Response({"updated": True})
+
+
+# get_all_ideas
 @api_view(["GET"])
-def get_all_ideas(request):
-    all_ideas = Idea.objects.all()
+@permission_classes([IsAuthenticated])
+def get_all_ideas(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    all_ideas = Idea.objects.filter(project=project)
     all_ideas_serialized = IdeaSerializer(all_ideas, many=True).data
-    # Build order arrays per category (None = unassigned)
+
     unassigned_order = list(
-        Idea.objects.filter(category__isnull=True)
+        Idea.objects.filter(project=project, category__isnull=True)
         .order_by('order_index')
         .values_list('id', flat=True)
     )
     category_orders = {}
-    for cat in Category.objects.all():
+    for cat in Category.objects.filter(project=project):
         category_orders[cat.id] = list(
-            Idea.objects.filter(category=cat)
+            Idea.objects.filter(project=project, category=cat)
             .order_by('order_index')
             .values_list('id', flat=True)
         )
@@ -1631,86 +1728,38 @@ def get_all_ideas(request):
     })
 
 
-@api_view(["POST"])
-def create_idea(request):
-    title = request.data.get("idea_name", "").strip()
-    description = request.data.get("description", "")
-    headline = request.data.get("headline", "").strip()
-    if not title:
-        return Response({"error": "Title is required"}, status=400)
-    from django.db.models import Max
-    max_order = Idea.objects.aggregate(Max('order_index'))['order_index__max']
-    next_order = (max_order + 1) if max_order is not None else 0
-    idea = Idea.objects.create(title=title, description=description, headline=headline, order_index=next_order)
-    return Response({"created": True, "idea": IdeaSerializer(idea).data})
-
-
-@api_view(["DELETE"])
-def delete_idea(request):
-    idea_id = request.data.get("id")
-    Idea.objects.filter(id=idea_id).delete()
-    return Response({"deleted": True})
-
-
-@api_view(["POST"])
-def safe_order(request):
-    new_order = request.data.get("order", [])
-    category_id = request.data.get("category_id")  # None for unassigned list
-    for index, idea_id in enumerate(new_order):
-        updates = {"order_index": index}
-        if category_id is not None:
-            updates["category_id"] = category_id
-        else:
-            updates["category"] = None
-        Idea.objects.filter(id=idea_id).update(**updates)
-    return Response({"successful": True})
-
-
-@api_view(["POST"])
-def assign_idea_to_category(request):
-    idea_id = request.data.get("idea_id")
-    category_id = request.data.get("category_id")  # None to unassign
-    idea = Idea.objects.get(id=idea_id)
-    if category_id is not None:
-        idea.category_id = category_id
-        max_order = Idea.objects.filter(category_id=category_id).aggregate(
-            db_models.Max('order_index')
-        )['order_index__max']
-        idea.order_index = (max_order + 1) if max_order is not None else 0
-    else:
-        idea.category = None
-        max_order = Idea.objects.filter(category__isnull=True).aggregate(
-            db_models.Max('order_index')
-        )['order_index__max']
-        idea.order_index = (max_order + 1) if max_order is not None else 0
-    idea.save()
-    return Response({"updated": True})
-
-
-
-
 class CategorySerializer(serializers.ModelSerializer):
-    class Meta: 
+    class Meta:
         model = Category
-        fields = "__all__"
+        fields = ["id", "name", "x", "y", "width", "height", "z_index", "archived"]
 
 
+# get_all_categories
 @api_view(["GET"])
-def get_all_categories(request):
-    all_categories = Category.objects.all()
+@permission_classes([IsAuthenticated])
+def get_all_categories(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    all_categories = Category.objects.filter(project=project)
     all_cats_ready = CategorySerializer(all_categories, many=True).data
     return Response({"categories": all_cats_ready})
 
 
+# create_category
 @api_view(["POST"])
-def create_category(request):
-    input_name = request.data.get("name")
+@permission_classes([IsAuthenticated])
+def create_category(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
+    input_name = request.data.get("name")
     if not input_name: 
         return Response({"error": "Name is required"}, status=400)
-        
 
-    category, created = Category.objects.get_or_create(name=input_name)
+    category, created = Category.objects.get_or_create(project=project, name=input_name)
     category_serialized = CategorySerializer(category).data
     if created: 
         return Response({"status": "created", "category": category_serialized}, status=201)
@@ -1718,78 +1767,124 @@ def create_category(request):
         return Response({"status": "category already existed", "category": category_serialized}, status=200)
 
 
+# set_position_category
 @api_view(["POST"])
-def set_position_category(request):
+@permission_classes([IsAuthenticated])
+def set_position_category(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     category_id = request.data.get("id")
-    category = Category.objects.get(id=category_id)
+    category = get_object_or_404(Category, id=category_id, project=project)
     new_position = request.data.get("position")
     category.x = new_position["x"]
     category.y = new_position["y"]
     category.save()
-    print(f"NEW POSITIONS FOR {category.name}", new_position)
-    return Response({"test": "test"})
+    return Response({"updated": True})
 
 
+# set_area_category
 @api_view(["POST"])
-def set_area_category(request):
+@permission_classes([IsAuthenticated])
+def set_area_category(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     category_id = request.data.get("id")
-    category = Category.objects.get(id=category_id)
+    category = get_object_or_404(Category, id=category_id, project=project)
     category.width = request.data.get("width", category.width)
     category.height = request.data.get("height", category.height)
     category.save()
     return Response({"updated": True})
 
 
+# delete_category
 @api_view(["DELETE"])
-def delete_category(request):
+@permission_classes([IsAuthenticated])
+def delete_category(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     category_id = request.data.get("id")
-    # Reset all ideas in this category back to unassigned
-    Idea.objects.filter(category_id=category_id).update(category=None)
-    Category.objects.filter(id=category_id).delete()
+    Idea.objects.filter(project=project, category_id=category_id).update(category=None)
+    Category.objects.filter(id=category_id, project=project).delete()
     return Response({"deleted": True})
 
 
+# bring_to_front_category
 @api_view(["POST"])
-def bring_to_front_category(request):
+@permission_classes([IsAuthenticated])
+def bring_to_front_category(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     category_id = request.data.get("id")
-    max_z = Category.objects.aggregate(db_models.Max('z_index'))['z_index__max'] or 0
-    Category.objects.filter(id=category_id).update(z_index=max_z + 1)
+    max_z = Category.objects.filter(project=project).aggregate(db_models.Max('z_index'))['z_index__max'] or 0
+    Category.objects.filter(id=category_id, project=project).update(z_index=max_z + 1)
     return Response({"updated": True})
 
 
+# rename_category
 @api_view(["POST"])
-def rename_category(request):
+@permission_classes([IsAuthenticated])
+def rename_category(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     category_id = request.data.get("id")
     new_name = request.data.get("name", "").strip()
     if not new_name:
         return Response({"error": "Name is required"}, status=400)
-    Category.objects.filter(id=category_id).update(name=new_name)
+    Category.objects.filter(id=category_id, project=project).update(name=new_name)
     return Response({"updated": True})
 
 
+# update_idea_title
 @api_view(["POST"])
-def update_idea_title(request):
+@permission_classes([IsAuthenticated])
+def update_idea_title(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     idea_id = request.data.get("id")
     new_title = request.data.get("title", "").strip()
     if not new_title:
         return Response({"error": "Title is required"}, status=400)
-    Idea.objects.filter(id=idea_id).update(title=new_title)
+    Idea.objects.filter(id=idea_id, project=project).update(title=new_title)
     return Response({"updated": True})
 
 
+# update_idea_headline
 @api_view(["POST"])
-def update_idea_headline(request):
+@permission_classes([IsAuthenticated])
+def update_idea_headline(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     idea_id = request.data.get("id")
     new_headline = request.data.get("headline", "").strip()
     # Headline can be empty (optional)
-    Idea.objects.filter(id=idea_id).update(headline=new_headline)
+    Idea.objects.filter(id=idea_id, project=project).update(headline=new_headline)
     return Response({"updated": True})
 
 
+# toggle_archive_category
 @api_view(["POST"])
-def toggle_archive_category(request):
+@permission_classes([IsAuthenticated])
+def toggle_archive_category(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     category_id = request.data.get("id")
-    category = Category.objects.get(id=category_id)
+    category = get_object_or_404(Category, id=category_id, project=project)
     category.archived = not category.archived
     category.save()
     return Response({"archived": category.archived})
@@ -1804,25 +1899,40 @@ class LegendTypeSerializer(serializers.ModelSerializer):
 
 
 @api_view(["GET"])
-def get_all_legend_types(request):
-    legend_types = LegendType.objects.all()
+@permission_classes([IsAuthenticated])
+def get_all_legend_types(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    legend_types = LegendType.objects.filter(project=project)
     return Response({"legend_types": LegendTypeSerializer(legend_types, many=True).data})
 
 
 @api_view(["POST"])
-def create_legend_type(request):
+@permission_classes([IsAuthenticated])
+def create_legend_type(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     name = request.data.get("name", "New Type").strip()
     color = request.data.get("color", "#cccccc")
-    max_order = LegendType.objects.aggregate(db_models.Max('order_index'))['order_index__max']
+    max_order = LegendType.objects.filter(project=project).aggregate(db_models.Max('order_index'))['order_index__max']
     next_order = (max_order + 1) if max_order is not None else 0
-    legend_type = LegendType.objects.create(name=name, color=color, order_index=next_order)
+    legend_type = LegendType.objects.create(project=project, name=name, color=color, order_index=next_order)
     return Response({"created": True, "legend_type": LegendTypeSerializer(legend_type).data})
 
 
 @api_view(["POST"])
-def update_legend_type(request):
+@permission_classes([IsAuthenticated])
+def update_legend_type(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     legend_type_id = request.data.get("id")
-    legend_type = LegendType.objects.get(id=legend_type_id)
+    legend_type = get_object_or_404(LegendType, id=legend_type_id, project=project)
     if "name" in request.data:
         legend_type.name = request.data.get("name", "").strip()
     if "color" in request.data:
@@ -1832,704 +1942,188 @@ def update_legend_type(request):
 
 
 @api_view(["DELETE"])
-def delete_legend_type(request):
+@permission_classes([IsAuthenticated])
+def delete_legend_type(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     legend_type_id = request.data.get("id")
-    # Set all ideas using this type back to null
-    Idea.objects.filter(legend_type_id=legend_type_id).update(legend_type=None)
-    LegendType.objects.filter(id=legend_type_id).delete()
+    Idea.objects.filter(project=project, legend_type_id=legend_type_id).update(legend_type=None)
+    LegendType.objects.filter(id=legend_type_id, project=project).delete()
     return Response({"deleted": True})
 
 
 @api_view(["POST"])
-def assign_idea_legend_type(request):
+@permission_classes([IsAuthenticated])
+def assign_idea_legend_type(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
     idea_id = request.data.get("idea_id")
     legend_type_id = request.data.get("legend_type_id")  # None to unassign
-    idea = Idea.objects.get(id=idea_id)
+
+    idea = get_object_or_404(Idea, id=idea_id, project=project)
     if legend_type_id is not None:
-        idea.legend_type_id = legend_type_id
+        legend = get_object_or_404(LegendType, id=legend_type_id, project=project)
+        idea.legend_type = legend
     else:
         idea.legend_type = None
     idea.save()
     return Response({"updated": True})
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ________________________________________________________________________________________________________________________________
-# ________________________________________________________________________________________________________________________________
-# ________________________________________________________________________________________________________________________________
-# _______________________________________________________OTHER WEBSITE STUFF____________________________________________________
-# ________________________________________________________________________________________________________________________________
-# ________________________________________________________________________________________________________________________________
-
-
-
-
-def echo_view(request, text):
-    times = request.GET.get('times')
-    if times is not None:
-        try:
-            n = max(1, int(times))
-        except ValueError:
-            n = 1
-        return JsonResponse({"echo": [text] * n})
-    return JsonResponse({"echo": text})
-
-
-# GET /api/comments/all_comments/
-@api_view(["GET"])
-@permission_classes([AllowAny])  # everyone can read, adjust if needed
-def all_comments(request):
-    comments = (
-        Comment.objects
-        .select_related("author")
-        .order_by("timestamp")  # or "-timestamp" for newest first
-    )
-
-    data = [
-        {
-            "id": c.id,
-            "author": c.author.username if c.author else None,
-            "text": c.text,
-            "timestamp": c.timestamp.isoformat(),
-        }
-        for c in comments
-    ]
-
-    return Response({"comments": data}, status=status.HTTP_200_OK)
-
-
-# POST /api/comments/write/
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])  # 🔐 only logged-in users can post
-def write_comment(request):
-    text = request.data.get("text") or request.data.get("comment")
-
-    if not text or not text.strip():
-        return Response(
-            {"error": "Text is required"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    # ✅ Use request.user from JWT, ignore any 'author' from client
-    comment = Comment.objects.create(
-        author=request.user,
-        text=text.strip(),
-    )
-
-    data = {
-        "id": comment.id,
-        "author": comment.author.username,
-        "text": comment.text,
-        "timestamp": comment.timestamp.isoformat(),
-    }
-
-    return Response({"comment": data}, status=status.HTTP_201_CREATED)
-
-
-def network_connection(request, comp_id):
-    print("Sucesfully called this")
-
-    if comp_id == 1:
-        dummy_data = {
-      "firmenbuchnummer": "661613k",
-      "nodes": [
-        {
-          "id": "661613k",
-          "type": "company",
-          "label": "Körpermanufaktur KG",
-        },
-        {
-          "id": "7402id",
-          "type": "person",
-          "label": "Richard Thomas Kranabetter",
-        },
-        # {
-        #   "id": "765478k",
-        #   "type": "company",
-        #   "label": "Example Company",
-        # },
-        {
-          "id": "8534lo",
-          "type": "location",
-          "label": "AUT, 6850 Dornbirn, Marktstraße 36",
-        },
-      ],
-      "edges": [
-        {
-          "source": "661613k",
-          "target": "7402id",
-          "label": "Person",
-        },
-        {
-          "source": "7402id",
-          "target": "765478k",
-          "label": "Person",
-        },
-        {
-          "source": "661613k",
-          "target": "8534lo",
-          "label": "Location",
-        },
-      ],
-    }
-    else:
-        dummy_data = {
-  "firmenbuchnummer": "765478k",
-  "nodes": [
-    {
-      "id": "765478k",
-      "type": "company",
-      "label": "Example Company"
-    },
-    {
-      "id": "7402id",
-      "type": "person",
-      "label": "Richard Thomas Kranabetter"
-    },
-    {
-      "id": "661613k",
-      "type": "company",
-      "label": "Körpermanufaktur KG"
-    },
-    {
-      "id": "9922xy",
-      "type": "location",
-      "label": "AUT, 6020 Innsbruck, Museumstraße 10"
-    }
-  ],
-  "edges": [
-    {
-      "source": "7402id",
-      "target": "765478k",
-      "label": "Person"
-    },
-    {
-      "source": "7402id",
-      "target": "661613k",
-      "label": "Person"
-    },
-    {
-      "source": "765478k",
-      "target": "9922xy",
-      "label": "Location"
-    }
-  ]
-}
-
-
-    return JsonResponse({"ok": True, "dummy_data": dummy_data})
-
-
-@require_GET
-def dummy_data(request):
-    """
-    Dummy skills API based on Florian's CV.
-    Categories: IT, Soft Skills, Health, Sales.
-    """
-    data = {
-        "IT": [
-            {
-                "id": "it_python",
-                "name": "Python",
-                "details": ["Django", "Pytest", "Pygame", "NumPy", "Pandas"],
-            },
-            {
-                "id": "it_js",
-                "name": "JavaScript",
-                "details": ["React", "Node.js", "Fetch API", "DOM manipulation"],
-            },
-            {
-                "id": "it_r",
-                "name": "R",
-                "details": ["ggplot2", "data analysis", "statistics", "inferential eval"],
-            },
-            {
-                "id": "it_webdev",
-                "name": "Web Development",
-                "details": ["HTML", "CSS", "Bootstrap", "WordPress"],
-            },
-            {
-                "id": "it_devops",
-                "name": "DevOps & Databases",
-                "details": [
-                    "Docker",
-                    "Git/GitHub",
-                    "SQLite",
-                    "PostgreSQL",
-                    "Neo4j",
-                    "CI/CD",
-                    "Scrum",
-                ],
-            },
-        ],
-        "Soft Skills": [
-            {
-                "id": "soft_teaching",
-                "name": "Teaching & Tutoring",
-                "details": [
-                    "Informatics tutor (IMC)",
-                    "Programming instructor (children & teens)",
-                ],
-            },
-            {
-                "id": "soft_communication",
-                "name": "Communication",
-                "details": [
-                    "Direct client contact (web design)",
-                    "Fundraising for NGOs",
-                ],
-            },
-            {
-                "id": "soft_leadership",
-                "name": "Leadership & Teamwork",
-                "details": ["Team leader in fundraising", "Cooperation with lecturers"],
-            },
-        ],
-        "Health": [
-            {
-                "id": "health_massage",
-                "name": "Medical & Commercial Massage",
-                "details": [
-                    "Medical masseur training",
-                    "Commercial & medical massage training",
-                    "Internships (VAMED, La Pura, Sanatorium Hera)",
-                ],
-            }
-        ],
-        "Sales": [
-            {
-                "id": "sales_fundraising",
-                "name": "Fundraising & Sales",
-                "details": [
-                    "Fundraiser & team leader (Amnesty, WWF)",
-                    "Direct customer contact",
-                ],
-            },
-            {
-                "id": "sales_logistics",
-                "name": "Logistics & Operations",
-                "details": ["Tech-based food startup logistics (Schrankerl GmbH)"],
-            },
-        ],
-    }
-
-    return JsonResponse({"ok": True, "data": data})
-
-
-# Get all teams for the current user (across all projects)
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def user_teams(request):
-    """
-    Get all teams that the current user is a member of, across all projects.
-    """
-    user = request.user
-    teams = Team.objects.filter(members=user).select_related('project').order_by('project__name', 'name')
-    
-    result = []
-    for team in teams:
-        result.append({
-            'id': team.id,
-            'name': team.name,
-            'color': team.color,
-            'line_index': team.line_index,
-            'project': {
-                'id': team.project.id,
-                'name': team.project.name,
-            } if team.project else None,
-            'member_count': team.members.count(),
-        })
-    
-    return Response(result, status=status.HTTP_200_OK)
-
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def user_tasks(request):
-    """
-    Get all tasks that the current user is assigned to, across all projects.
-    """
-    user = request.user
-    tasks = Task.objects.filter(assigned_members=user).select_related('project', 'team').order_by('project__name', 'name')
-    
-    result = []
-    for task in tasks:
-        result.append({
-            'id': task.id,
-            'name': task.name,
-            'difficulty': task.difficulty,
-            'priority': task.priority,
-            'asking': task.asking,
-            'project': {
-                'id': task.project.id,
-                'name': task.project.name,
-            } if task.project else None,
-            'team': {
-                'id': task.team.id,
-                'name': task.team.name,
-                'color': task.team.color,
-            } if task.team else None,
-            'assigned_members_count': task.assigned_members.count(),
-        })
-    
-    return Response(result, status=status.HTTP_200_OK)
-
-
-#____________________NOTIFICATIONS______________________
-#_______________________________________________
-#_______________________________________________
-
+# ===== NOTIFICATIONS =====
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def user_notifications(request):
-    """
-    Get all notifications for the current user, optionally filtered by read status.
-    Query params: ?read=true/false to filter by read status
-    """
-    user = request.user
-    read_param = request.query_params.get('read')
-    
-    notifications = Notification.objects.filter(user=user)
-    
-    # Filter by read status if provided
-    if read_param is not None:
-        if read_param.lower() == 'true':
-            notifications = notifications.filter(read=True)
-        elif read_param.lower() == 'false':
-            notifications = notifications.filter(read=False)
-    
-    result = []
-    for notif in notifications:
-        result.append({
-            'id': notif.id,
-            'action_type': notif.action_type,
-            'title': notif.title,
-            'message': notif.message,
-            'read': notif.read,
-            'created_at': notif.created_at,
-            'related_task': {
-                'id': notif.related_task.id,
-                'name': notif.related_task.name,
-            } if notif.related_task else None,
-            'related_user': {
-                'id': notif.related_user.id,
-                'username': notif.related_user.username,
-            } if notif.related_user else None,
-        })
-    
-    return Response(result, status=status.HTTP_200_OK)
+    notifications = Notification.objects.filter(user=request.user).order_by("-created_at")
+    data = [
+        {
+            "id": n.id,
+            "action_type": n.action_type,
+            "title": n.title,
+            "message": n.message,
+            "related_task": n.related_task_id,
+            "related_attempt": n.related_attempt_id,
+            "related_user": n.related_user_id,
+            "read": n.read,
+            "created_at": n.created_at.isoformat(),
+        }
+        for n in notifications
+    ]
+    return Response({"notifications": data}, status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def mark_notification_as_read(request, notification_id):
-    """
-    Mark a notification as read.
-    """
-    user = request.user
-    
-    try:
-        notif = Notification.objects.get(id=notification_id, user=user)
-    except Notification.DoesNotExist:
-        return Response(
-            {"detail": "Notification not found"},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    
-    notif.read = True
-    notif.save()
-    
-    return Response({"status": "Notification marked as read"}, status=status.HTTP_200_OK)
+    notification = get_object_or_404(Notification, id=notification_id, user=request.user)
+    notification.read = True
+    notification.save(update_fields=["read"])
+    return Response({"id": notification.id, "read": True}, status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def mark_all_notifications_as_read(request):
-    """
-    Mark all unread notifications as read for current user.
-    """
-    user = request.user
-    updated = Notification.objects.filter(user=user, read=False).update(read=True)
-    
-    return Response(
-        {"status": f"Marked {updated} notifications as read"},
-        status=status.HTTP_200_OK
-    )
+    Notification.objects.filter(user=request.user, read=False).update(read=True)
+    return Response({"updated": True}, status=status.HTTP_200_OK)
 
 
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def delete_notification(request, notification_id):
-    """
-    Delete a notification.
-    """
-    user = request.user
-    
-    try:
-        notif = Notification.objects.get(id=notification_id, user=user)
-    except Notification.DoesNotExist:
-        return Response(
-            {"detail": "Notification not found"},
-            status=status.HTTP_404_NOT_FOUND
-        )
-    
-    notif.delete()
-    
-    return Response({"status": "Notification deleted"}, status=status.HTTP_204_NO_CONTENT)
+    notification = get_object_or_404(Notification, id=notification_id, user=request.user)
+    notification.delete()
+    return Response({"deleted": True}, status=status.HTTP_200_OK)
 
 
-def check_and_create_attempt_notifications(current_date):
-    """
-    Check for attempts that are:
-    1. Overdue (calculated_date before today and not done)
-    2. Today (calculated_date is today)
-    3. Upcoming (calculated_date is tomorrow or day after tomorrow)
-    
-    Create notifications for assigned members and project owner.
-    """
-    from .models import Attempt, Notification
-    
-    # Subtract 1 day to send notifications one day early
-    current_date = current_date - timedelta(days=-1)
-    
-    today = current_date
-    tomorrow = current_date + timedelta(days=1)
-    day_after_tomorrow = current_date + timedelta(days=2)
-    
-    # Find all attempts with calculated dates
-    all_attempts = Attempt.objects.filter(
-        task__isnull=False,
-        task__project__isnull=False,
-        done=False
-    ).select_related('task__project', 'task__team').prefetch_related('task__assigned_members')
-    
-    # Separate attempts by their calculated dates
-    overdue_attempts = [
-        attempt for attempt in all_attempts 
-        if attempt.calculated_date and attempt.calculated_date < today
-    ]
-    
-    today_attempts = [
-        attempt for attempt in all_attempts 
-        if attempt.calculated_date == today
-    ]
-    
-    upcoming_attempts = [
-        attempt for attempt in all_attempts 
-        if attempt.calculated_date in [tomorrow, day_after_tomorrow]
-    ]
-    
-    # Create notifications for overdue attempts
-    for attempt in overdue_attempts:
-        assigned_members = list(attempt.task.assigned_members.all())
-        project_owner = attempt.task.project.owner
-        
-        # Notify assigned members
-        for member in assigned_members:
-            Notification.objects.create(
-                user=member,
-                action_type='attempt_overdue',
-                title=f"Attempt Overdue: {attempt.task.name}",
-                message=f"The attempt '{attempt.name}' for task '{attempt.task.name}' was due yesterday and is not yet marked as done.",
-                related_task=attempt.task,
-                related_attempt=attempt
-            )
-        
-        # Always notify project owner
-        if project_owner and project_owner not in assigned_members:
-            Notification.objects.create(
-                user=project_owner,
-                action_type='attempt_overdue',
-                title=f"Attempt Overdue: {attempt.task.name}",
-                message=f"The attempt '{attempt.name}' for task '{attempt.task.name}' was due yesterday and is not yet marked as done.",
-                related_task=attempt.task,
-                related_attempt=attempt
-            )
-    
-    # Create notifications for today's attempts
-    for attempt in today_attempts:
-        assigned_members = list(attempt.task.assigned_members.all())
-        project_owner = attempt.task.project.owner
-        
-        # Notify assigned members
-        for member in assigned_members:
-            Notification.objects.create(
-                user=member,
-                action_type='attempt_today',
-                title=f"Attempt Today: {attempt.task.name}",
-                message=f"The attempt '{attempt.name}' for task '{attempt.task.name}' is due today.",
-                related_task=attempt.task,
-                related_attempt=attempt
-            )
-        
-        # Always notify project owner
-        if project_owner and project_owner not in assigned_members:
-            Notification.objects.create(
-                user=project_owner,
-                action_type='attempt_today',
-                title=f"Attempt Today: {attempt.task.name}",
-                message=f"The attempt '{attempt.name}' for task '{attempt.task.name}' is due today.",
-                related_task=attempt.task,
-                related_attempt=attempt
-            )
-    
-    # Create notifications for upcoming attempts
-    for attempt in upcoming_attempts:
-        assigned_members = list(attempt.task.assigned_members.all())
-        project_owner = attempt.task.project.owner
-        
-        # Notify assigned members
-        for member in assigned_members:
-            display_date = (attempt.calculated_date - timedelta(days=1)).strftime('%Y-%m-%d')
-            Notification.objects.create(
-                user=member,
-                action_type='attempt_upcoming',
-                title=f"Upcoming Attempt: {attempt.task.name}",
-                message=f"The attempt '{attempt.name}' for task '{attempt.task.name}' is coming up on {display_date}.",
-                related_task=attempt.task,
-                related_attempt=attempt
-            )
-        
-        # Always notify project owner
-        if project_owner and project_owner not in assigned_members:
-            display_date = (attempt.calculated_date - timedelta(days=1)).strftime('%Y-%m-%d')
-            Notification.objects.create(
-                user=project_owner,
-                action_type='attempt_upcoming',
-                title=f"Upcoming Attempt: {attempt.task.name}",
-                message=f"The attempt '{attempt.name}' for task '{attempt.task.name}' is coming up on {display_date}.",
-                related_task=attempt.task,
-                related_attempt=attempt
-            )
+# ===== DEMO DATE =====
 
-
-# Demo Date endpoints
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def demo_date_view(request):
-    """
-    GET: Retrieve current demo date
-    POST: Update demo date and check for attempt notifications
-    """
-    from .models import DemoDate
-    from datetime import datetime
-    
     if request.method == "GET":
-        demo_date = DemoDate.objects.first()
-        if not demo_date:
-            demo_date = DemoDate.objects.create()
-        return Response({"date": demo_date.date}, status=status.HTTP_200_OK)
-    
-    elif request.method == "POST":
-        data = request.data
-        date_str = data.get("date")
-        
-        if not date_str:
-            return Response({"detail": "date required"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            # Parse the date string (YYYY-MM-DD format)
-            from datetime import datetime as dt
-            new_date = dt.strptime(date_str, '%Y-%m-%d').date()
-        except ValueError:
-            return Response({"detail": "Invalid date format. Use YYYY-MM-DD"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        demo_date = DemoDate.objects.first()
-        if not demo_date:
-            demo_date = DemoDate.objects.create(date=new_date)
-        else:
-            demo_date.date = new_date
-            demo_date.save()
-        
-        # Check for and create attempt notifications using the saved date
-        check_and_create_attempt_notifications(demo_date.date)
-        
-        return Response({"date": demo_date.date}, status=status.HTTP_200_OK)
+        return Response({"date": DemoDate.get_current_date().isoformat()}, status=status.HTTP_200_OK)
 
+    date_str = request.data.get("date")
+    if not date_str:
+        return Response({"detail": "date is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        new_date = date.fromisoformat(date_str)
+    except ValueError:
+        return Response({"detail": "Invalid date format"}, status=status.HTTP_400_BAD_REQUEST)
+
+    demo = DemoDate.objects.first()
+    if demo is None:
+        demo = DemoDate.objects.create(date=new_date)
+    else:
+        demo.date = new_date
+        demo.save(update_fields=["date"])
+
+    return Response({"date": demo.date.isoformat()}, status=status.HTTP_200_OK)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# user_teams
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def user_teams(request):
+    user = request.user
+    teams = Team.objects.filter(members=user).select_related("project").order_by("name")
+    data = [
+        {
+            "id": t.id,
+            "name": t.name,
+            "color": t.color,
+            "project_id": t.project_id,
+            "project_name": t.project.name if t.project else None,
+        }
+        for t in teams
+    ]
+    return Response({"teams": data}, status=status.HTTP_200_OK)
+
+
+# user_tasks
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def user_tasks(request):
+    user = request.user
+    tasks = (
+        Task.objects.filter(assigned_members=user)
+        .select_related("project", "team")
+        .order_by("name")
+    )
+    data = [
+        {
+            "id": t.id,
+            "name": t.name,
+            "description": t.description,
+            "project_id": t.project_id,
+            "project_name": t.project.name if t.project else None,
+            "team_id": t.team_id,
+            "team_name": t.team.name if t.team else None,
+        }
+        for t in tasks
+    ]
+    return Response({"tasks": data}, status=status.HTTP_200_OK)
 
 
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import EditIcon from "@mui/icons-material/Edit";
@@ -8,6 +9,18 @@ import UnarchiveIcon from "@mui/icons-material/Unarchive";
 import { BASE_URL } from '../config/api';
 
 const API = `${BASE_URL}/api`;
+
+// Authenticated fetch helper - includes JWT token in all requests
+function authFetchIdea(url, options = {}) {
+  const token = localStorage.getItem('access_token');
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...options.headers,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+}
 
 function Button({ text, handleButtonClick }) {
   return (
@@ -21,11 +34,11 @@ function Button({ text, handleButtonClick }) {
   );
 }
 
-function CreateCategoryForm({ onButtonClick, onCancel }) {
+function CreateCategoryForm({ onButtonClick, onCancel, apiBase }) {
   const [categoryName, setCategoryName] = useState("");
 
   const create_category = async () => {
-    const res = await fetch(`${API}/create_category/`, {
+    const res = await authFetchIdea(`${apiBase}/create_category/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: categoryName }),
@@ -98,6 +111,9 @@ function ConfirmModal({ message, onConfirm, onCancel }) {
 }
 
 export default function IdeaFactory() {
+  const { projectId } = useParams();
+  const API = `${BASE_URL}/api/projects/${projectId}`;
+
   const [categories, setCategories] = useState({});
   const [displayForm, setDisplayForm] = useState(false);
   const categoryContainerRef = useRef(null);
@@ -274,7 +290,7 @@ export default function IdeaFactory() {
 
   const fetch_categories = async () => {
     try {
-      const res = await fetch(`${API}/get_all_categories/`);
+      const res = await authFetchIdea(`${API}/get_all_categories/`);
       const data = await res.json();
       const all_categories = data.categories;
 
@@ -300,7 +316,7 @@ export default function IdeaFactory() {
   };
 
   const set_position_category = async (category_id, new_position) => {
-    await fetch(`${API}/set_position_category/`, {
+    await authFetchIdea(`${API}/set_position_category/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: category_id, position: new_position }),
@@ -308,7 +324,7 @@ export default function IdeaFactory() {
   };
 
   const set_area_category = async (category_id, width, height) => {
-    await fetch(`${API}/set_area_category/`, {
+    await authFetchIdea(`${API}/set_area_category/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: category_id, width, height }),
@@ -317,7 +333,7 @@ export default function IdeaFactory() {
 
   const delete_category = async (category_id) => {
     try {
-      const res = await fetch(`${API}/delete_category/`, {
+      const res = await authFetchIdea(`${API}/delete_category/`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: category_id }),
@@ -352,7 +368,7 @@ export default function IdeaFactory() {
   };
 
   const bring_to_front_category = async (category_id) => {
-    await fetch(`${API}/bring_to_front_category/`, {
+    await authFetchIdea(`${API}/bring_to_front_category/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: category_id }),
@@ -370,7 +386,7 @@ export default function IdeaFactory() {
   };
 
   const rename_category_api = async (category_id, new_name) => {
-    await fetch(`${API}/rename_category/`, {
+    await authFetchIdea(`${API}/rename_category/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: category_id, name: new_name }),
@@ -382,7 +398,7 @@ export default function IdeaFactory() {
   };
 
   const toggle_archive_category = async (category_id) => {
-    const res = await fetch(`${API}/toggle_archive_category/`, {
+    const res = await authFetchIdea(`${API}/toggle_archive_category/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: category_id }),
@@ -486,7 +502,7 @@ export default function IdeaFactory() {
 
   const fetch_all_ideas = async () => {
     try {
-      const res = await fetch(`${API}/get_all_ideas/`);
+      const res = await authFetchIdea(`${API}/get_all_ideas/`);
       const data = await res.json();
       const idea_list = data?.data || [];
       const order = data?.order || [];
@@ -508,7 +524,7 @@ export default function IdeaFactory() {
 
   const create_idea = async () => {
     if (!ideaName.trim()) return;
-    await fetch(`${API}/create_idea/`, {
+    await authFetchIdea(`${API}/create_idea/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ idea_name: ideaName, description: "", headline: ideaHeadline }),
@@ -519,7 +535,7 @@ export default function IdeaFactory() {
   };
 
   const delete_idea = async (idea_id) => {
-    await fetch(`${API}/delete_idea/`, {
+    await authFetchIdea(`${API}/delete_idea/`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: idea_id }),
@@ -529,14 +545,14 @@ export default function IdeaFactory() {
 
   const update_idea_title_api = async (idea_id, new_title, new_headline = null) => {
     if (!new_title.trim()) return;
-    await fetch(`${API}/update_idea_title/`, {
+    await authFetchIdea(`${API}/update_idea_title/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: idea_id, title: new_title }),
     });
     // Also update headline if provided
     if (new_headline !== null) {
-      await fetch(`${API}/update_idea_headline/`, {
+      await authFetchIdea(`${API}/update_idea_headline/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: idea_id, headline: new_headline }),
@@ -549,7 +565,7 @@ export default function IdeaFactory() {
   };
 
   const safe_order = async (new_order, category_id = null) => {
-    await fetch(`${API}/safe_order/`, {
+    await authFetchIdea(`${API}/safe_order/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ order: new_order, category_id }),
@@ -557,7 +573,7 @@ export default function IdeaFactory() {
   };
 
   const assign_idea_to_category = async (idea_id, category_id) => {
-    await fetch(`${API}/assign_idea_to_category/`, {
+    await authFetchIdea(`${API}/assign_idea_to_category/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ idea_id, category_id }),
@@ -705,7 +721,7 @@ export default function IdeaFactory() {
 
   const fetch_legend_types = async () => {
     try {
-      const res = await fetch(`${API}/get_all_legend_types/`);
+      const res = await authFetchIdea(`${API}/get_all_legend_types/`);
       const data = await res.json();
       const legend_list = data?.legend_types || [];
       const legend_object = {};
@@ -719,7 +735,7 @@ export default function IdeaFactory() {
   };
 
   const create_legend_type = async (name, color) => {
-    const res = await fetch(`${API}/create_legend_type/`, {
+    const res = await authFetchIdea(`${API}/create_legend_type/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, color }),
@@ -735,7 +751,7 @@ export default function IdeaFactory() {
   };
 
   const update_legend_type = async (id, updates) => {
-    await fetch(`${API}/update_legend_type/`, {
+    await authFetchIdea(`${API}/update_legend_type/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, ...updates }),
@@ -747,7 +763,7 @@ export default function IdeaFactory() {
   };
 
   const delete_legend_type = async (id) => {
-    await fetch(`${API}/delete_legend_type/`, {
+    await authFetchIdea(`${API}/delete_legend_type/`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
@@ -770,7 +786,7 @@ export default function IdeaFactory() {
   };
 
   const assign_idea_legend_type = async (idea_id, legend_type_id) => {
-    await fetch(`${API}/assign_idea_legend_type/`, {
+    await authFetchIdea(`${API}/assign_idea_legend_type/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ idea_id, legend_type_id }),
@@ -843,7 +859,7 @@ export default function IdeaFactory() {
     fetch_categories();
     fetch_all_ideas();
     fetch_legend_types();
-  }, []);
+  }, [projectId]);
 
   // ===== RENDER HELPER =====
 
@@ -1006,7 +1022,11 @@ export default function IdeaFactory() {
           style={{ display: displayForm ? "block" : "none" }}
           className="fixed z-[9998] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
         >
-          <CreateCategoryForm onButtonClick={customFormButtonClick} onCancel={() => setDisplayForm(false)} />
+          <CreateCategoryForm
+            onButtonClick={customFormButtonClick}
+            onCancel={() => setDisplayForm(false)}
+            apiBase={API}
+          />
         </div>
         <div
           onClick={() => setDisplayForm(false)}
@@ -1728,4 +1748,4 @@ export default function IdeaFactory() {
 
     </>
   );
-} 
+}
