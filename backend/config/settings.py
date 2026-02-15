@@ -58,7 +58,7 @@ INSTALLED_APPS = [
     # Local
     'api',
 ]
-
+# NEUEE
 # test
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
