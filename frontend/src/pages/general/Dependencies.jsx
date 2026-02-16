@@ -46,6 +46,8 @@ const TEAMWIDTH = 150;
 
 const TEAM_DRAG_HIGHLIGHT_HEIGHT = 5;
 const MARIGN_BETWEEN_DRAG_HIGHLIGHT = 5;
+const TEAM_HEADER_LINE_HEIGHT = 3;
+const TEAM_HEADER_GAP = 2; // Gap after header line before milestones
 
 const DEFAULT_DAYWIDTH = 60;
 const HEADER_HEIGHT = 48;
@@ -81,7 +83,7 @@ export default function Dependencies() {
   const [projectStartDate, setProjectStartDate] = useState(null)
   const [milestones, setMilestones] = useState({})
   const [hoveredMilestone, setHoveredMilestone] = useState(null)
-  const [selectedMilestone, setSelectedMilestone] = useState(null)
+  const [selectedMilestones, setSelectedMilestones] = useState(new Set())
 
   const [teamOrder, setTeamOrder] = useState([]);
   const [teams, setTeams] = useState({});
@@ -132,6 +134,9 @@ export default function Dependencies() {
   
   // Milestone creation confirmation modal
   const [milestoneCreateModal, setMilestoneCreateModal] = useState(null); // { taskId, dayIndex }
+
+  // Move validation feedback state
+  const [blockedMoveHighlight, setBlockedMoveHighlight] = useState(null); // { milestoneId, connectionId, originalState }
 
   // Create modals
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
@@ -185,8 +190,8 @@ export default function Dependencies() {
 
   useEffect(() => {
     const down = (e) => {
-      if (e.ctrlKey) setMode("delete")
-      else if (e.shiftKey) {
+      // Ctrl is used for multi-select, not a mode change
+      if (e.shiftKey) {
         setMode("duration")
         // Switch to milestone mode when shift is held (only if in inspection mode)
         if (viewMode === "inspection") {
@@ -200,6 +205,22 @@ export default function Dependencies() {
         if (viewMode === "inspection") {
           baseViewModeRef.current = viewMode;
           setViewMode("dependency");
+        }
+      }
+      // Delete key - delete selected connection or milestones
+      else if (e.key === "Delete" || e.key === "Backspace") {
+        if (safeMode) return;
+        
+        // Delete selected connection
+        if (selectedConnection) {
+          handleDeleteConnection(selectedConnection);
+        }
+        // Delete selected milestones
+        else if (selectedMilestones.size > 0) {
+          selectedMilestones.forEach(mId => {
+            handleMilestoneDelete(mId);
+          });
+          setSelectedMilestones(new Set());
         }
       }
     }
@@ -218,7 +239,7 @@ export default function Dependencies() {
       window.removeEventListener("keydown", down)
       window.removeEventListener("keyup", up)
     }
-  }, [viewMode])
+  }, [viewMode, safeMode, selectedConnection, selectedMilestones])
 
   // Close team settings when clicking outside
   useEffect(() => {
@@ -490,6 +511,7 @@ export default function Dependencies() {
     for (const teamId of teamOrder) {
       if (!isTeamVisible(teamId)) continue;
       height += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+      height += TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
       height += getTeamHeight(teamId);
     }
     height += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
@@ -513,6 +535,7 @@ export default function Dependencies() {
       if (tid === teamId) break;
       if (!isTeamVisible(tid)) continue;
       offset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+      offset += TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
       offset += getTeamHeight(tid);
     }
     return offset;
@@ -921,14 +944,9 @@ export default function Dependencies() {
     document.addEventListener('mouseup', onMouseUp);
   };
 
-  // Handle milestone mouse down (drag)
+  // Handle milestone mouse down (drag) - supports moving multiple selected milestones
   const handleMileStoneMouseDown = (e, milestoneId) => {
     if (safeMode) return;
-    
-    if (mode === "delete") {
-      handleMilestoneDelete(milestoneId);
-      return;
-    }
 
     e.preventDefault();
     const containerRect = teamContainerRef.current?.getBoundingClientRect();
@@ -937,51 +955,138 @@ export default function Dependencies() {
     const milestone = milestones[milestoneId];
     if (!milestone) return;
 
-    const startX = e.clientX;
-    const startIndex = milestone.start_index;
-    const startVisualX = startIndex * DAYWIDTH;
+    // Determine which milestones to move
+    // If the clicked milestone is in the selection, move all selected
+    // Otherwise, just move this one milestone
+    const milestonesToMove = selectedMilestones.has(milestoneId) && selectedMilestones.size > 0
+      ? Array.from(selectedMilestones)
+      : [milestoneId];
 
-    // Track the visual X position (smooth) and snapped index
-    let currentVisualX = startVisualX;
-    let currentIndex = startIndex;
+    // Store initial positions of all milestones being moved
+    const initialPositions = {};
+    for (const mId of milestonesToMove) {
+      const m = milestones[mId];
+      if (m) {
+        initialPositions[mId] = {
+          startIndex: m.start_index,
+          startVisualX: m.start_index * DAYWIDTH
+        };
+      }
+    }
+
+    const startX = e.clientX;
+    
+    // Track the delta index for validation
+    let currentDeltaIndex = 0;
+    let lastValidDeltaIndex = 0;
 
     const onMouseMove = (moveEvent) => {
       const deltaX = moveEvent.clientX - startX;
-      // Update visual position smoothly (no snapping during drag)
-      currentVisualX = Math.max(0, startVisualX + deltaX);
-      // Calculate what the snapped index would be (for mouseUp)
-      currentIndex = Math.max(0, Math.round(currentVisualX / DAYWIDTH));
-
-      setMilestones(prev => ({
-        ...prev,
-        [milestoneId]: {
-          ...prev[milestoneId],
-          x: currentVisualX, // Use visual X position during drag
+      const deltaIndex = Math.round(deltaX / DAYWIDTH);
+      
+      // Update visual positions smoothly for all milestones
+      setMilestones(prev => {
+        const updated = { ...prev };
+        for (const mId of milestonesToMove) {
+          const initial = initialPositions[mId];
+          if (initial) {
+            updated[mId] = {
+              ...updated[mId],
+              x: Math.max(0, initial.startVisualX + deltaX),
+            };
+          }
         }
-      }));
+        return updated;
+      });
+      
+      currentDeltaIndex = deltaIndex;
     };
 
     const onMouseUp = async () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
 
-      // Snap to final index
-      setMilestones(prev => ({
-        ...prev,
-        [milestoneId]: {
-          ...prev[milestoneId],
-          start_index: currentIndex,
-          x: undefined, // Clear visual X so it uses start_index * DAYWIDTH
+      // Calculate target positions for validation
+      const targetPositions = {};
+      let minNewIndex = Infinity;
+      for (const mId of milestonesToMove) {
+        const initial = initialPositions[mId];
+        if (initial) {
+          const newIndex = Math.max(0, initial.startIndex + currentDeltaIndex);
+          targetPositions[mId] = newIndex;
+          minNewIndex = Math.min(minNewIndex, newIndex);
         }
-      }));
+      }
 
-      // Only save if position actually changed
-      if (currentIndex !== startIndex) {
-        try {
-          await update_start_index(projectId, milestoneId, currentIndex);
-        } catch (err) {
-          console.error("Failed to update milestone position:", err);
+      // Ensure we don't go below 0
+      if (minNewIndex < 0) {
+        currentDeltaIndex = currentDeltaIndex - minNewIndex;
+        for (const mId of Object.keys(targetPositions)) {
+          targetPositions[mId] = Math.max(0, targetPositions[mId]);
         }
+      }
+
+      // Validate the move for all milestones
+      const validation = validateMultiMilestoneMove(milestonesToMove, currentDeltaIndex);
+      
+      if (!validation.valid) {
+        // Move is blocked - show feedback and revert to original positions
+        if (validation.blockingMilestoneId && validation.blockingConnection) {
+          showBlockingFeedback(validation.blockingMilestoneId, validation.blockingConnection);
+        }
+        
+        // Revert all milestones to their original positions
+        setMilestones(prev => {
+          const updated = { ...prev };
+          for (const mId of milestonesToMove) {
+            const initial = initialPositions[mId];
+            if (initial) {
+              updated[mId] = {
+                ...updated[mId],
+                x: undefined, // Clear visual X
+              };
+            }
+          }
+          return updated;
+        });
+        return;
+      }
+
+      // Move is valid - snap all milestones to their final positions
+      setMilestones(prev => {
+        const updated = { ...prev };
+        for (const mId of milestonesToMove) {
+          const initial = initialPositions[mId];
+          if (initial) {
+            const newIndex = Math.max(0, initial.startIndex + currentDeltaIndex);
+            updated[mId] = {
+              ...updated[mId],
+              start_index: newIndex,
+              x: undefined, // Clear visual X so it uses start_index * DAYWIDTH
+            };
+          }
+        }
+        return updated;
+      });
+
+      // Save all changes if any position changed
+      const savePromises = [];
+      for (const mId of milestonesToMove) {
+        const initial = initialPositions[mId];
+        if (initial) {
+          const newIndex = Math.max(0, initial.startIndex + currentDeltaIndex);
+          if (newIndex !== initial.startIndex) {
+            savePromises.push(
+              update_start_index(projectId, mId, newIndex).catch(err => {
+                console.error(`Failed to update milestone ${mId} position:`, err);
+              })
+            );
+          }
+        }
+      }
+      
+      if (savePromises.length > 0) {
+        await Promise.all(savePromises);
       }
     };
 
@@ -1022,10 +1127,148 @@ export default function Dependencies() {
     }
   };
 
-  // Handle milestone click (selection)
+  // Handle milestone click (selection) - supports multi-select with Ctrl/Cmd
   const handleMilestoneClick = (e, milestoneId) => {
     e.stopPropagation();
-    setSelectedMilestone(prev => prev === milestoneId ? null : milestoneId);
+    
+    if (e.ctrlKey || e.metaKey) {
+      // Multi-select: toggle this milestone in selection
+      setSelectedMilestones(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(milestoneId)) {
+          newSet.delete(milestoneId);
+        } else {
+          newSet.add(milestoneId);
+        }
+        return newSet;
+      });
+    } else {
+      // Single click: select only this milestone (or deselect if already selected alone)
+      setSelectedMilestones(prev => {
+        if (prev.size === 1 && prev.has(milestoneId)) {
+          return new Set();
+        }
+        return new Set([milestoneId]);
+      });
+    }
+  };
+
+  // Check if a move would violate incoming dependencies
+  // Returns { valid: true } or { valid: false, blockingConnection, blockingMilestone }
+  const validateMilestoneMove = (milestoneId, newStartIndex) => {
+    // Find all incoming connections (where this milestone is the target)
+    const incomingConnections = connections.filter(c => c.target === milestoneId);
+    
+    for (const conn of incomingConnections) {
+      const sourceMilestone = milestones[conn.source];
+      if (!sourceMilestone) continue;
+      
+      // Source must finish (end) before target starts
+      // Source end day = source.start_index + source.duration - 1
+      // Target start day = newStartIndex
+      // For valid dependency: source end < target start
+      const sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
+      
+      if (sourceEndIndex >= newStartIndex) {
+        return {
+          valid: false,
+          blockingConnection: conn,
+          blockingMilestoneId: conn.source,
+          reason: `Dependency from "${sourceMilestone.name}" must finish before this milestone can start`
+        };
+      }
+    }
+    
+    return { valid: true };
+  };
+
+  // Check if moving multiple milestones by a delta would be valid
+  const validateMultiMilestoneMove = (milestoneIds, deltaIndex) => {
+    for (const milestoneId of milestoneIds) {
+      const milestone = milestones[milestoneId];
+      if (!milestone) continue;
+      
+      const newStartIndex = milestone.start_index + deltaIndex;
+      if (newStartIndex < 0) {
+        return { valid: false, reason: "Cannot move before project start", blockingMilestoneId: milestoneId };
+      }
+      
+      const validation = validateMilestoneMove(milestoneId, newStartIndex);
+      if (!validation.valid) {
+        return validation;
+      }
+    }
+    return { valid: true };
+  };
+
+  // Show blocking feedback with temporary expansion of hidden/collapsed items
+  const showBlockingFeedback = (blockingMilestoneId, connectionId) => {
+    const milestone = milestones[blockingMilestoneId];
+    if (!milestone) return;
+    
+    const taskId = milestone.task;
+    const task = tasks[taskId];
+    if (!task) return;
+    
+    const teamId = task.team;
+    
+    // Store original states
+    const originalState = {
+      taskHidden: taskDisplaySettings[taskId]?.hidden || false,
+      taskSize: taskDisplaySettings[taskId]?.size || 'normal',
+      teamCollapsed: teamDisplaySettings[teamId]?.collapsed || false,
+    };
+    
+    // Temporarily show the milestone
+    if (originalState.taskHidden) {
+      setTaskDisplaySettings(prev => ({
+        ...prev,
+        [taskId]: { ...prev[taskId], hidden: false }
+      }));
+    }
+    if (originalState.taskSize === 'small') {
+      setTaskDisplaySettings(prev => ({
+        ...prev,
+        [taskId]: { ...prev[taskId], size: 'normal' }
+      }));
+    }
+    if (originalState.teamCollapsed) {
+      setTeamDisplaySettings(prev => ({
+        ...prev,
+        [teamId]: { ...prev[teamId], collapsed: false }
+      }));
+    }
+    
+    // Set the highlight state
+    setBlockedMoveHighlight({
+      milestoneId: blockingMilestoneId,
+      connectionSource: connectionId?.source,
+      connectionTarget: connectionId?.target,
+    });
+    
+    // Restore original state after 2 seconds
+    setTimeout(() => {
+      setBlockedMoveHighlight(null);
+      
+      if (originalState.taskHidden) {
+        setTaskDisplaySettings(prev => ({
+          ...prev,
+          [taskId]: { ...prev[taskId], hidden: true }
+        }));
+      }
+      if (originalState.taskSize === 'small') {
+        setTaskDisplaySettings(prev => ({
+          ...prev,
+          [taskId]: { ...prev[taskId], size: 'small' }
+        }));
+      }
+      if (originalState.teamCollapsed) {
+        setTeamDisplaySettings(prev => ({
+          ...prev,
+          [teamId]: { ...prev[teamId], collapsed: true }
+        }));
+      }
+    }, 2000);
   };
 
   // Handle milestone double click (rename)
@@ -1313,11 +1556,11 @@ export default function Dependencies() {
     return `M ${x1} ${y1} L ${x2} ${y2}`;
   };
 
-  // Handle connection click
+  // Handle connection click - just select/deselect
   const handleConnectionClick = (e, connection) => {
     e.stopPropagation();
-    if (mode === "delete") {
-      handleDeleteConnection(connection);
+    if (selectedConnection?.source === connection.source && selectedConnection?.target === connection.target) {
+      setSelectedConnection(null);
     } else {
       setSelectedConnection(connection);
     }
@@ -1759,7 +2002,7 @@ export default function Dependencies() {
           setSelectedConnection(null);
           setOpenTeamSettings(null);
           setShowSettingsDropdown(false);
-          setSelectedMilestone(null);
+          setSelectedMilestones(new Set());
         }}
       >
         {/* Control Board Toolbar */}
@@ -2317,6 +2560,30 @@ export default function Dependencies() {
                     />
                   </div>
 
+                  {/* Team Color Header Line - spans full width */}
+                  <div 
+                    className="flex"
+                    style={{ 
+                      height: `${TEAM_HEADER_LINE_HEIGHT}px`,
+                      backgroundColor: team.color,
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                    }}
+                  >
+                    <div 
+                      style={{ 
+                        width: `${TEAMWIDTH + TASKWIDTH}px`,
+                        position: 'sticky',
+                        left: 0,
+                        zIndex: 41,
+                        backgroundColor: team.color,
+                      }}
+                    />
+                    <div style={{ flex: 1 }} />
+                  </div>
+                  
+                  {/* Gap after header line */}
+                  <div style={{ height: `${TEAM_HEADER_GAP}px` }} />
+
                   {/* Team Row */}
                   <div className="flex">
                     {/* STICKY LEFT: Team + Tasks */}
@@ -2324,7 +2591,7 @@ export default function Dependencies() {
                       style={{
                         height: teamHeight,
                         width: `${TEAMWIDTH + TASKWIDTH}px`,
-                        backgroundColor: isTargetTeam ? '#dbeafe' : '#ffffff',
+                        backgroundColor: isTargetTeam ? '#dbeafe' : `${team.color}10`,
                         opacity: ghost?.id === team_key ? 0.2 : 1,
                         position: 'sticky',
                         left: 0,
@@ -2338,7 +2605,7 @@ export default function Dependencies() {
                       {/* Team Column */}
                       <div
                         style={{ width: isTeamCollapsed(team_key) ? `${TEAMWIDTH + TASKWIDTH}px` : `${TEAMWIDTH}px` }}
-                        className="flex flex-col bg-white"
+                        className="flex flex-col"
                       >
                         {/* Team Name Row - Draggable + Settings */}
                         <div className={`${isTeamCollapsed(team_key) ? '' : 'border-b border-slate-200'} h-8 px-3 flex items-center justify-between`}>
@@ -2611,6 +2878,10 @@ export default function Dependencies() {
                       from { stroke-dashoffset: 24; }
                       to { stroke-dashoffset: 0; }
                     }
+                    @keyframes blockedPulse {
+                      0%, 100% { opacity: 1; stroke-width: 5; }
+                      50% { opacity: 0.5; stroke-width: 3; }
+                    }
                   `}
                 </style>
               </defs>
@@ -2637,13 +2908,20 @@ export default function Dependencies() {
                 const isSelected = selectedConnection?.source === conn.source && 
                                    selectedConnection?.target === conn.target;
                 
-                // Determine if this connection is related to the selected milestone
-                const isOutgoing = selectedMilestone && conn.source === selectedMilestone;
-                const isIncoming = selectedMilestone && conn.target === selectedMilestone;
+                // Determine if this connection is related to any selected milestone
+                const isOutgoing = selectedMilestones.size > 0 && selectedMilestones.has(conn.source);
+                const isIncoming = selectedMilestones.size > 0 && selectedMilestones.has(conn.target);
+                
+                // Check if this connection is being highlighted as blocked
+                const isBlockedHighlight = blockedMoveHighlight && 
+                  blockedMoveHighlight.connectionSource === conn.source &&
+                  blockedMoveHighlight.connectionTarget === conn.target;
                 
                 // Determine stroke color based on selection state
                 let strokeColor = "#374151"; // default gray
-                if (isSelected) {
+                if (isBlockedHighlight) {
+                  strokeColor = "#dc2626"; // red for blocked
+                } else if (isSelected) {
                   strokeColor = "#6366f1"; // indigo when connection is selected
                 } else if (isOutgoing) {
                   strokeColor = "#22c55e"; // green for outgoing edges
@@ -2651,7 +2929,7 @@ export default function Dependencies() {
                   strokeColor = "#ef4444"; // red for incoming edges
                 }
                 
-                const isHighlighted = isSelected || isOutgoing || isIncoming;
+                const isHighlighted = isSelected || isOutgoing || isIncoming || isBlockedHighlight;
 
                 return (
                   <g key={`${conn.source}-${conn.target}`} style={{ pointerEvents: 'auto' }}>
@@ -2668,12 +2946,14 @@ export default function Dependencies() {
                     <path
                       d={getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y)}
                       stroke={strokeColor}
-                      strokeWidth={isHighlighted ? "3.5" : "2.5"}
+                      strokeWidth={isBlockedHighlight ? "5" : isHighlighted ? "3.5" : "2.5"}
                       fill="none"
                       strokeLinecap="round"
                       strokeDasharray="8, 4"
                       style={{
-                        animation: "flowAnimation 3s linear infinite",
+                        animation: isBlockedHighlight 
+                          ? "flowAnimation 3s linear infinite, blockedPulse 0.5s ease-in-out infinite"
+                          : "flowAnimation 3s linear infinite",
                         pointerEvents: "none",
                         filter: isHighlighted ? `drop-shadow(0 0 3px ${strokeColor}80)` : "none",
                       }}
@@ -2726,19 +3006,21 @@ export default function Dependencies() {
                   const teamYOffset = getTeamYOffset(team_key);
                   const taskYOffset = getTaskYOffset(task_key, team_key);
                   const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-                  const taskY = teamYOffset + dropHighlightOffset + taskYOffset;
+                  const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
+                  const taskY = teamYOffset + dropHighlightOffset + headerOffset + taskYOffset;
 
                   return tasks[task_key]?.milestones?.map((milestone_from_task) => {
                     const milestone = milestones[milestone_from_task.id];
                     if (!milestone) return null;
 
-                    const showDelete = hoveredMilestone === milestone.id && mode === "delete";
+                    const showDelete = hoveredMilestone === milestone.id && !safeMode;
                     const showDurationPlus = hoveredMilestone === milestone.id && mode === "duration";
                     const showDurationMinus = hoveredMilestone === milestone.id && mode === "duration" && milestone.duration > 1;
                     const showConnect = mode === "connect";
-                    const isSelected = selectedMilestone === milestone.id;
+                    const isSelected = selectedMilestones.has(milestone.id);
                     const isEditing = editingMilestoneId === milestone.id;
                     const showEdgeResize = viewMode === "dependency" && hoveredMilestone === milestone.id;
+                    const isBlockedHighlight = blockedMoveHighlight?.milestoneId === milestone.id;
 
                     return (
                       <div
@@ -2756,9 +3038,11 @@ export default function Dependencies() {
                         onMouseEnter={() => setHoveredMilestone(milestone.id)}
                         onMouseLeave={() => setHoveredMilestone(null)}
                         className={`absolute rounded cursor-pointer ${
-                          isSelected 
-                            ? 'ring-2 ring-blue-500 ring-offset-1 shadow-lg' 
-                            : 'hover:brightness-95'
+                          isBlockedHighlight 
+                            ? 'ring-2 ring-red-500 ring-offset-1 shadow-lg animate-pulse'
+                            : isSelected 
+                              ? 'ring-2 ring-blue-500 ring-offset-1 shadow-lg' 
+                              : 'hover:brightness-95'
                         }`}
                         style={{
                           pointerEvents: 'auto',
@@ -2767,10 +3051,12 @@ export default function Dependencies() {
                           top: `${taskY}px`,
                           width: `${DAYWIDTH * milestone.duration}px`,
                           height: `${taskHeight}px`,
-                          backgroundColor: isSelected ? '#3b82f6' : team.color,
-                          boxShadow: isSelected 
-                            ? '0 4px 12px rgba(59, 130, 246, 0.4)' 
-                            : '0 1px 3px rgba(0,0,0,0.1)',
+                          backgroundColor: isBlockedHighlight ? '#dc2626' : isSelected ? '#3b82f6' : team.color,
+                          boxShadow: isBlockedHighlight
+                            ? '0 4px 12px rgba(220, 38, 38, 0.5)'
+                            : isSelected 
+                              ? '0 4px 12px rgba(59, 130, 246, 0.4)' 
+                              : '0 1px 3px rgba(0,0,0,0.1)',
                         }}
                         key={milestone.id}
                       >
@@ -2808,8 +3094,14 @@ export default function Dependencies() {
                         {/* Delete icon */}
                         {showDelete && (
                           <div 
-                            className="absolute -top-2 -right-2 bg-red-500 rounded-full p-0.5 shadow-md"
+                            className="absolute -top-2 -right-2 bg-red-500 rounded-full p-0.5 shadow-md cursor-pointer hover:bg-red-600 hover:scale-110 transition-all"
                             style={{ pointerEvents: 'auto' }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMilestoneDelete(milestone.id);
+                            }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            title="Delete milestone"
                           >
                             <DeleteForeverIcon style={{ fontSize: 16, color: 'white' }} />
                           </div>
