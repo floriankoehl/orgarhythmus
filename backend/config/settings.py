@@ -97,7 +97,7 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': '/app/db/db.sqlite3',   # inside the mounted volume
+        'NAME': BASE_DIR / 'db.sqlite3' if DEBUG else '/app/db/db.sqlite3',
     }
 }
 
