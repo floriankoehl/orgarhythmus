@@ -144,7 +144,68 @@ urlpatterns = [
     path("projects/<int:project_id>/delete_legend_type/", views.delete_legend_type),
     path("projects/<int:project_id>/assign_idea_legend_type/", views.assign_idea_legend_type),
 
-#
+
+
+
+
+
+
+
+
+
+
+
+    # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
+    # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
+    # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
+    # What i changed: Added all these url endpoints..
+
+    # Project
+    path("projects/<int:project_id>/get_project_details/", views.get_project_details),
+
+
+    # Teams
+    path("projects/<int:project_id>/fetch_project_teams/", views.fetch_project_teams),
+    path("projects/<int:project_id>/safe_team_order/", views.safe_team_order),
+
+    # Tasks
+    path("projects/<int:project_id>/fetch_project_tasks/", views.fetch_project_tasks),
+
+    # Milestones
+    path("projects/<int:project_id>/get_all_milestones/", views.get_all_milestones),
+    path("projects/<int:project_id>/add_milestone/", views.add_milestone),
+    path("projects/<int:project_id>/update_start_index/", views.update_start_index),
+    path("projects/<int:project_id>/delete_milestones/", views.delete_milestones),
+    path("projects/<int:project_id>/change_duration/", views.change_duration)
+
+    # _____________________________ END OF NEW ADDING ______________________________
+    # _____________________________ END OF NEW ADDING ______________________________
+    # _____________________________ END OF NEW ADDING ______________________________
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ]
 
 

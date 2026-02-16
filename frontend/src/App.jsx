@@ -24,7 +24,7 @@ import ProjectTaskDetail from './pages/ProjectTaskDetail.jsx';
 import Calender from './pages/Calender.jsx';
 import AttemptDetail from './pages/AttemptDetail.jsx';
 import IdeaFactory from './pages/IdeaFactory';
-
+import Dependencies from './pages/Dependencies';
 
 
 
@@ -51,7 +51,8 @@ const router = createBrowserRouter([
           { path: 'teams/:teamId', element: <ProjectTeamDetail /> },
           { path: 'tasks', element: <ProjectTasks /> },
           { path: 'tasks/:taskId', element: <ProjectTaskDetail /> },
-          { path: 'attempts', element: <ProjectAttemptsWrapper /> },
+          // { path: 'attempts', element: <ProjectAttemptsWrapper /> },
+          { path: 'dependencies', element: <Dependencies /> },
           { path: 'calender', element: <Calender /> },
           { path: 'attempts/:attemptId', element: <AttemptDetail /> },
         ],

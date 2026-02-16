@@ -6,9 +6,11 @@ from ..models import (
     Project,
     Team,
     Task,
+    Milestone,
     Idea,
     Category,
     LegendType,
+
 )
 
 
@@ -177,3 +179,76 @@ class LegendTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = LegendType
         fields = "__all__"
+
+
+
+
+
+
+
+
+# _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
+# _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
+# _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
+# What i changed: Added this complete new model
+
+
+class ProjectSerializer_Deps(serializers.ModelSerializer):
+    class Meta: 
+        model = Project
+        fields = "__all__"
+
+
+class TeamSerializer_Deps(serializers.ModelSerializer):
+    class Meta: 
+        model = Team
+        fields = "__all__"
+
+
+class MilestoneSerializer_Deps(serializers.ModelSerializer):
+    class Meta: 
+        model = Milestone
+        fields = "__all__"
+
+
+class TaskSerializer_Deps(serializers.ModelSerializer):
+    milestones = MilestoneSerializer_Deps(many=True, read_only=True)
+
+    class Meta:
+        model = Task
+        fields = "__all__"
+
+
+# _____________________________ END OF NEW ADDING ______________________________
+# _____________________________ END OF NEW ADDING ______________________________
+# _____________________________ END OF NEW ADDING ______________________________
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

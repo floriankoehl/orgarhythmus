@@ -52,6 +52,15 @@ from .tasks import (
     task_detail_view,
     assign_task_member,
     user_tasks,
+    get_project_details,
+    fetch_project_teams,
+    safe_team_order,
+    fetch_project_tasks,
+    get_all_milestones,
+    add_milestone,
+    update_start_index,
+    delete_milestones,
+    change_duration,
 )
 
 from .attempts import (

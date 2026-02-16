@@ -224,50 +224,6 @@ class AttemptModelTest(TestCase):
             Attempt.objects.create(task=self.task, number=1, slot_index=99)
 
 
-# class DependencyModelTest(TestCase):
-#     def setUp(self):
-#         user = User.objects.create_user(username="u1", password="p")
-#         project = Project.objects.create(name="P", owner=user)
-#         team = Team.objects.create(name="T", project=project)
-#         self.t1 = Task.objects.create(name="A", project=project, team=team)
-#         self.t2 = Task.objects.create(name="B", project=project, team=team)
-
-#     def test_str(self):
-#         dep = Dependency.objects.create(vortakt=self.t1, nachtakt=self.t2, type="FS")
-#         self.assertIn("A", str(dep))
-#         self.assertIn("B", str(dep))
-
-#     def test_unique_together(self):
-#         Dependency.objects.create(vortakt=self.t1, nachtakt=self.t2)
-#         with self.assertRaises(IntegrityError):
-#             Dependency.objects.create(vortakt=self.t1, nachtakt=self.t2)
-
-
-# class AttemptDependencyModelTest(TestCase):
-#     def setUp(self):
-#         user = User.objects.create_user(username="u1", password="p")
-#         project = Project.objects.create(name="P", owner=user)
-#         team = Team.objects.create(name="T", project=project)
-#         task = Task.objects.create(name="T1", project=project, team=team)
-#         self.a1 = task.attempts.first()
-#         self.a2 = task.attempts.last()
-
-#     def test_str(self):
-#         dep = AttemptDependency.objects.create(
-#             vortakt_attempt=self.a1, nachtakt_attempt=self.a2
-#         )
-#         self.assertIn("->", str(dep))
-
-#     def test_unique_together(self):
-#         AttemptDependency.objects.create(
-#             vortakt_attempt=self.a1, nachtakt_attempt=self.a2
-#         )
-#         with self.assertRaises(IntegrityError):
-#             AttemptDependency.objects.create(
-#                 vortakt_attempt=self.a1, nachtakt_attempt=self.a2
-#             )
-
-
 class NotificationModelTest(TestCase):
     def test_str(self):
         user = User.objects.create_user(username="u1", password="p")
@@ -288,13 +244,6 @@ class DemoDateModelTest(TestCase):
     def test_str(self):
         dd = DemoDate.objects.create(date=date(2026, 1, 1))
         self.assertIn("2026-01-01", str(dd))
-
-
-# class CommentModelTest(TestCase):
-#     def test_creation(self):
-#         user = User.objects.create_user(username="u1", password="p")
-#         c = Comment.objects.create(author=user, text="Hello")
-#         self.assertEqual(c.text, "Hello")
 
 
 class CategoryModelTest(TestCase):

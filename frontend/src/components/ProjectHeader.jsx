@@ -53,11 +53,17 @@ export default function ProjectHeader({}) {
     },
 
     {
-      key: 'attempts',
-      to: projectId ? `/projects/${projectId}/attempts` : '/projects', // fallback
-      label: 'Attempts',
+      key: 'dependencies',
+      to: projectId ? `/projects/${projectId}/dependencies` : '/projects', // fallback
+      label: 'dependencies',
       icon: <NumbersIcon fontSize="small" />,
     },
+    // {
+    //   key: 'attempts',
+    //   to: projectId ? `/projects/${projectId}/attempts` : '/projects', // fallback
+    //   label: 'Attempts',
+    //   icon: <NumbersIcon fontSize="small" />,
+    // },
     {
       key: 'next-steps',
       to: projectId ? `/projects/${projectId}/calender` : '/projects', // fallback

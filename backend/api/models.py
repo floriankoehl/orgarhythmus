@@ -34,10 +34,14 @@ class Team(models.Model):
     color = models.CharField(max_length=200, blank=True, null=True)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="teams")
     line_index = models.IntegerField(blank=True, null=True)
+    order_index = models.IntegerField(default=0)
     members = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="teams", blank=True)
 
     def __str__(self):
         return self.name
+
+    class Meta: 
+        ordering = ["project", "order_index"]
 
 
 # ═══════════════════════════════════════════════
@@ -57,22 +61,110 @@ class Task(models.Model):
     )
     assigned_members = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="assigned_tasks", blank=True)
 
-    def save(self, *args, **kwargs):
-        is_new = self.pk is None
-        super().save(*args, **kwargs)
-
-        if is_new:
-            for i in range(3):
-                name = f"{self.name}_{i}"
-                attempt = Attempt.objects.create(task=self, name=name, number=i + 1, slot_index=i)
-                AttemptTodo.objects.create(
-                    attempt=attempt,
-                    text="complete task",
-                    done=False,
-                )
+    team_index = models.IntegerField(default=0)
+    order_index = models.IntegerField(default=0)
 
     def __str__(self):
         return self.name
+    
+    class Meta: 
+        ordering = ["team", "order_index"]
+
+
+# ═══════════════════════════════════════════════
+#  MILESTONE
+# ═══════════════════════════════════════════════
+
+
+class Milestone(models.Model):
+    name = models.CharField(max_length=200)
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, null=False)
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, null=False, related_name="milestones")
+    start_index = models.IntegerField(default=0)
+    duration = models.IntegerField(default=1)
+
+
+
+    
+    # _____________________________ END OF NEW ADDING ______________________________
+    # _____________________________ END OF NEW ADDING ______________________________
+    # _____________________________ END OF NEW ADDING ______________________________
+
+
+
+
+
+    # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
+    # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
+    # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
+    # What i changed: Added this complete new model
+
+
+# ═══════════════════════════════════════════════
+#  DEPENDENCY
+# ═══════════════════════════════════════════════
+
+class Dependency(models.Model):
+    source = models.ForeignKey(Milestone, on_delete=models.CASCADE, 
+                               related_name="outgoing_dependencies")
+    target = models.ForeignKey(Milestone, on_delete=models.CASCADE,
+                               related_name="incoming_dependencies")
+
+
+    
+    # _____________________________ END OF NEW ADDING ______________________________
+    # _____________________________ END OF NEW ADDING ______________________________
+    # _____________________________ END OF NEW ADDING ______________________________
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # ═══════════════════════════════════════════════

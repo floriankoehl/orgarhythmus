@@ -6,9 +6,18 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..models import Project, Team, Task, Notification
-from .serializers import TaskSerializer_TeamView, TaskExpandedSerializer
+from ..models import Project, Team, Task, Notification, Milestone
+from .serializers import (
+    TaskSerializer_TeamView, 
+    TaskExpandedSerializer,
+    ProjectSerializer_Deps,
+    TeamSerializer_Deps,
+    MilestoneSerializer_Deps,
+    TaskSerializer_Deps
+    )
 from .helpers import user_has_project_access
+from rest_framework import status
+from django.db import transaction
 
 
 # delete_task_by_id
@@ -331,3 +340,288 @@ def user_tasks(request):
         for t in tasks
     ]
     return Response({"tasks": data}, status=status.HTTP_200_OK)
+
+
+
+
+
+
+
+
+# _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
+# _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
+# _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
+# What i changed: Added these view functions completely
+
+# MilestoneSerializer_Deps
+# TaskSerializer_Deps
+# MilestoneSerializer
+
+
+
+# PROJECT
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_project_details(request, project_id):
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    serialized = ProjectSerializer_Deps(project).data
+    return Response({"project": serialized})
+
+
+
+# TEAMS
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def fetch_project_teams(request, project_id):
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    all_teams = Team.objects.filter(project=project).order_by("order_index")
+    serialized_teams = TeamSerializer_Deps(all_teams, many=True)
+
+    return Response({"teams": serialized_teams.data})
+
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def safe_team_order(request, project_id):
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    order = request.data.get("order")
+
+    if not isinstance(order, list):
+        return Response({"error": "order must be a list"}, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        for index, team_id in enumerate(order):
+            Team.objects.filter(id=team_id, project=project).update(order_index=index)
+
+    return Response({"status": "ok"})
+
+# TASKS
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def fetch_project_tasks(request, project_id):
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    all_tasks = (
+        Task.objects
+        .filter(project=project)
+        .prefetch_related("milestones")  
+        .order_by("team_id", "order_index")
+    )
+
+    serialized = TaskSerializer_Deps(all_tasks, many=True).data
+
+    # tasks by id
+    tasks_by_id = {}
+    for task in serialized:
+        tasks_by_id[task["id"]] = task
+
+    # order per team
+    order_per_team = {}
+    for task in serialized:
+        team_id = task["team"]
+
+        if team_id not in order_per_team:
+            order_per_team[team_id] = []
+
+        order_per_team[team_id].append(task["id"])
+
+    return Response({
+        "health": "healthy",
+        "tasks": tasks_by_id,
+        "taskOrder": order_per_team
+    })
+
+
+
+
+
+# MILESTONES
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_all_milestones(request, project_id):
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    all_milestones = Milestone.objects.filter(project=project)
+    if all_milestones.exists():
+        serialized = MilestoneSerializer_Deps(all_milestones, many=True)
+        return Response({"milestones": serialized.data})
+    else: 
+        return Response({"milestones": []})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def add_milestone(request, project_id):
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    task_id = request.data.get("task_id")
+    task = Task.objects.get(id=int(task_id), project=project)
+    name = f"{task.name}_0"
+    start_index = 0
+    duration = 1
+    milestone, created = Milestone.objects.get_or_create(
+        project=project,
+        name=name,
+        task=task,
+        start_index=start_index,
+        duration=duration
+    )
+
+    serialized = MilestoneSerializer_Deps(milestone)
+
+    return Response({"added_milestone": serialized.data, "created": created})
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def update_start_index(request, project_id):
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    new_index = request.data.get("index")
+    milestone_id = request.data.get("milestone_id")
+    milestone = Milestone.objects.get(id=milestone_id, project=project)
+    milestone.start_index = new_index
+    milestone.save()
+    return Response({"updated": "true"})
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_milestones(request, project_id):
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    milestone_id = request.data.get("id")
+    milestone = Milestone.objects.get(id=milestone_id, project=project)
+    milestone.delete()
+    return Response({"deleted": True}, status=204)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def change_duration(request, project_id):
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    milestone_id = request.data.get("id")
+    milestone = Milestone.objects.get(id=milestone_id, project=project)
+    change = request.data.get("change")
+    duration = milestone.duration + change
+
+    if duration < 1: 
+        duration = 1
+
+    data = {
+        "duration": duration
+    }
+    serializer = MilestoneSerializer_Deps(milestone, data=data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response({"succesfull": True, "data": serializer.data}, status=200)
+    
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+# _____________________________ END OF NEW ADDING ______________________________
+# _____________________________ END OF NEW ADDING ______________________________
+# _____________________________ END OF NEW ADDING ______________________________
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
