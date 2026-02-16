@@ -199,3 +199,53 @@ export async function reorder_team_tasks(projectId, taskId, targetTeamId, order)
     if (!res.ok) throw new Error('Failed to reorder tasks');
     return await res.json();
 }
+
+
+// Days
+
+export async function get_project_days(projectId) {
+    const res = await authFetch(`/api/projects/${projectId}/days/`)
+    if (!res.ok) throw new Error('Failed to fetch project days');
+    return await res.json()
+}
+
+export async function update_day(projectId, dayIndex, data) {
+    const res = await authFetch(`/api/projects/${projectId}/days/${dayIndex}/`, {
+        method: "PATCH",
+        body: JSON.stringify(data)
+    })
+    if (!res.ok) throw new Error('Failed to update day');
+    return await res.json()
+}
+
+export async function set_day_purpose(projectId, dayIndex, purpose) {
+    const res = await authFetch(`/api/projects/${projectId}/days/set_purpose/`, {
+        method: "POST",
+        body: JSON.stringify({
+            day_index: dayIndex,
+            purpose: purpose
+        })
+    })
+    if (!res.ok) throw new Error('Failed to set day purpose');
+    return await res.json()
+}
+
+export async function validate_project_dates(projectId, startDate, endDate) {
+    const res = await authFetch(`/api/projects/${projectId}/validate_dates/`, {
+        method: "POST",
+        body: JSON.stringify({
+            start_date: startDate,
+            end_date: endDate
+        })
+    })
+    if (!res.ok) throw new Error('Failed to validate dates');
+    return await res.json()
+}
+
+export async function sync_project_days(projectId) {
+    const res = await authFetch(`/api/projects/${projectId}/sync_days/`, {
+        method: "POST"
+    })
+    if (!res.ok) throw new Error('Failed to sync days');
+    return await res.json()
+}

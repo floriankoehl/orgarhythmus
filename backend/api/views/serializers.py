@@ -11,7 +11,7 @@ from ..models import (
     Idea,
     Category,
     LegendType,
-
+    Day,
 )
 
 
@@ -118,39 +118,6 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
     def get_assigned_members_data(self, obj):
         return [{"id": u.id, "username": u.username, "email": u.email} for u in obj.assigned_members.all()]
 
-    # def get_attempts(self, obj):
-    #     attempts_qs = getattr(obj, "attempts", None)
-    #     if attempts_qs is None:
-    #         return []
-    #
-    #     ordered = attempts_qs.all().order_by('slot_index', 'id').prefetch_related('todos')
-    #     start_date = getattr(getattr(obj, 'project', None), 'start_date', None)
-    #     return [
-    #         {
-    #             "id": a.id,
-    #             "name": getattr(a, "name", None),
-    #             "description": getattr(a, "description", None),
-    #             "number": getattr(a, "number", None),
-    #             "slot_index": getattr(a, "slot_index", None),
-    #             "done": getattr(a, "done", False),
-    #             "scheduled_date": (
-    #                 (
-    #                     (start_date + timedelta(days=(a.slot_index - 1))).isoformat()
-    #                 ) if (start_date and (a.slot_index is not None)) else None
-    #             ),
-    #             "todos": [
-    #                 {
-    #                     "id": t.id,
-    #                     "text": t.text,
-    #                     "done": t.done,
-    #                     "created_at": t.created_at,
-    #                 }
-    #                 for t in (a.todos.all().order_by('-created_at') if hasattr(a, 'todos') else [])
-    #             ],
-    #         }
-    #         for a in ordered
-    #     ]
-
 
 # IdeaSerializer
 class IdeaSerializer(serializers.ModelSerializer):
@@ -222,6 +189,32 @@ class DependencySerializer_Deps(serializers.ModelSerializer):
     class Meta:
         model = Dependency
         fields = "__all__"
+
+
+# DaySerializer
+class DaySerializer(serializers.ModelSerializer):
+    is_weekend = serializers.BooleanField(read_only=True)
+    is_sunday = serializers.BooleanField(read_only=True)
+    day_name = serializers.CharField(read_only=True)
+    day_name_short = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = Day
+        fields = [
+            "id",
+            "project",
+            "date",
+            "day_index",
+            "purpose",
+            "description",
+            "is_blocked",
+            "color",
+            "is_weekend",
+            "is_sunday",
+            "day_name",
+            "day_name_short",
+        ]
+        read_only_fields = ["id", "project", "date", "day_index", "is_weekend", "is_sunday", "day_name", "day_name_short"]
 
 
 # _____________________________ END OF NEW ADDING ______________________________

@@ -13,6 +13,7 @@ from .serializers import (
     IdeaSerializer,
     CategorySerializer,
     LegendTypeSerializer,
+    DaySerializer,
 )
 
 from .helpers import user_has_project_access
@@ -66,6 +67,11 @@ from .tasks import (
     create_dependency,
     delete_dependency,
     reorder_team_tasks,
+    get_project_days,
+    update_day,
+    set_day_purpose,
+    validate_project_dates,
+    sync_project_days,
 )
 
 from .ideas import (

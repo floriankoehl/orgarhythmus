@@ -111,6 +111,13 @@ urlpatterns = [
     path("projects/<int:project_id>/get_all_dependencies/", views.get_all_dependencies),
     path("projects/<int:project_id>/create_dependency/", views.create_dependency),
     path("projects/<int:project_id>/delete_dependency/", views.delete_dependency),
+    
+    # Days
+    path("projects/<int:project_id>/days/", views.get_project_days),
+    path("projects/<int:project_id>/days/<int:day_index>/", views.update_day),
+    path("projects/<int:project_id>/days/set_purpose/", views.set_day_purpose),
+    path("projects/<int:project_id>/validate_dates/", views.validate_project_dates),
+    path("projects/<int:project_id>/sync_days/", views.sync_project_days),
     # _____________________________ END OF NEW ADDING ______________________________
 ]
 

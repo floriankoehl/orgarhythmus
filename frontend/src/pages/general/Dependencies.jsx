@@ -15,6 +15,8 @@ import {
   create_dependency,
   delete_dependency_api,
   reorder_team_tasks,
+  get_project_days,
+  set_day_purpose,
 } from '../../api/dependencies_api.js';
 import {
   createTeamForProject,
@@ -26,13 +28,14 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
-import SettingsIcon from '@mui/icons-material/Settings';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import FlagIcon from '@mui/icons-material/Flag';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
+import CloseIcon from '@mui/icons-material/Close';
+import SettingsIcon from '@mui/icons-material/Settings';
 
 // Height constants (defaults)
 const DEFAULT_TASKHEIGHT_NORMAL = 32;
@@ -50,6 +53,9 @@ const TASK_DROP_INDICATOR_HEIGHT = 3;
 
 // Connection constants
 const CONNECTION_RADIUS = 20;
+
+// Threshold for showing day name abbreviation
+const DAY_NAME_WIDTH_THRESHOLD = 45;
 
 function daysBetween(start, end) {
     const startDate = new Date(start)
@@ -143,6 +149,13 @@ export default function Dependencies() {
   const [showEmptyTeams, setShowEmptyTeams] = useState(true);
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
 
+  // Days data from backend
+  const [projectDays, setProjectDays] = useState({}); // { dayIndex: { purpose, is_sunday, day_name_short, ... } }
+  
+  // Day purpose modal
+  const [dayPurposeModal, setDayPurposeModal] = useState(null); // { dayIndex, currentPurpose }
+  const [newDayPurpose, setNewDayPurpose] = useState("");
+
   // Dynamic constants based on settings
   const DAYWIDTH = customDayWidth;
   const TASKHEIGHT_NORMAL = customTaskHeightNormal;
@@ -161,20 +174,26 @@ export default function Dependencies() {
 
   const [mode, setMode] = useState("drag")
 
+  // Store previous viewMode when shift is pressed
+  const prevViewModeRef = useRef(viewMode);
+
   useEffect(() => {
     const down = (e) => {
       if (e.ctrlKey) setMode("delete")
       else if (e.shiftKey) {
         setMode("duration")
-        setViewMode("milestone")
+        // Switch to milestone mode when shift is held
+        prevViewModeRef.current = viewMode;
+        setViewMode("milestone");
       }
       else if (e.altKey) setMode("connect")
     }
 
     const up = (e) => {
       setMode("drag")
-      if (!e.shiftKey) {
-        setViewMode("dependency")
+      // Restore previous view mode when shift is released
+      if (!e.shiftKey && prevViewModeRef.current !== viewMode) {
+        setViewMode(prevViewModeRef.current);
       }
     }
 
@@ -184,7 +203,7 @@ export default function Dependencies() {
       window.removeEventListener("keydown", down)
       window.removeEventListener("keyup", up)
     }
-  }, [])
+  }, [viewMode])
 
   // Close team settings when clicking outside
   useEffect(() => {
@@ -250,10 +269,18 @@ export default function Dependencies() {
           const milestone = fetched_Milestones[i]
           updated_milestones[milestone.id] = {
             ...milestone, 
-            // Don't pre-calculate x - it will be calculated dynamically based on current DAYWIDTH
             display: "default"
           }
         }
+      }
+
+      // Load project days
+      try {
+        const resDays = await get_project_days(projectId);
+        setProjectDays(resDays.days || {});
+      } catch (err) {
+        console.error("Failed to load project days:", err);
+        setProjectDays({});
       }
 
       setTeamOrder(newTeamOrder);
@@ -280,23 +307,109 @@ export default function Dependencies() {
   }, [reloadData, projectId]);
 
 
-  // ________DISPLAY SETTINGS HELPERS________
+  // ________DAY PURPOSE HANDLERS________
   // ________________________________________
 
+  const handleDayHeaderClick = (dayIndex) => {
+    const dayData = projectDays[dayIndex] || {};
+    setDayPurposeModal({
+      dayIndex,
+      currentPurpose: dayData.purpose || ""
+    });
+    setNewDayPurpose(dayData.purpose || "");
+  };
+
+  const handleSaveDayPurpose = async () => {
+    if (!dayPurposeModal) return;
+    
+    try {
+      const result = await set_day_purpose(projectId, dayPurposeModal.dayIndex, newDayPurpose);
+      if (result.success) {
+        setProjectDays(prev => ({
+          ...prev,
+          [dayPurposeModal.dayIndex]: result.day
+        }));
+      }
+    } catch (err) {
+      console.error("Failed to save day purpose:", err);
+    }
+    
+    setDayPurposeModal(null);
+    setNewDayPurpose("");
+  };
+
+  const handleClearDayPurpose = async () => {
+    if (!dayPurposeModal) return;
+    
+    try {
+      const result = await set_day_purpose(projectId, dayPurposeModal.dayIndex, null);
+      if (result.success) {
+        setProjectDays(prev => ({
+          ...prev,
+          [dayPurposeModal.dayIndex]: result.day
+        }));
+      }
+    } catch (err) {
+      console.error("Failed to clear day purpose:", err);
+    }
+    
+    setDayPurposeModal(null);
+    setNewDayPurpose("");
+  };
+
+
+  // ... (keep all other existing functions like getTeamHeight, handleTeamDrag, etc.)
+
+
+  // ___________DAY LABELS WITH ENHANCED INFO______________
+  // ________________________________________
+
+  const dayLabels = useMemo(() => {
+    if (!projectStartDate || !days) return [];
+    const labels = [];
+    for (let i = 0; i < days; i++) {
+      const date = new Date(projectStartDate);
+      date.setDate(date.getDate() + i);
+      const day = date.getDate();
+      const month = date.getMonth() + 1;
+      const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
+      const isSunday = dayOfWeek === 0;
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      
+      const dayNames = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+      const dayNameShort = dayNames[dayOfWeek];
+      
+      // Get purpose from projectDays if available
+      const dayData = projectDays[i] || {};
+      
+      labels.push({
+        index: i,
+        dateStr: `${day}.${month}`,
+        dayNameShort: dayData.day_name_short || dayNameShort,
+        isSunday: dayData.is_sunday ?? isSunday,
+        isWeekend: dayData.is_weekend ?? isWeekend,
+        purpose: dayData.purpose || null,
+        isBlocked: dayData.is_blocked || false,
+      });
+    }
+    return labels;
+  }, [projectStartDate, days, projectDays]);
+
+
   // Calculate team height based on visible tasks and their sizes (with minimum)
+  const TEAM_MIN_HEIGHT = TASKHEIGHT_NORMAL;
+  
   const getTeamHeight = (teamId) => {
     const team = teams[teamId];
-    if (!team) return TASKHEIGHT_NORMAL; // Use dynamic minimum
+    if (!team) return TEAM_MIN_HEIGHT;
     
     let height = 0;
     for (const taskId of team.tasks) {
       height += getTaskHeight(taskId, taskDisplaySettings);
     }
-    // Ensure minimum height (use dynamic task height)
-    return Math.max(height, TASKHEIGHT_NORMAL);
+    return Math.max(height, TEAM_MIN_HEIGHT);
   };
 
-  // Get raw team height (without minimum, for calculations)
   const getRawTeamHeight = (teamId) => {
     const team = teams[teamId];
     if (!team) return 0;
@@ -308,34 +421,94 @@ export default function Dependencies() {
     return height;
   };
 
-  // Check if team is visible (hidden if manually hidden OR all tasks are hidden OR not in filter)
   const isTeamVisible = (teamId) => {
-    // Check team filter first - if filter is active and team not in filter, hide it
+    // Check teamFilter first - if filter is active and this team isn't in it, hide it
     if (teamFilter.length > 0 && !teamFilter.includes(teamId)) return false;
     
     const settings = teamDisplaySettings[teamId];
     if (settings?.hidden) return false;
     
-    // Check for empty teams
     const team = teams[teamId];
-    if (!team) return false;
-    if (team.tasks.length === 0) return showEmptyTeams; // Respect showEmptyTeams setting
+    if (!team || team.tasks.length === 0) return true;
     
     const hasVisibleTask = team.tasks.some(taskId => isTaskVisible(taskId, taskDisplaySettings));
     return hasVisibleTask;
   };
 
-  // Check if team is manually hidden (not auto-hidden due to all tasks hidden)
-  const isTeamManuallyHidden = (teamId) => {
-    const settings = teamDisplaySettings[teamId];
-    return settings?.hidden || false;
-  };
-
-  // Get visible tasks for a team
   const getVisibleTasks = (teamId) => {
     const team = teams[teamId];
     if (!team) return [];
     return team.tasks.filter(taskId => isTaskVisible(taskId, taskDisplaySettings));
+  };
+
+  const getHiddenTeamCount = () => {
+    return teamOrder.filter(tid => !isTeamVisible(tid)).length;
+  };
+
+  const visibleTeamCount = teamOrder.filter(tid => isTeamVisible(tid)).length;
+  const hiddenTeamCount = getHiddenTeamCount();
+
+  // Calculate content height
+  const contentHeight = useMemo(() => {
+    let height = HEADER_HEIGHT;
+    for (const teamId of teamOrder) {
+      if (!isTeamVisible(teamId)) continue;
+      height += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+      height += getTeamHeight(teamId);
+    }
+    height += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+    return height;
+  }, [teamOrder, teams, taskDisplaySettings, teamDisplaySettings, TASKHEIGHT_NORMAL, TASKHEIGHT_SMALL]);
+
+  // Get visible team index (accounting for hidden teams)
+  const getVisibleTeamIndex = (teamId) => {
+    let index = 0;
+    for (const tid of teamOrder) {
+      if (tid === teamId) return index;
+      if (isTeamVisible(tid)) index++;
+    }
+    return index;
+  };
+
+  // Get Y offset for a team
+  const getTeamYOffset = (teamId) => {
+    let offset = HEADER_HEIGHT;
+    for (const tid of teamOrder) {
+      if (tid === teamId) break;
+      if (!isTeamVisible(tid)) continue;
+      offset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+      offset += getTeamHeight(tid);
+    }
+    return offset;
+  };
+
+  // Get Y offset for a task within its team
+  const getTaskYOffset = (taskId, teamId) => {
+    const team = teams[teamId];
+    if (!team) return 0;
+    let offset = 0;
+    for (const tid of team.tasks) {
+      if (tid === taskId) break;
+      if (!isTaskVisible(tid, taskDisplaySettings)) continue;
+      offset += getTaskHeight(tid, taskDisplaySettings);
+    }
+    return offset;
+  };
+
+  // Get task drop indicator Y position
+  const getTaskDropIndicatorY = () => {
+    if (!taskDropTarget) return 0;
+    const { teamId, insertIndex } = taskDropTarget;
+    const teamYOffset = getTeamYOffset(teamId);
+    const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+    
+    const visibleTasks = getVisibleTasks(teamId);
+    let taskOffset = 0;
+    for (let i = 0; i < insertIndex && i < visibleTasks.length; i++) {
+      taskOffset += getTaskHeight(visibleTasks[i], taskDisplaySettings);
+    }
+    
+    return teamYOffset + dropHighlightOffset + taskOffset;
   };
 
   // Toggle task size
@@ -371,43 +544,52 @@ export default function Dependencies() {
     }));
   };
 
-  // Set all visible tasks in a team to small
+  // Set all tasks in a team to small
   const setTeamTasksSmall = (teamId) => {
     const team = teams[teamId];
     if (!team) return;
-    
     setTaskDisplaySettings(prev => {
       const updated = { ...prev };
       for (const taskId of team.tasks) {
-        if (!updated[taskId]?.hidden) {
-          updated[taskId] = { ...updated[taskId], size: 'small' };
-        }
+        updated[taskId] = { ...updated[taskId], size: 'small' };
       }
       return updated;
     });
   };
 
-  // Set all visible tasks in a team to normal
+  // Set all tasks in a team to normal
   const setTeamTasksNormal = (teamId) => {
     const team = teams[teamId];
     if (!team) return;
-    
     setTaskDisplaySettings(prev => {
       const updated = { ...prev };
       for (const taskId of team.tasks) {
-        if (!updated[taskId]?.hidden) {
-          updated[taskId] = { ...updated[taskId], size: 'normal' };
-        }
+        updated[taskId] = { ...updated[taskId], size: 'normal' };
       }
       return updated;
     });
   };
 
-  // Show all hidden tasks in a team
+  // Check if all visible tasks in a team are small
+  const allVisibleTasksSmall = (teamId) => {
+    const team = teams[teamId];
+    if (!team) return false;
+    const visibleTasks = team.tasks.filter(tid => isTaskVisible(tid, taskDisplaySettings));
+    if (visibleTasks.length === 0) return false;
+    return visibleTasks.every(tid => taskDisplaySettings[tid]?.size === 'small');
+  };
+
+  // Check if team has hidden tasks
+  const teamHasHiddenTasks = (teamId) => {
+    const team = teams[teamId];
+    if (!team) return false;
+    return team.tasks.some(tid => taskDisplaySettings[tid]?.hidden);
+  };
+
+  // Show all tasks in a team
   const showAllTeamTasks = (teamId) => {
     const team = teams[teamId];
     if (!team) return;
-    
     setTaskDisplaySettings(prev => {
       const updated = { ...prev };
       for (const taskId of team.tasks) {
@@ -417,516 +599,369 @@ export default function Dependencies() {
     });
   };
 
-  // Hide all tasks in a team
-  const hideAllTeamTasks = (teamId) => {
-    const team = teams[teamId];
-    if (!team) return;
-    
-    setTaskDisplaySettings(prev => {
-      const updated = { ...prev };
-      for (const taskId of team.tasks) {
-        updated[taskId] = { ...updated[taskId], hidden: true };
-      }
-      return updated;
-    });
-  };
-
-  // Check if team has any hidden tasks
-  const teamHasHiddenTasks = (teamId) => {
-    const team = teams[teamId];
-    if (!team) return false;
-    return team.tasks.some(taskId => taskDisplaySettings[taskId]?.hidden);
-  };
-
-  // Check if all visible tasks in team are small
-  const allVisibleTasksSmall = (teamId) => {
-    const visibleTasks = getVisibleTasks(teamId);
-    if (visibleTasks.length === 0) return false;
-    return visibleTasks.every(taskId => taskDisplaySettings[taskId]?.size === 'small');
-  };
-
   // Show all hidden teams
   const showAllHiddenTeams = () => {
-    // First, unhide all manually hidden teams
     setTeamDisplaySettings(prev => {
       const updated = { ...prev };
-      for (const tid of teamOrder) {
-        updated[tid] = { ...updated[tid], hidden: false };
+      for (const teamId of teamOrder) {
+        updated[teamId] = { ...updated[teamId], hidden: false };
       }
       return updated;
     });
-    
-    // Then, show all tasks in teams that were auto-hidden
+    // Also show all hidden tasks
     setTaskDisplaySettings(prev => {
       const updated = { ...prev };
-      for (const tid of teamOrder) {
-        const team = teams[tid];
-        if (!team) continue;
-        for (const taskId of team.tasks) {
-          updated[taskId] = { ...updated[taskId], hidden: false };
-        }
+      for (const taskId of Object.keys(prev)) {
+        updated[taskId] = { ...updated[taskId], hidden: false };
       }
       return updated;
     });
   };
 
-  // Count hidden teams (only teams that pass filter but are manually hidden or have all tasks hidden)
-  const getHiddenTeamCount = () => {
-    return teamOrder.filter(tid => {
-      // If filter is active and team isn't in filter, don't count it as "hidden"
-      if (teamFilter.length > 0 && !teamFilter.includes(tid)) return false;
-      // Count as hidden if it would be hidden for other reasons
-      return !isTeamVisible(tid);
-    }).length;
-  };
-
-
-  // ________________TEAMS___________________
-  // ________________________________________
-
-  const safe_team_order_local = async (new_order) => {
-    await safe_team_order(projectId, new_order);
-  };
-
-  const handleTeamDrag = (event, team_key, order_index) => {
-    const team = teams[team_key];
-    const from_index = order_index;
-    let to_index = order_index;
-
-    const parent = teamContainerRef.current;
-    const parent_rect = parent.getBoundingClientRect();
-
-    const startX = event.clientX - parent_rect.x;
-    const startY = event.clientY - parent_rect.y;
-
-    // Calculate the offset from the mouse to the top-left of the team row
-    let teamTopOffset = HEADER_HEIGHT;
-    
-    // Get visible teams up to this one
-    const visibleTeams = teamOrder.filter(tid => isTeamVisible(tid));
-    const visibleIndex = visibleTeams.indexOf(team_key);
-    
-    for (let i = 0; i < visibleIndex; i++) {
-      const tid = visibleTeams[i];
-      teamTopOffset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-      teamTopOffset += getTeamHeight(tid);
-    }
-    teamTopOffset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-    
-    const mouseOffsetY = startY - teamTopOffset;
-    const currentTeamHeight = getTeamHeight(team_key);
-
-    // Track if we've started dragging (only show ghost after movement threshold)
-    let isDragging = false;
-    const DRAG_THRESHOLD = 5;
-
-    const onMouseMove = (e) => {
-      const new_y = e.clientY - parent_rect.y;
-
-      // Check if we've moved enough to start dragging
-      if (!isDragging) {
-        const deltaX = Math.abs(e.clientX - parent_rect.x - startX);
-        const deltaY = Math.abs(new_y - startY);
-        if (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD) {
-          isDragging = true;
-          setGhost({
-            id: team_key,
-            name: team.name,
-            color: team.color,
-            height: currentTeamHeight,
-            y: new_y - mouseOffsetY,
-            offsetY: mouseOffsetY,
-          });
-        } else {
-          return; // Don't do anything until threshold is met
-        }
-      } else {
-        setGhost((prev) => ({
+  // Add milestone locally
+  const add_milestone_local = async (taskId) => {
+    try {
+      const result = await add_milestone(projectId, taskId);
+      if (result.added_milestone) {
+        setMilestones(prev => ({
           ...prev,
-          y: new_y - prev.offsetY,
+          [result.added_milestone.id]: { ...result.added_milestone, display: "default" }
+        }));
+        // Update tasks to include the new milestone
+        setTasks(prev => ({
+          ...prev,
+          [taskId]: {
+            ...prev[taskId],
+            milestones: [...(prev[taskId]?.milestones || []), result.added_milestone]
+          }
         }));
       }
+    } catch (err) {
+      console.error("Failed to add milestone:", err);
+    }
+  };
 
-      const mouseY = e.clientY - parent_rect.top;
+  // Handle team drag
+  const handleTeamDrag = (e, teamId, orderIndex) => {
+    e.preventDefault();
+    const containerRect = teamContainerRef.current?.getBoundingClientRect();
+    if (!containerRect) return;
 
-      // Calculate drop index based on accumulated heights (only visible teams)
-      let accumulatedY = HEADER_HEIGHT;
-      let index = visibleTeams.length;
+    const team = teams[teamId];
+    const teamHeight = getTeamHeight(teamId);
+    const startY = e.clientY;
+
+    // Track current drop index in closure variable
+    let currentDropIndex = null;
+
+    setGhost({
+      id: teamId,
+      name: team.name,
+      color: team.color,
+      height: teamHeight,
+      y: e.clientY - containerRect.top,
+    });
+
+    const onMouseMove = (moveEvent) => {
+      const y = moveEvent.clientY - containerRect.top;
+      setGhost(prev => prev ? { ...prev, y } : null);
+
+      // Calculate drop index
+      let accumulatedHeight = HEADER_HEIGHT;
+      let newDropIndex = 0;
       
-      for (let i = 0; i < visibleTeams.length; i++) {
-        const tid = visibleTeams[i];
+      for (let i = 0; i < teamOrder.length; i++) {
+        const tid = teamOrder[i];
+        if (!isTeamVisible(tid)) continue;
         
-        accumulatedY += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+        const dropHighlightHeight = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+        const tHeight = getTeamHeight(tid);
+        const midPoint = accumulatedHeight + dropHighlightHeight + tHeight / 2;
         
-        const teamTop = accumulatedY;
-        const teamHeight = getTeamHeight(tid);
-        const teamMid = teamTop + teamHeight / 2;
-        
-        if (mouseY < teamMid) {
-          index = i;
-          break;
+        if (y < midPoint) {
+          currentDropIndex = newDropIndex;
+          setDropIndex(newDropIndex);
+          return;
         }
         
-        accumulatedY += teamHeight;
+        accumulatedHeight += dropHighlightHeight + tHeight;
+        newDropIndex++;
       }
-
-      if (index === visibleIndex + 1) {
-        index = visibleIndex;
-      }
-
-      const clamped = Math.max(0, Math.min(index, visibleTeams.length));
-      to_index = clamped;
-      if (isDragging) {
-        setDropIndex(clamped);
-      }
+      currentDropIndex = newDropIndex;
+      setDropIndex(newDropIndex);
     };
 
-    const onMouseUp = () => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
+    const onMouseUp = async () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
 
-      // Only reorder if we actually dragged
-      if (!isDragging) {
-        setGhost(null);
-        setDropIndex(null);
-        return;
-      }
+      // Get visible index for the dragged team
+      const visibleOrderIndex = getVisibleTeamIndex(teamId);
 
-      // Convert visible index back to full teamOrder index
-      const visibleTeams = teamOrder.filter(tid => isTeamVisible(tid));
-      
-      let copy = [...teamOrder];
-      const [moved] = copy.splice(order_index, 1);
-      
-      // Map visible index to actual index
-      if (to_index >= visibleTeams.length) {
-        // Insert at end
-        copy.push(moved);
-      } else {
-        const targetTeamId = visibleTeams[to_index];
-        const actualTargetIndex = copy.indexOf(targetTeamId);
-        copy.splice(actualTargetIndex, 0, moved);
+      if (currentDropIndex !== null && currentDropIndex !== visibleOrderIndex) {
+        // Build new order based on visible teams
+        const visibleTeams = teamOrder.filter(tid => isTeamVisible(tid));
+        const hiddenTeams = teamOrder.filter(tid => !isTeamVisible(tid));
+        
+        // Remove the dragged team from visible teams
+        const draggedTeamIdx = visibleTeams.indexOf(teamId);
+        visibleTeams.splice(draggedTeamIdx, 1);
+        
+        // Insert at new position
+        const insertAt = currentDropIndex > draggedTeamIdx ? currentDropIndex - 1 : currentDropIndex;
+        visibleTeams.splice(insertAt, 0, teamId);
+        
+        // Reconstruct full order: visible teams first, then hidden
+        const newOrder = [...visibleTeams, ...hiddenTeams];
+        
+        setTeamOrder(newOrder);
+        try {
+          await safe_team_order(projectId, newOrder);
+        } catch (err) {
+          console.error("Failed to save team order:", err);
+        }
       }
-      
-      setTeamOrder(copy);
-      safe_team_order_local(copy);
 
       setGhost(null);
       setDropIndex(null);
     };
 
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
   };
 
+  // Handle task drag
+  const handleTaskDrag = (e, taskId, teamId, taskIndex) => {
+    e.preventDefault();
+    const containerRect = teamContainerRef.current?.getBoundingClientRect();
+    if (!containerRect) return;
 
-  // ________________TASKS___________________
-  // ________________________________________
+    const task = tasks[taskId];
+    const taskHeight = getTaskHeight(taskId, taskDisplaySettings);
 
-  const handleTaskDrag = (event, taskKey, teamId, taskIndex) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const parent = teamContainerRef.current;
-    if (!parent) return;
-    const parentRect = parent.getBoundingClientRect();
-
-    const startX = event.clientX - parentRect.x;
-    const startY = event.clientY - parentRect.y;
-
-    const fromTeamId = teamId;
-    const fromIndex = taskIndex;
-    let currentTargetTeamId = teamId;
-    let currentTargetIndex = taskIndex;
-
-    const taskHeight = getTaskHeight(taskKey, taskDisplaySettings);
+    // Track current drop target in closure variable
+    let currentDropTarget = null;
 
     setTaskGhost({
-      taskKey,
-      name: tasks[taskKey]?.name || 'Task',
-      x: startX,
-      y: startY,
-      width: TASKWIDTH,
-      height: taskHeight || TASKHEIGHT_NORMAL,
+      taskKey: taskId,
       fromTeamId: teamId,
+      name: task?.name || 'Task',
+      height: taskHeight,
+      width: TASKWIDTH,
+      x: e.clientX - containerRect.left,
+      y: e.clientY - containerRect.top,
     });
-    setTaskDropTarget({ teamId, index: taskIndex });
 
-    const onMouseMove = (e) => {
-      const newX = e.clientX - parentRect.x;
-      const newY = e.clientY - parentRect.y;
+    const onMouseMove = (moveEvent) => {
+      const x = moveEvent.clientX - containerRect.left;
+      const y = moveEvent.clientY - containerRect.top;
+      setTaskGhost(prev => prev ? { ...prev, x, y } : null);
 
-      setTaskGhost(prev => ({
-        ...prev,
-        x: newX,
-        y: newY,
-      }));
-
-      const mouseY = e.clientY - parentRect.top;
-      let accumulatedY = HEADER_HEIGHT;
-      let foundTeamId = null;
-      let foundTaskIndex = 0;
-
-      // Only iterate visible teams
+      // Find which team we're over
+      let accumulatedHeight = HEADER_HEIGHT;
       for (const tid of teamOrder) {
         if (!isTeamVisible(tid)) continue;
         
-        const team = teams[tid];
-        if (!team) continue;
-
-        accumulatedY += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-
-        const teamTop = accumulatedY;
-        const teamHeight = getTeamHeight(tid);
-        const teamBottom = teamTop + teamHeight;
-
-        if (mouseY >= teamTop && mouseY < teamBottom) {
-          foundTeamId = tid;
-          
-          // Find task index within this team (only visible tasks)
-          const relY = mouseY - teamTop;
-          let taskAccumulatedY = 0;
+        const dropHighlightHeight = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+        const tHeight = getTeamHeight(tid);
+        const teamTop = accumulatedHeight + dropHighlightHeight;
+        const teamBottom = teamTop + tHeight;
+        
+        if (y >= teamTop && y < teamBottom) {
+          // We're over this team, find insert index
           const visibleTasks = getVisibleTasks(tid);
+          let insertIndex = 0;
+          let taskAccHeight = 0;
+          const relativeY = y - teamTop;
           
-          foundTaskIndex = visibleTasks.length; // default to end
           for (let i = 0; i < visibleTasks.length; i++) {
             const tHeight = getTaskHeight(visibleTasks[i], taskDisplaySettings);
-            if (relY < taskAccumulatedY + tHeight / 2) {
-              foundTaskIndex = i;
+            if (relativeY < taskAccHeight + tHeight / 2) {
               break;
             }
-            taskAccumulatedY += tHeight;
+            taskAccHeight += tHeight;
+            insertIndex = i + 1;
           }
-          break;
+          
+          currentDropTarget = { teamId: tid, insertIndex };
+          setTaskDropTarget({ teamId: tid, insertIndex });
+          return;
         }
-
-        accumulatedY += teamHeight;
+        
+        accumulatedHeight += dropHighlightHeight + tHeight;
       }
-
-      if (foundTeamId === null && teamOrder.length > 0) {
-        const visibleTeams = teamOrder.filter(tid => isTeamVisible(tid));
-        if (visibleTeams.length > 0) {
-          const lastTeamId = visibleTeams[visibleTeams.length - 1];
-          foundTeamId = lastTeamId;
-          foundTaskIndex = getVisibleTasks(lastTeamId).length;
-        }
-      }
-
-      if (foundTeamId !== null) {
-        currentTargetTeamId = foundTeamId;
-        currentTargetIndex = foundTaskIndex;
-        setTaskDropTarget({ teamId: foundTeamId, index: foundTaskIndex });
-      }
+      currentDropTarget = null;
+      setTaskDropTarget(null);
     };
 
-    const onMouseUp = () => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
+    const onMouseUp = async () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+
+      if (currentDropTarget) {
+        const { teamId: targetTeamId, insertIndex } = currentDropTarget;
+        const sourceTeamId = teamId; // Use the closure variable, not state
+        
+        if (targetTeamId !== sourceTeamId) {
+          // Cross-team move - show confirmation modal
+          setMoveModal({
+            taskId,
+            taskName: task?.name,
+            sourceTeamId,
+            sourceTeamName: teams[sourceTeamId]?.name,
+            targetTeamId,
+            targetTeamName: teams[targetTeamId]?.name,
+            insertIndex,
+          });
+        } else {
+          // Same team reorder
+          const team = teams[targetTeamId];
+          const visibleTasks = getVisibleTasks(targetTeamId);
+          const currentIndex = visibleTasks.indexOf(taskId);
+          
+          if (currentIndex !== insertIndex && currentIndex !== insertIndex - 1) {
+            const newOrder = [...team.tasks];
+            const taskCurrentIndex = newOrder.indexOf(taskId);
+            newOrder.splice(taskCurrentIndex, 1);
+            
+            // Calculate actual insert position
+            let actualInsertIndex = 0;
+            let visibleCount = 0;
+            for (let i = 0; i < team.tasks.length; i++) {
+              if (team.tasks[i] === taskId) continue;
+              if (isTaskVisible(team.tasks[i], taskDisplaySettings)) {
+                if (visibleCount === insertIndex) {
+                  actualInsertIndex = i;
+                  break;
+                }
+                visibleCount++;
+              }
+              actualInsertIndex = i + 1;
+            }
+            
+            newOrder.splice(actualInsertIndex, 0, taskId);
+            
+            setTeams(prev => ({
+              ...prev,
+              [targetTeamId]: { ...prev[targetTeamId], tasks: newOrder }
+            }));
+            
+            try {
+              await reorder_team_tasks(projectId, taskId, targetTeamId, newOrder);
+            } catch (err) {
+              console.error("Failed to reorder tasks:", err);
+            }
+          }
+        }
+      }
 
       setTaskGhost(null);
       setTaskDropTarget(null);
+    };
 
-      // Convert visible index to actual index in tasks array
-      const getActualIndex = (tid, visibleIndex) => {
-        const team = teams[tid];
-        if (!team) return 0;
-        
-        const visibleTasks = getVisibleTasks(tid);
-        if (visibleIndex >= visibleTasks.length) {
-          // Insert at end of all tasks
-          return team.tasks.length;
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  };
+
+  // Handle milestone mouse down (drag)
+  const handleMileStoneMouseDown = (e, milestoneId) => {
+    if (mode === "delete") {
+      handleMilestoneDelete(milestoneId);
+      return;
+    }
+
+    e.preventDefault();
+    const containerRect = teamContainerRef.current?.getBoundingClientRect();
+    if (!containerRect) return;
+
+    const milestone = milestones[milestoneId];
+    if (!milestone) return;
+
+    const startX = e.clientX;
+    const startIndex = milestone.start_index;
+
+    // Track the current index in a closure variable
+    let currentIndex = startIndex;
+
+    const onMouseMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const indexDelta = Math.round(deltaX / DAYWIDTH);
+      currentIndex = Math.max(0, startIndex + indexDelta);
+
+      setMilestones(prev => ({
+        ...prev,
+        [milestoneId]: {
+          ...prev[milestoneId],
+          start_index: currentIndex,
         }
-        
-        const targetTaskId = visibleTasks[visibleIndex];
-        return team.tasks.indexOf(targetTaskId);
-      };
+      }));
+    };
 
-      if (currentTargetTeamId === fromTeamId) {
-        const teamTasks = [...teams[fromTeamId].tasks];
-        const actualFromIndex = teamTasks.indexOf(taskKey);
-        const [moved] = teamTasks.splice(actualFromIndex, 1);
-        
-        let actualTargetIndex = getActualIndex(fromTeamId, currentTargetIndex);
-        if (actualFromIndex < actualTargetIndex) {
-          actualTargetIndex = Math.max(0, actualTargetIndex - 1);
+    const onMouseUp = async () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+
+      // Only save if position actually changed
+      if (currentIndex !== startIndex) {
+        try {
+          await update_start_index(projectId, milestoneId, currentIndex);
+        } catch (err) {
+          console.error("Failed to update milestone position:", err);
         }
-        teamTasks.splice(actualTargetIndex, 0, moved);
-
-        setTeams(prev => ({
-          ...prev,
-          [fromTeamId]: {
-            ...prev[fromTeamId],
-            tasks: teamTasks,
-          },
-        }));
-
-        reorder_team_tasks(projectId, taskKey, fromTeamId, teamTasks).catch(err =>
-          console.error("Failed to reorder tasks:", err)
-        );
-      } else {
-        const sourceTeamTasks = [...teams[fromTeamId].tasks].filter(t => t !== taskKey);
-        const targetTeamTasks = [...teams[currentTargetTeamId].tasks];
-        
-        const actualTargetIndex = getActualIndex(currentTargetTeamId, currentTargetIndex);
-        targetTeamTasks.splice(actualTargetIndex, 0, taskKey);
-
-        setMoveModal({
-          taskId: taskKey,
-          taskName: tasks[taskKey]?.name || 'Task',
-          fromTeamId,
-          fromTeamName: teams[fromTeamId]?.name || 'Unknown',
-          toTeamId: currentTargetTeamId,
-          toTeamName: teams[currentTargetTeamId]?.name || 'Unknown',
-          newSourceOrder: sourceTeamTasks,
-          newTargetOrder: targetTeamTasks,
-        });
       }
     };
 
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
   };
 
-  const confirmMoveTask = async () => {
-    if (!moveModal) return;
-    const { taskId, fromTeamId, toTeamId, newSourceOrder, newTargetOrder } = moveModal;
-
-    setTeams(prev => ({
-      ...prev,
-      [fromTeamId]: {
-        ...prev[fromTeamId],
-        tasks: newSourceOrder,
-      },
-      [toTeamId]: {
-        ...prev[toTeamId],
-        tasks: newTargetOrder,
-      },
-    }));
-
-    setTasks(prev => ({
-      ...prev,
-      [taskId]: {
-        ...prev[taskId],
-        team: toTeamId,
-      },
-    }));
-
+  // Handle milestone delete
+  const handleMilestoneDelete = async (milestoneId) => {
     try {
-      await reorder_team_tasks(projectId, taskId, toTeamId, newTargetOrder);
+      await delete_milestone(projectId, milestoneId);
+      
+      // Remove from milestones state
+      setMilestones(prev => {
+        const updated = { ...prev };
+        delete updated[milestoneId];
+        return updated;
+      });
+
+      // Remove from tasks
+      setTasks(prev => {
+        const updated = { ...prev };
+        for (const taskId of Object.keys(updated)) {
+          if (updated[taskId]?.milestones) {
+            updated[taskId] = {
+              ...updated[taskId],
+              milestones: updated[taskId].milestones.filter(m => m.id !== milestoneId)
+            };
+          }
+        }
+        return updated;
+      });
+
+      // Remove connections involving this milestone
+      setConnections(prev => prev.filter(c => c.source !== milestoneId && c.target !== milestoneId));
     } catch (err) {
-      console.error("Failed to move task:", err);
-      setReloadData(true);
+      console.error("Failed to delete milestone:", err);
     }
-
-    setMoveModal(null);
   };
 
-  const cancelMoveTask = () => {
-    setMoveModal(null);
-  };
-
-
-  // _____________MILESTONES________________
-  // ________________________________________
-
-  const add_milestone_local = async (task_id) => {
-    await add_milestone(projectId, task_id)
-    setReloadData(true)
-  }
-
-  const handleMileStoneDrag = (event, milestone_key) => {
-    event.preventDefault() 
-
-    const currentX = milestones[milestone_key].x ?? (milestones[milestone_key].start_index * DAYWIDTH);
-    const startX = event.clientX - currentX
-    let new_x = currentX
-
-    const onMouseMove = (e) => {
-      if (e.ctrlKey) {
-        onMouseUp()
-        return 
-      }
-
-      new_x = e.clientX - startX
-
-      if (new_x < 0) {
-        new_x = 0
-      }
-      if (new_x + DAYWIDTH > days * DAYWIDTH) {
-        new_x = days * DAYWIDTH - DAYWIDTH
-      }
-
-      setMilestones(prev => ({
-        ...prev,
-        [milestone_key]: {
-          ...prev[milestone_key],
-          x: new_x
-        }
-      }))
-    }
-
-    const onMouseUp = () => {
-      const new_index = Math.round(new_x / DAYWIDTH)
-
-      setMilestones(prev => ({
-        ...prev,
-        [milestone_key]: {
-          ...prev[milestone_key],
-          x: undefined, // Clear x so position is calculated from start_index
-          start_index: new_index
-        }
-      }))
-
-      update_start_index(projectId, milestone_key, new_index)
-
-      document.removeEventListener("mousemove", onMouseMove)
-      document.removeEventListener("mouseup", onMouseUp)
-    }
-
-    document.addEventListener("mousemove", onMouseMove)
-    document.addEventListener("mouseup", onMouseUp)
-  }
-
-  const handleMileStoneMouseDown = (e, id) => {
-    if (mode === "drag") {
-      return handleMileStoneDrag(e, id)
-    }
-    else if (mode === "delete") {
-      setReloadData(true)
-      // Deselect if deleting the selected milestone
-      if (selectedMilestone === id) {
-        setSelectedMilestone(null);
-      }
-      return delete_milestone(projectId, id)
-    }
-  }
-
-  const handleMilestoneClick = (e, id) => {
+  // Handle milestone click (selection)
+  const handleMilestoneClick = (e, milestoneId) => {
     e.stopPropagation();
-    // Toggle selection
-    if (selectedMilestone === id) {
-      setSelectedMilestone(null);
-    } else {
-      setSelectedMilestone(id);
-    }
-  }
+    setSelectedMilestone(prev => prev === milestoneId ? null : milestoneId);
+  };
 
-  const handleDurationChange = (e, id, amount) => {
-    e.stopPropagation()
-    setReloadData(true)
-    change_duration(projectId, id, amount)
-  }
-
-  // Handle milestone double-click for renaming
+  // Handle milestone double click (rename)
   const handleMilestoneDoubleClick = (e, milestone) => {
     e.stopPropagation();
-    if (viewMode === "milestone") {
-      setEditingMilestoneId(milestone.id);
-      setEditingMilestoneName(milestone.name);
-    }
-  }
+    setEditingMilestoneId(milestone.id);
+    setEditingMilestoneName(milestone.name);
+  };
 
-  // Submit milestone rename
+  // Handle milestone rename submit
   const handleMilestoneRenameSubmit = async (milestoneId) => {
     if (!editingMilestoneName.trim()) {
       setEditingMilestoneId(null);
@@ -936,6 +971,7 @@ export default function Dependencies() {
 
     try {
       await rename_milestone(projectId, milestoneId, editingMilestoneName.trim());
+      
       setMilestones(prev => ({
         ...prev,
         [milestoneId]: {
@@ -949,185 +985,192 @@ export default function Dependencies() {
 
     setEditingMilestoneId(null);
     setEditingMilestoneName("");
-  }
+  };
 
-  // Handle edge resize for milestones (in dependency mode)
+  // Handle milestone edge resize
   const handleMilestoneEdgeResize = (e, milestoneId, edge) => {
-    e.preventDefault();
     e.stopPropagation();
+    e.preventDefault();
 
     const milestone = milestones[milestoneId];
     if (!milestone) return;
 
     const startX = e.clientX;
     const startDuration = milestone.duration;
-    const startMilestoneX = milestone.x ?? (milestone.start_index * DAYWIDTH);
     const startIndex = milestone.start_index;
-    
-    // Track final values via closure variables (like handleMileStoneDrag does)
-    let finalDuration = startDuration;
-    let finalIndex = startIndex;
 
-    const onMouseMove = (moveE) => {
-      const deltaX = moveE.clientX - startX;
-      const daysDelta = Math.round(deltaX / DAYWIDTH);
+    // Track current values in closure variables
+    let currentDuration = startDuration;
+    let currentStartIndex = startIndex;
+
+    const onMouseMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const indexDelta = Math.round(deltaX / DAYWIDTH);
 
       if (edge === "right") {
-        // Resize from right edge - change duration
-        const newDuration = Math.max(1, startDuration + daysDelta);
-        finalDuration = newDuration;
+        currentDuration = Math.max(1, startDuration + indexDelta);
         setMilestones(prev => ({
           ...prev,
-          [milestoneId]: {
-            ...prev[milestoneId],
-            duration: newDuration
-          }
+          [milestoneId]: { ...prev[milestoneId], duration: currentDuration }
         }));
       } else if (edge === "left") {
-        // Resize from left edge - change start position and duration
-        const maxDeltaDays = startDuration - 1; // Can't shrink below 1
-        const clampedDaysDelta = Math.max(-startIndex, Math.min(maxDeltaDays, daysDelta));
-        const newDuration = startDuration - clampedDaysDelta;
-        const newIndex = startIndex + clampedDaysDelta;
-        
-        if (newDuration >= 1 && newIndex >= 0) {
-          finalDuration = newDuration;
-          finalIndex = newIndex;
-          setMilestones(prev => ({
-            ...prev,
-            [milestoneId]: {
-              ...prev[milestoneId],
-              duration: newDuration,
-              start_index: newIndex,
-              x: newIndex * DAYWIDTH // Temporary x for visual feedback during drag
-            }
-          }));
-        }
+        currentStartIndex = Math.max(0, startIndex + indexDelta);
+        const durationChange = startIndex - currentStartIndex;
+        currentDuration = Math.max(1, startDuration + durationChange);
+        setMilestones(prev => ({
+          ...prev,
+          [milestoneId]: { 
+            ...prev[milestoneId], 
+            start_index: currentStartIndex,
+            duration: currentDuration 
+          }
+        }));
       }
     };
 
-    const onMouseUp = () => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      
-      // Clear x so position is always calculated from start_index
-      setMilestones(prev => ({
-        ...prev,
-        [milestoneId]: {
-          ...prev[milestoneId],
-          x: undefined
-        }
-      }));
-      
-      // Save the changes to backend using tracked final values
-      // Update start index if left edge was dragged and position changed
-      if (edge === "left" && finalIndex !== startIndex) {
-        update_start_index(projectId, milestoneId, finalIndex).catch(err => 
-          console.error("Failed to update start index:", err)
-        );
-      }
-      
-      // Update duration if it changed
-      const durationChange = finalDuration - startDuration;
+    const onMouseUp = async () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+
+      // Save duration change if it changed
+      const durationChange = currentDuration - startDuration;
       if (durationChange !== 0) {
-        change_duration(projectId, milestoneId, durationChange).catch(err =>
-          console.error("Failed to update duration:", err)
-        );
+        try {
+          await change_duration(projectId, milestoneId, durationChange);
+        } catch (err) {
+          console.error("Failed to change duration:", err);
+        }
+      }
+
+      // Save start index change if it changed (only for left edge)
+      if (edge === "left" && currentStartIndex !== startIndex) {
+        try {
+          await update_start_index(projectId, milestoneId, currentStartIndex);
+        } catch (err) {
+          console.error("Failed to update start index:", err);
+        }
       }
     };
 
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
   };
 
-  // Handle day cell click to create milestone (in milestone mode)
+  // Handle day cell click (create milestone in milestone mode)
   const handleDayCellClick = async (taskId, dayIndex) => {
-    if (viewMode !== "milestone") return;
-    
     try {
       const result = await add_milestone(projectId, taskId);
-      // After creating, update the start_index to the clicked day position
-      if (result && result.added_milestone && result.added_milestone.id) {
+      if (result.added_milestone) {
+        // Update the milestone with the correct start index
         await update_start_index(projectId, result.added_milestone.id, dayIndex);
+        
+        const newMilestone = { ...result.added_milestone, start_index: dayIndex, display: "default" };
+        
+        setMilestones(prev => ({
+          ...prev,
+          [result.added_milestone.id]: newMilestone
+        }));
+        
+        setTasks(prev => ({
+          ...prev,
+          [taskId]: {
+            ...prev[taskId],
+            milestones: [...(prev[taskId]?.milestones || []), newMilestone]
+          }
+        }));
       }
-      setReloadData(true);
     } catch (err) {
       console.error("Failed to create milestone:", err);
     }
   };
 
-  // Create team handler
-  const handleCreateTeam = async () => {
-    if (!newTeamName.trim()) return;
-    
-    setIsCreating(true);
-    try {
-      await createTeamForProject(projectId, {
-        name: newTeamName.trim(),
-        color: newTeamColor
+  // Connection handling
+  const handleConnectionDragStart = (e, milestoneId, handleType) => {
+    e.stopPropagation();
+    const containerRect = teamContainerRef.current?.getBoundingClientRect();
+    if (!containerRect) return;
+
+    setIsDraggingConnection(true);
+    setConnectionStart({
+      milestoneId,
+      handleType,
+      x: e.clientX - containerRect.left,
+      y: e.clientY - containerRect.top,
+    });
+
+    const onMouseMove = (moveEvent) => {
+      setConnectionEnd({
+        x: moveEvent.clientX - containerRect.left,
+        y: moveEvent.clientY - containerRect.top,
       });
-      setNewTeamName("");
-      setNewTeamColor("#facc15");
-      setShowCreateTeamModal(false);
-      setReloadData(true);
-    } catch (err) {
-      console.error("Failed to create team:", err);
-    } finally {
-      setIsCreating(false);
-    }
+    };
+
+    const onMouseUp = async (upEvent) => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+
+      // Find if we're over a milestone handle
+      const targetMilestone = findMilestoneAtPosition(
+        upEvent.clientX - containerRect.left,
+        upEvent.clientY - containerRect.top
+      );
+
+      if (targetMilestone && targetMilestone.id !== milestoneId) {
+        const sourceId = handleType === "source" ? milestoneId : targetMilestone.id;
+        const targetId = handleType === "source" ? targetMilestone.id : milestoneId;
+
+        // Check if connection already exists
+        const exists = connections.some(c => c.source === sourceId && c.target === targetId);
+        if (!exists) {
+          try {
+            await create_dependency(projectId, sourceId, targetId);
+            setConnections(prev => [...prev, { source: sourceId, target: targetId }]);
+          } catch (err) {
+            console.error("Failed to create dependency:", err);
+          }
+        }
+      }
+
+      setIsDraggingConnection(false);
+      setConnectionStart(null);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
   };
 
-  // Create task handler
-  const handleCreateTask = async () => {
-    if (!newTaskName.trim() || !newTaskTeamId) return;
-    
-    setIsCreating(true);
-    try {
-      await createTaskForProject(projectId, {
-        name: newTaskName.trim(),
-        team_id: newTaskTeamId
-      });
-      setNewTaskName("");
-      setNewTaskTeamId(null);
-      setShowCreateTaskModal(false);
-      setReloadData(true);
-    } catch (err) {
-      console.error("Failed to create task:", err);
-    } finally {
-      setIsCreating(false);
+  // Find milestone at position
+  const findMilestoneAtPosition = (x, y) => {
+    for (const [id, milestone] of Object.entries(milestones)) {
+      const task = tasks[milestone.task];
+      if (!task) continue;
+      
+      const team = teams[task.team];
+      if (!team || !isTeamVisible(task.team)) continue;
+      if (!isTaskVisible(milestone.task, taskDisplaySettings)) continue;
+
+      const taskHeight = getTaskHeight(milestone.task, taskDisplaySettings);
+      const teamYOffset = getTeamYOffset(task.team);
+      const taskYOffset = getTaskYOffset(milestone.task, task.team);
+      const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+
+      const milestoneX = TEAMWIDTH + TASKWIDTH + milestone.start_index * DAYWIDTH;
+      const milestoneY = teamYOffset + dropHighlightOffset + taskYOffset + taskHeight / 2;
+      const milestoneWidth = DAYWIDTH * milestone.duration;
+
+      if (
+        x >= milestoneX - 10 &&
+        x <= milestoneX + milestoneWidth + 10 &&
+        y >= milestoneY &&
+        y <= milestoneY + taskHeight
+      ) {
+        return { id: parseInt(id), ...milestone };
+      }
     }
+    return null;
   };
 
-
-  // _____________CONNECTIONS________________
-  // ________________________________________
-
-  // Calculate the accumulated Y offset for a team based on teamOrder (only visible teams)
-  const getTeamYOffset = (teamId) => {
-    let offset = HEADER_HEIGHT;
-    for (const id of teamOrder) {
-      if (!isTeamVisible(id)) continue;
-      if (id === teamId) break;
-      offset += getTeamHeight(id);
-      offset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-    }
-    return offset;
-  }
-
-  // Get the task's Y position within its team (accounting for hidden and small tasks)
-  const getTaskYOffset = (taskId, teamId) => {
-    const team = teams[teamId];
-    if (!team) return 0;
-    
-    let offset = 0;
-    for (const tid of team.tasks) {
-      if (tid === taskId) break;
-      offset += getTaskHeight(tid, taskDisplaySettings);
-    }
-    return offset;
-  }
-
-  // Get absolute position of a milestone's handle in the container
+  // Get milestone handle position
   const getMilestoneHandlePosition = (milestoneId, handleType) => {
     const milestone = milestones[milestoneId];
     if (!milestone) return null;
@@ -1135,236 +1178,160 @@ export default function Dependencies() {
     const task = tasks[milestone.task];
     if (!task) return null;
 
-    const teamId = task.team;
-    
-    // Check if team or task is hidden
-    if (!isTeamVisible(teamId)) return null;
+    const team = teams[task.team];
+    if (!team || !isTeamVisible(task.team)) return null;
     if (!isTaskVisible(milestone.task, taskDisplaySettings)) return null;
-    
+
     const taskHeight = getTaskHeight(milestone.task, taskDisplaySettings);
-    
-    const milestoneAreaStart = TEAMWIDTH + TASKWIDTH;
-    const milestoneX = milestone.x ?? (milestone.start_index * DAYWIDTH);
-    const milestoneWidth = DAYWIDTH * milestone.duration;
-    
-    const handleX = handleType === "source"
-      ? milestoneAreaStart + milestoneX + milestoneWidth
-      : milestoneAreaStart + milestoneX;
-
-    const teamYOffset = getTeamYOffset(teamId);
-    const taskYOffset = getTaskYOffset(milestone.task, teamId);
+    const teamYOffset = getTeamYOffset(task.team);
+    const taskYOffset = getTaskYOffset(milestone.task, task.team);
     const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-    
-    const handleY = teamYOffset + dropHighlightOffset + taskYOffset + (taskHeight / 2);
 
-    return { x: handleX, y: handleY };
-  }
+    const milestoneX = TEAMWIDTH + TASKWIDTH + (milestone.x ?? milestone.start_index * DAYWIDTH);
+    const milestoneY = teamYOffset + dropHighlightOffset + taskYOffset + taskHeight / 2;
+    const milestoneWidth = DAYWIDTH * milestone.duration;
 
-  const handleConnectionDragStart = (event, milestoneId, handleType) => {
-    event.stopPropagation();
-    event.preventDefault();
-
-    const handlePos = getMilestoneHandlePosition(milestoneId, handleType);
-    if (!handlePos) return;
-
-    setIsDraggingConnection(true);
-    setConnectionStart({ milestoneId, handleType, ...handlePos });
-    setConnectionEnd(handlePos);
-
-    const containerRect = teamContainerRef.current?.getBoundingClientRect();
-
-    const handleMouseMove = (e) => {
-      if (!containerRect) return;
-      setConnectionEnd({
-        x: e.clientX - containerRect.left,
-        y: e.clientY - containerRect.top,
-      });
-    };
-
-    const handleMouseUp = (e) => {
-      if (!containerRect) return;
-      
-      const mouseX = e.clientX - containerRect.left;
-      const mouseY = e.clientY - containerRect.top;
-
-      for (let key in milestones) {
-        if (String(key) === String(milestoneId)) continue;
-
-        for (let targetHandleType of ["source", "target"]) {
-          const targetPos = getMilestoneHandlePosition(key, targetHandleType);
-          if (!targetPos) continue;
-
-          const dist = Math.sqrt((mouseX - targetPos.x) ** 2 + (mouseY - targetPos.y) ** 2);
-          if (dist < CONNECTION_RADIUS) {
-            createConnection(milestoneId, handleType, parseInt(key), targetHandleType);
-            break;
-          }
-        }
-      }
-
-      setIsDraggingConnection(false);
-      setConnectionStart(null);
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-    };
-
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-  };
-
-  const createConnection = (fromId, fromHandle, toId, toHandle) => {
-    let sourceId, targetId;
-    if (fromHandle === "source") {
-      sourceId = fromId;
-      targetId = toId;
+    if (handleType === "source") {
+      return { x: milestoneX + milestoneWidth, y: milestoneY };
     } else {
-      sourceId = toId;
-      targetId = fromId;
+      return { x: milestoneX, y: milestoneY };
     }
-
-    const exists = connections.some(
-      conn => conn.source === sourceId && conn.target === targetId
-    );
-    if (exists) return;
-
-    setConnections(prev => [...prev, { source: sourceId, target: targetId }]);
-
-    create_dependency(projectId, sourceId, targetId).catch(err =>
-      console.error("Failed to save dependency:", err)
-    );
   };
 
-  const getConnectionPath = (startX, startY, endX, endY) => {
-    const controlPointOffset = Math.abs(endX - startX) * 0.5;
-    return `M ${startX} ${startY} C ${startX + controlPointOffset} ${startY}, ${endX - controlPointOffset} ${endY}, ${endX} ${endY}`;
+  // Get connection path
+  const getConnectionPath = (x1, y1, x2, y2) => {
+    const midX = (x1 + x2) / 2;
+    return `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
   };
 
-  const getStraightPath = (startX, startY, endX, endY) => {
-    return `M ${startX} ${startY} L ${endX} ${endY}`;
+  // Get straight path (for dragging)
+  const getStraightPath = (x1, y1, x2, y2) => {
+    return `M ${x1} ${y1} L ${x2} ${y2}`;
   };
 
-  const deleteConnection = (sourceId, targetId) => {
-    setConnections(prev => 
-      prev.filter(conn => !(conn.source === sourceId && conn.target === targetId))
-    );
-    if (selectedConnection?.source === sourceId && selectedConnection?.target === targetId) {
-      setSelectedConnection(null);
-    }
-
-    delete_dependency_api(projectId, sourceId, targetId).catch(err =>
-      console.error("Failed to delete dependency:", err)
-    );
-  };
-
-  const handleConnectionClick = (e, conn) => {
+  // Handle connection click
+  const handleConnectionClick = (e, connection) => {
     e.stopPropagation();
     if (mode === "delete") {
-      deleteConnection(conn.source, conn.target);
+      handleDeleteConnection(connection);
     } else {
-      if (selectedConnection?.source === conn.source && selectedConnection?.target === conn.target) {
-        setSelectedConnection(null);
-      } else {
-        setSelectedConnection({ source: conn.source, target: conn.target });
+      setSelectedConnection(connection);
+    }
+  };
+
+  // Handle delete connection
+  const handleDeleteConnection = async (connection) => {
+    try {
+      await delete_dependency_api(projectId, connection.source, connection.target);
+      setConnections(prev => prev.filter(c => !(c.source === connection.source && c.target === connection.target)));
+      setSelectedConnection(null);
+    } catch (err) {
+      console.error("Failed to delete dependency:", err);
+    }
+  };
+
+  // Handle create team
+  const handleCreateTeam = async () => {
+    if (!newTeamName.trim()) return;
+    setIsCreating(true);
+    try {
+      const result = await createTeamForProject(projectId, {
+        name: newTeamName.trim(),
+        color: newTeamColor,
+      });
+      if (result) {
+        setReloadData(true);
+        setShowCreateTeamModal(false);
+        setNewTeamName("");
+        setNewTeamColor("#facc15");
       }
+    } catch (err) {
+      console.error("Failed to create team:", err);
     }
+    setIsCreating(false);
   };
 
-
-  // ___________DYNAMIC HEIGHT______________
-  // ________________________________________
-
-  const contentHeight = useMemo(() => {
-    let height = HEADER_HEIGHT;
-    for (const teamId of teamOrder) {
-      if (!isTeamVisible(teamId)) continue;
-      height += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-      height += getTeamHeight(teamId);
-    }
-    height += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-    return height;
-  }, [teamOrder, teams, taskDisplaySettings, teamDisplaySettings]);
-
-  const dayLabels = useMemo(() => {
-    if (!projectStartDate || !days) return [];
-    const labels = [];
-    for (let i = 0; i < days; i++) {
-      const date = new Date(projectStartDate);
-      date.setDate(date.getDate() + i);
-      const day = date.getDate();
-      const month = date.getMonth() + 1;
-      labels.push(`${day}.${month}`);
-    }
-    return labels;
-  }, [projectStartDate, days]);
-
-  const getTaskDropIndicatorY = () => {
-    if (!taskDropTarget) return 0;
-    const { teamId, index } = taskDropTarget;
-    let y = HEADER_HEIGHT;
-    
-    for (const tid of teamOrder) {
-      if (!isTeamVisible(tid)) continue;
-      
-      y += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-      
-      if (tid === teamId) {
-        const visibleTasks = getVisibleTasks(tid);
-        for (let i = 0; i < index && i < visibleTasks.length; i++) {
-          y += getTaskHeight(visibleTasks[i], taskDisplaySettings);
-        }
-        return y;
+  // Handle create task
+  const handleCreateTask = async () => {
+    if (!newTaskName.trim() || !newTaskTeamId) return;
+    setIsCreating(true);
+    try {
+      const result = await createTaskForProject(projectId, {
+        name: newTaskName.trim(),
+        team_id: newTaskTeamId,
+      });
+      if (result) {
+        setReloadData(true);
+        setShowCreateTaskModal(false);
+        setNewTaskName("");
+        setNewTaskTeamId(null);
       }
-      
-      y += getTeamHeight(tid);
+    } catch (err) {
+      console.error("Failed to create task:", err);
     }
-    return y;
+    setIsCreating(false);
   };
-
-  // Get visible team index for drop highlighting
-  const getVisibleTeamIndex = (teamId) => {
-    let index = 0;
-    for (const tid of teamOrder) {
-      if (!isTeamVisible(tid)) continue;
-      if (tid === teamId) return index;
-      index++;
-    }
-    return -1;
-  };
-
-  const visibleTeamCount = teamOrder.filter(tid => isTeamVisible(tid)).length;
-  const hiddenTeamCount = getHiddenTeamCount();
-
 
   return (
     <>
-      {/* Cross-team move confirmation modal */}
-      {moveModal && (
+      {/* Day Purpose Modal */}
+      {dayPurposeModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
-            <h2 className="text-lg font-semibold text-slate-900 mb-2">Move Task to Another Team?</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-slate-900">
+                Set Day Purpose
+              </h2>
+              <button
+                onClick={() => setDayPurposeModal(null)}
+                className="p-1 rounded hover:bg-slate-100"
+              >
+                <CloseIcon fontSize="small" />
+              </button>
+            </div>
+            
             <p className="text-sm text-slate-600 mb-4">
-              Are you sure you want to move <span className="font-semibold text-slate-900">"{moveModal.taskName}"</span> from{' '}
-              <span className="font-semibold" style={{ color: teams[moveModal.fromTeamId]?.color || '#64748b' }}>
-                {moveModal.fromTeamName}
-              </span>{' '}
-              to{' '}
-              <span className="font-semibold" style={{ color: teams[moveModal.toTeamId]?.color || '#64748b' }}>
-                {moveModal.toTeamName}
-              </span>?
+              Day {dayPurposeModal.dayIndex + 1} - {dayLabels[dayPurposeModal.dayIndex]?.dateStr}
+              {dayLabels[dayPurposeModal.dayIndex]?.isSunday && (
+                <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Sunday</span>
+              )}
             </p>
-            <div className="flex justify-end gap-3">
+            
+            <input
+              type="text"
+              value={newDayPurpose}
+              onChange={(e) => setNewDayPurpose(e.target.value)}
+              placeholder="e.g., Meeting, Sprint Review, Holiday..."
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveDayPurpose();
+                if (e.key === 'Escape') setDayPurposeModal(null);
+              }}
+            />
+            
+            <div className="flex justify-between gap-3">
               <button
-                onClick={cancelMoveTask}
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                onClick={handleClearDayPurpose}
+                className="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition"
+                disabled={!dayPurposeModal.currentPurpose}
               >
-                Cancel
+                Clear Purpose
               </button>
-              <button
-                onClick={confirmMoveTask}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
-              >
-                Move Task
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setDayPurposeModal(null)}
+                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveDayPurpose}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition"
+                >
+                  Save
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1481,6 +1448,83 @@ export default function Dependencies() {
         </div>
       )}
 
+      {/* Cross-Team Move Confirmation Modal */}
+      {moveModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Move Task to Different Team?</h2>
+            <p className="text-sm text-slate-600 mb-4">
+              Are you sure you want to move <strong>"{moveModal.taskName}"</strong> from{" "}
+              <span className="font-medium text-slate-800">{moveModal.sourceTeamName}</span> to{" "}
+              <span className="font-medium text-slate-800">{moveModal.targetTeamName}</span>?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setMoveModal(null)}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const { taskId, sourceTeamId, targetTeamId, insertIndex } = moveModal;
+                  
+                  // Remove task from source team
+                  const sourceTeam = teams[sourceTeamId];
+                  const newSourceTasks = sourceTeam.tasks.filter(id => id !== taskId);
+                  
+                  // Add task to target team at the specified index
+                  const targetTeam = teams[targetTeamId];
+                  const visibleTasks = getVisibleTasks(targetTeamId);
+                  
+                  // Calculate actual insert position
+                  let actualInsertIndex = 0;
+                  let visibleCount = 0;
+                  for (let i = 0; i < targetTeam.tasks.length; i++) {
+                    if (isTaskVisible(targetTeam.tasks[i], taskDisplaySettings)) {
+                      if (visibleCount === insertIndex) {
+                        actualInsertIndex = i;
+                        break;
+                      }
+                      visibleCount++;
+                    }
+                    actualInsertIndex = i + 1;
+                  }
+                  
+                  const newTargetTasks = [...targetTeam.tasks];
+                  newTargetTasks.splice(actualInsertIndex, 0, taskId);
+                  
+                  // Update local state
+                  setTeams(prev => ({
+                    ...prev,
+                    [sourceTeamId]: { ...prev[sourceTeamId], tasks: newSourceTasks },
+                    [targetTeamId]: { ...prev[targetTeamId], tasks: newTargetTasks }
+                  }));
+                  
+                  // Update tasks state - update the task's team reference
+                  setTasks(prev => ({
+                    ...prev,
+                    [taskId]: { ...prev[taskId], team: targetTeamId }
+                  }));
+                  
+                  // Save to backend
+                  try {
+                    await reorder_team_tasks(projectId, taskId, targetTeamId, newTargetTasks);
+                  } catch (err) {
+                    console.error("Failed to move task:", err);
+                  }
+                  
+                  setMoveModal(null);
+                }}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+              >
+                Move Task
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Team Settings Dropdown - Rendered outside the transformed container */}
       {openTeamSettings && teams[openTeamSettings] && (() => {
         const btn = document.getElementById(`team-settings-btn-${openTeamSettings}`);
@@ -1554,13 +1598,12 @@ export default function Dependencies() {
 
       {/* Page wrapper */}
       <div 
-        className="p-10 pt-4 w-full min-w-0 select-none"
+        className="p-10 w-full min-w-0 select-none"
         onClick={() => {
           setSelectedConnection(null);
           setOpenTeamSettings(null);
-          setShowFilterDropdown(false);
-          setSelectedMilestone(null);
           setShowSettingsDropdown(false);
+          setSelectedMilestone(null);
         }}
       >
         {/* Control Board Toolbar */}
@@ -1948,7 +1991,7 @@ export default function Dependencies() {
               {/* Task drop indicator line */}
               {taskGhost && taskDropTarget && (
                 <div
-                  className="absolute pointer-events-none"
+                  className="pointer-events-none absolute"
                   style={{
                     top: `${getTaskDropIndicatorY()}px`,
                     left: `${TEAMWIDTH}px`,
@@ -1965,7 +2008,7 @@ export default function Dependencies() {
               {/* Team Ghost */}
               {ghost && (
                 <div
-                  className="absolute pointer-events-none"
+                  className="pointer-events-none absolute"
                   style={{
                     top: `${ghost.y}px`,
                     left: 0,
@@ -2008,16 +2051,47 @@ export default function Dependencies() {
                   Tasks
                 </div>
               </div>
-              <div className="flex border-b bg-slate-50">
-                {dayLabels.map((label, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-center text-xs text-slate-500 border-r"
-                    style={{ width: `${DAYWIDTH}px`, height: `${HEADER_HEIGHT}px` }}
-                  >
-                    {label}
-                  </div>
-                ))}
+              
+              {/* Day Headers - Enhanced */}
+              <div className="flex border-b">
+                {dayLabels.map((dayInfo, i) => {
+                  const hasPurpose = !!dayInfo.purpose;
+                  const isSunday = dayInfo.isSunday;
+                  const showDayName = DAYWIDTH >= DAY_NAME_WIDTH_THRESHOLD;
+                  
+                  return (
+                    <div
+                      key={i}
+                      onClick={() => handleDayHeaderClick(i)}
+                      className={`flex flex-col items-center justify-center text-xs border-r cursor-pointer transition-colors ${
+                        hasPurpose 
+                          ? 'bg-slate-800 text-white hover:bg-slate-700' 
+                          : isSunday 
+                            ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
+                            : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                      }`}
+                      style={{ 
+                        width: `${DAYWIDTH}px`,
+                        height: `${HEADER_HEIGHT}px`,
+                      }}
+                      title={hasPurpose ? `${dayInfo.purpose} - Click to edit` : 'Click to set purpose'}
+                    >
+                      {showDayName && (
+                        <span className={`text-[10px] font-medium ${hasPurpose ? 'text-slate-300' : isSunday ? 'text-purple-600' : 'text-slate-400'}`}>
+                          {dayInfo.dayNameShort}
+                        </span>
+                      )}
+                      <span className={`font-medium ${hasPurpose ? 'text-white' : ''}`}>
+                        {dayInfo.dateStr}
+                      </span>
+                      {hasPurpose && DAYWIDTH >= 50 && (
+                        <span className="text-[9px] truncate max-w-full px-1 text-slate-300">
+                          {dayInfo.purpose}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

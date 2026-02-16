@@ -33,6 +33,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import dayjs from 'dayjs';
+import { validate_project_dates, sync_project_days } from '../../api/dependencies_api.js';
 
 export async function project_loader({ params }) {
   const { projectId } = params;
@@ -250,23 +251,43 @@ export default function ProjectMain() {
   }
 
   async function handleSaveDates() {
+    setSavingDates(true);
     try {
-      setSavingDates(true);
-      const newStartDate = editStartDate ? editStartDate.format('YYYY-MM-DD') : null;
-      const newEndDate = editEndDate ? editEndDate.format('YYYY-MM-DD') : null;
+      const newStart = editStartDate ? editStartDate.format('YYYY-MM-DD') : null;
+      const newEnd = editEndDate ? editEndDate.format('YYYY-MM-DD') : null;
+
+      // Validate dates before saving
+      if (newStart && newEnd) {
+        const validation = await validate_project_dates(initialProject.id, newStart, newEnd);
+
+        if (!validation.valid) {
+          // Show error with details about conflicting milestones
+          const milestoneNames = validation.milestones_out_of_range
+            .map(m => `"${m.name}" (needs day ${m.required_days})`)
+            .join(', ');
+
+          alert(`Cannot update dates: ${validation.error}\n\nAffected milestones: ${milestoneNames}\n\nPlease adjust or remove these milestones first.`);
+          setSavingDates(false);
+          return;
+        }
+      }
 
       await update_project_api(initialProject.id, {
-        start_date: newStartDate,
-        end_date: newEndDate,
+        start_date: newStart,
+        end_date: newEnd,
       });
 
-      // Update state
-      setStartDate(newStartDate);
-      setEndDate(newEndDate);
+      // Sync days after successful date update
+      if (newStart && newEnd) {
+        await sync_project_days(initialProject.id);
+      }
+
+      setStartDate(newStart);
+      setEndDate(newEnd);
       setIsEditingDates(false);
     } catch (err) {
-      console.error(err);
-      alert('Failed to update project dates: ' + err.message);
+      console.error('Failed to save dates:', err);
+      alert('Failed to save dates. Please try again.');
     } finally {
       setSavingDates(false);
     }

@@ -24,6 +24,104 @@ class Project(models.Model):
     def __str__(self):
         return self.name
 
+    def get_days_count(self):
+        """Return number of days in project timespan"""
+        if self.start_date and self.end_date:
+            return (self.end_date - self.start_date).days + 1
+        return 0
+
+    def create_days(self):
+        """Create Day objects for this project based on start and end dates"""
+        if not self.start_date or not self.end_date:
+            return []
+        
+        created_days = []
+        current_date = self.start_date
+        index = 0
+        
+        while current_date <= self.end_date:
+            day, created = Day.objects.get_or_create(
+                project=self,
+                date=current_date,
+                defaults={'day_index': index}
+            )
+            if not created:
+                day.day_index = index
+                day.save(update_fields=['day_index'])
+            created_days.append(day)
+            current_date += timedelta(days=1)
+            index += 1
+        
+        return created_days
+
+    def update_days_on_date_change(self, old_start, old_end, new_start, new_end):
+        """
+        Update days when project dates change.
+        Returns dict with 'success', 'error', 'created', 'deleted' info.
+        """
+        from django.db.models import Max
+        
+        result = {
+            'success': True,
+            'error': None,
+            'created': 0,
+            'deleted': 0,
+            'milestones_out_of_range': []
+        }
+        
+        # Check if any milestones would be out of range
+        if new_end and new_start:
+            new_days_count = (new_end - new_start).days + 1
+            
+            # Find milestones that would exceed the new range
+            out_of_range_milestones = Milestone.objects.filter(
+                project=self
+            ).filter(
+                models.Q(start_index__gte=new_days_count) |
+                models.Q(start_index__lt=0)
+            )
+            
+            # Also check milestones where start_index + duration exceeds range
+            all_milestones = Milestone.objects.filter(project=self)
+            for ms in all_milestones:
+                if ms.start_index + ms.duration > new_days_count:
+                    result['milestones_out_of_range'].append({
+                        'id': ms.id,
+                        'name': ms.name,
+                        'start_index': ms.start_index,
+                        'duration': ms.duration,
+                        'end_index': ms.start_index + ms.duration - 1
+                    })
+            
+            for ms in out_of_range_milestones:
+                if ms.id not in [m['id'] for m in result['milestones_out_of_range']]:
+                    result['milestones_out_of_range'].append({
+                        'id': ms.id,
+                        'name': ms.name,
+                        'start_index': ms.start_index,
+                        'duration': ms.duration,
+                        'end_index': ms.start_index + ms.duration - 1
+                    })
+        
+        if result['milestones_out_of_range']:
+            result['success'] = False
+            result['error'] = 'Some milestones would be outside the new date range'
+            return result
+        
+        # Delete days outside new range
+        if new_start and new_end:
+            deleted_count, _ = Day.objects.filter(project=self).exclude(
+                date__gte=new_start,
+                date__lte=new_end
+            ).delete()
+            result['deleted'] = deleted_count
+            
+            # Create/update days for new range
+            created_days = self.create_days()
+            result['created'] = len([d for d in created_days if d])
+        
+        return result
+
 
 # ═══════════════════════════════════════════════
 #  TEAM
@@ -69,6 +167,49 @@ class Task(models.Model):
     
     class Meta: 
         ordering = ["team", "order_index"]
+
+
+# ═══════════════════════════════════════════════
+#  DAY
+# ═══════════════════════════════════════════════
+
+class Day(models.Model):
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="days")
+    date = models.DateField()
+    day_index = models.IntegerField(default=0)  # 0-based index from project start
+    purpose = models.CharField(max_length=200, blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+    is_blocked = models.BooleanField(default=False)  # e.g., holiday, no work day
+    color = models.CharField(max_length=20, blank=True, null=True)  # custom highlight color
+
+    class Meta:
+        ordering = ["project", "day_index"]
+        unique_together = ["project", "date"]
+
+    def __str__(self):
+        return f"{self.project.name} - Day {self.day_index} ({self.date})"
+
+    @property
+    def is_weekend(self):
+        """Check if this day is a weekend (Saturday=5, Sunday=6)"""
+        return self.date.weekday() >= 5
+
+    @property
+    def is_sunday(self):
+        """Check if this day is Sunday"""
+        return self.date.weekday() == 6
+
+    @property
+    def day_name(self):
+        """Return abbreviated day name"""
+        days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        return days[self.date.weekday()]
+
+    @property
+    def day_name_short(self):
+        """Return 2-letter day abbreviation"""
+        days = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
+        return days[self.date.weekday()]
 
 
 # ═══════════════════════════════════════════════
