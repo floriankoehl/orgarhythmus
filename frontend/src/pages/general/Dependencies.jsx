@@ -32,6 +32,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import FlagIcon from '@mui/icons-material/Flag';
+import ScheduleIcon from '@mui/icons-material/Schedule';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import CloseIcon from '@mui/icons-material/Close';
@@ -100,6 +101,8 @@ export default function Dependencies() {
   const [milestones, setMilestones] = useState({})
   const [hoveredMilestone, setHoveredMilestone] = useState(null)
   const [selectedMilestones, setSelectedMilestones] = useState(new Set())
+  const [autoSelectBlocking, setAutoSelectBlocking] = useState(true) // Auto-select blocking milestone on failed move
+  const justDraggedRef = useRef(false); // Prevents click handler from firing after drag ends
 
   const [teamOrder, setTeamOrder] = useState([]);
   const [teams, setTeams] = useState({});
@@ -138,7 +141,7 @@ export default function Dependencies() {
   const [teamFilter, setTeamFilter] = useState([]);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
 
-  // View mode: "inspection" (default, view only), "dependency" (edit connections), or "milestone" (edit milestones)
+  // View mode: "inspection" (default, view only), "schedule" (move milestones), "dependency" (edit connections), or "milestone" (edit milestones)
   const [viewMode, setViewMode] = useState("inspection");
 
   // Milestone editing state
@@ -212,43 +215,52 @@ export default function Dependencies() {
       // Ctrl is used for multi-select, not a mode change
       if (e.shiftKey) {
         setMode("duration")
-        // Switch to milestone mode when shift is held (only if in inspection mode)
-        if (viewMode === "inspection") {
+        // Switch to milestone mode when shift is held (only if in inspection or schedule mode)
+        if (viewMode === "inspection" || viewMode === "schedule") {
           baseViewModeRef.current = viewMode;
           setViewMode("milestone");
         }
       }
       else if (e.altKey) {
         setMode("connect")
-        // Switch to dependency mode when alt is held (only if in inspection mode)
-        if (viewMode === "inspection") {
+        // Switch to dependency mode when alt is held (only if in inspection or schedule mode)
+        if (viewMode === "inspection" || viewMode === "schedule") {
           baseViewModeRef.current = viewMode;
           setViewMode("dependency");
         }
       }
       // Delete key - delete selected connection or milestones
       else if (e.key === "Delete" || e.key === "Backspace") {
-        if (safeMode) return;
-        
-        // Delete selected connection
+        // Delete selected connection (works in dependency mode)
         if (selectedConnection) {
           handleDeleteConnection(selectedConnection);
+          setSelectedConnection(null);
         }
-        // Delete selected milestones
+        // Delete selected milestones (show confirmation for the first one, delete all)
         else if (selectedMilestones.size > 0) {
-          selectedMilestones.forEach(mId => {
-            handleMilestoneDelete(mId);
-          });
-          setSelectedMilestones(new Set());
+          const milestoneIds = Array.from(selectedMilestones);
+          const firstMilestone = milestones[milestoneIds[0]];
+          if (firstMilestone) {
+            if (milestoneIds.length === 1) {
+              setDeleteConfirmModal({ milestoneId: firstMilestone.id, milestoneName: firstMilestone.name });
+            } else {
+              // For multiple, show a different message
+              setDeleteConfirmModal({ 
+                milestoneId: null, 
+                milestoneName: `${milestoneIds.length} milestones`,
+                milestoneIds: milestoneIds 
+              });
+            }
+          }
         }
       }
     }
 
     const up = (e) => {
       setMode("drag")
-      // Restore inspection mode when modifier keys are released (if we switched from inspection)
-      if (!e.shiftKey && !e.altKey && baseViewModeRef.current === "inspection") {
-        setViewMode("inspection");
+      // Restore original mode when modifier keys are released (if we switched from inspection or schedule)
+      if (!e.shiftKey && !e.altKey && (baseViewModeRef.current === "inspection" || baseViewModeRef.current === "schedule")) {
+        setViewMode(baseViewModeRef.current);
       }
     }
 
@@ -258,7 +270,7 @@ export default function Dependencies() {
       window.removeEventListener("keydown", down)
       window.removeEventListener("keyup", up)
     }
-  }, [viewMode, safeMode, selectedConnection, selectedMilestones])
+  }, [viewMode, selectedConnection, selectedMilestones, milestones])
 
   // Close team settings when clicking outside
   useEffect(() => {
@@ -964,8 +976,9 @@ export default function Dependencies() {
   };
 
   // Handle milestone mouse down (drag) - supports moving multiple selected milestones
+  // Only allowed in schedule mode
   const handleMileStoneMouseDown = (e, milestoneId) => {
-    if (safeMode) return;
+    if (viewMode !== "schedule") return;
 
     e.preventDefault();
     const containerRect = teamContainerRef.current?.getBoundingClientRect();
@@ -1024,6 +1037,10 @@ export default function Dependencies() {
     const onMouseUp = async () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      
+      // Set flag to prevent click handler from firing after drag
+      justDraggedRef.current = true;
+      setTimeout(() => { justDraggedRef.current = false; }, 0);
 
       // Calculate target positions for validation
       const targetPositions = {};
@@ -1049,21 +1066,26 @@ export default function Dependencies() {
       const validation = validateMultiMilestoneMove(milestonesToMove, currentDeltaIndex);
       
       if (!validation.valid) {
-        // Move is blocked - show feedback and auto-select blocking milestone
-        if (validation.blockingMilestoneId && validation.blockingConnection) {
-          showBlockingFeedback(validation.blockingMilestoneId, validation.blockingConnection);
+        // Move is blocked - show feedback and optionally auto-select blocking milestone
+        if (validation.blockingMilestoneId) {
+          // Show visual feedback if there's a blocking connection
+          if (validation.blockingConnection) {
+            showBlockingFeedback(validation.blockingMilestoneId, validation.blockingConnection);
+          }
           
-          // Auto-select the blocking milestone along with the milestones being moved
-          setSelectedMilestones(prev => {
-            const newSet = new Set(prev);
-            // Add all milestones that were being moved
-            for (const mId of milestonesToMove) {
-              newSet.add(mId);
-            }
-            // Add the blocking milestone
-            newSet.add(validation.blockingMilestoneId);
-            return newSet;
-          });
+          // Auto-select the blocking milestone along with the milestones being moved (if enabled)
+          if (autoSelectBlocking) {
+            setSelectedMilestones(prev => {
+              const newSet = new Set(prev);
+              // Add all milestones that were being moved
+              for (const mId of milestonesToMove) {
+                newSet.add(mId);
+              }
+              // Add the blocking milestone
+              newSet.add(validation.blockingMilestoneId);
+              return newSet;
+            });
+          }
         }
         
         // Revert all milestones to their original positions
@@ -1162,6 +1184,11 @@ export default function Dependencies() {
   const handleMilestoneClick = (e, milestoneId) => {
     e.stopPropagation();
     
+    // Skip click handling if we just finished dragging (prevents resetting selection after blocked move)
+    if (justDraggedRef.current) {
+      return;
+    }
+    
     if (e.ctrlKey || e.metaKey) {
       // Multi-select: toggle this milestone in selection
       setSelectedMilestones(prev => {
@@ -1214,7 +1241,10 @@ export default function Dependencies() {
   };
 
   // Check if moving multiple milestones by a delta would be valid
+  // Skip checking dependencies where the source milestone is also being moved
   const validateMultiMilestoneMove = (milestoneIds, deltaIndex) => {
+    const movingSet = new Set(milestoneIds);
+    
     for (const milestoneId of milestoneIds) {
       const milestone = milestones[milestoneId];
       if (!milestone) continue;
@@ -1224,9 +1254,27 @@ export default function Dependencies() {
         return { valid: false, reason: "Cannot move before project start", blockingMilestoneId: milestoneId };
       }
       
-      const validation = validateMilestoneMove(milestoneId, newStartIndex);
-      if (!validation.valid) {
-        return validation;
+      // Check incoming connections, but skip ones where source is also moving
+      const incomingConnections = connections.filter(c => c.target === milestoneId);
+      
+      for (const conn of incomingConnections) {
+        // Skip if source milestone is also being moved (dependency will move with it)
+        if (movingSet.has(conn.source)) continue;
+        
+        const sourceMilestone = milestones[conn.source];
+        if (!sourceMilestone) continue;
+        
+        // Source must finish (end) before target starts
+        const sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
+        
+        if (sourceEndIndex >= newStartIndex) {
+          return {
+            valid: false,
+            blockingConnection: conn,
+            blockingMilestoneId: conn.source,
+            reason: `Dependency from "${sourceMilestone.name}" must finish before this milestone can start`
+          };
+        }
       }
     }
     return { valid: true };
@@ -1945,12 +1993,17 @@ export default function Dependencies() {
       {deleteConfirmModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Delete Milestone?</h2>
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">
+              Delete {deleteConfirmModal.milestoneIds ? 'Milestones' : 'Milestone'}?
+            </h2>
             <p className="text-sm text-slate-600 mb-4">
-              Are you sure you want to delete milestone{" "}
+              Are you sure you want to delete{" "}
               <span className="font-medium text-slate-800">
-                "{deleteConfirmModal.milestoneName}"
-              </span>? This will also remove any dependencies connected to it.
+                {deleteConfirmModal.milestoneIds 
+                  ? `${deleteConfirmModal.milestoneIds.length} milestones`
+                  : `"${deleteConfirmModal.milestoneName}"`
+                }
+              </span>? This will also remove any dependencies connected to {deleteConfirmModal.milestoneIds ? 'them' : 'it'}.
             </p>
             <div className="flex justify-end gap-3">
               <button
@@ -1960,8 +2013,17 @@ export default function Dependencies() {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  handleMilestoneDelete(deleteConfirmModal.milestoneId);
+                onClick={async () => {
+                  if (deleteConfirmModal.milestoneIds) {
+                    // Delete multiple milestones
+                    for (const mId of deleteConfirmModal.milestoneIds) {
+                      await handleMilestoneDelete(mId);
+                    }
+                    setSelectedMilestones(new Set());
+                  } else {
+                    // Delete single milestone
+                    await handleMilestoneDelete(deleteConfirmModal.milestoneId);
+                  }
                   setDeleteConfirmModal(null);
                 }}
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
@@ -2277,7 +2339,23 @@ export default function Dependencies() {
                   title="View only - no data changes"
                 >
                   <VisibilityIcon style={{ fontSize: 14 }} />
-                  <span>Inspect</span>
+                  <span>View</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setViewMode("schedule");
+                    baseViewModeRef.current = "schedule";
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
+                    viewMode === "schedule"
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                  title="Move and schedule milestones"
+                >
+                  <ScheduleIcon style={{ fontSize: 14 }} />
+                  <span>Sched</span>
                 </button>
                 <button
                   onClick={(e) => {
@@ -2312,6 +2390,22 @@ export default function Dependencies() {
                   <span>Miles</span>
                 </button>
               </div>
+              
+              {/* Auto-select blocking milestone toggle */}
+              <label 
+                className="flex items-center gap-2 mt-3 cursor-pointer group"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <input
+                  type="checkbox"
+                  checked={autoSelectBlocking}
+                  onChange={(e) => setAutoSelectBlocking(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-xs text-slate-600 group-hover:text-slate-800">
+                  Auto-select blocking milestone
+                </span>
+              </label>
             </div>
 
             {/* Section 3: Filter */}
@@ -3163,11 +3257,11 @@ export default function Dependencies() {
                           </div>
                         )}
 
-                        {/* Delete icon - only in milestone mode (Shift held) */}
+                        {/* Delete icon - only in milestone mode, tiny and top-right */}
                         {showDelete && (
                           <div 
-                            className="absolute -top-1.5 -right-1.5 bg-slate-500/70 rounded-full p-0.5 shadow cursor-pointer hover:bg-red-500 hover:scale-110 transition-all"
-                            style={{ pointerEvents: 'auto' }}
+                            className="absolute -top-1 -right-1 bg-slate-400/60 rounded-full cursor-pointer hover:bg-red-500 transition-all"
+                            style={{ pointerEvents: 'auto', padding: '1px' }}
                             onClick={(e) => {
                               e.stopPropagation();
                               setDeleteConfirmModal({ milestoneId: milestone.id, milestoneName: milestone.name });
@@ -3175,7 +3269,7 @@ export default function Dependencies() {
                             onMouseDown={(e) => e.stopPropagation()}
                             title="Delete milestone"
                           >
-                            <CloseIcon style={{ fontSize: 12, color: 'white' }} />
+                            <CloseIcon style={{ fontSize: 8, color: 'white' }} />
                           </div>
                         )}
 
