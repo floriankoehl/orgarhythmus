@@ -867,13 +867,12 @@ export default function Dependencies() {
 
     const onMouseUp = () => {
       const new_index = Math.round(new_x / DAYWIDTH)
-      const snapped_x = new_index * DAYWIDTH
 
       setMilestones(prev => ({
         ...prev,
         [milestone_key]: {
           ...prev[milestone_key],
-          x: snapped_x,
+          x: undefined, // Clear x so position is calculated from start_index
           start_index: new_index
         }
       }))
@@ -1000,7 +999,7 @@ export default function Dependencies() {
               ...prev[milestoneId],
               duration: newDuration,
               start_index: newIndex,
-              x: newIndex * DAYWIDTH
+              x: newIndex * DAYWIDTH // Temporary x for visual feedback during drag
             }
           }));
         }
@@ -1010,6 +1009,15 @@ export default function Dependencies() {
     const onMouseUp = () => {
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      
+      // Clear x so position is always calculated from start_index
+      setMilestones(prev => ({
+        ...prev,
+        [milestoneId]: {
+          ...prev[milestoneId],
+          x: undefined
+        }
+      }));
       
       // Save the changes to backend using tracked final values
       // Update start index if left edge was dragged and position changed
@@ -1039,8 +1047,8 @@ export default function Dependencies() {
     try {
       const result = await add_milestone(projectId, taskId);
       // After creating, update the start_index to the clicked day position
-      if (result && result.milestone && result.milestone.id) {
-        await update_start_index(projectId, result.milestone.id, dayIndex);
+      if (result && result.added_milestone && result.added_milestone.id) {
+        await update_start_index(projectId, result.added_milestone.id, dayIndex);
       }
       setReloadData(true);
     } catch (err) {
@@ -1136,7 +1144,7 @@ export default function Dependencies() {
     const taskHeight = getTaskHeight(milestone.task, taskDisplaySettings);
     
     const milestoneAreaStart = TEAMWIDTH + TASKWIDTH;
-    const milestoneX = milestone.x || (milestone.start_index * DAYWIDTH);
+    const milestoneX = milestone.x ?? (milestone.start_index * DAYWIDTH);
     const milestoneWidth = DAYWIDTH * milestone.duration;
     
     const handleX = handleType === "source"
@@ -2465,7 +2473,7 @@ export default function Dependencies() {
                         style={{
                           pointerEvents: 'auto',
                           overflow: 'visible',
-                          left: `${TEAMWIDTH + TASKWIDTH + milestone.x}px`,
+                          left: `${TEAMWIDTH + TASKWIDTH + (milestone.x ?? (milestone.start_index * DAYWIDTH))}px`,
                           top: `${taskY}px`,
                           width: `${DAYWIDTH * milestone.duration}px`,
                           height: `${taskHeight}px`,
