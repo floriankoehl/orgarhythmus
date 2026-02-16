@@ -36,7 +36,6 @@ import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import CloseIcon from '@mui/icons-material/Close';
 import SettingsIcon from '@mui/icons-material/Settings';
-import LockIcon from '@mui/icons-material/Lock';
 
 // Height constants (defaults)
 const DEFAULT_TASKHEIGHT_NORMAL = 32;
@@ -121,8 +120,8 @@ export default function Dependencies() {
   const [teamFilter, setTeamFilter] = useState([]);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
 
-  // View mode: "dependency" or "milestone"
-  const [viewMode, setViewMode] = useState("dependency");
+  // View mode: "inspection" (default, view only), "dependency" (edit connections), or "milestone" (edit milestones)
+  const [viewMode, setViewMode] = useState("inspection");
 
   // Milestone editing state
   const [editingMilestoneId, setEditingMilestoneId] = useState(null);
@@ -178,29 +177,38 @@ export default function Dependencies() {
 
   const [mode, setMode] = useState("drag")
 
-  // Safe mode - prevents any data changes, only appearance changes allowed
-  const [safeMode, setSafeMode] = useState(false);
+  // Store the base viewMode for when no modifier keys are held
+  const baseViewModeRef = useRef(viewMode);
 
-  // Store previous viewMode when shift is pressed
-  const prevViewModeRef = useRef(viewMode);
+  // safeMode is derived from viewMode - inspection mode is safe
+  const safeMode = viewMode === "inspection";
 
   useEffect(() => {
     const down = (e) => {
       if (e.ctrlKey) setMode("delete")
       else if (e.shiftKey) {
         setMode("duration")
-        // Switch to milestone mode when shift is held
-        prevViewModeRef.current = viewMode;
-        setViewMode("milestone");
+        // Switch to milestone mode when shift is held (only if in inspection mode)
+        if (viewMode === "inspection") {
+          baseViewModeRef.current = viewMode;
+          setViewMode("milestone");
+        }
       }
-      else if (e.altKey) setMode("connect")
+      else if (e.altKey) {
+        setMode("connect")
+        // Switch to dependency mode when alt is held (only if in inspection mode)
+        if (viewMode === "inspection") {
+          baseViewModeRef.current = viewMode;
+          setViewMode("dependency");
+        }
+      }
     }
 
     const up = (e) => {
       setMode("drag")
-      // Restore previous view mode when shift is released
-      if (!e.shiftKey && prevViewModeRef.current !== viewMode) {
-        setViewMode(prevViewModeRef.current);
+      // Restore inspection mode when modifier keys are released (if we switched from inspection)
+      if (!e.shiftKey && !e.altKey && baseViewModeRef.current === "inspection") {
+        setViewMode("inspection");
       }
     }
 
@@ -222,6 +230,21 @@ export default function Dependencies() {
       return () => document.removeEventListener('click', handleClickOutside);
     }
   }, [openTeamSettings]);
+
+  // Close filter dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      // Check if click is outside the filter area
+      const filterArea = document.querySelector('[data-filter-dropdown]');
+      if (filterArea && !filterArea.contains(e.target)) {
+        setShowFilterDropdown(false);
+      }
+    };
+    if (showFilterDropdown) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [showFilterDropdown]);
 
 
   // ________________Loading_________________
@@ -405,10 +428,16 @@ export default function Dependencies() {
 
   // Calculate team height based on visible tasks and their sizes (with minimum)
   const TEAM_MIN_HEIGHT = TASKHEIGHT_NORMAL;
+  const TEAM_COLLAPSED_HEIGHT = 32; // Just enough for the team name row
   
   const getTeamHeight = (teamId) => {
     const team = teams[teamId];
     if (!team) return TEAM_MIN_HEIGHT;
+    
+    // If team is collapsed, return collapsed height
+    if (teamDisplaySettings[teamId]?.collapsed) {
+      return TEAM_COLLAPSED_HEIGHT;
+    }
     
     let height = 0;
     for (const taskId of team.tasks) {
@@ -1743,22 +1772,6 @@ export default function Dependencies() {
                 Settings
               </h3>
               <div className="flex flex-wrap gap-2">
-                {/* Safe Mode Toggle */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSafeMode(!safeMode);
-                  }}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
-                    safeMode 
-                      ? 'border-amber-400 bg-amber-50 text-amber-700' 
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                  title={safeMode ? "Safe mode is ON - data changes are prevented" : "Enable safe mode to prevent accidental changes"}
-                >
-                  <LockIcon style={{ fontSize: 14 }} />
-                  <span>{safeMode ? 'Safe' : 'Edit'}</span>
-                </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1931,36 +1944,57 @@ export default function Dependencies() {
             {/* Section 2: Mode Toggle */}
             <div className="p-3">
               <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                View Mode {mode === "duration" && <span className="text-blue-500">(Shift)</span>}
+                Mode {mode === "duration" && <span className="text-blue-500">(Shift held)</span>}
+                {mode === "connect" && <span className="text-purple-500">(Alt held)</span>}
               </h3>
               <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setViewMode("dependency");
+                    setViewMode("inspection");
+                    baseViewModeRef.current = "inspection";
                   }}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition ${
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
+                    viewMode === "inspection"
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                  title="View only - no data changes"
+                >
+                  <VisibilityIcon style={{ fontSize: 14 }} />
+                  <span>Inspect</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setViewMode("dependency");
+                    baseViewModeRef.current = "dependency";
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
                     viewMode === "dependency"
                       ? 'bg-white text-slate-900 shadow-sm'
                       : 'text-slate-500 hover:text-slate-700'
                   }`}
+                  title="Edit dependency connections (Alt)"
                 >
                   <AccountTreeIcon style={{ fontSize: 14 }} />
-                  <span>Dependencies</span>
+                  <span>Deps</span>
                 </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setViewMode("milestone");
+                    baseViewModeRef.current = "milestone";
                   }}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition ${
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
                     viewMode === "milestone"
                       ? 'bg-white text-slate-900 shadow-sm'
                       : 'text-slate-500 hover:text-slate-700'
                   }`}
+                  title="Edit milestones (Shift)"
                 >
                   <FlagIcon style={{ fontSize: 14 }} />
-                  <span>Milestones</span>
+                  <span>Miles</span>
                 </button>
               </div>
             </div>
@@ -1970,7 +2004,7 @@ export default function Dependencies() {
               <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
                 Team Filter
               </h3>
-              <div className="relative">
+              <div className="relative" data-filter-dropdown>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -2290,7 +2324,7 @@ export default function Dependencies() {
                       style={{
                         height: teamHeight,
                         width: `${TEAMWIDTH + TASKWIDTH}px`,
-                        backgroundColor: isTargetTeam ? '#dbeafe' : `${team.color}40`,
+                        backgroundColor: isTargetTeam ? '#dbeafe' : '#ffffff',
                         opacity: ghost?.id === team_key ? 0.2 : 1,
                         position: 'sticky',
                         left: 0,
@@ -2304,7 +2338,7 @@ export default function Dependencies() {
                       {/* Team Column */}
                       <div
                         style={{ width: isTeamCollapsed(team_key) ? `${TEAMWIDTH + TASKWIDTH}px` : `${TEAMWIDTH}px` }}
-                        className="flex flex-col bg-white/60"
+                        className="flex flex-col bg-white"
                       >
                         {/* Team Name Row - Draggable + Settings */}
                         <div className={`${isTeamCollapsed(team_key) ? '' : 'border-b border-slate-200'} h-8 px-3 flex items-center justify-between`}>
@@ -2359,9 +2393,9 @@ export default function Dependencies() {
                         )}
                       </div>
 
-                      {/* Tasks Column - only show when not collapsed */}
-                      {!isTeamCollapsed(team_key) && (
-                        <div className="flex flex-col bg-white/40">
+                      {/* Tasks Column - only show when not collapsed AND has visible tasks */}
+                      {!isTeamCollapsed(team_key) && visibleTasks.length > 0 && (
+                        <div className="flex flex-col bg-white">
                           {team.tasks.map((task_key, taskIndex) => {
                             if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
                             
@@ -2670,8 +2704,14 @@ export default function Dependencies() {
               {teamOrder.map((team_key) => {
                 const team = teams[team_key];
                 if (!team || !isTeamVisible(team_key)) return null;
+                
+                // Don't render milestones for collapsed teams
+                if (isTeamCollapsed(team_key)) return null;
 
                 const visibleTasks = getVisibleTasks(team_key);
+                
+                // Don't render milestones if all tasks are hidden
+                if (visibleTasks.length === 0) return null;
 
                 return team.tasks.map((task_key) => {
                   if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
