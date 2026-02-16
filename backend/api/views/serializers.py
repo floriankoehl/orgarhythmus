@@ -99,7 +99,6 @@ class TaskSerializer_TeamView(serializers.ModelSerializer):
 class TaskExpandedSerializer(serializers.ModelSerializer):
     team = BasicTeamSerializer(read_only=True)
     project_id = serializers.IntegerField(source='project.id', read_only=True)
-    # attempts = serializers.SerializerMethodField()
     assigned_members_data = serializers.SerializerMethodField()
 
     class Meta:
@@ -112,7 +111,6 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
             'difficulty',
             'team',
             'project_id',
-            # 'attempts',
             'assigned_members',
             'assigned_members_data',
         ]

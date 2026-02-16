@@ -75,29 +75,12 @@ class Task(models.Model):
 #  MILESTONE
 # ═══════════════════════════════════════════════
 
-
 class Milestone(models.Model):
     name = models.CharField(max_length=200)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, null=False)
     task = models.ForeignKey(Task, on_delete=models.CASCADE, null=False, related_name="milestones")
     start_index = models.IntegerField(default=0)
     duration = models.IntegerField(default=1)
-
-
-
-    
-    # _____________________________ END OF NEW ADDING ______________________________
-    # _____________________________ END OF NEW ADDING ______________________________
-    # _____________________________ END OF NEW ADDING ______________________________
-
-
-
-
-
-    # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
-    # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
-    # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
-    # What i changed: Added this complete new model
 
 
 # ═══════════════════════════════════════════════
@@ -111,120 +94,6 @@ class Dependency(models.Model):
                                related_name="incoming_dependencies")
 
 
-    
-    # _____________________________ END OF NEW ADDING ______________________________
-    # _____________________________ END OF NEW ADDING ______________________________
-    # _____________________________ END OF NEW ADDING ______________________________
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ═══════════════════════════════════════════════
-#  ATTEMPT
-# ═══════════════════════════════════════════════
-
-class Attempt(models.Model):
-    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='attempts')
-    name = models.CharField(max_length=200, blank=True, null=True)
-    description = models.TextField(blank=True, null=True, default='')
-    number = models.IntegerField(blank=True, null=True)
-    slot_index = models.IntegerField(blank=True, null=True)
-    done = models.BooleanField(default=False)
-
-    class Meta:
-        unique_together = ('task', 'number')
-
-    def __str__(self):
-        if self.name:
-            return self.name
-        return f"Attempt {self.id}"
-
-    @property
-    def calculated_date(self):
-        start = getattr(self.task.project, 'start_date', None) if self.task and self.task.project else None
-        if start is None or self.slot_index is None:
-            return None
-        return start + timedelta(days=self.slot_index)
-
-
-# ═══════════════════════════════════════════════
-#  ATTEMPT TODO
-# ═══════════════════════════════════════════════
-
-class AttemptTodo(models.Model):
-    attempt = models.ForeignKey(Attempt, on_delete=models.CASCADE, related_name='todos')
-    text = models.CharField(max_length=500)
-    done = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return self.text
-
-
-# ═══════════════════════════════════════════════
-#  ATTEMPT DEPENDENCY
-# ═══════════════════════════════════════════════
-
-class AttemptDependency(models.Model):
-    vortakt_attempt = models.ForeignKey(Attempt, on_delete=models.CASCADE, related_name='nachtakt_attempts')
-    nachtakt_attempt = models.ForeignKey(Attempt, on_delete=models.CASCADE, related_name='vortakt_attempts')
-    type = models.CharField(max_length=200, blank=True, null=True)
-
-    def __str__(self):
-        return f"{self.vortakt_attempt.name} -> {self.nachtakt_attempt.name}"
-
-    class Meta:
-        unique_together = ('vortakt_attempt', 'nachtakt_attempt')
-
-
 # ═══════════════════════════════════════════════
 #  NOTIFICATION
 # ═══════════════════════════════════════════════
@@ -235,9 +104,6 @@ class Notification(models.Model):
         ('task_unassigned', 'Task Unassigned'),
         ('team_joined', 'Team Joined'),
         ('team_left', 'Team Left'),
-        # ('attempt_upcoming', 'Attempt Upcoming'),
-        # ('attempt_today', 'Attempt Today'),
-        # ('attempt_overdue', 'Attempt Overdue'),
         ('general', 'General Notification'),
     ]
 
@@ -246,7 +112,6 @@ class Notification(models.Model):
     title = models.CharField(max_length=200)
     message = models.TextField()
     related_task = models.ForeignKey(Task, on_delete=models.CASCADE, null=True, blank=True, related_name="notifications")
-    # related_attempt = models.ForeignKey(Attempt, on_delete=models.CASCADE, null=True, blank=True, related_name="notifications")
     related_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="notifications_about")
     read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -273,7 +138,6 @@ class DemoDate(models.Model):
 
     @classmethod
     def get_current_date(cls):
-        """Get the current demo date (or actual date if no demo date set)"""
         try:
             demo = cls.objects.first()
             return demo.date if demo else date_class.today()

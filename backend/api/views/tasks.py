@@ -156,7 +156,6 @@ def task_detail_view(request, project_id, task_id):
         task = (
             Task.objects
             .select_related("project", "team")
-            .prefetch_related("attempts", "attempts__todos")
             .get(
                 id=task_id,
                 project_id=project_id,
