@@ -824,6 +824,13 @@ def project_tasks(request, project_id):
             status=status.HTTP_404_NOT_FOUND,
         )
 
+    # 1b) Zugriffsprüfung
+    if not user_has_project_access(request.user, project):
+        return Response(
+            {"detail": "Project not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
     # 2) GET: alle Tasks dieses Projekts
     if request.method == "GET":
         tasks = (
