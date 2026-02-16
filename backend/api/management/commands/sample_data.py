@@ -30,7 +30,6 @@ class Command(BaseCommand):
         else:
             self.stdout.write(f"User '{username}' already exists — skipping creation.")
 
-        # Optional: second user for membership demos
         user2, created2 = User.objects.get_or_create(
             username="alice",
             defaults={"email": "alice@example.com"},
@@ -41,8 +40,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS("Created user 'alice' with password 'alice1234'"))
 
         # ──────────────────────────────────────────────
-        #  2. Small project (sanity-check that two
-        #     projects are treated independently)
+        #  2. Small project
         # ──────────────────────────────────────────────
         small_project, _ = Project.objects.get_or_create(
             name="Tiny Test Project",
@@ -55,7 +53,6 @@ class Command(BaseCommand):
         )
         small_project.members.add(user, user2)
 
-        # One team, two tasks, one milestone
         small_team, _ = Team.objects.get_or_create(
             name="Solo Team",
             project=small_project,
@@ -109,7 +106,6 @@ class Command(BaseCommand):
         )
         big_project.members.add(user, user2)
 
-        # ── Teams ──
         team_definitions = [
             ("Design", "#FF6B6B"),
             ("Backend", "#4ECDC4"),
@@ -129,7 +125,6 @@ class Command(BaseCommand):
             )
             teams[name] = team
 
-        # ── Tasks (2-5 per team) ──
         task_pool = {
             "Design": [
                 ("Wireframes", "3", "2"),
@@ -175,7 +170,7 @@ class Command(BaseCommand):
             ],
         }
 
-        all_tasks = {}  # name -> Task instance
+        all_tasks = {}
         for team_name, task_defs in task_pool.items():
             team = teams[team_name]
             count = random.randint(2, min(5, len(task_defs)))
@@ -197,9 +192,8 @@ class Command(BaseCommand):
 
         self.stdout.write(f"  Created/verified {len(all_tasks)} tasks across {len(teams)} teams.")
 
-        # ── Milestones (roughly 60-70% of tasks get a milestone) ──
         all_milestones = []
-        cursor = 0  # spread milestones across the timeline
+        cursor = 0
 
         task_list = list(all_tasks.values())
         random.shuffle(task_list)
@@ -219,15 +213,12 @@ class Command(BaseCommand):
                 },
             )
             all_milestones.append(ms)
-            cursor += random.randint(1, 4)  # space them out a bit
+            cursor += random.randint(1, 4)
 
         self.stdout.write(f"  Created/verified {len(all_milestones)} milestones.")
 
-        # ── Dependencies (a few sequential chains) ──
         dep_count = 0
-        # Only create dependencies between milestones that have at least 2
         if len(all_milestones) >= 2:
-            # Create 3-5 dependency chains
             num_deps = min(random.randint(3, 5), len(all_milestones) - 1)
             shuffled = list(all_milestones)
             random.shuffle(shuffled)
@@ -248,7 +239,6 @@ class Command(BaseCommand):
             f"Big project '{big_project.name}' ready (id={big_project.id})"
         ))
 
-        # ── Summary ──
         self.stdout.write("")
         self.stdout.write(self.style.SUCCESS("=" * 50))
         self.stdout.write(self.style.SUCCESS("  SAMPLE DATA READY"))

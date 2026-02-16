@@ -53,57 +53,6 @@ urlpatterns = [
     # Demo Date
     path("demo-date/", views.demo_date_view, name="demo_date"),
     
-    #Attempts
-    path("projects/<int:project_id>/attempts/", views.create_attempt_view, name="create_attempt"),
-    path("projects/<int:project_id>/attempts/<int:attempt_id>/", views.attempt_detail_view),
-    path("projects/<int:project_id>/attempts/<int:attempt_id>/delete/", views.delete_attempt_view, name="delete_attempt"),
-    path("projects/<int:project_id>/attempts/<int:attempt_id>/todos/", views.attempt_todos_view),
-    path('add_attempt_dependency/', views.add_attempt_dependency),
-    path('all_attempt_dependencies/', views.list_attempt_dependencies),
-    path('update_attempt_slot_index/', views.update_attempt_slot_index),  
-    path("delete_attempt_dependency/", views.delete_attempt_dependency),  
-    path("projects/<int:project_id>/all_attempts_for_this_project/", views.all_attempts_for_this_project, name="all_attempts_for_this_project", ),
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     #AUTHENTICATION
     path('auth/me/', views.get_current_user),  # Nur für eingeloggte User
     path('auth/check/', views.check_auth),
@@ -111,13 +60,6 @@ urlpatterns = [
     path('auth/jwt/refresh/', TokenRefreshView.as_view(), name='jwt_refresh'),
     path('auth/register/', views.register_user, name='register_user'),
     path('users/<int:user_id>/', views.display_single_user),
-
-    # # Other Website stuff
-    # path('echo/<str:text>/', views.echo_view),
-    # path('comments/write/', views.write_comment),
-    # path('comments/all_comments/', views.all_comments),
-    # path('company/network_connection/<int:comp_id>/', views.network_connection),
-    # path('skills/dummy_data/', views.dummy_data),
 
     # Categories and Ideas (project-scoped only)
     path("projects/<int:project_id>/get_all_categories/", views.get_all_categories),
@@ -145,24 +87,9 @@ urlpatterns = [
     path("projects/<int:project_id>/assign_idea_legend_type/", views.assign_idea_legend_type),
 
 
-
-
-
-
-
-
-
-
-
-
     # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
-    # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
-    # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
-    # What i changed: Added all these url endpoints..
-
     # Project
     path("projects/<int:project_id>/get_project_details/", views.get_project_details),
-
 
     # Teams
     path("projects/<int:project_id>/fetch_project_teams/", views.fetch_project_teams),
@@ -182,35 +109,7 @@ urlpatterns = [
     path("projects/<int:project_id>/get_all_dependencies/", views.get_all_dependencies),
     path("projects/<int:project_id>/create_dependency/", views.create_dependency),
     path("projects/<int:project_id>/delete_dependency/", views.delete_dependency),
-
     # _____________________________ END OF NEW ADDING ______________________________
-    # _____________________________ END OF NEW ADDING ______________________________
-    # _____________________________ END OF NEW ADDING ______________________________
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ]
 
 

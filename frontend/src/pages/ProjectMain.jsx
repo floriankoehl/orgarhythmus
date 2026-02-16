@@ -25,7 +25,6 @@ import {
   fetch_project_detail,
   fetchTeamsForProject,
   fetchTasksForProject,
-  fetch_all_attempts,
   delete_project,
   update_project_api,
 } from '../api/org_API.js';
@@ -40,12 +39,11 @@ export async function project_loader({ params }) {
   const project = await fetch_project_detail(projectId);
   const loaded_teams = await fetchTeamsForProject(projectId);
   const loaded_tasks = await fetchTasksForProject(projectId);
-  const loaded_attempts = await fetch_all_attempts(projectId);
 
-  return { project, loaded_teams, loaded_tasks, loaded_attempts };
+  return { project, loaded_teams, loaded_tasks };
 }
 
-function ProjectStats({ tasks, teams, attempts }) {
+function ProjectStats({ tasks, teams }) {
   const totalTasks = tasks.length;
   const totalTeams = teams.length;
   const unassignedTasks = tasks.filter((t) => !t.team).length;
@@ -59,12 +57,6 @@ function ProjectStats({ tasks, teams, attempts }) {
     totalTasks > 0
       ? (tasks.reduce((sum, t) => sum + (t.difficulty || 0), 0) / totalTasks).toFixed(1)
       : '-';
-
-  // Calculate completion stats
-  const totalAttempts = (attempts || []).length;
-  const completedAttempts = (attempts || []).filter((a) => a.done).length;
-  const completionRate =
-    totalAttempts > 0 ? Math.round((completedAttempts / totalAttempts) * 100) : 0;
 
   // Calculate team stats
   const teamsWithTasks = teams.filter((t) => t.tasks && t.tasks.length > 0).length;
@@ -101,15 +93,13 @@ function ProjectStats({ tasks, teams, attempts }) {
         <div className="flex items-center justify-between gap-2">
           <div>
             <p className="text-[10px] font-semibold tracking-[0.14em] text-slate-500 uppercase">
-              Completion
+              Avg Priority
             </p>
-            <p className="mt-1.5 text-2xl font-bold text-slate-900">{completionRate}%</p>
+            <p className="mt-1.5 text-2xl font-bold text-slate-900">{avgPriority}</p>
           </div>
           <CheckCircle2 size={24} className="text-emerald-400" />
         </div>
-        <p className="mt-1 text-xs text-slate-500">
-          {completedAttempts} of {totalAttempts}
-        </p>
+        <p className="mt-1 text-xs text-slate-500">Out of 10</p>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 shadow-sm transition hover:border-amber-300 hover:bg-amber-50/50">
@@ -200,7 +190,7 @@ function DeleteProjectModal({ isOpen, projectName, onConfirm, onCancel, isLoadin
 
 // test
 export default function ProjectMain() {
-  const { project: initialProject, loaded_teams, loaded_tasks, loaded_attempts } = useLoaderData();
+  const { project: initialProject, loaded_teams, loaded_tasks } = useLoaderData();
   const navigate = useNavigate();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -211,7 +201,6 @@ export default function ProjectMain() {
   const [showCalendar, setShowCalendar] = useState(true); // Default to true
   const [calendarDays, setCalendarDays] = useState(14);
   const [hideEmptyDays, setHideEmptyDays] = useState(false);
-  const [hoveredAttemptId, setHoveredAttemptId] = useState(null);
   const [showAllTeams, setShowAllTeams] = useState(false);
   const [showAllTasks, setShowAllTasks] = useState(false);
 
@@ -555,9 +544,9 @@ export default function ProjectMain() {
         </header>
 
         {/* Stats Section */}
-        <ProjectStats tasks={loaded_tasks} teams={loaded_teams} attempts={loaded_attempts} />
+        <ProjectStats tasks={loaded_tasks} teams={loaded_teams} />
 
-        {/* Calendar View Toggle & Timeline */}
+        {/* Timeline Link */}
         <section className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur-sm">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -566,196 +555,24 @@ export default function ProjectMain() {
               </div>
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Project Timeline</h2>
-                <p className="text-xs text-slate-500">Scheduled attempts overview</p>
+                <p className="text-xs text-slate-500">View milestones on calendar or dependency board</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <select
-                value={calendarDays}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setCalendarDays(val === 'ALL' ? 'ALL' : parseInt(val));
-                }}
-                className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-300"
-              >
-                <option value={7}>7 days</option>
-                <option value={14}>14 days</option>
-                <option value={30}>30 days</option>
-                <option value={60}>60 days</option>
-                <option value={'ALL'}>All</option>
-              </select>
-              <label className="ml-1 inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={hideEmptyDays}
-                  onChange={(e) => setHideEmptyDays(e.target.checked)}
-                  className="h-3 w-3 accent-blue-600"
-                />
-                Hide empty
-              </label>
               <button
-                onClick={() => setShowCalendar(!showCalendar)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  showCalendar
-                    ? 'bg-blue-600 text-white'
-                    : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                }`}
+                onClick={() => navigate(`/projects/${initialProject.id}/calendar`)}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-700"
               >
-                {showCalendar ? 'Hide' : 'Show'}
+                Open Calendar
+              </button>
+              <button
+                onClick={() => navigate(`/projects/${initialProject.id}/dependencies`)}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                Dependencies
               </button>
             </div>
           </div>
-
-          {showCalendar && initialProject.start_date && (
-            <div className="space-y-3">
-              {/* Day labels */}
-              <div className="hidden grid-cols-7 gap-2 lg:grid">
-                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
-                  <div
-                    key={day}
-                    className="py-2 text-center text-xs font-bold tracking-wide text-slate-600 uppercase"
-                  >
-                    {day}
-                  </div>
-                ))}
-              </div>
-              {/* Calendar grid - 7 columns on lg screens, 2-3 on smaller */}
-              <div className="relative grid auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
-                {(() => {
-                  const startDate = new Date(initialProject.start_date);
-                  const endDate = initialProject.end_date
-                    ? new Date(initialProject.end_date)
-                    : new Date(startDate.getTime() + 30 * 24 * 60 * 60 * 1000);
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-                  const msPerDay = 24 * 60 * 60 * 1000;
-
-                  // Get all attempts for this project
-                  const projectAttempts = (loaded_attempts || []).filter(
-                    (a) =>
-                      a.task?.team?.project?.id === initialProject.id ||
-                      (a.slot_index && a.task?.team),
-                  );
-
-                  // Group by date (use local date keys to avoid TZ drift)
-                  const attemptsByDate = {};
-                  const fmt = (d) => {
-                    const y = d.getFullYear();
-                    const m = String(d.getMonth() + 1).padStart(2, '0');
-                    const da = String(d.getDate()).padStart(2, '0');
-                    return `${y}-${m}-${da}`;
-                  };
-                  projectAttempts.forEach((attempt) => {
-                    if (attempt.slot_index && initialProject.start_date) {
-                      const d = new Date(startDate.getTime() + (attempt.slot_index - 1) * msPerDay);
-                      d.setHours(0, 0, 0, 0);
-                      const dateKey = fmt(d);
-                      if (!attemptsByDate[dateKey]) {
-                        attemptsByDate[dateKey] = [];
-                      }
-                      attemptsByDate[dateKey].push(attempt);
-                    }
-                  });
-
-                  // Get next 14 days
-                  const dates = [];
-                  let current = new Date(today);
-                  let limit = null;
-                  if (calendarDays === 'ALL') {
-                    if (initialProject.end_date) {
-                      limit = new Date(initialProject.end_date);
-                      limit.setHours(0, 0, 0, 0);
-                    } else {
-                      const keys = Object.keys(attemptsByDate);
-                      if (keys.length > 0) {
-                        const maxKey = keys.sort()[keys.length - 1];
-                        const [y, m, d] = maxKey.split('-').map((x) => parseInt(x, 10));
-                        limit = new Date(y, m - 1, d);
-                      } else {
-                        limit = new Date(today.getTime() + 60 * msPerDay);
-                      }
-                    }
-                    while (current <= limit) {
-                      dates.push(new Date(current));
-                      current.setDate(current.getDate() + 1);
-                    }
-                  } else {
-                    for (let i = 0; i < calendarDays; i++) {
-                      dates.push(new Date(current));
-                      current.setDate(current.getDate() + 1);
-                    }
-                  }
-
-                  const visibleDates = hideEmptyDays
-                    ? dates.filter((d) => (attemptsByDate[fmt(d)] || []).length > 0)
-                    : dates;
-
-                  return visibleDates.map((date) => {
-                    const dateKey = fmt(date);
-                    const dayAttempts = attemptsByDate[dateKey] || [];
-                    const isToday = dateKey === fmt(today);
-                    const hoveredAttempt = dayAttempts.find((a) => a.id === hoveredAttemptId);
-
-                    return (
-                      <div
-                        key={dateKey}
-                        className={`group relative flex h-40 flex-col rounded-lg border p-3 transition ${
-                          dayAttempts.length > 0
-                            ? 'border-blue-200 bg-blue-50 hover:border-blue-400 hover:bg-blue-100'
-                            : 'border-slate-200 bg-slate-50/50 hover:border-slate-300'
-                        }`}
-                        onMouseLeave={() => setHoveredAttemptId(null)}
-                      >
-                        <div className="mb-2 flex items-center justify-between gap-1">
-                          <span
-                            className={`flex-shrink-0 rounded px-2 py-1 text-xs font-bold whitespace-nowrap ${
-                              isToday ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'
-                            }`}
-                          >
-                            {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </span>
-                          {dayAttempts.length > 0 && (
-                            <span className="flex-shrink-0 text-xs font-semibold text-blue-600 opacity-0 transition group-hover:opacity-100">
-                              {dayAttempts.length}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Scrollable attempts area */}
-                        {dayAttempts.length > 0 ? (
-                          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1 text-xs">
-                            {dayAttempts.map((attempt) => (
-                              <div key={attempt.id} className="group/item relative">
-                                <div
-                                  className="cursor-pointer truncate rounded px-1.5 py-0.5 text-white shadow-sm transition"
-                                  style={{
-                                    backgroundColor: attempt.task?.team?.color || '#64748b',
-                                  }}
-                                  title={`${attempt.task?.name} - Attempt: ${attempt.name}`}
-                                >
-                                  <span className="block truncate font-medium text-black">
-                                    {attempt.task?.name}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="flex flex-1 items-center justify-center text-xs text-slate-400 italic">
-                            No attempts
-                          </div>
-                        )}
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-              onClick=
-              {() =>
-                navigate(`/projects/${initialProject.id}/tasks/${attempt.task?.id}`)
-              }
-            </div>
-          )}
         </section>
 
         {/* Teams & Tasks Grid - use initialProject.id instead of project.id */}

@@ -494,304 +494,203 @@ export async function unassignTaskMember(projectId, taskId, userId) {
 //_______________________________________________
 //_______________________________________________
 
-// fetch_all_attempts (accept projectId to avoid relying on window.location during navigation)
-export async function fetch_all_attempts(projectIdFromParam) {
-  const projectId = projectIdFromParam ?? getCurrentProjectIdFromLocation();
-  if (!projectId) {
-    throw new Error('Missing projectId for fetching attempts');
-  }
-  const token = localStorage.getItem('access_token');
+// ═══════════════════════════════════════════════
+//  ALL ATTEMPT API FUNCTIONS — COMMENTED OUT
+//  Attempts are being replaced by Milestones.
+// ═══════════════════════════════════════════════
 
-  if (!token) {
-    throw redirect('/login');
-  }
+// // fetch_all_attempts (accept projectId to avoid relying on window.location during navigation)
+// export async function fetch_all_attempts(projectIdFromParam) {
+//   const projectId = projectIdFromParam ?? getCurrentProjectIdFromLocation();
+//   if (!projectId) {
+//     throw new Error('Missing projectId for fetching attempts');
+//   }
+//   const token = localStorage.getItem('access_token');
+//   if (!token) {
+//     throw redirect('/login');
+//   }
+//   const res = await fetch(
+//     `${BASE_URL}/api/projects/${projectId}/all_attempts_for_this_project/`,
+//     { headers: { Authorization: `Bearer ${token}` } },
+//   );
+//   if (res.status === 401 || res.status === 403) {
+//     throw new Error('Could not load tasks');
+//   }
+//   const data = await res.json();
+//   return data.attempts;
+// }
 
-  const res = await fetch(
-    `${BASE_URL}/api/projects/${projectId}/all_attempts_for_this_project/`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    },
-  );
+// // add_attempt_dependency
+// export async function add_attempt_dependency(vortakt_attempt_id, nachtakt_attempt_id) {
+//   const token = localStorage.getItem('access_token');
+//   if (!token) { throw redirect('/login'); }
+//   const res = await fetch(`${BASE_URL}/api/add_attempt_dependency/`, {
+//     method: 'POST',
+//     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+//     body: JSON.stringify({ vortakt_attempt_id, nachtakt_attempt_id }),
+//   });
+//   if (!res.ok) { console.error('Backend failed:', res.status); throw new Error('Failed to add dependency'); }
+//   return await res.json();
+// }
 
-  if (res.status === 401 || res.status === 403) {
-    throw new Error('Could not load tasks');
-  }
+// // fetch_all_attempt_dependencies
+// export async function fetch_all_attempt_dependencies() {
+//   const token = localStorage.getItem('access_token');
+//   if (!token) { throw redirect('/login'); }
+//   const res = await fetch(`${BASE_URL}/api/all_attempt_dependencies/`, {
+//     method: 'GET',
+//     headers: { Authorization: `Bearer ${token}` },
+//   });
+//   if (!res.ok) { throw new Error('Failed to fetch attempt dependencies'); }
+//   return await res.json();
+// }
 
-  const data = await res.json();
-  // console.log("The fetched attempts from the API", data)
+// // update_attempt_slot_index
+// export async function update_attempt_slot_index(attempt_id, slot_index) {
+//   const token = localStorage.getItem('access_token');
+//   if (!token) throw redirect('/login');
+//   const res = await fetch(`${BASE_URL}/api/update_attempt_slot_index/`, {
+//     method: 'POST',
+//     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+//     body: JSON.stringify({ attempt_id, slot_index }),
+//   });
+//   if (!res.ok) { console.error('Backend failed:', res.status); throw new Error('Failed to update attempt slot_index'); }
+//   return await res.json();
+// }
 
-  // console.log('Attempts: ', data);
-  return data.attempts;
-  // ____________________________________________________________________________________________
-  // ____________________________________________________________________________________________
-  // ____________________________________________________________________________________________
-  // ____________________________________________________________________________________________
-  // ____________________________________________________________________________________________
-  // ____________________________________________________________________________________________
-  // ____________________________________________________________________________________________
-  // ____________________________________________________________________________________________
-  // ____________________________________________________________________________________________
-  // ____________________________________________________________________________________________
-  // ____________________________________________________________________________________________
-  // ____________________________________________________________________________________________
-  // ____________________________________________________________________________________________
-  // ____________________________________________________________________________________________
-  // ____________________________________________________________________________________________
-}
+// // toggle attempt todo
+// export async function toggle_attempt_todo(projectId, attemptId, todoId) {
+//   const token = localStorage.getItem('access_token');
+//   if (!token) throw redirect('/login');
+//   const res = await fetch(
+//     `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/todos/`,
+//     {
+//       method: 'POST',
+//       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+//       body: JSON.stringify({ action: 'toggle', todo_id: todoId }),
+//     },
+//   );
+//   if (!res.ok) { throw new Error('Failed to toggle todo'); }
+//   return await res.json();
+// }
 
-// add_attempt_dependency
-export async function add_attempt_dependency(vortakt_attempt_id, nachtakt_attempt_id) {
-  const token = localStorage.getItem('access_token');
+// // delete_attempt_dependency
+// export async function delete_attempt_dependency(dependency_id) {
+//   const token = localStorage.getItem('access_token');
+//   if (!token) { throw redirect('/login'); }
+//   const res = await fetch(`${BASE_URL}/api/delete_attempt_dependency/`, {
+//     method: 'POST',
+//     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+//     body: JSON.stringify({ dependency_id }),
+//   });
+//   if (!res.ok) { console.error('Backend failed:', res.status); throw new Error('Failed to delete attempt dependency'); }
+//   return await res.json();
+// }
 
-  if (!token) {
-    throw redirect('/login');
-  }
+// // fetchAttemptDetail
+// export async function fetchAttemptDetail(projectId, attemptId) {
+//   const token = localStorage.getItem('access_token');
+//   if (!token) throw redirect('/login');
+//   const res = await fetch(
+//     `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/`,
+//     { headers: { Authorization: `Bearer ${token}` } },
+//   );
+//   if (!res.ok) throw new Error('Failed to load attempt');
+//   return await res.json();
+// }
 
-  const res = await fetch(`${BASE_URL}/api/add_attempt_dependency/`, {
-    method: 'POST', // 👈 important
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ vortakt_attempt_id, nachtakt_attempt_id }),
-  });
+// // updateAttempt
+// export async function updateAttempt(projectId, attemptId, payload) {
+//   const token = localStorage.getItem('access_token');
+//   if (!token) throw redirect('/login');
+//   const res = await fetch(
+//     `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/`,
+//     {
+//       method: 'PATCH',
+//       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+//       body: JSON.stringify(payload),
+//     },
+//   );
+//   if (!res.ok) throw new Error('Failed to update attempt');
+//   return await res.json();
+// }
 
-  if (!res.ok) {
-    console.error('Backend failed:', res.status);
-    throw new Error('Failed to add dependency');
-  }
+// // createAttemptTodo
+// export async function createAttemptTodo(projectId, attemptId, text) {
+//   const token = localStorage.getItem('access_token');
+//   if (!token) throw redirect('/login');
+//   const res = await fetch(
+//     `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/todos/`,
+//     {
+//       method: 'POST',
+//       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+//       body: JSON.stringify({ action: 'create', text }),
+//     },
+//   );
+//   if (!res.ok) throw new Error('Failed to create todo');
+//   return await res.json();
+// }
 
-  const data = await res.json();
-  return data;
-}
+// // toggleAttemptTodo
+// export async function toggleAttemptTodo(projectId, attemptId, todoId) {
+//   const token = localStorage.getItem('access_token');
+//   if (!token) throw redirect('/login');
+//   const res = await fetch(
+//     `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/todos/`,
+//     {
+//       method: 'POST',
+//       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+//       body: JSON.stringify({ action: 'toggle', todo_id: todoId }),
+//     },
+//   );
+//   if (!res.ok) throw new Error('Failed to toggle todo');
+//   return await res.json();
+// }
 
-// fetch_all_attempt_dependencies
-export async function fetch_all_attempt_dependencies() {
-  const token = localStorage.getItem('access_token');
+// // deleteAttemptTodo
+// export async function deleteAttemptTodo(projectId, attemptId, todoId) {
+//   const token = localStorage.getItem('access_token');
+//   if (!token) throw redirect('/login');
+//   const res = await fetch(
+//     `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/todos/`,
+//     {
+//       method: 'POST',
+//       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+//       body: JSON.stringify({ action: 'delete', todo_id: todoId }),
+//     },
+//   );
+//   if (!res.ok) throw new Error('Failed to delete todo');
+//   return await res.json();
+// }
 
-  if (!token) {
-    throw redirect('/login');
-  }
+// // createAttempt
+// export async function createAttempt(projectId, taskId, name) {
+//   const token = localStorage.getItem('access_token');
+//   if (!token) throw redirect('/login');
+//   const res = await fetch(`${BASE_URL}/api/projects/${projectId}/attempts/`, {
+//     method: 'POST',
+//     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+//     body: JSON.stringify({ task_id: taskId, name: name || '' }),
+//   });
+//   if (!res.ok) throw new Error('Failed to create attempt');
+//   return await res.json();
+// }
 
-  const res = await fetch(`${BASE_URL}/api/all_attempt_dependencies/`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+// // deleteAttempt
+// export async function deleteAttempt(projectId, attemptId) {
+//   const token = localStorage.getItem('access_token');
+//   if (!token) throw redirect('/login');
+//   const res = await fetch(
+//     `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/delete/`,
+//     {
+//       method: 'DELETE',
+//       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+//     },
+//   );
+//   if (!res.ok) throw new Error('Failed to delete attempt');
+//   return await res.json();
+// }
 
-  if (!res.ok) {
-    throw new Error('Failed to fetch attempt dependencies');
-  }
-
-  return await res.json();
-}
-
-// update_attempt_slot_index
-export async function update_attempt_slot_index(attempt_id, slot_index) {
-  const token = localStorage.getItem('access_token');
-  if (!token) throw redirect('/login');
-
-  const res = await fetch(`${BASE_URL}/api/update_attempt_slot_index/`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ attempt_id, slot_index }),
-  });
-
-  if (!res.ok) {
-    console.error('Backend failed:', res.status);
-    throw new Error('Failed to update attempt slot_index');
-  }
-
-  return await res.json();
-}
-
-// toggle attempt todo
-export async function toggle_attempt_todo(projectId, attemptId, todoId) {
-  const token = localStorage.getItem('access_token');
-  if (!token) throw redirect('/login');
-
-  const res = await fetch(
-    `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/todos/`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ action: 'toggle', todo_id: todoId }),
-    },
-  );
-
-  if (!res.ok) {
-    throw new Error('Failed to toggle todo');
-  }
-
-  return await res.json();
-}
-
-// delete_attempt_dependency
-export async function delete_attempt_dependency(dependency_id) {
-  const token = localStorage.getItem('access_token');
-
-  if (!token) {
-    throw redirect('/login');
-  }
-
-  const res = await fetch(`${BASE_URL}/api/delete_attempt_dependency/`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ dependency_id }),
-  });
-
-  if (!res.ok) {
-    console.error('Backend failed:', res.status);
-    throw new Error('Failed to delete attempt dependency');
-  }
-
-  return await res.json();
-}
-
-// fetchAttemptDetail
-export async function fetchAttemptDetail(projectId, attemptId) {
-  const token = localStorage.getItem('access_token');
-  if (!token) throw redirect('/login');
-
-  const res = await fetch(
-    `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  );
-  if (!res.ok) throw new Error('Failed to load attempt');
-  return await res.json();
-}
-
-// updateAttempt
-export async function updateAttempt(projectId, attemptId, payload) {
-  const token = localStorage.getItem('access_token');
-  if (!token) throw redirect('/login');
-
-  const res = await fetch(
-    `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/`,
-    {
-      method: 'PATCH',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    },
-  );
-  if (!res.ok) throw new Error('Failed to update attempt');
-  return await res.json();
-}
-
-// createAttemptTodo
-export async function createAttemptTodo(projectId, attemptId, text) {
-  const token = localStorage.getItem('access_token');
-  if (!token) throw redirect('/login');
-
-  const res = await fetch(
-    `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/todos/`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ action: 'create', text }),
-    },
-  );
-  if (!res.ok) throw new Error('Failed to create todo');
-  return await res.json();
-}
-
-// toggleAttemptTodo
-export async function toggleAttemptTodo(projectId, attemptId, todoId) {
-  const token = localStorage.getItem('access_token');
-  if (!token) throw redirect('/login');
-
-  const res = await fetch(
-    `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/todos/`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ action: 'toggle', todo_id: todoId }),
-    },
-  );
-  if (!res.ok) throw new Error('Failed to toggle todo');
-  return await res.json();
-}
-
-// deleteAttemptTodo
-export async function deleteAttemptTodo(projectId, attemptId, todoId) {
-  const token = localStorage.getItem('access_token');
-  if (!token) throw redirect('/login');
-
-  const res = await fetch(
-    `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/todos/`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ action: 'delete', todo_id: todoId }),
-    },
-  );
-  if (!res.ok) throw new Error('Failed to delete todo');
-  return await res.json();
-}
-
-// deleteAttempt
-export async function createAttempt(projectId, taskId, name) {
-  const token = localStorage.getItem('access_token');
-  if (!token) throw redirect('/login');
-
-  const res = await fetch(`${BASE_URL}/api/projects/${projectId}/attempts/`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ task_id: taskId, name: name || '' }),
-  });
-
-  if (!res.ok) throw new Error('Failed to create attempt');
-  return await res.json();
-}
-
-// deleteAttempt
-export async function deleteAttempt(projectId, attemptId) {
-  const token = localStorage.getItem('access_token');
-  if (!token) throw redirect('/login');
-
-  const res = await fetch(
-    `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/delete/`,
-    {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    },
-  );
-
-  if (!res.ok) throw new Error('Failed to delete attempt');
-  return await res.json();
-}
 //____________________NOTIFICATIONS______________________
 //_______________________________________________
 //_______________________________________________

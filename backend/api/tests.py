@@ -7,12 +7,11 @@ Structure:
     3. Project Tests        – CRUD, join/leave, access control
     4. Team Tests           – CRUD, join/leave, reorder, detail
     5. Task Tests           – CRUD, assign members, detail
-    6. Attempt Tests        – CRUD, slot index, dependencies, todos
-    7. Category & Idea Tests – CRUD, ordering, assignment
-    8. Legend Type Tests     – CRUD, assignment
-    9. Notification Tests   – List, read, delete
-   10. Demo Date Tests      – Get/set demo date
-   11. User Teams/Tasks     – Aggregated views
+    6. Category & Idea Tests – CRUD, ordering, assignment
+    7. Legend Type Tests     – CRUD, assignment
+    8. Notification Tests   – List, read, delete
+    9. Demo Date Tests      – Get/set demo date
+   10. User Teams/Tasks     – Aggregated views
 """
 
 import json
@@ -25,9 +24,6 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from api.models import (
-    Attempt,
-    AttemptDependency,
-    AttemptTodo,
     Category,
     DemoDate,
     Idea,
@@ -157,71 +153,71 @@ class TaskModelTest(TestCase):
         task = Task.objects.create(name="My Task", project=self.project, team=self.team)
         self.assertEqual(str(task), "My Task")
 
-    def test_auto_creates_3_attempts(self):
-        """When a task is saved for the first time, 3 attempts should be created."""
-        task = Task.objects.create(name="AutoTask", project=self.project, team=self.team)
-        self.assertEqual(task.attempts.count(), 3)
+    # def test_auto_creates_3_attempts(self):
+    # """When a task is saved for the first time, 3 attempts should be created."""
+    # task = Task.objects.create(name="AutoTask", project=self.project, team=self.team)
+    # self.assertEqual(task.attempts.count(), 3)
 
-    def test_auto_created_attempts_have_todos(self):
-        """Each auto-created attempt should have a 'complete task' todo."""
-        task = Task.objects.create(name="TodoTask", project=self.project, team=self.team)
-        for attempt in task.attempts.all():
-            self.assertEqual(attempt.todos.count(), 1)
-            self.assertEqual(attempt.todos.first().text, "complete task")
+    # def test_auto_created_attempts_have_todos(self):
+    # """Each auto-created attempt should have a 'complete task' todo."""
+    # task = Task.objects.create(name="TodoTask", project=self.project, team=self.team)
+    # for attempt in task.attempts.all():
+    # self.assertEqual(attempt.todos.count(), 1)
+    # self.assertEqual(attempt.todos.first().text, "complete task")
 
-    def test_auto_created_attempt_names(self):
-        """Auto-created attempts should be named TaskName_0, TaskName_1, TaskName_2."""
-        task = Task.objects.create(name="Alpha", project=self.project, team=self.team)
-        names = list(task.attempts.order_by("number").values_list("name", flat=True))
-        self.assertEqual(names, ["Alpha_0", "Alpha_1", "Alpha_2"])
+    # def test_auto_created_attempt_names(self):
+    # """Auto-created attempts should be named TaskName_0, TaskName_1, TaskName_2."""
+    # task = Task.objects.create(name="Alpha", project=self.project, team=self.team)
+    # names = list(task.attempts.order_by("number").values_list("name", flat=True))
+    # self.assertEqual(names, ["Alpha_0", "Alpha_1", "Alpha_2"])
 
-    def test_saving_existing_task_does_not_create_more_attempts(self):
-        """Re-saving should not duplicate attempts."""
-        task = Task.objects.create(name="Once", project=self.project, team=self.team)
-        task.name = "Once Updated"
-        task.save()
-        self.assertEqual(task.attempts.count(), 3)
+    # def test_saving_existing_task_does_not_create_more_attempts(self):
+    # """Re-saving should not duplicate attempts."""
+    # task = Task.objects.create(name="Once", project=self.project, team=self.team)
+    # task.name = "Once Updated"
+    # task.save()
+    # self.assertEqual(task.attempts.count(), 3)
 
 
-class AttemptModelTest(TestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(username="u1", password="p")
-        self.project = Project.objects.create(
-            name="P", owner=self.user, start_date=date(2026, 1, 1)
-        )
-        self.team = Team.objects.create(name="T", project=self.project)
-        self.task = Task.objects.create(name="T1", project=self.project, team=self.team)
+# class AttemptModelTest(TestCase):
+#     def setUp(self):
+#         self.user = User.objects.create_user(username="u1", password="p")
+#         self.project = Project.objects.create(
+#             name="P", owner=self.user, start_date=date(2026, 1, 1)
+#         )
+#         self.team = Team.objects.create(name="T", project=self.project)
+#         self.task = Task.objects.create(name="T1", project=self.project, team=self.team)
 
-    def test_str_with_name(self):
-        attempt = self.task.attempts.first()
-        self.assertIn("T1_", str(attempt))
+#     def test_str_with_name(self):
+#         attempt = self.task.attempts.first()
+#         self.assertIn("T1_", str(attempt))
 
-    def test_str_without_name(self):
-        attempt = Attempt.objects.create(task=self.task, name=None, number=99)
-        self.assertEqual(str(attempt), f"Attempt {attempt.id}")
+#     def test_str_without_name(self):
+#         attempt = Attempt.objects.create(task=self.task, name=None, number=99)
+#         self.assertEqual(str(attempt), f"Attempt {attempt.id}")
 
-    def test_calculated_date(self):
-        attempt = self.task.attempts.get(number=1)  # slot_index=0
-        self.assertEqual(attempt.calculated_date, date(2026, 1, 1))
+#     def test_calculated_date(self):
+#         attempt = self.task.attempts.get(number=1)  # slot_index=0
+#         self.assertEqual(attempt.calculated_date, date(2026, 1, 1))
 
-    def test_calculated_date_with_offset(self):
-        attempt = self.task.attempts.get(number=2)  # slot_index=1
-        self.assertEqual(attempt.calculated_date, date(2026, 1, 2))
+#     def test_calculated_date_with_offset(self):
+#         attempt = self.task.attempts.get(number=2)  # slot_index=1
+#         self.assertEqual(attempt.calculated_date, date(2026, 1, 2))
 
-    def test_calculated_date_no_start_date(self):
-        self.project.start_date = None
-        self.project.save()
-        attempt = self.task.attempts.first()
-        self.assertIsNone(attempt.calculated_date)
+#     def test_calculated_date_no_start_date(self):
+#         self.project.start_date = None
+#         self.project.save()
+#         attempt = self.task.attempts.first()
+#         self.assertIsNone(attempt.calculated_date)
 
-    def test_calculated_date_no_slot_index(self):
-        attempt = Attempt.objects.create(task=self.task, number=99, slot_index=None)
-        self.assertIsNone(attempt.calculated_date)
+#     def test_calculated_date_no_slot_index(self):
+#         attempt = Attempt.objects.create(task=self.task, number=99, slot_index=None)
+#         self.assertIsNone(attempt.calculated_date)
 
-    def test_unique_together(self):
-        """Same task + same number should raise IntegrityError."""
-        with self.assertRaises(IntegrityError):
-            Attempt.objects.create(task=self.task, number=1, slot_index=99)
+#     def test_unique_together(self):
+#         """Same task + same number should raise IntegrityError."""
+#         with self.assertRaises(IntegrityError):
+#             Attempt.objects.create(task=self.task, number=1, slot_index=99)
 
 
 class NotificationModelTest(TestCase):
@@ -691,7 +687,7 @@ class TaskCRUDTest(APITestBase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["name"], "DetailTask")
-        self.assertIn("attempts", response.data)
+        # self.assertIn("attempts", response.data)  # attempts removed
 
     def test_task_detail_patch(self):
         resp = self._create_task(self.project_id, "PatchMe", self.team_id)
@@ -804,252 +800,252 @@ class TaskAssignMemberTest(APITestBase):
 # ═══════════════════════════════════════════════
 
 
-class AttemptCRUDTest(APITestBase):
-    def setUp(self):
-        super().setUp()
-        resp = self._create_project("AttemptProject")
-        self.project_id = resp.data["id"]
-        self.team_id = self._create_team(self.project_id, "Dev").data["id"]
-        task_resp = self._create_task(self.project_id, "AttemptTask", self.team_id)
-        self.task_id = task_resp.data["id"]
-        # Task auto-creates 3 attempts
-        self.attempts = list(Attempt.objects.filter(task_id=self.task_id).values_list("id", flat=True))
+# class AttemptCRUDTest(APITestBase):
+#     def setUp(self):
+#         super().setUp()
+#         resp = self._create_project("AttemptProject")
+#         self.project_id = resp.data["id"]
+#         self.team_id = self._create_team(self.project_id, "Dev").data["id"]
+#         task_resp = self._create_task(self.project_id, "AttemptTask", self.team_id)
+#         self.task_id = task_resp.data["id"]
+#         # Task auto-creates 3 attempts
+#         self.attempts = list(Attempt.objects.filter(task_id=self.task_id).values_list("id", flat=True))
 
-    def test_auto_created_attempts(self):
-        self.assertEqual(len(self.attempts), 3)
+#     def test_auto_created_attempts(self):
+#         self.assertEqual(len(self.attempts), 3)
 
-    def test_create_additional_attempt(self):
-        response = self.client.post(
-            f"/api/projects/{self.project_id}/attempts/",
-            {"task_id": self.task_id, "name": "Extra Attempt"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data["name"], "Extra Attempt")
-        self.assertEqual(Attempt.objects.filter(task_id=self.task_id).count(), 4)
+#     def test_create_additional_attempt(self):
+#         response = self.client.post(
+#             f"/api/projects/{self.project_id}/attempts/",
+#             {"task_id": self.task_id, "name": "Extra Attempt"},
+#             format="json",
+#         )
+#         self.assertEqual(response.status_code, 201)
+#         self.assertEqual(response.data["name"], "Extra Attempt")
+#         self.assertEqual(Attempt.objects.filter(task_id=self.task_id).count(), 4)
 
-    def test_create_attempt_no_task_id(self):
-        response = self.client.post(
-            f"/api/projects/{self.project_id}/attempts/",
-            {"name": "No Task"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 400)
+#     def test_create_attempt_no_task_id(self):
+#         response = self.client.post(
+#             f"/api/projects/{self.project_id}/attempts/",
+#             {"name": "No Task"},
+#             format="json",
+#         )
+#         self.assertEqual(response.status_code, 400)
 
-    def test_delete_attempt(self):
-        attempt_id = self.attempts[0]
-        response = self.client.delete(
-            f"/api/projects/{self.project_id}/attempts/{attempt_id}/delete/"
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(Attempt.objects.filter(id=attempt_id).exists())
+#     def test_delete_attempt(self):
+#         attempt_id = self.attempts[0]
+#         response = self.client.delete(
+#             f"/api/projects/{self.project_id}/attempts/{attempt_id}/delete/"
+#         )
+#         self.assertEqual(response.status_code, 200)
+#         self.assertFalse(Attempt.objects.filter(id=attempt_id).exists())
 
-    def test_attempt_detail_get(self):
-        attempt_id = self.attempts[0]
-        response = self.client.get(
-            f"/api/projects/{self.project_id}/attempts/{attempt_id}/"
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("todos", response.data)
-        self.assertIn("incoming_dependencies", response.data)
-        self.assertIn("outgoing_dependencies", response.data)
+#     def test_attempt_detail_get(self):
+#         attempt_id = self.attempts[0]
+#         response = self.client.get(
+#             f"/api/projects/{self.project_id}/attempts/{attempt_id}/"
+#         )
+#         self.assertEqual(response.status_code, 200)
+#         self.assertIn("todos", response.data)
+#         self.assertIn("incoming_dependencies", response.data)
+#         self.assertIn("outgoing_dependencies", response.data)
 
-    def test_attempt_detail_patch_done(self):
-        attempt_id = self.attempts[0]
-        response = self.client.patch(
-            f"/api/projects/{self.project_id}/attempts/{attempt_id}/",
-            {"done": True},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.data["done"])
+#     def test_attempt_detail_patch_done(self):
+#         attempt_id = self.attempts[0]
+#         response = self.client.patch(
+#             f"/api/projects/{self.project_id}/attempts/{attempt_id}/",
+#             {"done": True},
+#             format="json",
+#         )
+#         self.assertEqual(response.status_code, 200)
+#         self.assertTrue(response.data["done"])
 
-    def test_attempt_detail_patch_name(self):
-        attempt_id = self.attempts[0]
-        response = self.client.patch(
-            f"/api/projects/{self.project_id}/attempts/{attempt_id}/",
-            {"name": "Renamed"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["name"], "Renamed")
+#     def test_attempt_detail_patch_name(self):
+#         attempt_id = self.attempts[0]
+#         response = self.client.patch(
+#             f"/api/projects/{self.project_id}/attempts/{attempt_id}/",
+#             {"name": "Renamed"},
+#             format="json",
+#         )
+#         self.assertEqual(response.status_code, 200)
+#         self.assertEqual(response.data["name"], "Renamed")
 
-    def test_all_attempts_for_project(self):
-        response = self.client.get(
-            f"/api/projects/{self.project_id}/all_attempts_for_this_project/"
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()["attempts"]), 3)
+#     def test_all_attempts_for_project(self):
+#         response = self.client.get(
+#             f"/api/projects/{self.project_id}/all_attempts_for_this_project/"
+#         )
+#         self.assertEqual(response.status_code, 200)
+#         self.assertEqual(len(response.json()["attempts"]), 3)
 
-    def test_attempt_forbidden(self):
-        other_client = self._get_other_client()
-        response = other_client.get(
-            f"/api/projects/{self.project_id}/attempts/{self.attempts[0]}/"
-        )
-        self.assertEqual(response.status_code, 403)
-
-
-class AttemptSlotIndexTest(APITestBase):
-    def setUp(self):
-        super().setUp()
-        resp = self._create_project("SlotProject")
-        self.project_id = resp.data["id"]
-        self.team_id = self._create_team(self.project_id, "Dev").data["id"]
-        task_resp = self._create_task(self.project_id, "SlotTask", self.team_id)
-        self.task_id = task_resp.data["id"]
-        self.attempt_id = Attempt.objects.filter(task_id=self.task_id).first().id
-
-    def test_update_slot_index(self):
-        response = self.client.post(
-            "/api/update_attempt_slot_index/",
-            json.dumps({"attempt_id": self.attempt_id, "slot_index": 10}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 200)
-        attempt = Attempt.objects.get(id=self.attempt_id)
-        self.assertEqual(attempt.slot_index, 10)
-
-    def test_update_slot_index_missing_fields(self):
-        response = self.client.post(
-            "/api/update_attempt_slot_index/",
-            json.dumps({"attempt_id": self.attempt_id}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 400)
+#     def test_attempt_forbidden(self):
+#         other_client = self._get_other_client()
+#         response = other_client.get(
+#             f"/api/projects/{self.project_id}/attempts/{self.attempts[0]}/"
+#         )
+#         self.assertEqual(response.status_code, 403)
 
 
-class AttemptDependencyAPITest(APITestBase):
-    def setUp(self):
-        super().setUp()
-        resp = self._create_project("DepProject")
-        self.project_id = resp.data["id"]
-        self.team_id = self._create_team(self.project_id, "Dev").data["id"]
-        task_resp = self._create_task(self.project_id, "DepTask", self.team_id)
-        self.task_id = task_resp.data["id"]
-        attempts = Attempt.objects.filter(task_id=self.task_id).order_by("number")
-        self.a1 = attempts[0].id
-        self.a2 = attempts[1].id
+# # class AttemptSlotIndexTest(APITestBase):
+#     def setUp(self):
+#         super().setUp()
+#         resp = self._create_project("SlotProject")
+#         self.project_id = resp.data["id"]
+#         self.team_id = self._create_team(self.project_id, "Dev").data["id"]
+#         task_resp = self._create_task(self.project_id, "SlotTask", self.team_id)
+#         self.task_id = task_resp.data["id"]
+#         self.attempt_id = Attempt.objects.filter(task_id=self.task_id).first().id
 
-    def test_add_dependency(self):
-        response = self.client.post(
-            "/api/add_attempt_dependency/",
-            json.dumps({"vortakt_attempt_id": self.a1, "nachtakt_attempt_id": self.a2}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()["created"])
+#     def test_update_slot_index(self):
+#         response = self.client.post(
+#             "/api/update_attempt_slot_index/",
+#             json.dumps({"attempt_id": self.attempt_id, "slot_index": 10}),
+#             content_type="application/json",
+#         )
+#         self.assertEqual(response.status_code, 200)
+#         attempt = Attempt.objects.get(id=self.attempt_id)
+#         self.assertEqual(attempt.slot_index, 10)
 
-    def test_add_duplicate_dependency(self):
-        AttemptDependency.objects.create(
-            vortakt_attempt_id=self.a1, nachtakt_attempt_id=self.a2
-        )
-        response = self.client.post(
-            "/api/add_attempt_dependency/",
-            json.dumps({"vortakt_attempt_id": self.a1, "nachtakt_attempt_id": self.a2}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.json()["created"])
-
-    def test_list_dependencies(self):
-        AttemptDependency.objects.create(
-            vortakt_attempt_id=self.a1, nachtakt_attempt_id=self.a2
-        )
-        response = self.client.get("/api/all_attempt_dependencies/")
-        self.assertEqual(response.status_code, 200)
-        self.assertGreaterEqual(len(response.json()), 1)
-
-    def test_delete_dependency(self):
-        dep = AttemptDependency.objects.create(
-            vortakt_attempt_id=self.a1, nachtakt_attempt_id=self.a2
-        )
-        response = self.client.post(
-            "/api/delete_attempt_dependency/",
-            json.dumps({"dependency_id": dep.id}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(AttemptDependency.objects.filter(id=dep.id).exists())
-
-    def test_delete_dependency_not_found(self):
-        response = self.client.post(
-            "/api/delete_attempt_dependency/",
-            json.dumps({"dependency_id": 99999}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 404)
+#     def test_update_slot_index_missing_fields(self):
+#         response = self.client.post(
+#             "/api/update_attempt_slot_index/",
+#             json.dumps({"attempt_id": self.attempt_id}),
+#             content_type="application/json",
+#         )
+#         self.assertEqual(response.status_code, 400)
 
 
-class AttemptTodosTest(APITestBase):
-    def setUp(self):
-        super().setUp()
-        resp = self._create_project("TodoProject")
-        self.project_id = resp.data["id"]
-        self.team_id = self._create_team(self.project_id, "Dev").data["id"]
-        task_resp = self._create_task(self.project_id, "TodoTask", self.team_id)
-        self.task_id = task_resp.data["id"]
-        self.attempt = Attempt.objects.filter(task_id=self.task_id).first()
-        self.attempt_id = self.attempt.id
+# # class AttemptDependencyAPITest(APITestBase):
+#     def setUp(self):
+#         super().setUp()
+#         resp = self._create_project("DepProject")
+#         self.project_id = resp.data["id"]
+#         self.team_id = self._create_team(self.project_id, "Dev").data["id"]
+#         task_resp = self._create_task(self.project_id, "DepTask", self.team_id)
+#         self.task_id = task_resp.data["id"]
+#         attempts = Attempt.objects.filter(task_id=self.task_id).order_by("number")
+#         self.a1 = attempts[0].id
+#         self.a2 = attempts[1].id
 
-    def test_create_todo(self):
-        response = self.client.post(
-            f"/api/projects/{self.project_id}/attempts/{self.attempt_id}/todos/",
-            json.dumps({"action": "create", "text": "Write tests"}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data["text"], "Write tests")
+#     def test_add_dependency(self):
+#         response = self.client.post(
+#             "/api/add_attempt_dependency/",
+#             json.dumps({"vortakt_attempt_id": self.a1, "nachtakt_attempt_id": self.a2}),
+#             content_type="application/json",
+#         )
+#         self.assertEqual(response.status_code, 200)
+#         self.assertTrue(response.json()["created"])
 
-    def test_create_todo_no_text(self):
-        response = self.client.post(
-            f"/api/projects/{self.project_id}/attempts/{self.attempt_id}/todos/",
-            json.dumps({"action": "create", "text": ""}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 400)
+#     def test_add_duplicate_dependency(self):
+#         AttemptDependency.objects.create(
+#             vortakt_attempt_id=self.a1, nachtakt_attempt_id=self.a2
+#         )
+#         response = self.client.post(
+#             "/api/add_attempt_dependency/",
+#             json.dumps({"vortakt_attempt_id": self.a1, "nachtakt_attempt_id": self.a2}),
+#             content_type="application/json",
+#         )
+#         self.assertEqual(response.status_code, 200)
+#         self.assertFalse(response.json()["created"])
 
-    def test_toggle_todo(self):
-        todo = self.attempt.todos.first()
-        self.assertFalse(todo.done)
-        response = self.client.post(
-            f"/api/projects/{self.project_id}/attempts/{self.attempt_id}/todos/",
-            json.dumps({"action": "toggle", "todo_id": todo.id}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.data["done"])
+#     def test_list_dependencies(self):
+#         AttemptDependency.objects.create(
+#             vortakt_attempt_id=self.a1, nachtakt_attempt_id=self.a2
+#         )
+#         response = self.client.get("/api/all_attempt_dependencies/")
+#         self.assertEqual(response.status_code, 200)
+#         self.assertGreaterEqual(len(response.json()), 1)
 
-    def test_toggle_todo_auto_completes_attempt(self):
-        """When all todos are done, attempt.done should become True."""
-        todo = self.attempt.todos.first()
-        self.client.post(
-            f"/api/projects/{self.project_id}/attempts/{self.attempt_id}/todos/",
-            json.dumps({"action": "toggle", "todo_id": todo.id}),
-            content_type="application/json",
-        )
-        self.attempt.refresh_from_db()
-        self.assertTrue(self.attempt.done)
+#     def test_delete_dependency(self):
+#         dep = AttemptDependency.objects.create(
+#             vortakt_attempt_id=self.a1, nachtakt_attempt_id=self.a2
+#         )
+#         response = self.client.post(
+#             "/api/delete_attempt_dependency/",
+#             json.dumps({"dependency_id": dep.id}),
+#             content_type="application/json",
+#         )
+#         self.assertEqual(response.status_code, 200)
+#         self.assertFalse(AttemptDependency.objects.filter(id=dep.id).exists())
 
-    def test_delete_todo(self):
-        todo = self.attempt.todos.first()
-        response = self.client.post(
-            f"/api/projects/{self.project_id}/attempts/{self.attempt_id}/todos/",
-            json.dumps({"action": "delete", "todo_id": todo.id}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(AttemptTodo.objects.filter(id=todo.id).exists())
-
-    def test_invalid_action(self):
-        response = self.client.post(
-            f"/api/projects/{self.project_id}/attempts/{self.attempt_id}/todos/",
-            json.dumps({"action": "invalid"}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 400)
+#     def test_delete_dependency_not_found(self):
+#         response = self.client.post(
+#             "/api/delete_attempt_dependency/",
+#             json.dumps({"dependency_id": 99999}),
+#             content_type="application/json",
+#         )
+#         self.assertEqual(response.status_code, 404)
 
 
-# ═══════════════════════════════════════════════
+# # class AttemptTodosTest(APITestBase):
+#     def setUp(self):
+#         super().setUp()
+#         resp = self._create_project("TodoProject")
+#         self.project_id = resp.data["id"]
+#         self.team_id = self._create_team(self.project_id, "Dev").data["id"]
+#         task_resp = self._create_task(self.project_id, "TodoTask", self.team_id)
+#         self.task_id = task_resp.data["id"]
+#         self.attempt = Attempt.objects.filter(task_id=self.task_id).first()
+#         self.attempt_id = self.attempt.id
+
+#     def test_create_todo(self):
+#         response = self.client.post(
+#             f"/api/projects/{self.project_id}/attempts/{self.attempt_id}/todos/",
+#             json.dumps({"action": "create", "text": "Write tests"}),
+#             content_type="application/json",
+#         )
+#         self.assertEqual(response.status_code, 201)
+#         self.assertEqual(response.data["text"], "Write tests")
+
+#     def test_create_todo_no_text(self):
+#         response = self.client.post(
+#             f"/api/projects/{self.project_id}/attempts/{self.attempt_id}/todos/",
+#             json.dumps({"action": "create", "text": ""}),
+#             content_type="application/json",
+#         )
+#         self.assertEqual(response.status_code, 400)
+
+#     def test_toggle_todo(self):
+#         todo = self.attempt.todos.first()
+#         self.assertFalse(todo.done)
+#         response = self.client.post(
+#             f"/api/projects/{self.project_id}/attempts/{self.attempt_id}/todos/",
+#             json.dumps({"action": "toggle", "todo_id": todo.id}),
+#             content_type="application/json",
+#         )
+#         self.assertEqual(response.status_code, 200)
+#         self.assertTrue(response.data["done"])
+
+#     def test_toggle_todo_auto_completes_attempt(self):
+#         """When all todos are done, attempt.done should become True."""
+#         todo = self.attempt.todos.first()
+#         self.client.post(
+#             f"/api/projects/{self.project_id}/attempts/{self.attempt_id}/todos/",
+#             json.dumps({"action": "toggle", "todo_id": todo.id}),
+#             content_type="application/json",
+#         )
+#         self.attempt.refresh_from_db()
+#         self.assertTrue(self.attempt.done)
+
+#     def test_delete_todo(self):
+#         todo = self.attempt.todos.first()
+#         response = self.client.post(
+#             f"/api/projects/{self.project_id}/attempts/{self.attempt_id}/todos/",
+#             json.dumps({"action": "delete", "todo_id": todo.id}),
+#             content_type="application/json",
+#         )
+#         self.assertEqual(response.status_code, 200)
+#         self.assertFalse(AttemptTodo.objects.filter(id=todo.id).exists())
+
+#     def test_invalid_action(self):
+#         response = self.client.post(
+#             f"/api/projects/{self.project_id}/attempts/{self.attempt_id}/todos/",
+#             json.dumps({"action": "invalid"}),
+#             content_type="application/json",
+#         )
+#         self.assertEqual(response.status_code, 400)
+
+
+# # ═══════════════════════════════════════════════
 #  7. CATEGORY & IDEA TESTS
 # ═══════════════════════════════════════════════
 

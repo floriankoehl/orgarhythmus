@@ -28,9 +28,6 @@ import {
   fetchSingleTask,
   updateTask,
   fetchTeamsForProject,
-  toggle_attempt_todo,
-  createAttempt,
-  deleteAttempt,
   assignTaskMember,
   unassignTaskMember,
   fetch_project_detail,
@@ -56,11 +53,8 @@ export default function ProjectTaskDetail() {
   const [editDifficulty, setEditDifficulty] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  // Attempts removed - milestones used instead
   const [expandedAttemptIds, setExpandedAttemptIds] = useState([]);
-
-  // Attempt create/delete
-  const [creatingAttempt, setCreatingAttempt] = useState(false);
-  const [deletingAttemptId, setDeletingAttemptId] = useState(null);
   
   // Member assignment
   const [assigningMemberId, setAssigningMemberId] = useState(null);
@@ -144,60 +138,7 @@ export default function ProjectTaskDetail() {
     );
   }
 
-  async function handleCreateAttempt() {
-    if (!task) return;
-    setCreatingAttempt(true);
-    try {
-      const newAttempt = await createAttempt(projectId, task.id);
-      setTask((prev) => ({
-        ...prev,
-        attempts: [...(prev.attempts || []), newAttempt],
-      }));
-    } catch (err) {
-      setError('Failed to create attempt');
-    } finally {
-      setCreatingAttempt(false);
-    }
-  }
-
-  async function handleDeleteAttempt(attemptId) {
-    const confirmed = window.confirm("This can't be undone");
-    if (!confirmed) return;
-    setDeletingAttemptId(attemptId);
-    try {
-      await deleteAttempt(projectId, attemptId);
-      setTask((prev) => ({
-        ...prev,
-        attempts: (prev.attempts || []).filter((a) => a.id !== attemptId),
-      }));
-    } catch (err) {
-      setError('Failed to delete attempt');
-    } finally {
-      setDeletingAttemptId(null);
-    }
-  }
-
-  async function handleToggleAttemptTodo(attemptId, todoId) {
-    try {
-      const res = await toggle_attempt_todo(projectId, attemptId, todoId);
-      setTask((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          attempts: (prev.attempts || []).map((a) => {
-            if (a.id !== attemptId) return a;
-            return {
-              ...a,
-              done: res.attempt_done,
-              todos: (a.todos || []).map((t) => (t.id === todoId ? { ...t, done: res.done } : t)),
-            };
-          }),
-        };
-      });
-    } catch (err) {
-      setError('Failed to toggle todo');
-    }
-  }
+  // Attempt CRUD removed - milestones used instead
 
   async function handleAssignMember(userId) {
     setAssigningMemberId(userId);
@@ -552,159 +493,17 @@ export default function ProjectTaskDetail() {
           </div>
         </header>
 
-        {/* Attempts for this Task */}
+        {/* Milestones info - attempts have been replaced */}
         {task && (
           <section className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur-sm">
-            <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Attempts</h2>
+                <h2 className="text-lg font-semibold text-slate-900">Milestones</h2>
                 <p className="mt-1 text-xs text-slate-600">
-                  {attempts.length} attempt{attempts.length !== 1 ? 's' : ''} linked to this task
+                  Manage milestones for this task in the Dependencies view.
                 </p>
               </div>
-              <button
-                onClick={handleCreateAttempt}
-                disabled={creatingAttempt}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-blue-700 disabled:opacity-50"
-              >
-                {creatingAttempt ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <Plus size={16} />
-                )}
-                Add Attempt
-              </button>
             </div>
-
-            {attempts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
-                <p className="text-sm font-medium text-slate-700">No attempts yet</p>
-                <p className="text-xs text-slate-500">Create an attempt to see it here.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {attempts.map((attempt) => (
-                  <div
-                    key={attempt.id}
-                    className="rounded-lg border border-slate-200 bg-white transition-colors"
-                  >
-                    {/* Attempt Header */}
-                    <div
-                      onClick={() => {
-                        toggleAttemptExpanded(attempt.id);
-                      }}
-                      className={`flex cursor-pointer items-center justify-between gap-4 px-3 py-1 transition-colors ${
-                        attempt.done
-                          ? 'bg-emerald-50 hover:bg-emerald-100'
-                          : 'bg-white hover:bg-amber-50'
-                      }`}
-                    >
-                      <div className="flex min-w-0 flex-1 items-center gap-3">
-                        <ChevronDown
-                          size={18}
-                          className={`flex-shrink-0 text-slate-400 transition-transform ${
-                            expandedAttemptIds.includes(attempt.id) ? 'rotate-180' : ''
-                          }`}
-                        />
-                        <div className="flex min-w-0 items-center gap-2">
-                          <p className="flex-1 truncate text-sm font-semibold text-slate-900">
-                            {attempt.name || 'Untitled attempt'}
-                          </p>
-
-                          {attempt.scheduled_date && (
-                            <p className="flex-shrink-0 text-xs text-slate-600">
-                              Scheduled:{' '}
-                              {new Date(attempt.scheduled_date).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                              })}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-shrink-0 items-center gap-3">
-                        {typeof attempt.number === 'number' && (
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                            #{attempt.number}
-                          </span>
-                        )}
-                        <div
-                          className={`inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold ${
-                            attempt.done ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white'
-                          }`}
-                        >
-                          <span>{attempt.done ? '✓ Done' : '⏳ In Progress'}</span>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteAttempt(attempt.id);
-                          }}
-                          className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-                          title="Delete attempt"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Expandable Todos Section */}
-                    {expandedAttemptIds.includes(attempt.id) && attempt.todos && (
-                      <div className="border-t border-slate-200 bg-slate-50 p-4">
-                        {attempt.todos.length === 0 ? (
-                          <p className="text-xs text-slate-500 italic">No todos for this attempt</p>
-                        ) : (
-                          <div className="space-y-2">
-                            {attempt.todos.map((todo) => (
-                              <div
-                                key={todo.id}
-                                className="flex items-center gap-3 rounded-lg bg-white p-3 text-sm"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={todo.done || false}
-                                  onChange={() => handleToggleAttemptTodo(attempt.id, todo.id)}
-                                  className="h-4 w-4 cursor-pointer rounded border-slate-300"
-                                />
-                                <span
-                                  className={`flex-1 ${
-                                    todo.done ? 'text-slate-400 line-through' : 'text-slate-700'
-                                  }`}
-                                >
-                                  {todo.text}
-                                </span>
-                                {todo.created_at && (
-                                  <span className="text-xs text-slate-400">
-                                    {new Date(todo.created_at).toLocaleDateString('en-US', {
-                                      month: 'short',
-                                      day: 'numeric',
-                                    })}
-                                  </span>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Link to Attempt Detail */}
-                    <div className="border-t border-slate-200 bg-slate-50 px-4 py-2">
-                      <button
-                        onClick={() =>
-                          navigate(`/projects/${projectId}/attempts/${attempt.id}`)
-                        }
-                        className="text-xs font-medium text-blue-600 transition-colors hover:text-blue-700 hover:underline"
-                      >
-                        View full attempt details →
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </section>
         )}
       </div>

@@ -13,7 +13,7 @@ import OrgaLayout from './layouts/OrgaLayout.jsx';
 import LoginPage from './pages/LoginPage';
 import ProfilePage from './pages/ProfilePage';
 import RegisterPage from './pages/RegisterPage';
-import ProjectAttemptsWrapper from './pages/ProjectAttemptsWrapper.jsx';
+// import ProjectAttemptsWrapper from './pages/ProjectAttemptsWrapper.jsx';
 import ProjectLayout from './layouts/ProjectLayout.jsx';
 import ProjectMain, { project_loader } from './pages/ProjectMain.jsx';
 import OrgaProjects from './pages/OrgaProjects.jsx';
@@ -22,11 +22,9 @@ import ProjectTasks from './pages/ProjectTasks.jsx';
 import ProjectTeamDetail from './pages/ProjectTeamDetail.jsx';
 import ProjectTaskDetail from './pages/ProjectTaskDetail.jsx';
 import Calender from './pages/Calender.jsx';
-import AttemptDetail from './pages/AttemptDetail.jsx';
+// import AttemptDetail from './pages/AttemptDetail.jsx';
 import IdeaFactory from './pages/IdeaFactory';
 import Dependencies from './pages/Dependencies';
-
-
 
 const router = createBrowserRouter([
   {
@@ -51,10 +49,9 @@ const router = createBrowserRouter([
           { path: 'teams/:teamId', element: <ProjectTeamDetail /> },
           { path: 'tasks', element: <ProjectTasks /> },
           { path: 'tasks/:taskId', element: <ProjectTaskDetail /> },
-          // { path: 'attempts', element: <ProjectAttemptsWrapper /> },
           { path: 'dependencies', element: <Dependencies /> },
           { path: 'calender', element: <Calender /> },
-          { path: 'attempts/:attemptId', element: <AttemptDetail /> },
+          // { path: 'attempts/:attemptId', element: <AttemptDetail /> },
         ],
       },
     ],

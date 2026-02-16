@@ -66,18 +66,6 @@ from .tasks import (
     delete_dependency,
 )
 
-from .attempts import (
-    add_attempt_dependency,
-    list_attempt_dependencies,
-    update_attempt_slot_index,
-    delete_attempt_dependency,
-    all_attempts_for_this_project,
-    create_attempt_view,
-    delete_attempt_view,
-    attempt_detail_view,
-    attempt_todos_view,
-)
-
 from .ideas import (
     create_idea,
     delete_idea,

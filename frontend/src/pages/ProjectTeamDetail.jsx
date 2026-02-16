@@ -20,11 +20,8 @@ import { useAuth } from '../auth/AuthContext';
 import {
   fetchSingleTeam,
   updateTeam,
-  fetch_all_attempts,
   fetch_project_detail,
   fetchSingleTask,
-  fetchAttemptDetail,
-  toggleAttemptTodo,
   joinTeam,
   leaveTeam,
 } from '../api/org_API.js';
@@ -71,13 +68,11 @@ export default function ProjectTeamDetail() {
       setTeam(data);
       setEditName(data.name || '');
       setEditColor(data.color || '#facc15');
-      // Load project and next steps for this team
+      // Load project for this team
       const proj = await fetch_project_detail(projectId);
       setProject(proj);
-      const allAttempts = await fetch_all_attempts();
-      const teamAttempts = (allAttempts || []).filter((a) => a.task?.team?.id === Number(teamId));
-      const sorted = teamAttempts.slice().sort((a, b) => (a.slot_index || 0) - (b.slot_index || 0));
-      setNextSteps(sorted);
+      // Attempts removed - milestones used instead
+      setNextSteps([]);
     } catch (err) {
       console.error(err);
       setError('Failed to load team details.');
@@ -276,57 +271,11 @@ export default function ProjectTeamDetail() {
     setExpandedAttemptIds((prev) =>
       prev.includes(attemptId) ? prev.filter((x) => x !== attemptId) : [...prev, attemptId],
     );
-    if (!attemptDetails[attemptId]) {
-      try {
-        const detail = await fetchAttemptDetail(projectId, attemptId);
-        setAttemptDetails((prev) => ({ ...prev, [attemptId]: detail }));
-      } catch (e) {
-        setError('Failed to load attempt todos');
-      }
-    }
+    // fetchAttemptDetail removed - milestones used instead
   }
 
   async function handleToggleTodo(attemptId, todoId) {
-    try {
-      const res = await toggleAttemptTodo(projectId, attemptId, todoId);
-
-      // Update attempt details
-      setAttemptDetails((prev) => ({
-        ...prev,
-        [attemptId]: {
-          ...prev[attemptId],
-          done: res.attempt_done,
-          todos: (prev[attemptId]?.todos || []).map((t) =>
-            t.id === todoId ? { ...t, done: res.done } : t,
-          ),
-        },
-      }));
-
-      // Update nextSteps (for Steps view)
-      setNextSteps((prev) =>
-        prev.map((attempt) =>
-          attempt.id === attemptId ? { ...attempt, done: res.attempt_done } : attempt,
-        ),
-      );
-
-      // Update taskDetails (for Tasks view)
-      setTaskDetails((prev) => {
-        const updated = { ...prev };
-        Object.keys(updated).forEach((taskId) => {
-          if (updated[taskId].attempts) {
-            updated[taskId] = {
-              ...updated[taskId],
-              attempts: updated[taskId].attempts.map((attempt) =>
-                attempt.id === attemptId ? { ...attempt, done: res.attempt_done } : attempt,
-              ),
-            };
-          }
-        });
-        return updated;
-      });
-    } catch (e) {
-      setError('Failed to toggle todo');
-    }
+    // toggleAttemptTodo removed - milestones used instead
   }
 
   return (

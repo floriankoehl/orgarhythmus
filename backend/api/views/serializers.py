@@ -99,7 +99,7 @@ class TaskSerializer_TeamView(serializers.ModelSerializer):
 class TaskExpandedSerializer(serializers.ModelSerializer):
     team = BasicTeamSerializer(read_only=True)
     project_id = serializers.IntegerField(source='project.id', read_only=True)
-    attempts = serializers.SerializerMethodField()
+    # attempts = serializers.SerializerMethodField()
     assigned_members_data = serializers.SerializerMethodField()
 
     class Meta:
@@ -112,7 +112,7 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
             'difficulty',
             'team',
             'project_id',
-            'attempts',
+            # 'attempts',
             'assigned_members',
             'assigned_members_data',
         ]
@@ -120,38 +120,38 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
     def get_assigned_members_data(self, obj):
         return [{"id": u.id, "username": u.username, "email": u.email} for u in obj.assigned_members.all()]
 
-    def get_attempts(self, obj):
-        attempts_qs = getattr(obj, "attempts", None)
-        if attempts_qs is None:
-            return []
-
-        ordered = attempts_qs.all().order_by('slot_index', 'id').prefetch_related('todos')
-        start_date = getattr(getattr(obj, 'project', None), 'start_date', None)
-        return [
-            {
-                "id": a.id,
-                "name": getattr(a, "name", None),
-                "description": getattr(a, "description", None),
-                "number": getattr(a, "number", None),
-                "slot_index": getattr(a, "slot_index", None),
-                "done": getattr(a, "done", False),
-                "scheduled_date": (
-                    (
-                        (start_date + timedelta(days=(a.slot_index - 1))).isoformat()
-                    ) if (start_date and (a.slot_index is not None)) else None
-                ),
-                "todos": [
-                    {
-                        "id": t.id,
-                        "text": t.text,
-                        "done": t.done,
-                        "created_at": t.created_at,
-                    }
-                    for t in (a.todos.all().order_by('-created_at') if hasattr(a, 'todos') else [])
-                ],
-            }
-            for a in ordered
-        ]
+    # def get_attempts(self, obj):
+    #     attempts_qs = getattr(obj, "attempts", None)
+    #     if attempts_qs is None:
+    #         return []
+    #
+    #     ordered = attempts_qs.all().order_by('slot_index', 'id').prefetch_related('todos')
+    #     start_date = getattr(getattr(obj, 'project', None), 'start_date', None)
+    #     return [
+    #         {
+    #             "id": a.id,
+    #             "name": getattr(a, "name", None),
+    #             "description": getattr(a, "description", None),
+    #             "number": getattr(a, "number", None),
+    #             "slot_index": getattr(a, "slot_index", None),
+    #             "done": getattr(a, "done", False),
+    #             "scheduled_date": (
+    #                 (
+    #                     (start_date + timedelta(days=(a.slot_index - 1))).isoformat()
+    #                 ) if (start_date and (a.slot_index is not None)) else None
+    #             ),
+    #             "todos": [
+    #                 {
+    #                     "id": t.id,
+    #                     "text": t.text,
+    #                     "done": t.done,
+    #                     "created_at": t.created_at,
+    #                 }
+    #                 for t in (a.todos.all().order_by('-created_at') if hasattr(a, 'todos') else [])
+    #             ],
+    #         }
+    #         for a in ordered
+    #     ]
 
 
 # IdeaSerializer
