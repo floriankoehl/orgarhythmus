@@ -1030,76 +1030,10 @@ export default function Dependencies() {
             }}
             className="relative"
           >
-            {/* SVG Layer for Connections */}
-            <svg
-              className="absolute top-0 left-0 w-full h-full"
-              style={{ zIndex: 5, pointerEvents: 'none' }}
-            >
-              <defs>
-                <style>
-                  {`
-                    @keyframes flowAnimation {
-                      from { stroke-dashoffset: 24; }
-                      to { stroke-dashoffset: 0; }
-                    }
-                  `}
-                </style>
-              </defs>
-
-              {connections.map((conn) => {
-                const sourcePos = getMilestoneHandlePosition(conn.source, "source");
-                const targetPos = getMilestoneHandlePosition(conn.target, "target");
-
-                if (!sourcePos || !targetPos) return null;
-
-                const isSelected = selectedConnection?.source === conn.source && 
-                                   selectedConnection?.target === conn.target;
-
-                return (
-                  <g key={`${conn.source}-${conn.target}`} style={{ pointerEvents: 'auto' }}>
-                    <path
-                      d={getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y)}
-                      stroke="transparent"
-                      strokeWidth="15"
-                      fill="none"
-                      style={{ cursor: "pointer" }}
-                      onClick={(e) => handleConnectionClick(e, conn)}
-                    />
-                    <path
-                      d={getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y)}
-                      stroke={isSelected ? "#6366f1" : "#374151"}
-                      strokeWidth={isSelected ? "3.5" : "2.5"}
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeDasharray="8, 4"
-                      style={{
-                        animation: "flowAnimation 3s linear infinite",
-                        pointerEvents: "none",
-                        filter: isSelected ? "drop-shadow(0 0 3px rgba(99, 102, 241, 0.5))" : "none",
-                      }}
-                    />
-                  </g>
-                );
-              })}
-
-              {isDraggingConnection && connectionStart && (
-                <path
-                  d={getStraightPath(connectionStart.x, connectionStart.y, connectionEnd.x, connectionEnd.y)}
-                  stroke="#6366f1"
-                  strokeWidth="2"
-                  strokeDasharray="5,5"
-                  fill="none"
-                  strokeLinecap="round"
-                  opacity="0.7"
-                  style={{ pointerEvents: "none" }}
-                />
-              )}
-            </svg>
-
             {/* Task drop indicator line */}
             {taskGhost && taskDropTarget && (
               <div
-                className="absolute pointer-events-none"
+                className="pointer-events-none"
                 style={{
                   top: `${getTaskDropIndicatorY()}px`,
                   left: `${TEAMWIDTH}px`,
@@ -1107,14 +1041,14 @@ export default function Dependencies() {
                   height: `${TASK_DROP_INDICATOR_HEIGHT}px`,
                   backgroundColor: '#1d4ed8',
                   borderRadius: '2px',
-                  zIndex: 100,
+                  zIndex: 200,
                   boxShadow: '0 0 8px rgba(29, 78, 216, 0.6)',
                 }}
               />
             )}
 
             {/* Header Row */}
-            <div className="flex" style={{ height: `${HEADER_HEIGHT}px`, position: 'relative', zIndex: 15 }}>
+            <div className="flex" style={{ height: `${HEADER_HEIGHT}px`, position: 'relative', zIndex: 50 }}>
               <div
                 className="flex border-b bg-slate-100 text-sm font-semibold text-slate-700"
                 style={{
@@ -1122,7 +1056,7 @@ export default function Dependencies() {
                   height: `${HEADER_HEIGHT}px`,
                   position: 'sticky',
                   left: 0,
-                  zIndex: 15,
+                  zIndex: 50,
                 }}
               >
                 <div
@@ -1165,9 +1099,9 @@ export default function Dependencies() {
               const isTargetTeam = taskGhost && taskDropTarget?.teamId === team_key && taskDropTarget?.teamId !== taskGhost.fromTeamId;
               
               return (
-                <div key={`${team_key}_container`} style={{ position: 'relative', zIndex: 10 }}>
+                <div key={`${team_key}_container`} style={{ position: 'relative', zIndex: 1 }}>
                   {/* Drop Highlighter */}
-                  <div className="flex">
+                  <div className="flex" style={{ backgroundColor: 'white' }}>
                     <div
                       style={{
                         marginBottom: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
@@ -1177,8 +1111,8 @@ export default function Dependencies() {
                         opacity: dropIndex === visibleIndex ? 1 : 0,
                         position: 'sticky',
                         left: 0,
-                        zIndex: 10,
-                        backgroundColor: 'black',
+                        zIndex: 40,
+                        backgroundColor: dropIndex === visibleIndex ? 'black' : 'white',
                       }}
                       className="rounded-l-full"
                     />
@@ -1188,7 +1122,7 @@ export default function Dependencies() {
                         marginTop: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
                         height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT}px`,
                         opacity: dropIndex === visibleIndex ? 1 : 0,
-                        backgroundColor: 'black',
+                        backgroundColor: dropIndex === visibleIndex ? 'black' : 'white',
                       }}
                       className="rounded-r-full flex-1"
                     />
@@ -1205,7 +1139,7 @@ export default function Dependencies() {
                         opacity: ghost?.id === team_key ? 0.2 : 1,
                         position: 'sticky',
                         left: 0,
-                        zIndex: 20,
+                        zIndex: 40,
                         transition: 'background-color 0.15s ease',
                         boxShadow: isTargetTeam ? 'inset 0 0 0 2px #3b82f6' : 'none',
                       }}
@@ -1337,7 +1271,7 @@ export default function Dependencies() {
                       </div>
                     </div>
 
-                    {/* SCROLLABLE RIGHT: Milestones/Days */}
+                    {/* SCROLLABLE RIGHT: Milestones/Days - this is the day grid, NO pointer events */}
                     <div
                       className="border-t border-b bg-white"
                       style={{ height: `${teamHeight}px` }}
@@ -1346,7 +1280,6 @@ export default function Dependencies() {
                         if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
                         
                         const taskHeight = getTaskHeight(task_key, taskDisplaySettings);
-                        const isSmall = taskDisplaySettings[task_key]?.size === 'small';
                         const visibleTaskIndex = visibleTasks.indexOf(task_key);
                         const isLastVisible = visibleTaskIndex === visibleTasks.length - 1;
                         
@@ -1359,101 +1292,7 @@ export default function Dependencies() {
                             }}
                             key={`${task_key}_milestone`}
                           >
-                            {/* Milestone Rendering */}
-                            {tasks[task_key]?.milestones?.map((milestone_from_task) => {
-                              const milestone = milestones[milestone_from_task.id];
-                              if (!milestone) return null;
-                              
-                              const showDelete = hoveredMilestone === milestone.id && mode === "delete";
-                              const showDurationPlus = hoveredMilestone === milestone.id && mode === "duration";
-                              const showDurationMinus = hoveredMilestone === milestone.id && mode === "duration" && milestone.duration > 1;
-                              const showConnect = mode === "connect";
-
-                              return (
-                                <div
-                                  onMouseDown={(e) => {
-                                    if (mode !== "connect") {
-                                      handleMileStoneMouseDown(e, milestone_from_task.id);
-                                    }
-                                  }}
-                                  onMouseEnter={() => setHoveredMilestone(milestone.id)}
-                                  onMouseLeave={() => setHoveredMilestone(null)}
-                                  className="absolute p-0.5 group"
-                                  style={{
-                                    height: `${taskHeight}px`,
-                                    width: `${DAYWIDTH * milestone.duration}px`,
-                                    left: `${milestone.x}px`,
-                                    opacity: ghost?.id === team_key ? 0.2 : 1,
-                                    zIndex: 10,
-                                  }}
-                                  key={milestone.id}
-                                >
-                                  <div className={`h-full w-full rounded bg-slate-200 shadow-xl border border-gray-500 text-black flex justify-center items-center relative ${isSmall ? 'text-xs' : ''}`}>
-                                    {!showDelete && !showDurationPlus && !showDurationMinus && !showConnect && (isSmall ? "" : "M")}
-
-                                    {showDelete && (
-                                      <DeleteForeverIcon
-                                        style={{ color: "#fa2020", fontSize: isSmall ? 16 : 24 }}
-                                        className="animate-pulse"
-                                      />
-                                    )}
-
-                                    <div 
-                                      style={{ display: showDurationMinus || showDurationPlus ? "flex" : "none" }}
-                                      className="w-full flex justify-between px-0.5"
-                                    >
-                                      {showDurationPlus && (
-                                        <AddCircleOutlineIcon
-                                          onClick={(e) => handleDurationChange(e, milestone.id, 1)}
-                                          style={{ fontSize: isSmall ? 14 : 20 }}
-                                          className="cursor-pointer"
-                                        />
-                                      )}
-                                      {showDurationMinus && (
-                                        <RemoveCircleOutlineIcon
-                                          onClick={(e) => handleDurationChange(e, milestone.id, -1)}
-                                          style={{ fontSize: isSmall ? 14 : 20 }}
-                                          className="hover:text-blue-200 cursor-pointer"
-                                        />
-                                      )}
-                                    </div>
-
-                                    {/* Connection Handles */}
-                                    <div
-                                      className={`absolute w-2.5 h-2.5 bg-blue-500 rounded-full 
-                                                 transition-all cursor-crosshair
-                                                 border-2 border-white shadow
-                                                 ${showConnect ? 'opacity-100 scale-110' : 'opacity-0 group-hover:opacity-100'}
-                                                 hover:scale-150 hover:bg-blue-400`}
-                                      style={{
-                                        left: "-5px",
-                                        top: "50%",
-                                        transform: "translateY(-50%)",
-                                        zIndex: 200,
-                                      }}
-                                      onMouseDown={(e) => handleConnectionDragStart(e, milestone.id, "target")}
-                                    />
-
-                                    <div
-                                      className={`absolute w-2.5 h-2.5 bg-green-500 rounded-full 
-                                                 transition-all cursor-crosshair
-                                                 border-2 border-white shadow
-                                                 ${showConnect ? 'opacity-100 scale-110' : 'opacity-0 group-hover:opacity-100'}
-                                                 hover:scale-150 hover:bg-green-400`}
-                                      style={{
-                                        right: "-5px",
-                                        top: "50%",
-                                        transform: "translateY(-50%)",
-                                        zIndex: 200,
-                                      }}
-                                      onMouseDown={(e) => handleConnectionDragStart(e, milestone.id, "source")}
-                                    />
-                                  </div>
-                                </div>
-                              );
-                            })}
-
-                            {/* Day rendering */}
+                            {/* Day rendering - these are just visual grid lines */}
                             {[...Array(days)].map((_, i) => (
                               <div
                                 className="border-r"
@@ -1475,7 +1314,7 @@ export default function Dependencies() {
             })}
 
             {/* LAST DROP HIGHLIGHT */}
-            <div className="flex" style={{ position: 'relative', zIndex: 10 }}>
+            <div className="flex" style={{ position: 'relative', zIndex: 1, backgroundColor: 'white' }}>
               <div
                 style={{
                   marginBottom: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
@@ -1483,9 +1322,10 @@ export default function Dependencies() {
                   height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT}px`,
                   width: `${TEAMWIDTH + TASKWIDTH}px`,
                   opacity: dropIndex === visibleTeamCount ? 1 : 0,
-                  backgroundColor: 'black',
+                  backgroundColor: dropIndex === visibleTeamCount ? 'black' : 'white',
                   position: 'sticky',
                   left: 0,
+                  zIndex: 40,
                 }}
                 className="rounded-l-full"
               />
@@ -1495,7 +1335,7 @@ export default function Dependencies() {
                   marginTop: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
                   height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT}px`,
                   opacity: dropIndex === visibleTeamCount ? 1 : 0,
-                  backgroundColor: 'black',
+                  backgroundColor: dropIndex === visibleTeamCount ? 'black' : 'white',
                 }}
                 className="rounded-r-full flex-1"
               />
@@ -1505,7 +1345,7 @@ export default function Dependencies() {
             {teamOrder.some(tid => !isTeamVisible(tid)) && (
               <div 
                 className="flex items-center gap-2 px-4 py-2 bg-slate-100 border-t"
-                style={{ position: 'sticky', left: 0, width: `${TEAMWIDTH + TASKWIDTH}px` }}
+                style={{ position: 'sticky', left: 0, width: `${TEAMWIDTH + TASKWIDTH}px`, zIndex: 40 }}
               >
                 <VisibilityOffIcon style={{ fontSize: 16 }} className="text-slate-500" />
                 <span className="text-xs text-slate-600">
@@ -1527,6 +1367,194 @@ export default function Dependencies() {
                 </button>
               </div>
             )}
+
+            {/* SVG Layer for Connections - ABOVE day grid, BELOW sticky columns */}
+            <svg
+              className="absolute top-0 left-0 w-full h-full"
+              style={{ zIndex: 30, pointerEvents: 'none' }}
+            >
+              <defs>
+                <style>
+                  {`
+                    @keyframes flowAnimation {
+                      from { stroke-dashoffset: 24; }
+                      to { stroke-dashoffset: 0; }
+                    }
+                  `}
+                </style>
+              </defs>
+
+              {connections.map((conn) => {
+                const sourcePos = getMilestoneHandlePosition(conn.source, "source");
+                const targetPos = getMilestoneHandlePosition(conn.target, "target");
+
+                if (!sourcePos || !targetPos) return null;
+
+                const isSelected = selectedConnection?.source === conn.source && 
+                                   selectedConnection?.target === conn.target;
+
+                return (
+                  <g key={`${conn.source}-${conn.target}`} style={{ pointerEvents: 'auto' }}>
+                    {/* Invisible wider path for easier clicking */}
+                    <path
+                      d={getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y)}
+                      stroke="transparent"
+                      strokeWidth="20"
+                      fill="none"
+                      style={{ cursor: "pointer" }}
+                      onClick={(e) => handleConnectionClick(e, conn)}
+                    />
+                    {/* Visible animated path */}
+                    <path
+                      d={getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y)}
+                      stroke={isSelected ? "#6366f1" : "#374151"}
+                      strokeWidth={isSelected ? "3.5" : "2.5"}
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeDasharray="8, 4"
+                      style={{
+                        animation: "flowAnimation 3s linear infinite",
+                        pointerEvents: "none",
+                        filter: isSelected ? "drop-shadow(0 0 3px rgba(99, 102, 241, 0.5))" : "none",
+                      }}
+                    />
+                  </g>
+                );
+              })}
+
+              {isDraggingConnection && connectionStart && (
+                <path
+                  d={getStraightPath(connectionStart.x, connectionStart.y, connectionEnd.x, connectionEnd.y)}
+                  stroke="#6366f1"
+                  strokeWidth="2"
+                  strokeDasharray="5,5"
+                  fill="none"
+                  strokeLinecap="round"
+                  opacity="0.7"
+                  style={{ pointerEvents: "none" }}
+                />
+              )}
+            </svg>
+
+            {/* Milestones Layer - ABOVE connections */}
+            <div
+              className="absolute top-0 left-0 w-full h-full"
+              style={{ zIndex: 35, pointerEvents: 'none' }}
+            >
+              {teamOrder.map((team_key) => {
+                const team = teams[team_key];
+                if (!team || !isTeamVisible(team_key)) return null;
+
+                const visibleTasks = getVisibleTasks(team_key);
+
+                return team.tasks.map((task_key) => {
+                  if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
+
+                  const taskHeight = getTaskHeight(task_key, taskDisplaySettings);
+                  const isSmall = taskDisplaySettings[task_key]?.size === 'small';
+
+                  // Calculate Y position for this task
+                  const teamYOffset = getTeamYOffset(team_key);
+                  const taskYOffset = getTaskYOffset(task_key, team_key);
+                  const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+                  const taskY = teamYOffset + dropHighlightOffset + taskYOffset;
+
+                  return tasks[task_key]?.milestones?.map((milestone_from_task) => {
+                    const milestone = milestones[milestone_from_task.id];
+                    if (!milestone) return null;
+
+                    const showDelete = hoveredMilestone === milestone.id && mode === "delete";
+                    const showDurationPlus = hoveredMilestone === milestone.id && mode === "duration";
+                    const showDurationMinus = hoveredMilestone === milestone.id && mode === "duration" && milestone.duration > 1;
+                    const showConnect = mode === "connect";
+
+                    return (
+                      <div
+                        onMouseDown={(e) => {
+                          if (mode !== "connect") {
+                            handleMileStoneMouseDown(e, milestone_from_task.id);
+                          }
+                        }}
+                        onMouseEnter={() => setHoveredMilestone(milestone.id)}
+                        onMouseLeave={() => setHoveredMilestone(null)}
+                        className="absolute p-0.5 group"
+                        style={{
+                          pointerEvents: 'auto',
+                          height: `${taskHeight}px`,
+                          width: `${DAYWIDTH * milestone.duration}px`,
+                          left: `${TEAMWIDTH + TASKWIDTH + milestone.x}px`,
+                          top: `${taskY}px`,
+                          opacity: ghost?.id === team_key ? 0.2 : 1,
+                        }}
+                        key={milestone.id}
+                      >
+                        <div className={`h-full w-full rounded bg-slate-200 shadow-xl border border-gray-500 text-black flex justify-center items-center relative ${isSmall ? 'text-xs' : ''}`}>
+                          {!showDelete && !showDurationPlus && !showDurationMinus && !showConnect && (isSmall ? "" : "M")}
+
+                          {showDelete && (
+                            <DeleteForeverIcon
+                              style={{ color: "#fa2020", fontSize: isSmall ? 16 : 24 }}
+                              className="animate-pulse"
+                            />
+                          )}
+
+                          <div 
+                            style={{ display: showDurationMinus || showDurationPlus ? "flex" : "none" }}
+                            className="w-full flex justify-between px-0.5"
+                          >
+                            {showDurationPlus && (
+                              <AddCircleOutlineIcon
+                                onClick={(e) => handleDurationChange(e, milestone.id, 1)}
+                                style={{ fontSize: isSmall ? 14 : 20 }}
+                                className="cursor-pointer"
+                              />
+                            )}
+                            {showDurationMinus && (
+                              <RemoveCircleOutlineIcon
+                                onClick={(e) => handleDurationChange(e, milestone.id, -1)}
+                                style={{ fontSize: isSmall ? 14 : 20 }}
+                                className="hover:text-blue-200 cursor-pointer"
+                              />
+                            )}
+                          </div>
+
+                          {/* Connection Handles */}
+                          <div
+                            className={`absolute w-2.5 h-2.5 bg-blue-500 rounded-full 
+                                       transition-all cursor-crosshair
+                                       border-2 border-white shadow
+                                       ${showConnect ? 'opacity-100 scale-110' : 'opacity-0 group-hover:opacity-100'}
+                                       hover:scale-150 hover:bg-blue-400`}
+                            style={{
+                              left: "-5px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              zIndex: 200,
+                            }}
+                            onMouseDown={(e) => handleConnectionDragStart(e, milestone.id, "target")}
+                          />
+
+                          <div
+                            className={`absolute w-2.5 h-2.5 bg-green-500 rounded-full 
+                                       transition-all cursor-crosshair
+                                       border-2 border-white shadow
+                                       ${showConnect ? 'opacity-100 scale-110' : 'opacity-0 group-hover:opacity-100'}
+                                       hover:scale-150 hover:bg-green-400`}
+                            style={{
+                              right: "-5px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              zIndex: 200,
+                            }}
+                            onMouseDown={(e) => handleConnectionDragStart(e, milestone.id, "source")}
+                          />
+                        </div>
+                      </div>
+                    );
+                  });
+                });
+              })}
+            </div>
 
             {/* Team Ghost */}
             {ghost && (
