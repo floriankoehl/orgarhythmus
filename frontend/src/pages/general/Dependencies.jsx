@@ -36,6 +36,7 @@ import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import CloseIcon from '@mui/icons-material/Close';
 import SettingsIcon from '@mui/icons-material/Settings';
+import LockIcon from '@mui/icons-material/Lock';
 
 // Height constants (defaults)
 const DEFAULT_TASKHEIGHT_NORMAL = 32;
@@ -176,6 +177,9 @@ export default function Dependencies() {
   // ________________________________________
 
   const [mode, setMode] = useState("drag")
+
+  // Safe mode - prevents any data changes, only appearance changes allowed
+  const [safeMode, setSafeMode] = useState(false);
 
   // Store previous viewMode when shift is pressed
   const prevViewModeRef = useRef(viewMode);
@@ -642,6 +646,7 @@ export default function Dependencies() {
 
   // Add milestone locally
   const add_milestone_local = async (taskId) => {
+    if (safeMode) return;
     try {
       const result = await add_milestone(projectId, taskId);
       if (result.added_milestone) {
@@ -665,6 +670,7 @@ export default function Dependencies() {
 
   // Handle team drag
   const handleTeamDrag = (e, teamId, orderIndex) => {
+    if (safeMode) return;
     e.preventDefault();
     const containerRect = teamContainerRef.current?.getBoundingClientRect();
     if (!containerRect) return;
@@ -754,6 +760,7 @@ export default function Dependencies() {
 
   // Handle task drag
   const handleTaskDrag = (e, taskId, teamId, taskIndex) => {
+    if (safeMode) return;
     e.preventDefault();
     const containerRect = teamContainerRef.current?.getBoundingClientRect();
     if (!containerRect) return;
@@ -887,6 +894,8 @@ export default function Dependencies() {
 
   // Handle milestone mouse down (drag)
   const handleMileStoneMouseDown = (e, milestoneId) => {
+    if (safeMode) return;
+    
     if (mode === "delete") {
       handleMilestoneDelete(milestoneId);
       return;
@@ -1025,6 +1034,7 @@ export default function Dependencies() {
 
   // Handle milestone edge resize
   const handleMilestoneEdgeResize = (e, milestoneId, edge) => {
+    if (safeMode) return;
     e.stopPropagation();
     e.preventDefault();
 
@@ -1094,6 +1104,7 @@ export default function Dependencies() {
 
   // Handle day cell click (create milestone in milestone mode)
   const handleDayCellClick = (taskId, dayIndex) => {
+    if (safeMode) return;
     // Show confirmation modal instead of creating directly
     setMilestoneCreateModal({ taskId, dayIndex });
   };
@@ -1134,6 +1145,7 @@ export default function Dependencies() {
 
   // Connection handling
   const handleConnectionDragStart = (e, milestoneId, handleType) => {
+    if (safeMode) return;
     e.stopPropagation();
     const containerRect = teamContainerRef.current?.getBoundingClientRect();
     if (!containerRect) return;
@@ -1146,16 +1158,31 @@ export default function Dependencies() {
       y: e.clientY - containerRect.top,
     });
 
+    // Use requestAnimationFrame for smoother updates
+    let rafId = null;
+    let lastX = e.clientX - containerRect.left;
+    let lastY = e.clientY - containerRect.top;
+
     const onMouseMove = (moveEvent) => {
-      setConnectionEnd({
-        x: moveEvent.clientX - containerRect.left,
-        y: moveEvent.clientY - containerRect.top,
-      });
+      lastX = moveEvent.clientX - containerRect.left;
+      lastY = moveEvent.clientY - containerRect.top;
+      
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          setConnectionEnd({ x: lastX, y: lastY });
+          rafId = null;
+        });
+      }
     };
 
     const onMouseUp = async (upEvent) => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      
+      // Cancel any pending animation frame
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
 
       // Find if we're over a milestone handle
       const targetMilestone = findMilestoneAtPosition(
@@ -1716,6 +1743,22 @@ export default function Dependencies() {
                 Settings
               </h3>
               <div className="flex flex-wrap gap-2">
+                {/* Safe Mode Toggle */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSafeMode(!safeMode);
+                  }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
+                    safeMode 
+                      ? 'border-amber-400 bg-amber-50 text-amber-700' 
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                  title={safeMode ? "Safe mode is ON - data changes are prevented" : "Enable safe mode to prevent accidental changes"}
+                >
+                  <LockIcon style={{ fontSize: 14 }} />
+                  <span>{safeMode ? 'Safe' : 'Edit'}</span>
+                </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -2247,7 +2290,7 @@ export default function Dependencies() {
                       style={{
                         height: teamHeight,
                         width: `${TEAMWIDTH + TASKWIDTH}px`,
-                        backgroundColor: isTargetTeam ? '#dbeafe' : `${team.color}20`,
+                        backgroundColor: isTargetTeam ? '#dbeafe' : `${team.color}40`,
                         opacity: ghost?.id === team_key ? 0.2 : 1,
                         position: 'sticky',
                         left: 0,
@@ -2751,14 +2794,14 @@ export default function Dependencies() {
                         )}
 
                         {/* Connection handles - only in dependency mode */}
-                        {viewMode === "dependency" && (
+                        {viewMode === "dependency" && !safeMode && (
                           <>
                             {/* Target handle (left) */}
                             <div
                               className={`absolute top-1/2 -translate-y-1/2 left-0 -translate-x-1/2 rounded-full border-2 border-white shadow cursor-crosshair transition-all ${
                                 showConnect 
-                                  ? 'w-4 h-4 bg-indigo-500 hover:scale-125' 
-                                  : 'w-3 h-3 bg-slate-400 hover:bg-indigo-500 hover:w-4 hover:h-4'
+                                  ? 'w-3 h-3 bg-indigo-500 hover:scale-125' 
+                                  : 'w-2 h-2 bg-slate-400 hover:bg-indigo-500 hover:w-3 hover:h-3'
                               }`}
                               style={{ pointerEvents: 'auto', zIndex: 10 }}
                               onMouseDown={(e) => {
@@ -2770,8 +2813,8 @@ export default function Dependencies() {
                             <div
                               className={`absolute top-1/2 -translate-y-1/2 right-0 translate-x-1/2 rounded-full border-2 border-white shadow cursor-crosshair transition-all ${
                                 showConnect 
-                                  ? 'w-4 h-4 bg-indigo-500 hover:scale-125' 
-                                  : 'w-3 h-3 bg-slate-400 hover:bg-indigo-500 hover:w-4 hover:h-4'
+                                  ? 'w-3 h-3 bg-indigo-500 hover:scale-125' 
+                                  : 'w-2 h-2 bg-slate-400 hover:bg-indigo-500 hover:w-3 hover:h-3'
                               }`}
                               style={{ pointerEvents: 'auto', zIndex: 10 }}
                               onMouseDown={(e) => {
@@ -2780,11 +2823,6 @@ export default function Dependencies() {
                               }}
                             />
                           </>
-                        )}
-
-                        {/* Selection indicator - subtle underline */}
-                        {isSelected && (
-                          <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-blue-500 rounded-full opacity-80" />
                         )}
                       </div>
                     );
