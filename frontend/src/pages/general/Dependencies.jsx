@@ -462,20 +462,17 @@ export default function Dependencies() {
     const DRAG_THRESHOLD = 5;
 
     const onMouseMove = (e) => {
-      const new_x = e.clientX - parent_rect.x;
       const new_y = e.clientY - parent_rect.y;
 
       // Check if we've moved enough to start dragging
       if (!isDragging) {
-        const deltaX = Math.abs(new_x - startX);
+        const deltaX = Math.abs(e.clientX - parent_rect.x - startX);
         const deltaY = Math.abs(new_y - startY);
         if (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD) {
           isDragging = true;
           setGhost({
             ...team,
-            x: new_x - startX,
             y: new_y - mouseOffsetY,
-            offsetX: startX,
             offsetY: mouseOffsetY,
             height: currentTeamHeight,
           });
@@ -485,7 +482,6 @@ export default function Dependencies() {
       } else {
         setGhost((prev) => ({
           ...prev,
-          x: new_x - prev.offsetX,
           y: new_y - prev.offsetY,
         }));
       }
@@ -1204,22 +1200,55 @@ export default function Dependencies() {
             }}
             className="relative"
           >
-            {/* Task drop indicator line */}
-            {taskGhost && taskDropTarget && (
-              <div
-                className="absolute pointer-events-none"
-                style={{
-                  top: `${getTaskDropIndicatorY()}px`,
-                  left: `${TEAMWIDTH}px`,
-                  width: `${TASKWIDTH}px`,
-                  height: `${TASK_DROP_INDICATOR_HEIGHT}px`,
-                  backgroundColor: '#1d4ed8',
-                  borderRadius: '2px',
-                  zIndex: 200,
-                  boxShadow: '0 0 8px rgba(29, 78, 216, 0.6)',
-                }}
-              />
-            )}
+            {/* Sticky overlay for team ghost and task drop indicator */}
+            <div
+              style={{
+                position: 'sticky',
+                left: 0,
+                top: 0,
+                width: `${TEAMWIDTH + TASKWIDTH}px`,
+                height: 0,
+                zIndex: 150,
+                pointerEvents: 'none',
+              }}
+            >
+              {/* Task drop indicator line */}
+              {taskGhost && taskDropTarget && (
+                <div
+                  className="absolute pointer-events-none"
+                  style={{
+                    top: `${getTaskDropIndicatorY()}px`,
+                    left: `${TEAMWIDTH}px`,
+                    width: `${TASKWIDTH}px`,
+                    height: `${TASK_DROP_INDICATOR_HEIGHT}px`,
+                    backgroundColor: '#1d4ed8',
+                    borderRadius: '2px',
+                    zIndex: 200,
+                    boxShadow: '0 0 8px rgba(29, 78, 216, 0.6)',
+                  }}
+                />
+              )}
+
+              {/* Team Ghost */}
+              {ghost && (
+                <div
+                  className="absolute pointer-events-none"
+                  style={{
+                    top: `${ghost.y}px`,
+                    left: 0,
+                    height: `${ghost.height}px`,
+                    width: `${TEAMWIDTH + TASKWIDTH}px`,
+                    backgroundColor: `${ghost.color}`,
+                    zIndex: 100,
+                    opacity: 0.8,
+                    border: '2px dashed #374151',
+                    borderRadius: '4px',
+                  }}
+                >
+                  <div className="p-2 text-sm font-medium">{ghost.name}</div>
+                </div>
+              )}
+            </div>
 
             {/* Header Row */}
             <div className="flex" style={{ height: `${HEADER_HEIGHT}px`, position: 'relative', zIndex: 50 }}>
@@ -1800,28 +1829,6 @@ export default function Dependencies() {
                 });
               })}
             </div>
-
-
-
-            {/* Team Ghost */}
-            {ghost && (
-              <div
-                className="absolute pointer-events-none"
-                style={{
-                  height: `${ghost.height}px`,
-                  width: `${TEAMWIDTH + TASKWIDTH}px`,
-                  left: `${ghost.x}px`,
-                  top: `${ghost.y}px`,
-                  backgroundColor: `${ghost.color}`,
-                  zIndex: 100,
-                  opacity: 0.8,
-                  border: '2px dashed #374151',
-                  borderRadius: '4px',
-                }}
-              >
-                <div className="p-2 text-sm font-medium">{ghost.name}</div>
-              </div>
-            )}
 
             {/* Task Ghost */}
             {taskGhost && (
