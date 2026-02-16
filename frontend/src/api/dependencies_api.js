@@ -187,7 +187,7 @@ export async function delete_dependency_api(projectId, sourceId, targetId){
 }
 
 export async function reorder_team_tasks(projectId, taskId, targetTeamId, order) {
-    const res = await authFetch(`${API}/projects/${projectId}/reorder_team_tasks/`, {
+    const res = await authFetch(`/api/projects/${projectId}/reorder_team_tasks/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
