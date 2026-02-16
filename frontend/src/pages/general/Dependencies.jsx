@@ -19,21 +19,22 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
+import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 
-const TASKHEIGHT = 50;
+// Height constants
+const TASKHEIGHT_NORMAL = 50;
+const TASKHEIGHT_SMALL = 28;
 const TASKWIDTH = 200;
 
-const TEAMHEIGHT = 50;
 const TEAMWIDTH = 150;
 
 const TEAM_DRAG_HIGHLIGHT_HEIGHT = 5;
 const MARIGN_BETWEEN_DRAG_HIGHLIGHT = 5;
-const ROW =
-  TEAMHEIGHT +
-  MARIGN_BETWEEN_DRAG_HIGHLIGHT +
-  2 * MARIGN_BETWEEN_DRAG_HIGHLIGHT;
 
-const DAYWIDTH = TASKHEIGHT
+const DAYWIDTH = TASKHEIGHT_NORMAL;
 const HEADER_HEIGHT = 40;
 const TASK_DROP_INDICATOR_HEIGHT = 3;
 
@@ -50,6 +51,19 @@ function daysBetween(start, end) {
     return diffDays
 }
 
+// Helper to get task height based on size
+const getTaskHeight = (taskId, taskDisplaySettings) => {
+  const settings = taskDisplaySettings[taskId];
+  if (!settings || settings.hidden) return 0;
+  return settings.size === 'small' ? TASKHEIGHT_SMALL : TASKHEIGHT_NORMAL;
+};
+
+// Helper to check if task is visible
+const isTaskVisible = (taskId, taskDisplaySettings) => {
+  const settings = taskDisplaySettings[taskId];
+  return settings ? !settings.hidden : true;
+};
+
 export default function Dependencies() {
     
   const { projectId } = useParams();
@@ -58,9 +72,6 @@ export default function Dependencies() {
   const [projectStartDate, setProjectStartDate] = useState(null)
   const [milestones, setMilestones] = useState({})
   const [hoveredMilestone, setHoveredMilestone] = useState(null)
-
-
-
 
   const [teamOrder, setTeamOrder] = useState([]);
   const [teams, setTeams] = useState({});
@@ -76,77 +87,51 @@ export default function Dependencies() {
   const [isDraggingConnection, setIsDraggingConnection] = useState(false);
   const [connectionStart, setConnectionStart] = useState(null);
   const [connectionEnd, setConnectionEnd] = useState({ x: 0, y: 0 });
-  const [connections, setConnections] = useState([]); // Array of {source: id, target: id}
-  const [selectedConnection, setSelectedConnection] = useState(null); // {source: id, target: id}
+  const [connections, setConnections] = useState([]);
+  const [selectedConnection, setSelectedConnection] = useState(null);
 
   // Task drag state
   const [taskGhost, setTaskGhost] = useState(null);
-  const [taskDropTarget, setTaskDropTarget] = useState(null); // { teamId, index }
+  const [taskDropTarget, setTaskDropTarget] = useState(null);
 
   // Cross-team move confirmation modal
-  const [moveModal, setMoveModal] = useState(null); // { taskId, fromTeamId, toTeamId, newOrder }
+  const [moveModal, setMoveModal] = useState(null);
+
+  // Display settings for tasks: { [taskId]: { size: 'normal' | 'small', hidden: boolean } }
+  const [taskDisplaySettings, setTaskDisplaySettings] = useState({});
+
+  // Display settings for teams: { [teamId]: { hidden: boolean } }
+  const [teamDisplaySettings, setTeamDisplaySettings] = useState({});
 
 
   // ________Global Event Listener___________
   // ________________________________________
-  // ________________________________________
-  // ________________________________________
-  // ________________________________________
 
-  
-const [mode, setMode] = useState("drag")
+  const [mode, setMode] = useState("drag")
 
-useEffect(() => {
-  const down = (e) => {
-    if (e.ctrlKey) setMode("delete")
-    else if (e.shiftKey) setMode("duration")
-    else if (e.altKey) setMode("connect")
-  }
+  useEffect(() => {
+    const down = (e) => {
+      if (e.ctrlKey) setMode("delete")
+      else if (e.shiftKey) setMode("duration")
+      else if (e.altKey) setMode("connect")
+    }
 
-  const up = () => setMode("drag")
+    const up = () => setMode("drag")
 
-  window.addEventListener("keydown", down)
-  window.addEventListener("keyup", up)
-  return () => {
-    window.removeEventListener("keydown", down)
-    window.removeEventListener("keyup", up)
-  }
-}, [])
+    window.addEventListener("keydown", down)
+    window.addEventListener("keyup", up)
+    return () => {
+      window.removeEventListener("keydown", down)
+      window.removeEventListener("keyup", up)
+    }
+  }, [])
 
-
-
-
-
-
-
-
-
-
-
-
-
-  // ________________Layout_________________
-  // ________________________________________
-  // ________________________________________
-  // ________________________________________
-  // ________________________________________
-
-  //   Define height
-  // useEffect(() => {
-  //   if (!teamContainerRef.current) return;
-  //   setHeight(teamContainerRef.current.getBoundingClientRect().height);
-  // }, []);
 
   // ________________Loading_________________
   // ________________________________________
-  // ________________________________________
-  // ________________________________________
-  // ________________________________________
 
-//   Fetch Project, Teams and Tasks
   useEffect(() => {
     const load_all = async () => {
-        // Fetch Project
         const resProjcet = await fetch_project_details(projectId);
         const project = resProjcet.project
         const start_date = project.start_date
@@ -156,37 +141,35 @@ useEffect(() => {
         setDays(num_days)
         setProjectStartDate(new Date(start_date))
 
-      // 1️⃣ fetch teams
       const resTeams = await fetch_project_teams(projectId);
       const fetched_teams = resTeams.teams;
 
-      const teamOrder = [];
+      const newTeamOrder = [];
       const teamObject = {};
+      const initialTeamDisplaySettings = {};
 
       for (const team of fetched_teams) {
-        teamOrder.push(team.id);
+        newTeamOrder.push(team.id);
         teamObject[team.id] = {
           ...team,
-          height: TEAMHEIGHT,
           tasks: [],
         };
+        initialTeamDisplaySettings[team.id] = { hidden: false };
       }
 
-      // 2️⃣ fetch tasks AFTER teams exist
       const resTasks = await fetch_project_tasks(projectId);
+      const initialTaskDisplaySettings = {};
 
       for (const team_id in teamObject) {
         const teamTasks = resTasks.taskOrder?.[String(team_id)] || [];
         teamObject[team_id].tasks = teamTasks;
-        teamObject[team_id].height = teamTasks.length * TASKHEIGHT;
+        
+        // Initialize display settings for each task
+        for (const taskId of teamTasks) {
+          initialTaskDisplaySettings[taskId] = { size: 'normal', hidden: false };
+        }
       }
 
-
-
-
-
-
-      // Update Milestones to also have x coordinates for dragging
       const resMilestones = await get_all_milestones(projectId);
       const fetched_Milestones = resMilestones.milestones;
 
@@ -202,16 +185,13 @@ useEffect(() => {
         }
       }
 
-
-
-
-      // 3️⃣ commit state once
-      setTeamOrder(teamOrder);
+      setTeamOrder(newTeamOrder);
       setTeams(teamObject);
       setTasks(resTasks.tasks);
-      setMilestones(updated_milestones)
+      setMilestones(updated_milestones);
+      setTaskDisplaySettings(initialTaskDisplaySettings);
+      setTeamDisplaySettings(initialTeamDisplaySettings);
 
-      // 4️⃣ fetch dependencies
       try {
         const resDeps = await get_all_dependencies(projectId);
         const fetched_deps = resDeps.dependencies;
@@ -228,14 +208,134 @@ useEffect(() => {
     setReloadData(false)
   }, [reloadData, projectId]);
 
+
+  // ________DISPLAY SETTINGS HELPERS________
+  // ________________________________________
+
+  // Calculate team height based on visible tasks and their sizes
+  const getTeamHeight = (teamId) => {
+    const team = teams[teamId];
+    if (!team) return 0;
+    
+    let height = 0;
+    for (const taskId of team.tasks) {
+      height += getTaskHeight(taskId, taskDisplaySettings);
+    }
+    return height;
+  };
+
+  // Check if team is visible
+  const isTeamVisible = (teamId) => {
+    const settings = teamDisplaySettings[teamId];
+    return settings ? !settings.hidden : true;
+  };
+
+  // Get visible tasks for a team
+  const getVisibleTasks = (teamId) => {
+    const team = teams[teamId];
+    if (!team) return [];
+    return team.tasks.filter(taskId => isTaskVisible(taskId, taskDisplaySettings));
+  };
+
+  // Toggle task size
+  const toggleTaskSize = (taskId) => {
+    setTaskDisplaySettings(prev => ({
+      ...prev,
+      [taskId]: {
+        ...prev[taskId],
+        size: prev[taskId]?.size === 'small' ? 'normal' : 'small'
+      }
+    }));
+  };
+
+  // Toggle task visibility
+  const toggleTaskVisibility = (taskId) => {
+    setTaskDisplaySettings(prev => ({
+      ...prev,
+      [taskId]: {
+        ...prev[taskId],
+        hidden: !prev[taskId]?.hidden
+      }
+    }));
+  };
+
+  // Toggle team visibility
+  const toggleTeamVisibility = (teamId) => {
+    setTeamDisplaySettings(prev => ({
+      ...prev,
+      [teamId]: {
+        ...prev[teamId],
+        hidden: !prev[teamId]?.hidden
+      }
+    }));
+  };
+
+  // Set all visible tasks in a team to small
+  const setTeamTasksSmall = (teamId) => {
+    const team = teams[teamId];
+    if (!team) return;
+    
+    setTaskDisplaySettings(prev => {
+      const updated = { ...prev };
+      for (const taskId of team.tasks) {
+        if (!updated[taskId]?.hidden) {
+          updated[taskId] = { ...updated[taskId], size: 'small' };
+        }
+      }
+      return updated;
+    });
+  };
+
+  // Set all visible tasks in a team to normal
+  const setTeamTasksNormal = (teamId) => {
+    const team = teams[teamId];
+    if (!team) return;
+    
+    setTaskDisplaySettings(prev => {
+      const updated = { ...prev };
+      for (const taskId of team.tasks) {
+        if (!updated[taskId]?.hidden) {
+          updated[taskId] = { ...updated[taskId], size: 'normal' };
+        }
+      }
+      return updated;
+    });
+  };
+
+  // Show all hidden tasks in a team
+  const showAllTeamTasks = (teamId) => {
+    const team = teams[teamId];
+    if (!team) return;
+    
+    setTaskDisplaySettings(prev => {
+      const updated = { ...prev };
+      for (const taskId of team.tasks) {
+        updated[taskId] = { ...updated[taskId], hidden: false };
+      }
+      return updated;
+    });
+  };
+
+  // Check if team has any hidden tasks
+  const teamHasHiddenTasks = (teamId) => {
+    const team = teams[teamId];
+    if (!team) return false;
+    return team.tasks.some(taskId => taskDisplaySettings[taskId]?.hidden);
+  };
+
+  // Check if all visible tasks in team are small
+  const allVisibleTasksSmall = (teamId) => {
+    const visibleTasks = getVisibleTasks(teamId);
+    if (visibleTasks.length === 0) return false;
+    return visibleTasks.every(taskId => taskDisplaySettings[taskId]?.size === 'small');
+  };
+
+
   // ________________TEAMS___________________
-  // ________________________________________
-  // ________________________________________
-  // ________________________________________
   // ________________________________________
 
   const safe_team_order_local = async (new_order) => {
-    const res = await safe_team_order(projectId, new_order);
+    await safe_team_order(projectId, new_order);
   };
 
   const handleTeamDrag = (event, team_key, order_index) => {
@@ -246,27 +346,32 @@ useEffect(() => {
     const parent = teamContainerRef.current;
     const parent_rect = parent.getBoundingClientRect();
 
-    const children = [...parent.children];
-
     const startX = event.clientX - parent_rect.x;
     const startY = event.clientY - parent_rect.y;
 
     // Calculate the offset from the mouse to the top-left of the team row
-    // We need to account for: header height + drop highlights before this team + team heights before this team
     let teamTopOffset = HEADER_HEIGHT;
-    for (let i = 0; i < order_index; i++) {
+    
+    // Get visible teams up to this one
+    const visibleTeams = teamOrder.filter(tid => isTeamVisible(tid));
+    const visibleIndex = visibleTeams.indexOf(team_key);
+    
+    for (let i = 0; i < visibleIndex; i++) {
+      const tid = visibleTeams[i];
       teamTopOffset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-      teamTopOffset += teams[teamOrder[i]]?.height || 0;
+      teamTopOffset += getTeamHeight(tid);
     }
-    teamTopOffset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2; // drop highlight before current team
+    teamTopOffset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
     
     const mouseOffsetY = startY - teamTopOffset;
+    const currentTeamHeight = getTeamHeight(team_key);
 
     setGhost({
       ...team,
       x: startX,
-      y: startY - mouseOffsetY, // Start at the actual team position
+      y: startY - mouseOffsetY,
       offsetY: mouseOffsetY,
+      height: currentTeamHeight,
     });
 
     const onMouseMove = (e) => {
@@ -275,20 +380,17 @@ useEffect(() => {
 
       const mouseY = e.clientY - parent_rect.top;
 
-      // Calculate drop index based on accumulated heights
+      // Calculate drop index based on accumulated heights (only visible teams)
       let accumulatedY = HEADER_HEIGHT;
-      let index = teamOrder.length; // default: drop at end
+      let index = visibleTeams.length;
       
-      for (let i = 0; i < teamOrder.length; i++) {
-        const tid = teamOrder[i];
-        const team = teams[tid];
-        if (!team) continue;
+      for (let i = 0; i < visibleTeams.length; i++) {
+        const tid = visibleTeams[i];
         
-        // Add drop highlight height before this team
         accumulatedY += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
         
         const teamTop = accumulatedY;
-        const teamHeight = team.height;
+        const teamHeight = getTeamHeight(tid);
         const teamMid = teamTop + teamHeight / 2;
         
         if (mouseY < teamMid) {
@@ -299,36 +401,45 @@ useEffect(() => {
         accumulatedY += teamHeight;
       }
 
-      // If hovering just after the original item, treat it as the same gap
-      if (index === order_index + 1) {
-        index = order_index;
+      if (index === visibleIndex + 1) {
+        index = visibleIndex;
       }
 
-      const clamped = Math.max(0, Math.min(index, teamOrder.length));
+      const clamped = Math.max(0, Math.min(index, visibleTeams.length));
       to_index = clamped;
       setDropIndex(clamped);
 
-      setGhost((prev) => {
-        return {
-          ...prev,
-          x: new_x,
-          y: new_y - (prev.offsetY || 0),
-        };
-      });
+      setGhost((prev) => ({
+        ...prev,
+        x: new_x,
+        y: new_y - (prev.offsetY || 0),
+      }));
     };
 
     const onMouseUp = () => {
-      // Reorder team
+      // Convert visible index back to full teamOrder index
+      const visibleTeams = teamOrder.filter(tid => isTeamVisible(tid));
+      
       let copy = [...teamOrder];
-      const [moved] = copy.splice(from_index, 1);
+      const [moved] = copy.splice(order_index, 1);
+      
+      // Find the actual target index in the full array
       let targetIndex = to_index;
-      if (from_index < to_index) {
-        targetIndex -= 1;
+      if (from_index < order_index) {
+        // Need to adjust for the removed item
       }
-
-      copy.splice(targetIndex, 0, moved);
+      
+      // Map visible index to actual index
+      if (to_index >= visibleTeams.length) {
+        // Insert at end
+        copy.push(moved);
+      } else {
+        const targetTeamId = visibleTeams[to_index];
+        const actualTargetIndex = copy.indexOf(targetTeamId);
+        copy.splice(actualTargetIndex, 0, moved);
+      }
+      
       setTeamOrder(copy);
-
       safe_team_order_local(copy);
 
       setGhost(null);
@@ -341,10 +452,8 @@ useEffect(() => {
     document.addEventListener("mouseup", onMouseUp);
   };
 
+
   // ________________TASKS___________________
-  // ________________________________________
-  // ________________________________________
-  // ________________________________________
   // ________________________________________
 
   const handleTaskDrag = (event, taskKey, teamId, taskIndex) => {
@@ -363,13 +472,15 @@ useEffect(() => {
     let currentTargetTeamId = teamId;
     let currentTargetIndex = taskIndex;
 
+    const taskHeight = getTaskHeight(taskKey, taskDisplaySettings);
+
     setTaskGhost({
       taskKey,
       name: tasks[taskKey]?.name || 'Task',
       x: startX,
       y: startY,
       width: TASKWIDTH,
-      height: TASKHEIGHT,
+      height: taskHeight || TASKHEIGHT_NORMAL,
       fromTeamId: teamId,
     });
     setTaskDropTarget({ teamId, index: taskIndex });
@@ -384,39 +495,54 @@ useEffect(() => {
         y: newY,
       }));
 
-      // Determine which team and task index the mouse is over
       const mouseY = e.clientY - parentRect.top;
-      let accumulatedY = HEADER_HEIGHT; // Account for header
+      let accumulatedY = HEADER_HEIGHT;
       let foundTeamId = null;
       let foundTaskIndex = 0;
 
+      // Only iterate visible teams
       for (const tid of teamOrder) {
+        if (!isTeamVisible(tid)) continue;
+        
         const team = teams[tid];
         if (!team) continue;
 
-        // Drop highlight before team
         accumulatedY += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
 
         const teamTop = accumulatedY;
-        const teamBottom = teamTop + team.height;
+        const teamHeight = getTeamHeight(tid);
+        const teamBottom = teamTop + teamHeight;
 
         if (mouseY >= teamTop && mouseY < teamBottom) {
           foundTeamId = tid;
-          // Find task index within this team
+          
+          // Find task index within this team (only visible tasks)
           const relY = mouseY - teamTop;
-          foundTaskIndex = Math.floor(relY / TASKHEIGHT);
-          foundTaskIndex = Math.max(0, Math.min(foundTaskIndex, team.tasks.length));
+          let taskAccumulatedY = 0;
+          const visibleTasks = getVisibleTasks(tid);
+          
+          foundTaskIndex = visibleTasks.length; // default to end
+          for (let i = 0; i < visibleTasks.length; i++) {
+            const tHeight = getTaskHeight(visibleTasks[i], taskDisplaySettings);
+            if (relY < taskAccumulatedY + tHeight / 2) {
+              foundTaskIndex = i;
+              break;
+            }
+            taskAccumulatedY += tHeight;
+          }
           break;
         }
 
-        accumulatedY += team.height;
+        accumulatedY += teamHeight;
       }
 
-      // If mouse is below all teams, target last team's end
       if (foundTeamId === null && teamOrder.length > 0) {
-        const lastTeamId = teamOrder[teamOrder.length - 1];
-        foundTeamId = lastTeamId;
-        foundTaskIndex = teams[lastTeamId]?.tasks?.length || 0;
+        const visibleTeams = teamOrder.filter(tid => isTeamVisible(tid));
+        if (visibleTeams.length > 0) {
+          const lastTeamId = visibleTeams[visibleTeams.length - 1];
+          foundTeamId = lastTeamId;
+          foundTaskIndex = getVisibleTasks(lastTeamId).length;
+        }
       }
 
       if (foundTeamId !== null) {
@@ -433,17 +559,32 @@ useEffect(() => {
       setTaskGhost(null);
       setTaskDropTarget(null);
 
-      if (currentTargetTeamId === fromTeamId) {
-        // Same team reorder
-        const teamTasks = [...teams[fromTeamId].tasks];
-        const [moved] = teamTasks.splice(fromIndex, 1);
-        let insertAt = currentTargetIndex;
-        if (fromIndex < currentTargetIndex) {
-          insertAt = Math.max(0, insertAt - 1);
+      // Convert visible index to actual index in tasks array
+      const getActualIndex = (tid, visibleIndex) => {
+        const team = teams[tid];
+        if (!team) return 0;
+        
+        const visibleTasks = getVisibleTasks(tid);
+        if (visibleIndex >= visibleTasks.length) {
+          // Insert at end of all tasks
+          return team.tasks.length;
         }
-        teamTasks.splice(insertAt, 0, moved);
+        
+        const targetTaskId = visibleTasks[visibleIndex];
+        return team.tasks.indexOf(targetTaskId);
+      };
 
-        // Update local state
+      if (currentTargetTeamId === fromTeamId) {
+        const teamTasks = [...teams[fromTeamId].tasks];
+        const actualFromIndex = teamTasks.indexOf(taskKey);
+        const [moved] = teamTasks.splice(actualFromIndex, 1);
+        
+        let actualTargetIndex = getActualIndex(fromTeamId, currentTargetIndex);
+        if (actualFromIndex < actualTargetIndex) {
+          actualTargetIndex = Math.max(0, actualTargetIndex - 1);
+        }
+        teamTasks.splice(actualTargetIndex, 0, moved);
+
         setTeams(prev => ({
           ...prev,
           [fromTeamId]: {
@@ -452,16 +593,15 @@ useEffect(() => {
           },
         }));
 
-        // Persist
         reorder_team_tasks(projectId, taskKey, fromTeamId, teamTasks).catch(err =>
           console.error("Failed to reorder tasks:", err)
         );
       } else {
-        // Cross-team move — show confirmation modal
         const sourceTeamTasks = [...teams[fromTeamId].tasks].filter(t => t !== taskKey);
         const targetTeamTasks = [...teams[currentTargetTeamId].tasks];
-        let insertAt = Math.min(currentTargetIndex, targetTeamTasks.length);
-        targetTeamTasks.splice(insertAt, 0, taskKey);
+        
+        const actualTargetIndex = getActualIndex(currentTargetTeamId, currentTargetIndex);
+        targetTeamTasks.splice(actualTargetIndex, 0, taskKey);
 
         setMoveModal({
           taskId: taskKey,
@@ -484,22 +624,18 @@ useEffect(() => {
     if (!moveModal) return;
     const { taskId, fromTeamId, toTeamId, newSourceOrder, newTargetOrder } = moveModal;
 
-    // Update local state
     setTeams(prev => ({
       ...prev,
       [fromTeamId]: {
         ...prev[fromTeamId],
         tasks: newSourceOrder,
-        height: newSourceOrder.length * TASKHEIGHT,
       },
       [toTeamId]: {
         ...prev[toTeamId],
         tasks: newTargetOrder,
-        height: newTargetOrder.length * TASKHEIGHT,
       },
     }));
 
-    // Update task's team reference locally
     setTasks(prev => ({
       ...prev,
       [taskId]: {
@@ -508,7 +644,6 @@ useEffect(() => {
       },
     }));
 
-    // Persist to backend
     try {
       await reorder_team_tasks(projectId, taskId, toTeamId, newTargetOrder);
     } catch (err) {
@@ -526,87 +661,64 @@ useEffect(() => {
 
   // _____________MILESTONES________________
   // ________________________________________
-  // ________________________________________
-  // ________________________________________
-  // ________________________________________
 
   const add_milestone_local = async (task_id) => {
-    const res = await add_milestone(projectId, task_id)
-    const milestone = res.added_milestone
+    await add_milestone(projectId, task_id)
     setReloadData(true)
   }
 
+  const handleMileStoneDrag = (event, milestone_key) => {
+    event.preventDefault() 
 
+    const startX = event.clientX - milestones[milestone_key].x
+    let new_x = milestones[milestone_key].x
 
-
-  
-
-const handleMileStoneDrag = (event, milestone_key) => {
-  event.preventDefault() 
-
-  const startX = event.clientX - milestones[milestone_key].x
-  let new_x = milestones[milestone_key].x
-
-  const onMouseMove = (e) => {
-    // If Ctrl is pressed, stop dragging and snap to position
-    if (e.ctrlKey) {
-      onMouseUp()
-      return 
-    }
-
-    new_x = e.clientX - startX
-
-
-
-    if (new_x < 0) {
-      new_x = 0
-    }
-    if (new_x + DAYWIDTH > days * DAYWIDTH) {
-      new_x = days * DAYWIDTH - DAYWIDTH
-    }
-
-
-
-
-
-
-    setMilestones(prev => ({
-      ...prev,
-      [milestone_key]: {
-        ...prev[milestone_key],
-        x: new_x
+    const onMouseMove = (e) => {
+      if (e.ctrlKey) {
+        onMouseUp()
+        return 
       }
-    }))
-  }
 
-  const onMouseUp = () => {
-    const new_index = Math.round(new_x / DAYWIDTH)
-    const snapped_x = new_index * DAYWIDTH
+      new_x = e.clientX - startX
 
-
-    setMilestones(prev => ({
-      ...prev,
-      [milestone_key]: {
-        ...prev[milestone_key],
-        x: snapped_x,
-        start_index: new_index
+      if (new_x < 0) {
+        new_x = 0
       }
-    }))
+      if (new_x + DAYWIDTH > days * DAYWIDTH) {
+        new_x = days * DAYWIDTH - DAYWIDTH
+      }
 
-    update_start_index(projectId, milestone_key, new_index)
+      setMilestones(prev => ({
+        ...prev,
+        [milestone_key]: {
+          ...prev[milestone_key],
+          x: new_x
+        }
+      }))
+    }
 
+    const onMouseUp = () => {
+      const new_index = Math.round(new_x / DAYWIDTH)
+      const snapped_x = new_index * DAYWIDTH
 
+      setMilestones(prev => ({
+        ...prev,
+        [milestone_key]: {
+          ...prev[milestone_key],
+          x: snapped_x,
+          start_index: new_index
+        }
+      }))
 
-    document.removeEventListener("mousemove", onMouseMove)
-    document.removeEventListener("mouseup", onMouseUp)
+      update_start_index(projectId, milestone_key, new_index)
+
+      document.removeEventListener("mousemove", onMouseMove)
+      document.removeEventListener("mouseup", onMouseUp)
+    }
+
+    document.addEventListener("mousemove", onMouseMove)
+    document.addEventListener("mouseup", onMouseUp)
   }
-
-  document.addEventListener("mousemove", onMouseMove)
-  document.addEventListener("mouseup", onMouseUp)
-}
-
-
-
 
   const handleMileStoneMouseDown = (e, id) => {
     if (mode === "drag") {
@@ -616,11 +728,10 @@ const handleMileStoneDrag = (event, milestone_key) => {
       setReloadData(true)
       return delete_milestone(projectId, id)
     }
-    // In duration mode, don't do anything here - icons have their own handlers
   }
 
   const handleDurationChange = (e, id, amount) => {
-    e.stopPropagation() // Prevent parent mousedown from firing
+    e.stopPropagation()
     setReloadData(true)
     change_duration(projectId, id, amount)
   }
@@ -628,28 +739,30 @@ const handleMileStoneDrag = (event, milestone_key) => {
 
   // _____________CONNECTIONS________________
   // ________________________________________
-  // ________________________________________
-  // ________________________________________
-  // ________________________________________
 
-  // Calculate the accumulated Y offset for a team based on teamOrder
+  // Calculate the accumulated Y offset for a team based on teamOrder (only visible teams)
   const getTeamYOffset = (teamId) => {
-    let offset = HEADER_HEIGHT; // Account for header
+    let offset = HEADER_HEIGHT;
     for (const id of teamOrder) {
+      if (!isTeamVisible(id)) continue;
       if (id === teamId) break;
-      offset += teams[id]?.height || 0;
-      // Drop highlighter: marginTop + height + marginBottom = 5 + 5 + 5 = 15
+      offset += getTeamHeight(id);
       offset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
     }
     return offset;
   }
 
-  // Get the task's Y position within its team
+  // Get the task's Y position within its team (accounting for hidden and small tasks)
   const getTaskYOffset = (taskId, teamId) => {
     const team = teams[teamId];
     if (!team) return 0;
-    const taskIndex = team.tasks.indexOf(taskId);
-    return taskIndex * TASKHEIGHT;
+    
+    let offset = 0;
+    for (const tid of team.tasks) {
+      if (tid === taskId) break;
+      offset += getTaskHeight(tid, taskDisplaySettings);
+    }
+    return offset;
   }
 
   // Get absolute position of a milestone's handle in the container
@@ -662,29 +775,29 @@ const handleMileStoneDrag = (event, milestone_key) => {
 
     const teamId = task.team;
     
-    // Calculate X position
-    // Left side of milestone area starts after TEAMWIDTH + TASKWIDTH
+    // Check if team or task is hidden
+    if (!isTeamVisible(teamId)) return null;
+    if (!isTaskVisible(milestone.task, taskDisplaySettings)) return null;
+    
+    const taskHeight = getTaskHeight(milestone.task, taskDisplaySettings);
+    
     const milestoneAreaStart = TEAMWIDTH + TASKWIDTH;
     const milestoneX = milestone.x || (milestone.start_index * DAYWIDTH);
     const milestoneWidth = DAYWIDTH * milestone.duration;
     
-    // Account for p-1 (4px) padding on milestone container
     const handleX = handleType === "source"
-      ? milestoneAreaStart + milestoneX + milestoneWidth - 4  // right edge of visible milestone
-      : milestoneAreaStart + milestoneX + 4;  // left edge of visible milestone
+      ? milestoneAreaStart + milestoneX + milestoneWidth - 4
+      : milestoneAreaStart + milestoneX + 4;
 
-    // Calculate Y position
     const teamYOffset = getTeamYOffset(teamId);
     const taskYOffset = getTaskYOffset(milestone.task, teamId);
-    // Drop highlighter: marginTop + height + marginBottom = 5 + 5 + 5 = 15
     const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
     
-    const handleY = teamYOffset + dropHighlightOffset + taskYOffset + (TASKHEIGHT / 2);
+    const handleY = teamYOffset + dropHighlightOffset + taskYOffset + (taskHeight / 2);
 
     return { x: handleX, y: handleY };
   }
 
-  // Handle connection drag start
   const handleConnectionDragStart = (event, milestoneId, handleType) => {
     event.stopPropagation();
     event.preventDefault();
@@ -712,11 +825,9 @@ const handleMileStoneDrag = (event, milestone_key) => {
       const mouseX = e.clientX - containerRect.left;
       const mouseY = e.clientY - containerRect.top;
 
-      // Check if we're near any other milestone's handle
       for (let key in milestones) {
         if (String(key) === String(milestoneId)) continue;
 
-        // Check both source and target handles
         for (let targetHandleType of ["source", "target"]) {
           const handlePos = getMilestoneHandlePosition(key, targetHandleType);
           if (!handlePos) continue;
@@ -727,7 +838,6 @@ const handleMileStoneDrag = (event, milestone_key) => {
           );
 
           if (distance < CONNECTION_RADIUS) {
-            // Create connection
             createConnection(milestoneId, handleType, key, targetHandleType);
             break;
           }
@@ -744,9 +854,7 @@ const handleMileStoneDrag = (event, milestone_key) => {
     document.addEventListener("mouseup", handleMouseUp);
   };
 
-  // Create a connection between two milestones
   const createConnection = (fromId, fromHandle, toId, toHandle) => {
-    // Determine source and target based on handle types
     let sourceId, targetId;
     if (fromHandle === "source") {
       sourceId = fromId;
@@ -756,7 +864,6 @@ const handleMileStoneDrag = (event, milestone_key) => {
       targetId = fromId;
     }
 
-    // Check if connection already exists
     const exists = connections.some(
       conn => conn.source === sourceId && conn.target === targetId
     );
@@ -764,46 +871,38 @@ const handleMileStoneDrag = (event, milestone_key) => {
 
     setConnections(prev => [...prev, { source: sourceId, target: targetId }]);
 
-    // Persist to backend
     create_dependency(projectId, sourceId, targetId).catch(err =>
       console.error("Failed to save dependency:", err)
     );
   };
 
-  // Generate SVG path for a connection (bezier curve)
   const getConnectionPath = (startX, startY, endX, endY) => {
     const controlPointOffset = Math.abs(endX - startX) * 0.5;
     return `M ${startX} ${startY} C ${startX + controlPointOffset} ${startY}, ${endX - controlPointOffset} ${endY}, ${endX} ${endY}`;
   };
 
-  // Generate straight line path for dragging
   const getStraightPath = (startX, startY, endX, endY) => {
     return `M ${startX} ${startY} L ${endX} ${endY}`;
   };
 
-  // Delete a connection
   const deleteConnection = (sourceId, targetId) => {
     setConnections(prev => 
       prev.filter(conn => !(conn.source === sourceId && conn.target === targetId))
     );
-    // Clear selection if deleted connection was selected
     if (selectedConnection?.source === sourceId && selectedConnection?.target === targetId) {
       setSelectedConnection(null);
     }
 
-    // Persist to backend
     delete_dependency_api(projectId, sourceId, targetId).catch(err =>
       console.error("Failed to delete dependency:", err)
     );
   };
 
-  // Select a connection
   const handleConnectionClick = (e, conn) => {
     e.stopPropagation();
     if (mode === "delete") {
       deleteConnection(conn.source, conn.target);
     } else {
-      // Toggle selection
       if (selectedConnection?.source === conn.source && selectedConnection?.target === conn.target) {
         setSelectedConnection(null);
       } else {
@@ -815,24 +914,18 @@ const handleMileStoneDrag = (event, milestone_key) => {
 
   // ___________DYNAMIC HEIGHT______________
   // ________________________________________
-  // Calculate content height so the scroll container has
-  // exactly the height it needs (no Y overflow).
+
   const contentHeight = useMemo(() => {
-    let height = HEADER_HEIGHT; // Header row
+    let height = HEADER_HEIGHT;
     for (const teamId of teamOrder) {
-      const team = teams[teamId];
-      if (!team) continue;
-      // Drop highlight before each team: marginTop + height + marginBottom
+      if (!isTeamVisible(teamId)) continue;
       height += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-      // Team row height
-      height += team.height;
+      height += getTeamHeight(teamId);
     }
-    // Last drop highlight
     height += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
     return height;
-  }, [teamOrder, teams]);
+  }, [teamOrder, teams, taskDisplaySettings, teamDisplaySettings]);
 
-  // Generate day labels from project start date
   const dayLabels = useMemo(() => {
     if (!projectStartDate || !days) return [];
     const labels = [];
@@ -846,23 +939,41 @@ const handleMileStoneDrag = (event, milestone_key) => {
     return labels;
   }, [projectStartDate, days]);
 
-
-  // Helper: compute the Y pixel position of a task drop indicator
   const getTaskDropIndicatorY = () => {
     if (!taskDropTarget) return 0;
     const { teamId, index } = taskDropTarget;
-    let y = HEADER_HEIGHT; // Account for header
+    let y = HEADER_HEIGHT;
+    
     for (const tid of teamOrder) {
-      // drop highlight before team
+      if (!isTeamVisible(tid)) continue;
+      
       y += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+      
       if (tid === teamId) {
-        y += index * TASKHEIGHT;
+        const visibleTasks = getVisibleTasks(tid);
+        for (let i = 0; i < index && i < visibleTasks.length; i++) {
+          y += getTaskHeight(visibleTasks[i], taskDisplaySettings);
+        }
         return y;
       }
-      y += teams[tid]?.height || 0;
+      
+      y += getTeamHeight(tid);
     }
     return y;
   };
+
+  // Get visible team index for drop highlighting
+  const getVisibleTeamIndex = (teamId) => {
+    let index = 0;
+    for (const tid of teamOrder) {
+      if (!isTeamVisible(tid)) continue;
+      if (tid === teamId) return index;
+      index++;
+    }
+    return -1;
+  };
+
+  const visibleTeamCount = teamOrder.filter(tid => isTeamVisible(tid)).length;
 
 
   return (
@@ -900,17 +1011,17 @@ const handleMileStoneDrag = (event, milestone_key) => {
         </div>
       )}
 
-      {/* Page wrapper – natural flow, page-level Y scroll */}
+      {/* Page wrapper */}
       <div 
         className="p-10 w-full min-w-0 select-none"
         onClick={() => setSelectedConnection(null)}
       >
-        {/* Scroll container – exact height, horizontal scroll only */}
+        {/* Scroll container */}
         <div
           style={{ height: `${contentHeight}px` }}
           className="overflow-x-auto overflow-y-hidden"
         >
-          {/* Inner container with full width for horizontal scroll */}
+          {/* Inner container */}
           <div
             ref={teamContainerRef}
             style={{
@@ -919,360 +1030,403 @@ const handleMileStoneDrag = (event, milestone_key) => {
             }}
             className="relative"
           >
-          {/* SVG Layer for Connections — BEHIND teams/tasks */}
-          <svg
-            className="absolute top-0 left-0 w-full h-full"
-            style={{ zIndex: 5, pointerEvents: 'none' }}
-          >
-            <defs>
-              <style>
-                {`
-                  @keyframes flowAnimation {
-                    from { stroke-dashoffset: 24; }
-                    to { stroke-dashoffset: 0; }
-                  }
-                  @keyframes flowAnimationSelected {
-                    from { stroke-dashoffset: 24; }
-                    to { stroke-dashoffset: 0; }
-                  }
-                `}
-              </style>
-            </defs>
+            {/* SVG Layer for Connections */}
+            <svg
+              className="absolute top-0 left-0 w-full h-full"
+              style={{ zIndex: 5, pointerEvents: 'none' }}
+            >
+              <defs>
+                <style>
+                  {`
+                    @keyframes flowAnimation {
+                      from { stroke-dashoffset: 24; }
+                      to { stroke-dashoffset: 0; }
+                    }
+                  `}
+                </style>
+              </defs>
 
-            {/* Render existing connections */}
-            {connections.map((conn) => {
-              const sourcePos = getMilestoneHandlePosition(conn.source, "source");
-              const targetPos = getMilestoneHandlePosition(conn.target, "target");
+              {connections.map((conn) => {
+                const sourcePos = getMilestoneHandlePosition(conn.source, "source");
+                const targetPos = getMilestoneHandlePosition(conn.target, "target");
 
-              if (!sourcePos || !targetPos) return null;
+                if (!sourcePos || !targetPos) return null;
 
-              const isSelected = selectedConnection?.source === conn.source && 
-                                 selectedConnection?.target === conn.target;
+                const isSelected = selectedConnection?.source === conn.source && 
+                                   selectedConnection?.target === conn.target;
 
-              return (
-                <g key={`${conn.source}-${conn.target}`} style={{ pointerEvents: 'auto' }}>
-                  {/* Invisible wider path for easier clicking */}
-                  <path
-                    d={getConnectionPath(
-                      sourcePos.x,
-                      sourcePos.y,
-                      targetPos.x,
-                      targetPos.y
-                    )}
-                    stroke="transparent"
-                    strokeWidth="15"
-                    fill="none"
-                    style={{ cursor: "pointer" }}
-                    onClick={(e) => handleConnectionClick(e, conn)}
-                  />
-                  {/* Visible animated path */}
-                  <path
-                    d={getConnectionPath(
-                      sourcePos.x,
-                      sourcePos.y,
-                      targetPos.x,
-                      targetPos.y
-                    )}
-                    stroke={isSelected ? "#6366f1" : "#374151"}
-                    strokeWidth={isSelected ? "3.5" : "2.5"}
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeDasharray="8, 4"
-                    style={{
-                      animation: "flowAnimation 3s linear infinite",
-                      pointerEvents: "none",
-                      filter: isSelected ? "drop-shadow(0 0 3px rgba(99, 102, 241, 0.5))" : "none",
-                    }}
-                  />
-                </g>
-              );
-            })}
+                return (
+                  <g key={`${conn.source}-${conn.target}`} style={{ pointerEvents: 'auto' }}>
+                    <path
+                      d={getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y)}
+                      stroke="transparent"
+                      strokeWidth="15"
+                      fill="none"
+                      style={{ cursor: "pointer" }}
+                      onClick={(e) => handleConnectionClick(e, conn)}
+                    />
+                    <path
+                      d={getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y)}
+                      stroke={isSelected ? "#6366f1" : "#374151"}
+                      strokeWidth={isSelected ? "3.5" : "2.5"}
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeDasharray="8, 4"
+                      style={{
+                        animation: "flowAnimation 3s linear infinite",
+                        pointerEvents: "none",
+                        filter: isSelected ? "drop-shadow(0 0 3px rgba(99, 102, 241, 0.5))" : "none",
+                      }}
+                    />
+                  </g>
+                );
+              })}
 
-            {/* Render dragging connection - straight line */}
-            {isDraggingConnection && connectionStart && (
-              <path
-                d={getStraightPath(
-                  connectionStart.x,
-                  connectionStart.y,
-                  connectionEnd.x,
-                  connectionEnd.y
-                )}
-                stroke="#6366f1"
-                strokeWidth="2"
-                strokeDasharray="5,5"
-                fill="none"
-                strokeLinecap="round"
-                opacity="0.7"
-                style={{ pointerEvents: "none" }}
+              {isDraggingConnection && connectionStart && (
+                <path
+                  d={getStraightPath(connectionStart.x, connectionStart.y, connectionEnd.x, connectionEnd.y)}
+                  stroke="#6366f1"
+                  strokeWidth="2"
+                  strokeDasharray="5,5"
+                  fill="none"
+                  strokeLinecap="round"
+                  opacity="0.7"
+                  style={{ pointerEvents: "none" }}
+                />
+              )}
+            </svg>
+
+            {/* Task drop indicator line */}
+            {taskGhost && taskDropTarget && (
+              <div
+                className="absolute pointer-events-none"
+                style={{
+                  top: `${getTaskDropIndicatorY()}px`,
+                  left: `${TEAMWIDTH}px`,
+                  width: `${TASKWIDTH}px`,
+                  height: `${TASK_DROP_INDICATOR_HEIGHT}px`,
+                  backgroundColor: '#1d4ed8',
+                  borderRadius: '2px',
+                  zIndex: 100,
+                  boxShadow: '0 0 8px rgba(29, 78, 216, 0.6)',
+                }}
               />
             )}
-          </svg>
 
-          {/* Task drop indicator line */}
-          {taskGhost && taskDropTarget && (
-            <div
-              className="absolute pointer-events-none"
-              style={{
-                top: `${getTaskDropIndicatorY()}px`,
-                left: `${TEAMWIDTH}px`,
-                width: `${TASKWIDTH}px`,
-                height: `${TASK_DROP_INDICATOR_HEIGHT}px`,
-                backgroundColor: '#1d4ed8',
-                borderRadius: '2px',
-                zIndex: 100,
-                boxShadow: '0 0 8px rgba(29, 78, 216, 0.6)',
-              }}
-            />
-          )}
-
-          {/* Header Row */}
-          <div className="flex" style={{ height: `${HEADER_HEIGHT}px`, position: 'relative', zIndex: 15 }}>
-            {/* Sticky header left */}
-            <div
-              className="flex border-b bg-slate-100 text-sm font-semibold text-slate-700"
-              style={{
-                width: `${TEAMWIDTH + TASKWIDTH}px`,
-                height: `${HEADER_HEIGHT}px`,
-                position: 'sticky',
-                left: 0,
-                zIndex: 15,
-              }}
-            >
+            {/* Header Row */}
+            <div className="flex" style={{ height: `${HEADER_HEIGHT}px`, position: 'relative', zIndex: 15 }}>
               <div
-                className="flex items-center justify-center border-r"
-                style={{ width: `${TEAMWIDTH}px` }}
+                className="flex border-b bg-slate-100 text-sm font-semibold text-slate-700"
+                style={{
+                  width: `${TEAMWIDTH + TASKWIDTH}px`,
+                  height: `${HEADER_HEIGHT}px`,
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 15,
+                }}
               >
-                Team
-              </div>
-              <div
-                className="flex items-center justify-center"
-                style={{ width: `${TASKWIDTH}px` }}
-              >
-                Tasks
-              </div>
-            </div>
-            {/* Day labels */}
-            <div className="flex border-b bg-slate-50">
-              {dayLabels.map((label, i) => (
                 <div
-                  key={i}
-                  className="flex items-center justify-center text-xs text-slate-500 border-r"
-                  style={{ width: `${DAYWIDTH}px`, height: `${HEADER_HEIGHT}px` }}
+                  className="flex items-center justify-center border-r"
+                  style={{ width: `${TEAMWIDTH}px` }}
                 >
-                  {label}
+                  Team
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Teams List */}
-          {teamOrder.map((team_key, index) => {
-            const team = teams[team_key];
-            const isTargetTeam = taskGhost && taskDropTarget?.teamId === team_key && taskDropTarget?.teamId !== taskGhost.fromTeamId;
-            return (
-              <div key={`${team_key}_container`} style={{ position: 'relative', zIndex: 10 }}>
-                {/* Redrag Highlighter */}
-                <div className="flex">
-                  <div
-                    style={{
-                      marginBottom: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
-                      marginTop: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
-                      height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT}px`,
-                      width: `${TEAMWIDTH + TASKWIDTH}px`,
-                      opacity: dropIndex === index ? 1 : 0,
-                      position: 'sticky',
-                      left: 0,
-                      zIndex: 10,
-                      backgroundColor: 'black',
-                    }}
-                    className="rounded-l-full"
-                  ></div>
-                  <div
-                    style={{
-                      marginBottom: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
-                      marginTop: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
-                      height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT}px`,
-                      opacity: dropIndex === index ? 1 : 0,
-                      backgroundColor: 'black',
-                    }}
-                    className="rounded-r-full flex-1"
-                  ></div>
+                <div
+                  className="flex items-center justify-center"
+                  style={{ width: `${TASKWIDTH}px` }}
+                >
+                  Tasks
                 </div>
-
-                {/* Team Row - contains sticky left part + scrollable right part */}
-                <div className="flex">
-                  {/* STICKY LEFT: Team + Tasks */}
+              </div>
+              <div className="flex border-b bg-slate-50">
+                {dayLabels.map((label, i) => (
                   <div
-                    
-                    style={{
-                      height: team.height,
-                      width: `${TEAMWIDTH + TASKWIDTH}px`,
-                      backgroundColor: isTargetTeam ? '#bfdbfe' : `${team.color}`,
-                      opacity: ghost?.id === team_key ? 0.2 : 1,
-                      position: 'sticky',
-                      left: 0,
-                      zIndex: 20,
-                      transition: 'background-color 0.15s ease',
-                      boxShadow: isTargetTeam ? 'inset 0 0 0 2px #3b82f6' : 'none',
-                    }}
-                    className="flex border flex-shrink-0"
+                    key={i}
+                    className="flex items-center justify-center text-xs text-slate-500 border-r"
+                    style={{ width: `${DAYWIDTH}px`, height: `${HEADER_HEIGHT}px` }}
                   >
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Teams List */}
+            {teamOrder.map((team_key, orderIndex) => {
+              const team = teams[team_key];
+              if (!team) return null;
+              
+              // Skip hidden teams
+              if (!isTeamVisible(team_key)) return null;
+              
+              const visibleIndex = getVisibleTeamIndex(team_key);
+              const teamHeight = getTeamHeight(team_key);
+              const visibleTasks = getVisibleTasks(team_key);
+              const isTargetTeam = taskGhost && taskDropTarget?.teamId === team_key && taskDropTarget?.teamId !== taskGhost.fromTeamId;
+              
+              return (
+                <div key={`${team_key}_container`} style={{ position: 'relative', zIndex: 10 }}>
+                  {/* Drop Highlighter */}
+                  <div className="flex">
                     <div
                       style={{
-                        width: `${TEAMWIDTH}px`,
+                        marginBottom: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
+                        marginTop: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
+                        height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT}px`,
+                        width: `${TEAMWIDTH + TASKWIDTH}px`,
+                        opacity: dropIndex === visibleIndex ? 1 : 0,
+                        position: 'sticky',
+                        left: 0,
+                        zIndex: 10,
+                        backgroundColor: 'black',
                       }}
-                    >
-                      <div 
-                      onMouseDown={(e) => {
-                      handleTeamDrag(e, team_key, index);
-                    }}
-                      className="border h-full w-full cursor-pointer">
-                        {teams[team_key].name}
-                      </div>
-                      
-                    </div>
-
-                    <div>
-                      {team.tasks.map((task_key, taskIndex) => {
-                        return (
-                          <div
-                            className="border-b border-l flex justify-between w-full items-center"
-                            style={{
-                              height: `${TASKHEIGHT}px`,
-                              width: `${TASKWIDTH}px`,
-                              borderBottom:
-                                team.tasks.length - 1 === taskIndex
-                                  ? "none"
-                                  : "1px solid black",
-                              opacity: taskGhost?.taskKey === task_key ? 0.3 : 1,
-                            }}
-                            key={`${task_key}_container`}
-                          >
-                            <div
-                              onMouseDown={(e) => {
-                                if (mode === "drag") {
-                                  handleTaskDrag(e, task_key, team_key, taskIndex);
-                                }
-                              }}
-                              className="flex-1 h-full flex items-center px-1 cursor-grab active:cursor-grabbing truncate"
-                            >
-                                {tasks[task_key]?.name}
-                            </div>
-
-
-
-                            {/* Add Milestone Button */}
-                            <div 
-                            onClick={()=>{add_milestone_local(task_key)}}
-                            className="bg-white h-7 w-7 m-1 flex justify-center items-center rounded hover:bg-gray-100 active:bg-gray-200">
-                              <AddIcon/>
-                            </div>
-                          
-                          </div>
-                        );
-                      })}
-                    </div>
+                      className="rounded-l-full"
+                    />
+                    <div
+                      style={{
+                        marginBottom: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
+                        marginTop: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
+                        height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT}px`,
+                        opacity: dropIndex === visibleIndex ? 1 : 0,
+                        backgroundColor: 'black',
+                      }}
+                      className="rounded-r-full flex-1"
+                    />
                   </div>
 
-                  {/* SCROLLABLE RIGHT: Milestones/Days */}
-                  <div
-                    className="border-t border-b"
-                    style={{ height: `${team.height}px` }}
-                  >
-                    {team.tasks.map((task_key, taskIndex) => {
-                      return (
-                        <div
-                          className="flex relative"
-                          style={{
-                            height: `${TASKHEIGHT}px`,
-                            borderBottom:
-                              team.tasks.length - 1 === taskIndex
-                                ? "none"
-                                : "1px solid black",
-                          }}
-                          key={`${task_key}_milestone`}
+                  {/* Team Row */}
+                  <div className="flex">
+                    {/* STICKY LEFT: Team + Tasks */}
+                    <div
+                      style={{
+                        height: teamHeight,
+                        width: `${TEAMWIDTH + TASKWIDTH}px`,
+                        backgroundColor: isTargetTeam ? '#bfdbfe' : `${team.color}`,
+                        opacity: ghost?.id === team_key ? 0.2 : 1,
+                        position: 'sticky',
+                        left: 0,
+                        zIndex: 20,
+                        transition: 'background-color 0.15s ease',
+                        boxShadow: isTargetTeam ? 'inset 0 0 0 2px #3b82f6' : 'none',
+                      }}
+                      className="flex border flex-shrink-0"
+                    >
+                      {/* Team Column */}
+                      <div
+                        style={{ width: `${TEAMWIDTH}px` }}
+                        className="flex flex-col"
+                      >
+                        {/* Team Name - Draggable */}
+                        <div 
+                          onMouseDown={(e) => handleTeamDrag(e, team_key, orderIndex)}
+                          className="border-b h-8 px-2 flex items-center cursor-grab active:cursor-grabbing"
                         >
+                          <span className="truncate text-sm font-medium">{team.name}</span>
+                        </div>
+                        
+                        {/* Team Controls */}
+                        <div className="flex-1 flex flex-col p-1 gap-1">
+                          {/* Size Toggle */}
+                          <button
+                            onClick={() => allVisibleTasksSmall(team_key) ? setTeamTasksNormal(team_key) : setTeamTasksSmall(team_key)}
+                            className="flex items-center gap-1 px-1.5 py-0.5 text-xs rounded hover:bg-white/50 transition"
+                            title={allVisibleTasksSmall(team_key) ? "Expand all tasks" : "Collapse all tasks"}
+                          >
+                            {allVisibleTasksSmall(team_key) ? (
+                              <UnfoldMoreIcon style={{ fontSize: 14 }} />
+                            ) : (
+                              <UnfoldLessIcon style={{ fontSize: 14 }} />
+                            )}
+                            <span>{allVisibleTasksSmall(team_key) ? 'Expand' : 'Collapse'}</span>
+                          </button>
+                          
+                          {/* Show Hidden Tasks */}
+                          {teamHasHiddenTasks(team_key) && (
+                            <button
+                              onClick={() => showAllTeamTasks(team_key)}
+                              className="flex items-center gap-1 px-1.5 py-0.5 text-xs rounded hover:bg-white/50 transition text-blue-700"
+                              title="Show all hidden tasks"
+                            >
+                              <VisibilityIcon style={{ fontSize: 14 }} />
+                              <span>Show hidden</span>
+                            </button>
+                          )}
+                          
+                          {/* Hide Team */}
+                          <button
+                            onClick={() => toggleTeamVisibility(team_key)}
+                            className="flex items-center gap-1 px-1.5 py-0.5 text-xs rounded hover:bg-white/50 transition text-red-700"
+                            title="Hide team"
+                          >
+                            <VisibilityOffIcon style={{ fontSize: 14 }} />
+                            <span>Hide team</span>
+                          </button>
+                        </div>
+                      </div>
 
+                      {/* Tasks Column */}
+                      <div className="flex flex-col">
+                        {team.tasks.map((task_key, taskIndex) => {
+                          if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
+                          
+                          const taskHeight = getTaskHeight(task_key, taskDisplaySettings);
+                          const isSmall = taskDisplaySettings[task_key]?.size === 'small';
+                          const visibleTaskIndex = visibleTasks.indexOf(task_key);
+                          const isLastVisible = visibleTaskIndex === visibleTasks.length - 1;
+                          
+                          return (
+                            <div
+                              className="border-b border-l flex justify-between w-full items-center"
+                              style={{
+                                height: `${taskHeight}px`,
+                                width: `${TASKWIDTH}px`,
+                                borderBottom: isLastVisible ? "none" : "1px solid black",
+                                opacity: taskGhost?.taskKey === task_key ? 0.3 : 1,
+                              }}
+                              key={`${task_key}_container`}
+                            >
+                              {/* Task Name */}
+                              <div
+                                onMouseDown={(e) => {
+                                  if (mode === "drag") {
+                                    handleTaskDrag(e, task_key, team_key, visibleTaskIndex);
+                                  }
+                                }}
+                                className={`flex-1 h-full flex items-center px-1 cursor-grab active:cursor-grabbing truncate ${isSmall ? 'text-xs' : 'text-sm'}`}
+                              >
+                                {tasks[task_key]?.name}
+                              </div>
 
-                          {/* Milestone Rendering */}
-                          {tasks[task_key]?.milestones?.map((milestone_from_task)=>{
-                            const milestone = milestones[milestone_from_task.id]
-                            if (!milestone) return null;
-                            
-                            const showDelete = hoveredMilestone === milestone.id && mode === "delete"
-                            const showDurationPlus = hoveredMilestone === milestone.id && mode === "duration"
-                            const showDurationMinus = hoveredMilestone === milestone.id && mode === "duration" && milestone.duration > 1
-                            const showConnect = mode === "connect"
-                            
+                              {/* Task Controls */}
+                              <div className="flex items-center gap-0.5 pr-1">
+                                {/* Size Toggle */}
+                                <button
+                                  onClick={() => toggleTaskSize(task_key)}
+                                  className={`flex items-center justify-center rounded hover:bg-white/70 transition ${isSmall ? 'h-5 w-5' : 'h-6 w-6'}`}
+                                  title={isSmall ? "Expand task" : "Collapse task"}
+                                >
+                                  {isSmall ? (
+                                    <UnfoldMoreIcon style={{ fontSize: isSmall ? 12 : 16 }} />
+                                  ) : (
+                                    <UnfoldLessIcon style={{ fontSize: 16 }} />
+                                  )}
+                                </button>
+                                
+                                {/* Hide Task */}
+                                <button
+                                  onClick={() => toggleTaskVisibility(task_key)}
+                                  className={`flex items-center justify-center rounded hover:bg-white/70 transition ${isSmall ? 'h-5 w-5' : 'h-6 w-6'}`}
+                                  title="Hide task"
+                                >
+                                  <VisibilityOffIcon style={{ fontSize: isSmall ? 12 : 16 }} />
+                                </button>
+                                
+                                {/* Add Milestone */}
+                                {!isSmall && (
+                                  <div 
+                                    onClick={() => add_milestone_local(task_key)}
+                                    className="bg-white h-6 w-6 flex justify-center items-center rounded hover:bg-gray-100 active:bg-gray-200 cursor-pointer"
+                                  >
+                                    <AddIcon style={{ fontSize: 16 }} />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
 
+                    {/* SCROLLABLE RIGHT: Milestones/Days */}
+                    <div
+                      className="border-t border-b bg-white"
+                      style={{ height: `${teamHeight}px` }}
+                    >
+                      {team.tasks.map((task_key, taskIndex) => {
+                        if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
+                        
+                        const taskHeight = getTaskHeight(task_key, taskDisplaySettings);
+                        const isSmall = taskDisplaySettings[task_key]?.size === 'small';
+                        const visibleTaskIndex = visibleTasks.indexOf(task_key);
+                        const isLastVisible = visibleTaskIndex === visibleTasks.length - 1;
+                        
+                        return (
+                          <div
+                            className="flex relative"
+                            style={{
+                              height: `${taskHeight}px`,
+                              borderBottom: isLastVisible ? "none" : "1px solid black",
+                            }}
+                            key={`${task_key}_milestone`}
+                          >
+                            {/* Milestone Rendering */}
+                            {tasks[task_key]?.milestones?.map((milestone_from_task) => {
+                              const milestone = milestones[milestone_from_task.id];
+                              if (!milestone) return null;
+                              
+                              const showDelete = hoveredMilestone === milestone.id && mode === "delete";
+                              const showDurationPlus = hoveredMilestone === milestone.id && mode === "duration";
+                              const showDurationMinus = hoveredMilestone === milestone.id && mode === "duration" && milestone.duration > 1;
+                              const showConnect = mode === "connect";
 
-                            return (
-                               <div
-                                  onMouseDown={(e)=>{
+                              return (
+                                <div
+                                  onMouseDown={(e) => {
                                     if (mode !== "connect") {
-                                      handleMileStoneMouseDown(e, milestone_from_task.id)
+                                      handleMileStoneMouseDown(e, milestone_from_task.id);
                                     }
                                   }}
-
                                   onMouseEnter={() => setHoveredMilestone(milestone.id)}
                                   onMouseLeave={() => setHoveredMilestone(null)}
-
-
-
-                                  className="absolute p-1 group"
+                                  className="absolute p-0.5 group"
                                   style={{
-                                      height: `${TASKHEIGHT}px`,
-                                      width: `${DAYWIDTH * milestone.duration}px`,
-                                      left: `${milestone.x}px`,
-                                      opacity: ghost?.id === team_key ? 0.2 : 1,
-                                      zIndex: 10,
+                                    height: `${taskHeight}px`,
+                                    width: `${DAYWIDTH * milestone.duration}px`,
+                                    left: `${milestone.x}px`,
+                                    opacity: ghost?.id === team_key ? 0.2 : 1,
+                                    zIndex: 10,
                                   }}
-                                  key={milestone.id}>
-                                    <div className="h-full w-full rounded bg-slate-200 shadow-xl border border-gray-500 text-black flex justify-center items-center relative">
-                                    {!showDelete && !showDurationPlus && !showDurationMinus && !showConnect && "M"}
+                                  key={milestone.id}
+                                >
+                                  <div className={`h-full w-full rounded bg-slate-200 shadow-xl border border-gray-500 text-black flex justify-center items-center relative ${isSmall ? 'text-xs' : ''}`}>
+                                    {!showDelete && !showDurationPlus && !showDurationMinus && !showConnect && (isSmall ? "" : "M")}
 
                                     {showDelete && (
                                       <DeleteForeverIcon
-                                        style={{ color: "#fa2020" }}
+                                        style={{ color: "#fa2020", fontSize: isSmall ? 16 : 24 }}
                                         className="animate-pulse"
                                       />
                                     )}
 
                                     <div 
-                                    style={{
-                                      display: showDurationMinus || showDurationPlus ? "flex" : "none"
-                                    }}
-                                    className="w-full flex justify-between px-1">
+                                      style={{ display: showDurationMinus || showDurationPlus ? "flex" : "none" }}
+                                      className="w-full flex justify-between px-0.5"
+                                    >
                                       {showDurationPlus && (
-                                      <AddCircleOutlineIcon
-                                        onClick={(e) => handleDurationChange(e, milestone.id, 1)}
-                                        style={{}}
-                                        className="cursor-pointer ml-1"
-                                      />
-                                    )}
-
-
+                                        <AddCircleOutlineIcon
+                                          onClick={(e) => handleDurationChange(e, milestone.id, 1)}
+                                          style={{ fontSize: isSmall ? 14 : 20 }}
+                                          className="cursor-pointer"
+                                        />
+                                      )}
                                       {showDurationMinus && (
-                                      <RemoveCircleOutlineIcon
-                                        onClick={(e) => handleDurationChange(e, milestone.id, -1)}
-                                        style={{}}
-                                        className="hover:text-blue-200 cursor-pointer"
-                                      />
-                                    )}
-
-                                    
+                                        <RemoveCircleOutlineIcon
+                                          onClick={(e) => handleDurationChange(e, milestone.id, -1)}
+                                          style={{ fontSize: isSmall ? 14 : 20 }}
+                                          className="hover:text-blue-200 cursor-pointer"
+                                        />
+                                      )}
                                     </div>
 
-                                    {/* Connection Handles - always visible in connect mode, hover otherwise */}
-                                    {/* Target Handle (Left) */}
+                                    {/* Connection Handles */}
                                     <div
-                                      className={`absolute w-3 h-3 bg-blue-500 rounded-full 
+                                      className={`absolute w-2.5 h-2.5 bg-blue-500 rounded-full 
                                                  transition-all cursor-crosshair
                                                  border-2 border-white shadow
                                                  ${showConnect ? 'opacity-100 scale-110' : 'opacity-0 group-hover:opacity-100'}
                                                  hover:scale-150 hover:bg-blue-400`}
                                       style={{
-                                        left: "-6px",
+                                        left: "-5px",
                                         top: "50%",
                                         transform: "translateY(-50%)",
                                         zIndex: 200,
@@ -1280,121 +1434,136 @@ const handleMileStoneDrag = (event, milestone_key) => {
                                       onMouseDown={(e) => handleConnectionDragStart(e, milestone.id, "target")}
                                     />
 
-                                    {/* Source Handle (Right) */}
                                     <div
-                                      className={`absolute w-3 h-3 bg-green-500 rounded-full 
+                                      className={`absolute w-2.5 h-2.5 bg-green-500 rounded-full 
                                                  transition-all cursor-crosshair
                                                  border-2 border-white shadow
                                                  ${showConnect ? 'opacity-100 scale-110' : 'opacity-0 group-hover:opacity-100'}
                                                  hover:scale-150 hover:bg-green-400`}
                                       style={{
-                                        right: "-6px",
+                                        right: "-5px",
                                         top: "50%",
                                         transform: "translateY(-50%)",
                                         zIndex: 200,
                                       }}
                                       onMouseDown={(e) => handleConnectionDragStart(e, milestone.id, "source")}
                                     />
-                                    
-                                    
                                   </div>
-
-                                
                                 </div>
-                            )
-                          })}
+                              );
+                            })}
 
-
-                          {/* Day rendering */}
-                          {[...Array(days)].map((_, i) => {
-                            return (
+                            {/* Day rendering */}
+                            {[...Array(days)].map((_, i) => (
                               <div
-                                className="border-r "
+                                className="border-r"
                                 style={{
-                                  height: `${TASKHEIGHT}px`,
+                                  height: `${taskHeight}px`,
                                   width: `${DAYWIDTH}px`,
                                   opacity: ghost?.id === team_key ? 0.2 : 1,
                                 }}
                                 key={i}
-                              >
-                              </div>
-                            );
-                          })}
-
-
-
-
-
-
-                        </div>
-                      );
-                    })}
+                              />
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
+              );
+            })}
+
+            {/* LAST DROP HIGHLIGHT */}
+            <div className="flex" style={{ position: 'relative', zIndex: 10 }}>
+              <div
+                style={{
+                  marginBottom: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
+                  marginTop: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
+                  height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT}px`,
+                  width: `${TEAMWIDTH + TASKWIDTH}px`,
+                  opacity: dropIndex === visibleTeamCount ? 1 : 0,
+                  backgroundColor: 'black',
+                  position: 'sticky',
+                  left: 0,
+                }}
+                className="rounded-l-full"
+              />
+              <div
+                style={{
+                  marginBottom: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
+                  marginTop: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
+                  height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT}px`,
+                  opacity: dropIndex === visibleTeamCount ? 1 : 0,
+                  backgroundColor: 'black',
+                }}
+                className="rounded-r-full flex-1"
+              />
+            </div>
+
+            {/* Hidden Teams Indicator */}
+            {teamOrder.some(tid => !isTeamVisible(tid)) && (
+              <div 
+                className="flex items-center gap-2 px-4 py-2 bg-slate-100 border-t"
+                style={{ position: 'sticky', left: 0, width: `${TEAMWIDTH + TASKWIDTH}px` }}
+              >
+                <VisibilityOffIcon style={{ fontSize: 16 }} className="text-slate-500" />
+                <span className="text-xs text-slate-600">
+                  {teamOrder.filter(tid => !isTeamVisible(tid)).length} hidden team(s)
+                </span>
+                <button
+                  onClick={() => {
+                    setTeamDisplaySettings(prev => {
+                      const updated = { ...prev };
+                      for (const tid of teamOrder) {
+                        updated[tid] = { ...updated[tid], hidden: false };
+                      }
+                      return updated;
+                    });
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800 underline"
+                >
+                  Show all
+                </button>
               </div>
-            );
-          })}
+            )}
 
-          {/* LAST DROP HIGHLIGHT */}
-          <div className="flex" style={{ position: 'relative', zIndex: 10 }}>
-            <div
-              style={{
-                marginBottom: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
-                marginTop: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
-                height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT}px`,
-                width: `${TEAMWIDTH + TASKWIDTH}px`,
-                opacity: dropIndex === teamOrder.length ? 1 : 0,
-                backgroundColor: 'black',
-                position: 'sticky',
-                left: 0,
-              }}
-              className="rounded-l-full"
-            ></div>
-            <div
-              style={{
-                marginBottom: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
-                marginTop: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
-                height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT}px`,
-                opacity: dropIndex === teamOrder.length ? 1 : 0,
-                backgroundColor: 'black',
-              }}
-              className="rounded-r-full flex-1"
-            ></div>
-          </div>
+            {/* Team Ghost */}
+            {ghost && (
+              <div
+                className="pointer-events-none"
+                style={{
+                  height: `${ghost.height}px`,
+                  width: `${TEAMWIDTH + TASKWIDTH}px`,
+                  left: `${ghost.x}px`,
+                  top: `${ghost.y}px`,
+                  backgroundColor: `${ghost.color}`,
+                  zIndex: 100,
+                  opacity: 0.8,
+                  border: '2px dashed #374151',
+                  borderRadius: '4px',
+                }}
+              >
+                <div className="p-2 text-sm font-medium">{ghost.name}</div>
+              </div>
+            )}
 
-          {/* Team Ghost */}
-          {ghost && (
-            <div
-              className="bg-blue-200 absolute"
-              style={{
-                height: `${ghost.height}px`,
-                width: `${TEAMWIDTH + TASKWIDTH}px`,
-                left: `${ghost.x}px`,
-                top: `${ghost.y}px`,
-                backgroundColor: `${ghost.color}`,
-                zIndex: 20,
-              }}
-            >
-              {ghost.name}
-            </div>
-          )}
-
-          {/* Task Ghost */}
-          {taskGhost && (
-            <div
-              className="absolute rounded border border-blue-400 bg-blue-100/90 shadow-lg flex items-center px-2 text-sm font-medium text-blue-900 pointer-events-none"
-              style={{
-                height: `${taskGhost.height}px`,
-                width: `${taskGhost.width}px`,
-                left: `${taskGhost.x}px`,
-                top: `${taskGhost.y}px`,
-                zIndex: 50,
-                transform: 'translate(-50%, -50%)',
-              }}
-            >
-              {taskGhost.name}
-            </div>
-          )}
+            {/* Task Ghost */}
+            {taskGhost && (
+              <div
+                className="pointer-events-none"
+                style={{
+                  height: `${taskGhost.height}px`,
+                  width: `${taskGhost.width}px`,
+                  left: `${taskGhost.x}px`,
+                  top: `${taskGhost.y}px`,
+                  zIndex: 100,
+                  transform: 'translate(-50%, -50%)',
+                }}
+              >
+                {taskGhost.name}
+              </div>
+            )}
           </div>
         </div>
       </div>
