@@ -25,11 +25,11 @@ import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import SettingsIcon from '@mui/icons-material/Settings';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
-import TuneIcon from '@mui/icons-material/Tune';
+import FilterListIcon from '@mui/icons-material/FilterList';
 
 // Height constants
-const TASKHEIGHT_NORMAL = 50;
-const TASKHEIGHT_SMALL = 28;
+const TASKHEIGHT_NORMAL = 28;
+const TASKHEIGHT_SMALL = 20;
 const TASKWIDTH = 200;
 
 const TEAMWIDTH = 150;
@@ -38,7 +38,7 @@ const TEAM_MIN_HEIGHT = TASKHEIGHT_NORMAL; // Minimum team height
 const TEAM_DRAG_HIGHLIGHT_HEIGHT = 5;
 const MARIGN_BETWEEN_DRAG_HIGHLIGHT = 5;
 
-const DAYWIDTH = TASKHEIGHT_NORMAL;
+const DAYWIDTH = 60;
 const HEADER_HEIGHT = 40;
 const TASK_DROP_INDICATOR_HEIGHT = 3;
 
@@ -111,8 +111,9 @@ export default function Dependencies() {
   // Team settings dropdown
   const [openTeamSettings, setOpenTeamSettings] = useState(null);
 
-  // Global settings panel
-  const [showGlobalSettings, setShowGlobalSettings] = useState(false);
+  // Team filter - empty array means show all teams
+  const [teamFilter, setTeamFilter] = useState([]);
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
 
 
   // ________Global Event Listener___________
@@ -259,8 +260,11 @@ export default function Dependencies() {
     return height;
   };
 
-  // Check if team is visible (hidden if manually hidden OR all tasks are hidden)
+  // Check if team is visible (hidden if manually hidden OR all tasks are hidden OR not in filter)
   const isTeamVisible = (teamId) => {
+    // Check team filter first - if filter is active and team not in filter, hide it
+    if (teamFilter.length > 0 && !teamFilter.includes(teamId)) return false;
+    
     const settings = teamDisplaySettings[teamId];
     if (settings?.hidden) return false;
     
@@ -417,9 +421,14 @@ export default function Dependencies() {
     });
   };
 
-  // Count hidden teams (both manual and auto-hidden)
+  // Count hidden teams (only teams that pass filter but are manually hidden or have all tasks hidden)
   const getHiddenTeamCount = () => {
-    return teamOrder.filter(tid => !isTeamVisible(tid)).length;
+    return teamOrder.filter(tid => {
+      // If filter is active and team isn't in filter, don't count it as "hidden"
+      if (teamFilter.length > 0 && !teamFilter.includes(tid)) return false;
+      // Count as hidden if it would be hidden for other reasons
+      return !isTeamVisible(tid);
+    }).length;
   };
 
 
@@ -1208,63 +1217,97 @@ export default function Dependencies() {
         onClick={() => {
           setSelectedConnection(null);
           setOpenTeamSettings(null);
-          setShowGlobalSettings(false);
+          setShowFilterDropdown(false);
           setSelectedMilestone(null);
         }}
       >
-        {/* Global Settings Button */}
+        {/* Team Filter Button */}
         <div className="fixed top-4 right-4 z-[1000]">
           <div className="relative">
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                setShowGlobalSettings(!showGlobalSettings);
+                setShowFilterDropdown(!showFilterDropdown);
               }}
               className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-lg transition ${
-                showGlobalSettings 
+                showFilterDropdown || teamFilter.length > 0
                   ? 'bg-blue-600 text-white' 
                   : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'
               }`}
             >
-              <TuneIcon style={{ fontSize: 18 }} />
-              <span>Settings</span>
-              {hiddenTeamCount > 0 && (
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white">
-                  {hiddenTeamCount}
+              <FilterListIcon style={{ fontSize: 18 }} />
+              <span>Filter</span>
+              {teamFilter.length > 0 && (
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs text-blue-600 font-semibold">
+                  {teamFilter.length}
                 </span>
               )}
             </button>
             
-            {/* Global Settings Dropdown */}
-            {showGlobalSettings && (
+            {/* Team Filter Dropdown */}
+            {showFilterDropdown && (
               <div 
                 className="absolute right-0 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
                 onClick={(e) => e.stopPropagation()}
               >
-                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
-                  View Settings
-                </h3>
-                
-                {hiddenTeamCount > 0 ? (
-                  <button
-                    onClick={() => {
-                      showAllHiddenTeams();
-                      setShowGlobalSettings(false);
-                    }}
-                    className="w-full flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 transition"
-                  >
-                    <VisibilityIcon style={{ fontSize: 16 }} />
-                    <span>Show all {hiddenTeamCount} hidden team(s)</span>
-                  </button>
-                ) : (
-                  <p className="text-xs text-slate-500 italic px-2">All teams are visible</p>
-                )}
-                
-                <div className="mt-3 pt-3 border-t border-slate-100">
-                  <p className="text-xs text-slate-400 px-2">
-                    Tip: Use team settings to collapse or hide individual teams
-                  </p>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    Filter Teams
+                  </h3>
+                  {teamFilter.length > 0 && (
+                    <button
+                      onClick={() => setTeamFilter([])}
+                      className="text-xs text-blue-600 hover:text-blue-800"
+                    >
+                      Clear all
+                    </button>
+                  )}
                 </div>
+                
+                <div className="space-y-1 max-h-64 overflow-y-auto">
+                  {teamOrder.map((teamId) => {
+                    const team = teams[teamId];
+                    if (!team) return null;
+                    const isSelected = teamFilter.length === 0 || teamFilter.includes(teamId);
+                    
+                    return (
+                      <button
+                        key={teamId}
+                        onClick={() => {
+                          if (teamFilter.length === 0) {
+                            // First selection - select only this team
+                            setTeamFilter([teamId]);
+                          } else if (teamFilter.includes(teamId)) {
+                            // Deselect this team
+                            const newFilter = teamFilter.filter(id => id !== teamId);
+                            setTeamFilter(newFilter);
+                          } else {
+                            // Add this team to selection
+                            setTeamFilter([...teamFilter, teamId]);
+                          }
+                        }}
+                        className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded transition text-left ${
+                          isSelected 
+                            ? 'bg-slate-100 text-slate-900' 
+                            : 'text-slate-400 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: team.color }}
+                        />
+                        <span className="truncate flex-1">{team.name}</span>
+                        {teamFilter.includes(teamId) && (
+                          <span className="text-blue-600">✓</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                {teamOrder.length === 0 && (
+                  <p className="text-xs text-slate-500 italic px-2">No teams available</p>
+                )}
               </div>
             )}
           </div>
@@ -1806,7 +1849,7 @@ export default function Dependencies() {
                         key={milestone.id}
                       >
                         {/* Milestone name s*/}
-                        <div className={`h-full flex items-center justify-center overflow-hidden px-1 ${isSmall ? 'text-[10px]' : 'text-xs'}`}>
+                        <div className={`h-full flex items-center justify-center overflow-hidden px-1 ${isSmall ? 'text-[8px]' : 'text-[10px]'}`}>
                           <span className={`truncate font-medium ${isSelected ? 'text-white' : ''}`}>
                             {milestone.name}
                           </span>
