@@ -23,7 +23,6 @@ def user_notifications(request):
             "title": n.title,
             "message": n.message,
             "related_task": n.related_task_id,
-            "related_attempt": n.related_attempt_id,
             "related_user": n.related_user_id,
             "read": n.read,
             "created_at": n.created_at.isoformat(),
