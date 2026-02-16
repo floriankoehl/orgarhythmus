@@ -10,6 +10,7 @@ import {
   update_start_index,
   delete_milestone,
   change_duration,
+  rename_milestone,
   get_all_dependencies,
   create_dependency,
   delete_dependency_api,
@@ -26,10 +27,12 @@ import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import SettingsIcon from '@mui/icons-material/Settings';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import FlagIcon from '@mui/icons-material/Flag';
 
 // Height constants
-const TASKHEIGHT_NORMAL = 28;
-const TASKHEIGHT_SMALL = 20;
+const TASKHEIGHT_NORMAL = 32;
+const TASKHEIGHT_SMALL = 22;
 const TASKWIDTH = 200;
 
 const TEAMWIDTH = 150;
@@ -115,6 +118,13 @@ export default function Dependencies() {
   const [teamFilter, setTeamFilter] = useState([]);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
 
+  // View mode: "dependency" or "milestone"
+  const [viewMode, setViewMode] = useState("dependency");
+
+  // Milestone editing state
+  const [editingMilestoneId, setEditingMilestoneId] = useState(null);
+  const [editingMilestoneName, setEditingMilestoneName] = useState("");
+
 
   // ________Global Event Listener___________
   // ________________________________________
@@ -124,11 +134,19 @@ export default function Dependencies() {
   useEffect(() => {
     const down = (e) => {
       if (e.ctrlKey) setMode("delete")
-      else if (e.shiftKey) setMode("duration")
+      else if (e.shiftKey) {
+        setMode("duration")
+        setViewMode("milestone")
+      }
       else if (e.altKey) setMode("connect")
     }
 
-    const up = () => setMode("drag")
+    const up = (e) => {
+      setMode("drag")
+      if (!e.shiftKey) {
+        setViewMode("dependency")
+      }
+    }
 
     window.addEventListener("keydown", down)
     window.addEventListener("keyup", up)
@@ -868,6 +886,116 @@ export default function Dependencies() {
     change_duration(projectId, id, amount)
   }
 
+  // Handle milestone double-click for renaming
+  const handleMilestoneDoubleClick = (e, milestone) => {
+    e.stopPropagation();
+    if (viewMode === "milestone") {
+      setEditingMilestoneId(milestone.id);
+      setEditingMilestoneName(milestone.name);
+    }
+  }
+
+  // Submit milestone rename
+  const handleMilestoneRenameSubmit = async (milestoneId) => {
+    if (!editingMilestoneName.trim()) {
+      setEditingMilestoneId(null);
+      setEditingMilestoneName("");
+      return;
+    }
+
+    try {
+      await rename_milestone(projectId, milestoneId, editingMilestoneName.trim());
+      setMilestones(prev => ({
+        ...prev,
+        [milestoneId]: {
+          ...prev[milestoneId],
+          name: editingMilestoneName.trim()
+        }
+      }));
+    } catch (err) {
+      console.error("Failed to rename milestone:", err);
+    }
+
+    setEditingMilestoneId(null);
+    setEditingMilestoneName("");
+  }
+
+  // Handle edge resize for milestones (in dependency mode)
+  const handleMilestoneEdgeResize = (e, milestoneId, edge) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const milestone = milestones[milestoneId];
+    if (!milestone) return;
+
+    const startX = e.clientX;
+    const startDuration = milestone.duration;
+    const startMilestoneX = milestone.x || (milestone.start_index * DAYWIDTH);
+
+    const onMouseMove = (moveE) => {
+      const deltaX = moveE.clientX - startX;
+      const daysDelta = Math.round(deltaX / DAYWIDTH);
+
+      if (edge === "right") {
+        // Resize from right edge - change duration
+        const newDuration = Math.max(1, startDuration + daysDelta);
+        setMilestones(prev => ({
+          ...prev,
+          [milestoneId]: {
+            ...prev[milestoneId],
+            duration: newDuration
+          }
+        }));
+      } else if (edge === "left") {
+        // Resize from left edge - change start position and duration
+        const maxDeltaDays = startDuration - 1; // Can't shrink below 1
+        const clampedDaysDelta = Math.max(-Math.floor(startMilestoneX / DAYWIDTH), Math.min(maxDeltaDays, daysDelta));
+        const newDuration = startDuration - clampedDaysDelta;
+        const newX = startMilestoneX + (clampedDaysDelta * DAYWIDTH);
+        
+        if (newDuration >= 1) {
+          setMilestones(prev => ({
+            ...prev,
+            [milestoneId]: {
+              ...prev[milestoneId],
+              duration: newDuration,
+              x: newX
+            }
+          }));
+        }
+      }
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      
+      // Save the changes to backend
+      const updatedMilestone = milestones[milestoneId];
+      if (updatedMilestone) {
+        const newIndex = Math.round((updatedMilestone.x || 0) / DAYWIDTH);
+        const durationChange = updatedMilestone.duration - startDuration;
+        
+        // Update start index if left edge was dragged
+        if (edge === "left") {
+          update_start_index(projectId, milestoneId, newIndex).catch(err => 
+            console.error("Failed to update start index:", err)
+          );
+        }
+        
+        // Update duration if it changed
+        if (durationChange !== 0) {
+          change_duration(projectId, milestoneId, durationChange).catch(err =>
+            console.error("Failed to update duration:", err)
+          );
+        }
+      }
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  };
+
 
   // _____________CONNECTIONS________________
   // ________________________________________
@@ -1213,7 +1341,7 @@ export default function Dependencies() {
 
       {/* Page wrapper */}
       <div 
-        className="p-10 w-full min-w-0 select-none"
+        className="p-10 pt-4 w-full min-w-0 select-none"
         onClick={() => {
           setSelectedConnection(null);
           setOpenTeamSettings(null);
@@ -1221,95 +1349,196 @@ export default function Dependencies() {
           setSelectedMilestone(null);
         }}
       >
-        {/* Team Filter Button */}
-        <div className="fixed top-4 right-4 z-[1000]">
-          <div className="relative">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowFilterDropdown(!showFilterDropdown);
-              }}
-              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-lg transition ${
-                showFilterDropdown || teamFilter.length > 0
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'
-              }`}
-            >
-              <FilterListIcon style={{ fontSize: 18 }} />
-              <span>Filter</span>
-              {teamFilter.length > 0 && (
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs text-blue-600 font-semibold">
-                  {teamFilter.length}
-                </span>
-              )}
-            </button>
+        {/* Control Board Toolbar */}
+        <div className="mb-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="grid grid-cols-3 divide-x divide-slate-200">
             
-            {/* Team Filter Dropdown */}
-            {showFilterDropdown && (
-              <div 
-                className="absolute right-0 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                    Filter Teams
-                  </h3>
-                  {teamFilter.length > 0 && (
-                    <button
-                      onClick={() => setTeamFilter([])}
-                      className="text-xs text-blue-600 hover:text-blue-800"
-                    >
-                      Clear all
-                    </button>
-                  )}
-                </div>
-                
-                <div className="space-y-1 max-h-64 overflow-y-auto">
-                  {teamOrder.map((teamId) => {
-                    const team = teams[teamId];
-                    if (!team) return null;
-                    const isSelected = teamFilter.length === 0 || teamFilter.includes(teamId);
-                    
-                    return (
-                      <button
-                        key={teamId}
-                        onClick={() => {
-                          if (teamFilter.length === 0) {
-                            // First selection - select only this team
-                            setTeamFilter([teamId]);
-                          } else if (teamFilter.includes(teamId)) {
-                            // Deselect this team
-                            const newFilter = teamFilter.filter(id => id !== teamId);
-                            setTeamFilter(newFilter);
-                          } else {
-                            // Add this team to selection
-                            setTeamFilter([...teamFilter, teamId]);
-                          }
-                        }}
-                        className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded transition text-left ${
-                          isSelected 
-                            ? 'bg-slate-100 text-slate-900' 
-                            : 'text-slate-400 hover:bg-slate-50'
-                        }`}
-                      >
-                        <span
-                          className="w-3 h-3 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: team.color }}
-                        />
-                        <span className="truncate flex-1">{team.name}</span>
-                        {teamFilter.includes(teamId) && (
-                          <span className="text-blue-600">✓</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-                
-                {teamOrder.length === 0 && (
-                  <p className="text-xs text-slate-500 italic px-2">No teams available</p>
+            {/* Section 1: Settings */}
+            <div className="p-3">
+              <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                Settings
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Collapse all visible teams
+                    teamOrder.forEach(tid => {
+                      if (isTeamVisible(tid)) setTeamTasksSmall(tid);
+                    });
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+                >
+                  <UnfoldLessIcon style={{ fontSize: 14 }} />
+                  <span>Collapse All</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Expand all visible teams
+                    teamOrder.forEach(tid => {
+                      if (isTeamVisible(tid)) setTeamTasksNormal(tid);
+                    });
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+                >
+                  <UnfoldMoreIcon style={{ fontSize: 14 }} />
+                  <span>Expand All</span>
+                </button>
+                {hiddenTeamCount > 0 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      showAllHiddenTeams();
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition"
+                  >
+                    <VisibilityIcon style={{ fontSize: 14 }} />
+                    <span>Show {hiddenTeamCount} Hidden</span>
+                  </button>
                 )}
               </div>
-            )}
+            </div>
+
+            {/* Section 2: Mode Toggle */}
+            <div className="p-3">
+              <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                View Mode {mode === "duration" && <span className="text-blue-500">(Shift)</span>}
+              </h3>
+              <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setViewMode("dependency");
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition ${
+                    viewMode === "dependency"
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <AccountTreeIcon style={{ fontSize: 14 }} />
+                  <span>Dependencies</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setViewMode("milestone");
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition ${
+                    viewMode === "milestone"
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <FlagIcon style={{ fontSize: 14 }} />
+                  <span>Milestones</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Section 3: Filter */}
+            <div className="p-3">
+              <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                Team Filter
+              </h3>
+              <div className="relative">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowFilterDropdown(!showFilterDropdown);
+                  }}
+                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-xs rounded-lg border transition ${
+                    teamFilter.length > 0
+                      ? 'border-blue-300 bg-blue-50 text-blue-700' 
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <FilterListIcon style={{ fontSize: 14 }} />
+                  <span className="flex-1 text-left">
+                    {teamFilter.length === 0 
+                      ? 'All Teams' 
+                      : `${teamFilter.length} team${teamFilter.length > 1 ? 's' : ''} selected`}
+                  </span>
+                  {teamFilter.length > 0 && (
+                    <span 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setTeamFilter([]);
+                      }}
+                      className="text-blue-500 hover:text-blue-700"
+                    >
+                      ✕
+                    </span>
+                  )}
+                </button>
+                
+                {/* Team Filter Dropdown */}
+                {showFilterDropdown && (
+                  <div 
+                    className="absolute left-0 top-full mt-1 w-64 rounded-lg border border-slate-200 bg-white p-2 shadow-xl z-[1000]"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center justify-between mb-2 px-1">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase">
+                        Select Teams
+                      </span>
+                      {teamFilter.length > 0 && (
+                        <button
+                          onClick={() => setTeamFilter([])}
+                          className="text-[10px] text-blue-600 hover:text-blue-800"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    
+                    <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                      {teamOrder.map((teamId) => {
+                        const team = teams[teamId];
+                        if (!team) return null;
+                        const isInFilter = teamFilter.includes(teamId);
+                        const isVisible = teamFilter.length === 0 || isInFilter;
+                        
+                        return (
+                          <button
+                            key={teamId}
+                            onClick={() => {
+                              if (teamFilter.length === 0) {
+                                setTeamFilter([teamId]);
+                              } else if (isInFilter) {
+                                const newFilter = teamFilter.filter(id => id !== teamId);
+                                setTeamFilter(newFilter);
+                              } else {
+                                setTeamFilter([...teamFilter, teamId]);
+                              }
+                            }}
+                            className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded transition text-left ${
+                              isVisible 
+                                ? 'bg-slate-50 text-slate-900' 
+                                : 'text-slate-400 hover:bg-slate-50'
+                            }`}
+                          >
+                            <span
+                              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: team.color }}
+                            />
+                            <span className="truncate flex-1">{team.name}</span>
+                            {isInFilter && (
+                              <span className="text-blue-600 text-[10px]">✓</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    
+                    {teamOrder.length === 0 && (
+                      <p className="text-xs text-slate-400 italic px-2 py-1">No teams</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1814,19 +2043,22 @@ export default function Dependencies() {
                     const showDurationMinus = hoveredMilestone === milestone.id && mode === "duration" && milestone.duration > 1;
                     const showConnect = mode === "connect";
                     const isSelected = selectedMilestone === milestone.id;
+                    const isEditing = editingMilestoneId === milestone.id;
+                    const showEdgeResize = viewMode === "dependency" && hoveredMilestone === milestone.id;
 
                     return (
                       <div
                         onMouseDown={(e) => {
-                          if (mode !== "connect") {
+                          if (mode !== "connect" && !isEditing) {
                             handleMileStoneMouseDown(e, milestone_from_task.id);
                           }
                         }}
                         onClick={(e) => {
-                          if (mode === "drag") {
+                          if (mode === "drag" && !isEditing) {
                             handleMilestoneClick(e, milestone.id);
                           }
                         }}
+                        onDoubleClick={(e) => handleMilestoneDoubleClick(e, milestone)}
                         onMouseEnter={() => setHoveredMilestone(milestone.id)}
                         onMouseLeave={() => setHoveredMilestone(null)}
                         className={`absolute rounded cursor-pointer ${
@@ -1848,12 +2080,36 @@ export default function Dependencies() {
                         }}
                         key={milestone.id}
                       >
-                        {/* Milestone name s*/}
-                        <div className={`h-full flex items-center justify-center overflow-hidden px-1 ${isSmall ? 'text-[8px]' : 'text-[10px]'}`}>
-                          <span className={`truncate font-medium ${isSelected ? 'text-white' : ''}`}>
-                            {milestone.name}
-                          </span>
-                        </div>
+                        {/* Milestone name / edit input */}
+                        {isEditing ? (
+                          <div className="h-full flex items-center justify-center px-1">
+                            <input
+                              autoFocus
+                              type="text"
+                              value={editingMilestoneName}
+                              onChange={(e) => setEditingMilestoneName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleMilestoneRenameSubmit(milestone.id);
+                                } else if (e.key === 'Escape') {
+                                  setEditingMilestoneId(null);
+                                  setEditingMilestoneName("");
+                                }
+                              }}
+                              onBlur={() => handleMilestoneRenameSubmit(milestone.id)}
+                              className={`w-full bg-white/90 rounded px-1 text-slate-900 outline-none ${isSmall ? 'text-[9px]' : 'text-[11px]'}`}
+                              style={{ pointerEvents: 'auto' }}
+                              onClick={(e) => e.stopPropagation()}
+                              onMouseDown={(e) => e.stopPropagation()}
+                            />
+                          </div>
+                        ) : (
+                          <div className={`h-full flex items-center justify-center overflow-hidden px-1 ${isSmall ? 'text-[9px]' : 'text-[11px]'}`}>
+                            <span className={`truncate font-medium ${isSelected ? 'text-white' : ''}`}>
+                              {milestone.name}
+                            </span>
+                          </div>
+                        )}
 
                         {/* Delete icon */}
                         {showDelete && (
@@ -1865,8 +2121,8 @@ export default function Dependencies() {
                           </div>
                         )}
 
-                        {/* Duration controls */}
-                        {showDurationPlus && (
+                        {/* Duration controls (only in milestone mode) */}
+                        {showDurationPlus && viewMode === "milestone" && (
                           <div 
                             className="absolute -top-2 -right-2 bg-blue-500 rounded-full p-0.5 shadow-md cursor-pointer hover:bg-blue-600"
                             style={{ pointerEvents: 'auto' }}
@@ -1875,7 +2131,7 @@ export default function Dependencies() {
                             <AddCircleOutlineIcon style={{ fontSize: 16, color: 'white' }} />
                           </div>
                         )}
-                        {showDurationMinus && (
+                        {showDurationMinus && viewMode === "milestone" && (
                           <div 
                             className="absolute -top-2 -left-2 bg-orange-500 rounded-full p-0.5 shadow-md cursor-pointer hover:bg-orange-600"
                             style={{ pointerEvents: 'auto' }}
@@ -1885,33 +2141,55 @@ export default function Dependencies() {
                           </div>
                         )}
 
-                        {/* Connection handles - always visible */}
-                        {/* Target handle (left) */}
-                        <div
-                          className={`absolute top-1/2 -translate-y-1/2 left-0 -translate-x-1/2 rounded-full border-2 border-white shadow cursor-crosshair transition-all ${
-                            showConnect 
-                              ? 'w-4 h-4 bg-indigo-500 hover:scale-125' 
-                              : 'w-3 h-3 bg-slate-400 hover:bg-indigo-500 hover:w-4 hover:h-4'
-                          }`}
-                          style={{ pointerEvents: 'auto', zIndex: 10 }}
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            handleConnectionDragStart(e, milestone.id, "target");
-                          }}
-                        />
-                        {/* Source handle (right) */}
-                        <div
-                          className={`absolute top-1/2 -translate-y-1/2 right-0 translate-x-1/2 rounded-full border-2 border-white shadow cursor-crosshair transition-all ${
-                            showConnect 
-                              ? 'w-4 h-4 bg-indigo-500 hover:scale-125' 
-                              : 'w-3 h-3 bg-slate-400 hover:bg-indigo-500 hover:w-4 hover:h-4'
-                          }`}
-                          style={{ pointerEvents: 'auto', zIndex: 10 }}
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            handleConnectionDragStart(e, milestone.id, "source");
-                          }}
-                        />
+                        {/* Edge resize handles - only in milestone mode */}
+                        {viewMode === "milestone" && (
+                          <>
+                            {/* Left edge resize handle */}
+                            <div
+                              className="absolute top-0 left-0 w-2 h-full cursor-ew-resize hover:bg-black/10"
+                              style={{ pointerEvents: 'auto', zIndex: 5 }}
+                              onMouseDown={(e) => handleMilestoneEdgeResize(e, milestone.id, "left")}
+                            />
+                            {/* Right edge resize handle */}
+                            <div
+                              className="absolute top-0 right-0 w-2 h-full cursor-ew-resize hover:bg-black/10"
+                              style={{ pointerEvents: 'auto', zIndex: 5 }}
+                              onMouseDown={(e) => handleMilestoneEdgeResize(e, milestone.id, "right")}
+                            />
+                          </>
+                        )}
+
+                        {/* Connection handles - only in dependency mode */}
+                        {viewMode === "dependency" && (
+                          <>
+                            {/* Target handle (left) */}
+                            <div
+                              className={`absolute top-1/2 -translate-y-1/2 left-0 -translate-x-1/2 rounded-full border-2 border-white shadow cursor-crosshair transition-all ${
+                                showConnect 
+                                  ? 'w-4 h-4 bg-indigo-500 hover:scale-125' 
+                                  : 'w-3 h-3 bg-slate-400 hover:bg-indigo-500 hover:w-4 hover:h-4'
+                              }`}
+                              style={{ pointerEvents: 'auto', zIndex: 10 }}
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                handleConnectionDragStart(e, milestone.id, "target");
+                              }}
+                            />
+                            {/* Source handle (right) */}
+                            <div
+                              className={`absolute top-1/2 -translate-y-1/2 right-0 translate-x-1/2 rounded-full border-2 border-white shadow cursor-crosshair transition-all ${
+                                showConnect 
+                                  ? 'w-4 h-4 bg-indigo-500 hover:scale-125' 
+                                  : 'w-3 h-3 bg-slate-400 hover:bg-indigo-500 hover:w-4 hover:h-4'
+                              }`}
+                              style={{ pointerEvents: 'auto', zIndex: 10 }}
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                handleConnectionDragStart(e, milestone.id, "source");
+                              }}
+                            />
+                          </>
+                        )}
 
                         {/* Selection indicator */}
                         {isSelected && (

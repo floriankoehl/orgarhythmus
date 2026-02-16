@@ -128,6 +128,23 @@ export async function change_duration(projectId, milestone_id, duration_change){
 }
 
 
+export async function rename_milestone(projectId, milestone_id, new_name) {
+    const res = await authFetch(`/api/projects/${projectId}/rename_milestone/`, {
+        method: "PATCH",
+        body: JSON.stringify({
+            id: milestone_id,
+            name: new_name
+        })
+    })
+
+    if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`Rename failed (${res.status}): ${text}`)
+    }
+
+    return await res.json()
+}
+
 
 // Dependencies (connections between milestones)
 

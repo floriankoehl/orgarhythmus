@@ -583,6 +583,34 @@ def change_duration(request, project_id):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def rename_milestone(request, project_id):
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    milestone_id = request.data.get("id")
+    new_name = request.data.get("name")
+
+    if not milestone_id or not new_name:
+        return Response({"detail": "Missing id or name"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        milestone = Milestone.objects.get(id=milestone_id, project=project)
+    except Milestone.DoesNotExist:
+        return Response({"detail": "Milestone not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    milestone.name = new_name.strip()
+    milestone.save()
+
+    serializer = MilestoneSerializer_Deps(milestone)
+    return Response({"success": True, "data": serializer.data}, status=200)
+
 
 # DEPENDENCIES
 

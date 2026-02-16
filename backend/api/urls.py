@@ -105,6 +105,7 @@ urlpatterns = [
     path("projects/<int:project_id>/update_start_index/", views.update_start_index),
     path("projects/<int:project_id>/delete_milestones/", views.delete_milestones),
     path("projects/<int:project_id>/change_duration/", views.change_duration),
+    path("projects/<int:project_id>/rename_milestone/", views.rename_milestone),
 
     # Dependencies
     path("projects/<int:project_id>/get_all_dependencies/", views.get_all_dependencies),
