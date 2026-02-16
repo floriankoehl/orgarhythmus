@@ -37,6 +37,22 @@ import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import CloseIcon from '@mui/icons-material/Close';
 import SettingsIcon from '@mui/icons-material/Settings';
 
+// Helper function to lighten a hex color while keeping high opacity
+const lightenColor = (hex, amount = 0.9) => {
+  // Remove # if present
+  const color = hex.replace('#', '');
+  const r = parseInt(color.substring(0, 2), 16);
+  const g = parseInt(color.substring(2, 4), 16);
+  const b = parseInt(color.substring(4, 6), 16);
+  
+  // Blend with white (255,255,255) by the amount
+  const newR = Math.round(r + (255 - r) * amount);
+  const newG = Math.round(g + (255 - g) * amount);
+  const newB = Math.round(b + (255 - b) * amount);
+  
+  return `rgba(${newR}, ${newG}, ${newB}, 0.95)`;
+};
+
 // Height constants (defaults)
 const DEFAULT_TASKHEIGHT_NORMAL = 32;
 const DEFAULT_TASKHEIGHT_SMALL = 22;
@@ -134,6 +150,9 @@ export default function Dependencies() {
   
   // Milestone creation confirmation modal
   const [milestoneCreateModal, setMilestoneCreateModal] = useState(null); // { taskId, dayIndex }
+
+  // Milestone delete confirmation modal
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState(null); // { milestoneId, milestoneName }
 
   // Move validation feedback state
   const [blockedMoveHighlight, setBlockedMoveHighlight] = useState(null); // { milestoneId, connectionId, originalState }
@@ -1030,9 +1049,21 @@ export default function Dependencies() {
       const validation = validateMultiMilestoneMove(milestonesToMove, currentDeltaIndex);
       
       if (!validation.valid) {
-        // Move is blocked - show feedback and revert to original positions
+        // Move is blocked - show feedback and auto-select blocking milestone
         if (validation.blockingMilestoneId && validation.blockingConnection) {
           showBlockingFeedback(validation.blockingMilestoneId, validation.blockingConnection);
+          
+          // Auto-select the blocking milestone along with the milestones being moved
+          setSelectedMilestones(prev => {
+            const newSet = new Set(prev);
+            // Add all milestones that were being moved
+            for (const mId of milestonesToMove) {
+              newSet.add(mId);
+            }
+            // Add the blocking milestone
+            newSet.add(validation.blockingMilestoneId);
+            return newSet;
+          });
         }
         
         // Revert all milestones to their original positions
@@ -1201,7 +1232,7 @@ export default function Dependencies() {
     return { valid: true };
   };
 
-  // Show blocking feedback with temporary expansion of hidden/collapsed items
+  // Show blocking feedback with temporary expansion of hidden/collapsed items and filter clearing
   const showBlockingFeedback = (blockingMilestoneId, connectionId) => {
     const milestone = milestones[blockingMilestoneId];
     if (!milestone) return;
@@ -1212,14 +1243,20 @@ export default function Dependencies() {
     
     const teamId = task.team;
     
-    // Store original states
+    // Store original states (including filter)
     const originalState = {
       taskHidden: taskDisplaySettings[taskId]?.hidden || false,
       taskSize: taskDisplaySettings[taskId]?.size || 'normal',
       teamCollapsed: teamDisplaySettings[teamId]?.collapsed || false,
+      teamFilterActive: teamFilter.length > 0 && !teamFilter.includes(teamId),
+      originalTeamFilter: [...teamFilter],
     };
     
-    // Temporarily show the milestone
+    // Temporarily show the milestone - clear filter if it's hiding this team
+    if (originalState.teamFilterActive) {
+      // Add this team temporarily to the filter so it becomes visible
+      setTeamFilter(prev => [...prev, teamId]);
+    }
     if (originalState.taskHidden) {
       setTaskDisplaySettings(prev => ({
         ...prev,
@@ -1250,6 +1287,9 @@ export default function Dependencies() {
     setTimeout(() => {
       setBlockedMoveHighlight(null);
       
+      if (originalState.teamFilterActive) {
+        setTeamFilter(originalState.originalTeamFilter);
+      }
       if (originalState.taskHidden) {
         setTaskDisplaySettings(prev => ({
           ...prev,
@@ -1895,6 +1935,38 @@ export default function Dependencies() {
                 className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
               >
                 Create Milestone
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Milestone Delete Confirmation Modal */}
+      {deleteConfirmModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Delete Milestone?</h2>
+            <p className="text-sm text-slate-600 mb-4">
+              Are you sure you want to delete milestone{" "}
+              <span className="font-medium text-slate-800">
+                "{deleteConfirmModal.milestoneName}"
+              </span>? This will also remove any dependencies connected to it.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteConfirmModal(null)}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  handleMilestoneDelete(deleteConfirmModal.milestoneId);
+                  setDeleteConfirmModal(null);
+                }}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
+              >
+                Delete
               </button>
             </div>
           </div>
@@ -2591,7 +2663,7 @@ export default function Dependencies() {
                       style={{
                         height: teamHeight,
                         width: `${TEAMWIDTH + TASKWIDTH}px`,
-                        backgroundColor: isTargetTeam ? '#dbeafe' : `${team.color}10`,
+                        backgroundColor: isTargetTeam ? '#dbeafe' : lightenColor(team.color, 0.9),
                         opacity: ghost?.id === team_key ? 0.2 : 1,
                         position: 'sticky',
                         left: 0,
@@ -3013,7 +3085,7 @@ export default function Dependencies() {
                     const milestone = milestones[milestone_from_task.id];
                     if (!milestone) return null;
 
-                    const showDelete = hoveredMilestone === milestone.id && !safeMode;
+                    const showDelete = hoveredMilestone === milestone.id && viewMode === "milestone";
                     const showDurationPlus = hoveredMilestone === milestone.id && mode === "duration";
                     const showDurationMinus = hoveredMilestone === milestone.id && mode === "duration" && milestone.duration > 1;
                     const showConnect = mode === "connect";
@@ -3091,19 +3163,19 @@ export default function Dependencies() {
                           </div>
                         )}
 
-                        {/* Delete icon */}
+                        {/* Delete icon - only in milestone mode (Shift held) */}
                         {showDelete && (
                           <div 
-                            className="absolute -top-2 -right-2 bg-red-500 rounded-full p-0.5 shadow-md cursor-pointer hover:bg-red-600 hover:scale-110 transition-all"
+                            className="absolute -top-1.5 -right-1.5 bg-slate-500/70 rounded-full p-0.5 shadow cursor-pointer hover:bg-red-500 hover:scale-110 transition-all"
                             style={{ pointerEvents: 'auto' }}
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleMilestoneDelete(milestone.id);
+                              setDeleteConfirmModal({ milestoneId: milestone.id, milestoneName: milestone.name });
                             }}
                             onMouseDown={(e) => e.stopPropagation()}
                             title="Delete milestone"
                           >
-                            <DeleteForeverIcon style={{ fontSize: 16, color: 'white' }} />
+                            <CloseIcon style={{ fontSize: 12, color: 'white' }} />
                           </div>
                         )}
 
