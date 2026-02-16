@@ -23,6 +23,9 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
+import SettingsIcon from '@mui/icons-material/Settings';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import TuneIcon from '@mui/icons-material/Tune';
 
 // Height constants
 const TASKHEIGHT_NORMAL = 50;
@@ -30,6 +33,7 @@ const TASKHEIGHT_SMALL = 28;
 const TASKWIDTH = 200;
 
 const TEAMWIDTH = 150;
+const TEAM_MIN_HEIGHT = TASKHEIGHT_NORMAL; // Minimum team height
 
 const TEAM_DRAG_HIGHLIGHT_HEIGHT = 5;
 const MARIGN_BETWEEN_DRAG_HIGHLIGHT = 5;
@@ -103,6 +107,12 @@ export default function Dependencies() {
   // Display settings for teams: { [teamId]: { hidden: boolean } }
   const [teamDisplaySettings, setTeamDisplaySettings] = useState({});
 
+  // Team settings dropdown
+  const [openTeamSettings, setOpenTeamSettings] = useState(null);
+
+  // Global settings panel
+  const [showGlobalSettings, setShowGlobalSettings] = useState(false);
+
 
   // ________Global Event Listener___________
   // ________________________________________
@@ -125,6 +135,17 @@ export default function Dependencies() {
       window.removeEventListener("keyup", up)
     }
   }, [])
+
+  // Close team settings when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setOpenTeamSettings(null);
+    };
+    if (openTeamSettings !== null) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [openTeamSettings]);
 
 
   // ________________Loading_________________
@@ -212,8 +233,21 @@ export default function Dependencies() {
   // ________DISPLAY SETTINGS HELPERS________
   // ________________________________________
 
-  // Calculate team height based on visible tasks and their sizes
+  // Calculate team height based on visible tasks and their sizes (with minimum)
   const getTeamHeight = (teamId) => {
+    const team = teams[teamId];
+    if (!team) return TEAM_MIN_HEIGHT;
+    
+    let height = 0;
+    for (const taskId of team.tasks) {
+      height += getTaskHeight(taskId, taskDisplaySettings);
+    }
+    // Ensure minimum height
+    return Math.max(height, TEAM_MIN_HEIGHT);
+  };
+
+  // Get raw team height (without minimum, for calculations)
+  const getRawTeamHeight = (teamId) => {
     const team = teams[teamId];
     if (!team) return 0;
     
@@ -224,10 +258,23 @@ export default function Dependencies() {
     return height;
   };
 
-  // Check if team is visible
+  // Check if team is visible (hidden if manually hidden OR all tasks are hidden)
   const isTeamVisible = (teamId) => {
     const settings = teamDisplaySettings[teamId];
-    return settings ? !settings.hidden : true;
+    if (settings?.hidden) return false;
+    
+    // Also hide if all tasks are hidden
+    const team = teams[teamId];
+    if (!team || team.tasks.length === 0) return true; // Show empty teams
+    
+    const hasVisibleTask = team.tasks.some(taskId => isTaskVisible(taskId, taskDisplaySettings));
+    return hasVisibleTask;
+  };
+
+  // Check if team is manually hidden (not auto-hidden due to all tasks hidden)
+  const isTeamManuallyHidden = (teamId) => {
+    const settings = teamDisplaySettings[teamId];
+    return settings?.hidden || false;
   };
 
   // Get visible tasks for a team
@@ -316,6 +363,20 @@ export default function Dependencies() {
     });
   };
 
+  // Hide all tasks in a team
+  const hideAllTeamTasks = (teamId) => {
+    const team = teams[teamId];
+    if (!team) return;
+    
+    setTaskDisplaySettings(prev => {
+      const updated = { ...prev };
+      for (const taskId of team.tasks) {
+        updated[taskId] = { ...updated[taskId], hidden: true };
+      }
+      return updated;
+    });
+  };
+
   // Check if team has any hidden tasks
   const teamHasHiddenTasks = (teamId) => {
     const team = teams[teamId];
@@ -328,6 +389,36 @@ export default function Dependencies() {
     const visibleTasks = getVisibleTasks(teamId);
     if (visibleTasks.length === 0) return false;
     return visibleTasks.every(taskId => taskDisplaySettings[taskId]?.size === 'small');
+  };
+
+  // Show all hidden teams
+  const showAllHiddenTeams = () => {
+    // First, unhide all manually hidden teams
+    setTeamDisplaySettings(prev => {
+      const updated = { ...prev };
+      for (const tid of teamOrder) {
+        updated[tid] = { ...updated[tid], hidden: false };
+      }
+      return updated;
+    });
+    
+    // Then, show all tasks in teams that were auto-hidden
+    setTaskDisplaySettings(prev => {
+      const updated = { ...prev };
+      for (const tid of teamOrder) {
+        const team = teams[tid];
+        if (!team) continue;
+        for (const taskId of team.tasks) {
+          updated[taskId] = { ...updated[taskId], hidden: false };
+        }
+      }
+      return updated;
+    });
+  };
+
+  // Count hidden teams (both manual and auto-hidden)
+  const getHiddenTeamCount = () => {
+    return teamOrder.filter(tid => !isTeamVisible(tid)).length;
   };
 
 
@@ -368,8 +459,9 @@ export default function Dependencies() {
 
     setGhost({
       ...team,
-      x: startX,
-      y: startY - mouseOffsetY,
+      x: 0, // Start at left edge
+      y: teamTopOffset, // Start at actual team position
+      offsetX: startX, // Store mouse offset
       offsetY: mouseOffsetY,
       height: currentTeamHeight,
     });
@@ -411,8 +503,8 @@ export default function Dependencies() {
 
       setGhost((prev) => ({
         ...prev,
-        x: new_x,
-        y: new_y - (prev.offsetY || 0),
+        x: new_x - prev.offsetX,
+        y: new_y - prev.offsetY,
       }));
     };
 
@@ -974,6 +1066,7 @@ export default function Dependencies() {
   };
 
   const visibleTeamCount = teamOrder.filter(tid => isTeamVisible(tid)).length;
+  const hiddenTeamCount = getHiddenTeamCount();
 
 
   return (
@@ -1014,8 +1107,70 @@ export default function Dependencies() {
       {/* Page wrapper */}
       <div 
         className="p-10 w-full min-w-0 select-none"
-        onClick={() => setSelectedConnection(null)}
+        onClick={() => {
+          setSelectedConnection(null);
+          setOpenTeamSettings(null);
+          setShowGlobalSettings(false);
+        }}
       >
+        {/* Global Settings Button */}
+        <div className="fixed top-4 right-4 z-[1000]">
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowGlobalSettings(!showGlobalSettings);
+              }}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium shadow-lg transition ${
+                showGlobalSettings 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'
+              }`}
+            >
+              <TuneIcon style={{ fontSize: 18 }} />
+              <span>Settings</span>
+              {hiddenTeamCount > 0 && (
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs text-white">
+                  {hiddenTeamCount}
+                </span>
+              )}
+            </button>
+            
+            {/* Global Settings Dropdown */}
+            {showGlobalSettings && (
+              <div 
+                className="absolute right-0 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+                  View Settings
+                </h3>
+                
+                {hiddenTeamCount > 0 ? (
+                  <button
+                    onClick={() => {
+                      showAllHiddenTeams();
+                      setShowGlobalSettings(false);
+                    }}
+                    className="w-full flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 transition"
+                  >
+                    <VisibilityIcon style={{ fontSize: 16 }} />
+                    <span>Show all {hiddenTeamCount} hidden team(s)</span>
+                  </button>
+                ) : (
+                  <p className="text-xs text-slate-500 italic px-2">All teams are visible</p>
+                )}
+                
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <p className="text-xs text-slate-400 px-2">
+                    Tip: Use team settings to collapse or hide individual teams
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Scroll container */}
         <div
           style={{ height: `${contentHeight}px` }}
@@ -1033,7 +1188,7 @@ export default function Dependencies() {
             {/* Task drop indicator line */}
             {taskGhost && taskDropTarget && (
               <div
-                className="pointer-events-none"
+                className="absolute pointer-events-none"
                 style={{
                   top: `${getTaskDropIndicatorY()}px`,
                   left: `${TEAMWIDTH}px`,
@@ -1095,11 +1250,13 @@ export default function Dependencies() {
               
               const visibleIndex = getVisibleTeamIndex(team_key);
               const teamHeight = getTeamHeight(team_key);
+              const rawHeight = getRawTeamHeight(team_key);
               const visibleTasks = getVisibleTasks(team_key);
               const isTargetTeam = taskGhost && taskDropTarget?.teamId === team_key && taskDropTarget?.teamId !== taskGhost.fromTeamId;
+              const isSettingsOpen = openTeamSettings === team_key;
               
               return (
-                <div key={`${team_key}_container`} style={{ position: 'relative', zIndex: 1 }}>
+                <div key={`${team_key}_container`} style={{ position: 'relative' }}>
                   {/* Drop Highlighter */}
                   <div className="flex" style={{ backgroundColor: 'white' }}>
                     <div
@@ -1150,52 +1307,109 @@ export default function Dependencies() {
                         style={{ width: `${TEAMWIDTH}px` }}
                         className="flex flex-col"
                       >
-                        {/* Team Name - Draggable */}
-                        <div 
-                          onMouseDown={(e) => handleTeamDrag(e, team_key, orderIndex)}
-                          className="border-b h-8 px-2 flex items-center cursor-grab active:cursor-grabbing"
-                        >
-                          <span className="truncate text-sm font-medium">{team.name}</span>
+                        {/* Team Name Row - Draggable + Settings */}
+                        <div className="border-b h-8 px-2 flex items-center justify-between">
+                          <div 
+                            onMouseDown={(e) => handleTeamDrag(e, team_key, orderIndex)}
+                            className="flex-1 flex items-center cursor-grab active:cursor-grabbing overflow-hidden"
+                          >
+                            <span className="truncate text-sm font-medium">{team.name}</span>
+                          </div>
+                          
+                          {/* Team Settings Button */}
+                          <div className="relative">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenTeamSettings(isSettingsOpen ? null : team_key);
+                              }}
+                              className={`flex items-center justify-center h-6 w-6 rounded hover:bg-white/50 transition ${isSettingsOpen ? 'bg-white/50' : ''}`}
+                              title="Team settings"
+                            >
+                              <MoreVertIcon style={{ fontSize: 16 }} />
+                            </button>
+                            
+                            {/* Settings Dropdown */}
+                            {isSettingsOpen && (
+                              <div 
+                                className="absolute left-0 top-full mt-1 w-48 rounded-lg border border-slate-200 bg-white shadow-xl z-50"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="p-2 space-y-1">
+                                  {/* Collapse/Expand all */}
+                                  <button
+                                    onClick={() => {
+                                      allVisibleTasksSmall(team_key) ? setTeamTasksNormal(team_key) : setTeamTasksSmall(team_key);
+                                      setOpenTeamSettings(null);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left"
+                                  >
+                                    {allVisibleTasksSmall(team_key) ? (
+                                      <>
+                                        <UnfoldMoreIcon style={{ fontSize: 14 }} />
+                                        <span>Expand all tasks</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <UnfoldLessIcon style={{ fontSize: 14 }} />
+                                        <span>Collapse all tasks</span>
+                                      </>
+                                    )}
+                                  </button>
+                                  
+                                  {/* Show hidden tasks */}
+                                  {teamHasHiddenTasks(team_key) && (
+                                    <button
+                                      onClick={() => {
+                                        showAllTeamTasks(team_key);
+                                        setOpenTeamSettings(null);
+                                      }}
+                                      className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left text-blue-700"
+                                    >
+                                      <VisibilityIcon style={{ fontSize: 14 }} />
+                                      <span>Show hidden tasks</span>
+                                    </button>
+                                  )}
+                                  
+                                  {/* Hide all tasks */}
+                                  {visibleTasks.length > 0 && (
+                                    <button
+                                      onClick={() => {
+                                        hideAllTeamTasks(team_key);
+                                        setOpenTeamSettings(null);
+                                      }}
+                                      className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left text-orange-700"
+                                    >
+                                      <VisibilityOffIcon style={{ fontSize: 14 }} />
+                                      <span>Hide all tasks</span>
+                                    </button>
+                                  )}
+                                  
+                                  <div className="border-t border-slate-100 my-1" />
+                                  
+                                  {/* Hide Team */}
+                                  <button
+                                    onClick={() => {
+                                      toggleTeamVisibility(team_key);
+                                      setOpenTeamSettings(null);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-red-50 transition text-left text-red-700"
+                                  >
+                                    <VisibilityOffIcon style={{ fontSize: 14 }} />
+                                    <span>Hide team</span>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                         
-                        {/* Team Controls */}
-                        <div className="flex-1 flex flex-col p-1 gap-1">
-                          {/* Size Toggle */}
-                          <button
-                            onClick={() => allVisibleTasksSmall(team_key) ? setTeamTasksNormal(team_key) : setTeamTasksSmall(team_key)}
-                            className="flex items-center gap-1 px-1.5 py-0.5 text-xs rounded hover:bg-white/50 transition"
-                            title={allVisibleTasksSmall(team_key) ? "Expand all tasks" : "Collapse all tasks"}
-                          >
-                            {allVisibleTasksSmall(team_key) ? (
-                              <UnfoldMoreIcon style={{ fontSize: 14 }} />
-                            ) : (
-                              <UnfoldLessIcon style={{ fontSize: 14 }} />
-                            )}
-                            <span>{allVisibleTasksSmall(team_key) ? 'Expand' : 'Collapse'}</span>
-                          </button>
-                          
-                          {/* Show Hidden Tasks */}
-                          {teamHasHiddenTasks(team_key) && (
-                            <button
-                              onClick={() => showAllTeamTasks(team_key)}
-                              className="flex items-center gap-1 px-1.5 py-0.5 text-xs rounded hover:bg-white/50 transition text-blue-700"
-                              title="Show all hidden tasks"
-                            >
-                              <VisibilityIcon style={{ fontSize: 14 }} />
-                              <span>Show hidden</span>
-                            </button>
-                          )}
-                          
-                          {/* Hide Team */}
-                          <button
-                            onClick={() => toggleTeamVisibility(team_key)}
-                            className="flex items-center gap-1 px-1.5 py-0.5 text-xs rounded hover:bg-white/50 transition text-red-700"
-                            title="Hide team"
-                          >
-                            <VisibilityOffIcon style={{ fontSize: 14 }} />
-                            <span>Hide team</span>
-                          </button>
-                        </div>
+                        {/* Empty space indicator when all tasks hidden but team shown due to min height */}
+                        {rawHeight === 0 && teamHeight > 0 && (
+                          <div className="flex-1 flex items-center justify-center">
+                            <span className="text-xs text-slate-500 italic">All tasks hidden</span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Tasks Column */}
@@ -1307,6 +1521,26 @@ export default function Dependencies() {
                           </div>
                         );
                       })}
+                      
+                      {/* Empty placeholder when all tasks hidden */}
+                      {rawHeight === 0 && teamHeight > 0 && (
+                        <div
+                          className="flex"
+                          style={{ height: `${teamHeight}px` }}
+                        >
+                          {[...Array(days)].map((_, i) => (
+                            <div
+                              className="border-r"
+                              style={{
+                                height: `${teamHeight}px`,
+                                width: `${DAYWIDTH}px`,
+                                opacity: 0.3,
+                              }}
+                              key={i}
+                            />
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1314,7 +1548,7 @@ export default function Dependencies() {
             })}
 
             {/* LAST DROP HIGHLIGHT */}
-            <div className="flex" style={{ position: 'relative', zIndex: 1, backgroundColor: 'white' }}>
+            <div className="flex" style={{ position: 'relative', backgroundColor: 'white' }}>
               <div
                 style={{
                   marginBottom: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
@@ -1342,25 +1576,17 @@ export default function Dependencies() {
             </div>
 
             {/* Hidden Teams Indicator */}
-            {teamOrder.some(tid => !isTeamVisible(tid)) && (
+            {hiddenTeamCount > 0 && (
               <div 
                 className="flex items-center gap-2 px-4 py-2 bg-slate-100 border-t"
-                style={{ position: 'sticky', left: 0, width: `${TEAMWIDTH + TASKWIDTH}px`, zIndex: 40 }}
+                style={{ position: 'sticky', left: 0, width: `${TEAMWIDTH + TASKWIDTH}px`, zIndex: 45 }}
               >
                 <VisibilityOffIcon style={{ fontSize: 16 }} className="text-slate-500" />
                 <span className="text-xs text-slate-600">
-                  {teamOrder.filter(tid => !isTeamVisible(tid)).length} hidden team(s)
+                  {hiddenTeamCount} hidden team(s)
                 </span>
                 <button
-                  onClick={() => {
-                    setTeamDisplaySettings(prev => {
-                      const updated = { ...prev };
-                      for (const tid of teamOrder) {
-                        updated[tid] = { ...updated[tid], hidden: false };
-                      }
-                      return updated;
-                    });
-                  }}
+                  onClick={() => showAllHiddenTeams()}
                   className="text-xs text-blue-600 hover:text-blue-800 underline"
                 >
                   Show all
@@ -1368,10 +1594,10 @@ export default function Dependencies() {
               </div>
             )}
 
-            {/* SVG Layer for Connections - ABOVE day grid, BELOW sticky columns */}
+            {/* SVG Layer for Connections - ABOVE day grid */}
             <svg
               className="absolute top-0 left-0 w-full h-full"
-              style={{ zIndex: 30, pointerEvents: 'none' }}
+              style={{ zIndex: 10, pointerEvents: 'none' }}
             >
               <defs>
                 <style>
@@ -1439,7 +1665,7 @@ export default function Dependencies() {
             {/* Milestones Layer - ABOVE connections */}
             <div
               className="absolute top-0 left-0 w-full h-full"
-              style={{ zIndex: 35, pointerEvents: 'none' }}
+              style={{ zIndex: 15, pointerEvents: 'none' }}
             >
               {teamOrder.map((team_key) => {
                 const team = teams[team_key];
@@ -1556,10 +1782,12 @@ export default function Dependencies() {
               })}
             </div>
 
+
+
             {/* Team Ghost */}
             {ghost && (
               <div
-                className="pointer-events-none"
+                className="absolute pointer-events-none"
                 style={{
                   height: `${ghost.height}px`,
                   width: `${TEAMWIDTH + TASKWIDTH}px`,
@@ -1579,7 +1807,7 @@ export default function Dependencies() {
             {/* Task Ghost */}
             {taskGhost && (
               <div
-                className="pointer-events-none"
+                className="absolute rounded border border-blue-400 bg-blue-100/90 shadow-lg flex items-center px-2 text-sm font-medium text-blue-900 pointer-events-none"
                 style={{
                   height: `${taskGhost.height}px`,
                   width: `${taskGhost.width}px`,
