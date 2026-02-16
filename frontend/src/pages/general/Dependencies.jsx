@@ -48,7 +48,7 @@ const TEAM_DRAG_HIGHLIGHT_HEIGHT = 5;
 const MARIGN_BETWEEN_DRAG_HIGHLIGHT = 5;
 
 const DEFAULT_DAYWIDTH = 60;
-const HEADER_HEIGHT = 40;
+const HEADER_HEIGHT = 48;
 const TASK_DROP_INDICATOR_HEIGHT = 3;
 
 // Connection constants
@@ -110,7 +110,7 @@ export default function Dependencies() {
   // Display settings for tasks: { [taskId]: { size: 'normal' | 'small', hidden: boolean } }
   const [taskDisplaySettings, setTaskDisplaySettings] = useState({});
 
-  // Display settings for teams: { [teamId]: { hidden: boolean } }
+  // Display settings for teams: { [teamId]: { hidden: boolean, collapsed: boolean } }
   const [teamDisplaySettings, setTeamDisplaySettings] = useState({});
 
   // Team settings dropdown
@@ -129,6 +129,9 @@ export default function Dependencies() {
 
   // Day cell hover state for milestone creation
   const [hoveredDayCell, setHoveredDayCell] = useState(null); // { taskId, dayIndex }
+  
+  // Milestone creation confirmation modal
+  const [milestoneCreateModal, setMilestoneCreateModal] = useState(null); // { taskId, dayIndex }
 
   // Create modals
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
@@ -586,6 +589,22 @@ export default function Dependencies() {
     return team.tasks.some(tid => taskDisplaySettings[tid]?.hidden);
   };
 
+  // Toggle team collapsed state
+  const toggleTeamCollapsed = (teamId) => {
+    setTeamDisplaySettings(prev => ({
+      ...prev,
+      [teamId]: {
+        ...prev[teamId],
+        collapsed: !prev[teamId]?.collapsed
+      }
+    }));
+  };
+
+  // Check if team is collapsed
+  const isTeamCollapsed = (teamId) => {
+    return teamDisplaySettings[teamId]?.collapsed ?? false;
+  };
+
   // Show all tasks in a team
   const showAllTeamTasks = (teamId) => {
     const team = teams[teamId];
@@ -601,6 +620,9 @@ export default function Dependencies() {
 
   // Show all hidden teams
   const showAllHiddenTeams = () => {
+    // Clear the team filter first
+    setTeamFilter([]);
+    
     setTeamDisplaySettings(prev => {
       const updated = { ...prev };
       for (const teamId of teamOrder) {
@@ -879,20 +901,24 @@ export default function Dependencies() {
 
     const startX = e.clientX;
     const startIndex = milestone.start_index;
+    const startVisualX = startIndex * DAYWIDTH;
 
-    // Track the current index in a closure variable
+    // Track the visual X position (smooth) and snapped index
+    let currentVisualX = startVisualX;
     let currentIndex = startIndex;
 
     const onMouseMove = (moveEvent) => {
       const deltaX = moveEvent.clientX - startX;
-      const indexDelta = Math.round(deltaX / DAYWIDTH);
-      currentIndex = Math.max(0, startIndex + indexDelta);
+      // Update visual position smoothly (no snapping during drag)
+      currentVisualX = Math.max(0, startVisualX + deltaX);
+      // Calculate what the snapped index would be (for mouseUp)
+      currentIndex = Math.max(0, Math.round(currentVisualX / DAYWIDTH));
 
       setMilestones(prev => ({
         ...prev,
         [milestoneId]: {
           ...prev[milestoneId],
-          start_index: currentIndex,
+          x: currentVisualX, // Use visual X position during drag
         }
       }));
     };
@@ -900,6 +926,16 @@ export default function Dependencies() {
     const onMouseUp = async () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+
+      // Snap to final index
+      setMilestones(prev => ({
+        ...prev,
+        [milestoneId]: {
+          ...prev[milestoneId],
+          start_index: currentIndex,
+          x: undefined, // Clear visual X so it uses start_index * DAYWIDTH
+        }
+      }));
 
       // Only save if position actually changed
       if (currentIndex !== startIndex) {
@@ -1057,7 +1093,17 @@ export default function Dependencies() {
   };
 
   // Handle day cell click (create milestone in milestone mode)
-  const handleDayCellClick = async (taskId, dayIndex) => {
+  const handleDayCellClick = (taskId, dayIndex) => {
+    // Show confirmation modal instead of creating directly
+    setMilestoneCreateModal({ taskId, dayIndex });
+  };
+  
+  // Confirm milestone creation
+  const confirmMilestoneCreate = async () => {
+    if (!milestoneCreateModal) return;
+    
+    const { taskId, dayIndex } = milestoneCreateModal;
+    
     try {
       const result = await add_milestone(projectId, taskId);
       if (result.added_milestone) {
@@ -1082,6 +1128,8 @@ export default function Dependencies() {
     } catch (err) {
       console.error("Failed to create milestone:", err);
     }
+    
+    setMilestoneCreateModal(null);
   };
 
   // Connection handling
@@ -1525,6 +1573,35 @@ export default function Dependencies() {
         </div>
       )}
 
+      {/* Milestone Creation Confirmation Modal */}
+      {milestoneCreateModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Create Milestone?</h2>
+            <p className="text-sm text-slate-600 mb-4">
+              Create a new milestone on <strong>Day {milestoneCreateModal.dayIndex + 1}</strong> for task{" "}
+              <span className="font-medium text-slate-800">
+                "{tasks[milestoneCreateModal.taskId]?.name || 'Unknown'}"
+              </span>?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setMilestoneCreateModal(null)}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmMilestoneCreate}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+              >
+                Create Milestone
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Team Settings Dropdown - Rendered outside the transformed container */}
       {openTeamSettings && teams[openTeamSettings] && (() => {
         const btn = document.getElementById(`team-settings-btn-${openTeamSettings}`);
@@ -1543,29 +1620,52 @@ export default function Dependencies() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-2 space-y-1">
-              {/* Collapse/Expand all */}
+              {/* Collapse/Expand Team (entire team) */}
               <button
                 onClick={() => {
-                  allVisibleTasksSmall(team_key) ? setTeamTasksNormal(team_key) : setTeamTasksSmall(team_key);
+                  toggleTeamCollapsed(team_key);
                   setOpenTeamSettings(null);
                 }}
                 className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left"
               >
-                {allVisibleTasksSmall(team_key) ? (
+                {isTeamCollapsed(team_key) ? (
                   <>
                     <UnfoldMoreIcon style={{ fontSize: 14 }} />
-                    <span>Expand all tasks</span>
+                    <span>Expand team</span>
                   </>
                 ) : (
                   <>
                     <UnfoldLessIcon style={{ fontSize: 14 }} />
-                    <span>Collapse all tasks</span>
+                    <span>Collapse team</span>
                   </>
                 )}
               </button>
               
-              {/* Show hidden tasks */}
-              {teamHasHiddenTasks(team_key) && (
+              {/* Collapse/Expand all tasks (only when team is not collapsed) */}
+              {!isTeamCollapsed(team_key) && (
+                <button
+                  onClick={() => {
+                    allVisibleTasksSmall(team_key) ? setTeamTasksNormal(team_key) : setTeamTasksSmall(team_key);
+                    setOpenTeamSettings(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left"
+                >
+                  {allVisibleTasksSmall(team_key) ? (
+                    <>
+                      <UnfoldMoreIcon style={{ fontSize: 14 }} />
+                      <span>Expand all tasks</span>
+                    </>
+                  ) : (
+                    <>
+                      <UnfoldLessIcon style={{ fontSize: 14 }} />
+                      <span>Collapse all tasks</span>
+                    </>
+                  )}
+                </button>
+              )}
+              
+              {/* Show hidden tasks - only when not collapsed */}
+              {!isTeamCollapsed(team_key) && teamHasHiddenTasks(team_key) && (
                 <button
                   onClick={() => {
                     showAllTeamTasks(team_key);
@@ -1930,7 +2030,7 @@ export default function Dependencies() {
               <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
                 Create
               </h3>
-              <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -2147,29 +2247,50 @@ export default function Dependencies() {
                       style={{
                         height: teamHeight,
                         width: `${TEAMWIDTH + TASKWIDTH}px`,
-                        backgroundColor: isTargetTeam ? '#bfdbfe' : `${team.color}`,
+                        backgroundColor: isTargetTeam ? '#dbeafe' : `${team.color}20`,
                         opacity: ghost?.id === team_key ? 0.2 : 1,
                         position: 'sticky',
                         left: 0,
                         zIndex: 40,
-                        transition: 'background-color 0.15s ease',
-                        boxShadow: isTargetTeam ? 'inset 0 0 0 2px #3b82f6' : 'none',
+                        transition: 'all 0.15s ease',
+                        boxShadow: isTargetTeam ? 'inset 0 0 0 2px #3b82f6' : '2px 0 4px rgba(0,0,0,0.05)',
+                        borderLeft: `3px solid ${team.color}`,
                       }}
-                      className="flex border flex-shrink-0"
+                      className="flex border-y border-r border-slate-200 flex-shrink-0"
                     >
                       {/* Team Column */}
                       <div
-                        style={{ width: `${TEAMWIDTH}px` }}
-                        className="flex flex-col"
+                        style={{ width: isTeamCollapsed(team_key) ? `${TEAMWIDTH + TASKWIDTH}px` : `${TEAMWIDTH}px` }}
+                        className="flex flex-col bg-white/60"
                       >
                         {/* Team Name Row - Draggable + Settings */}
-                        <div className="border-b h-8 px-2 flex items-center justify-between">
+                        <div className={`${isTeamCollapsed(team_key) ? '' : 'border-b border-slate-200'} h-8 px-3 flex items-center justify-between`}>
                           <div 
                             onMouseDown={(e) => handleTeamDrag(e, team_key, orderIndex)}
-                            className="flex-1 flex items-center cursor-grab active:cursor-grabbing overflow-hidden"
+                            className="flex-1 flex items-center gap-2 cursor-grab active:cursor-grabbing overflow-hidden"
                           >
-                            <span className="truncate text-sm font-medium">{team.name}</span>
+                            <div 
+                              className="w-2 h-2 rounded-full flex-shrink-0" 
+                              style={{ backgroundColor: team.color }}
+                            />
+                            <span className="truncate text-sm font-semibold text-slate-700">{team.name}</span>
+                            {isTeamCollapsed(team_key) && (
+                              <span className="text-xs text-slate-400 ml-1">
+                                ({team.tasks.length} task{team.tasks.length !== 1 ? 's' : ''})
+                              </span>
+                            )}
                           </div>
+                          
+                          {/* Expand button for collapsed teams */}
+                          {isTeamCollapsed(team_key) && (
+                            <button
+                              onClick={() => toggleTeamCollapsed(team_key)}
+                              className="flex items-center justify-center h-6 w-6 rounded hover:bg-slate-100 transition mr-1"
+                              title="Expand team"
+                            >
+                              <UnfoldMoreIcon style={{ fontSize: 16 }} className="text-slate-500" />
+                            </button>
+                          )}
                           
                           {/* Team Settings Button */}
                           <div className="relative">
@@ -2179,134 +2300,137 @@ export default function Dependencies() {
                                 e.stopPropagation();
                                 setOpenTeamSettings(isSettingsOpen ? null : team_key);
                               }}
-                              className={`flex items-center justify-center h-6 w-6 rounded hover:bg-white/50 transition ${isSettingsOpen ? 'bg-white/50' : ''}`}
+                              className={`flex items-center justify-center h-6 w-6 rounded hover:bg-slate-100 transition ${isSettingsOpen ? 'bg-slate-100' : ''}`}
                               title="Team settings"
                             >
-                              <MoreVertIcon style={{ fontSize: 16 }} />
+                              <MoreVertIcon style={{ fontSize: 16 }} className="text-slate-500" />
                             </button>
                           </div>
                         </div>
                         
                         {/* Empty space indicator when all tasks hidden but team shown due to min height */}
-                        {rawHeight === 0 && teamHeight > 0 && (
+                        {!isTeamCollapsed(team_key) && rawHeight === 0 && teamHeight > 0 && (
                           <div className="flex-1 flex items-center justify-center">
-                            <span className="text-xs text-slate-500 italic">All tasks hidden</span>
+                            <span className="text-xs text-slate-400 italic">All tasks hidden</span>
                           </div>
                         )}
                       </div>
 
-                      {/* Tasks Column */}
-                      <div className="flex flex-col">
+                      {/* Tasks Column - only show when not collapsed */}
+                      {!isTeamCollapsed(team_key) && (
+                        <div className="flex flex-col bg-white/40">
+                          {team.tasks.map((task_key, taskIndex) => {
+                            if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
+                            
+                            const taskHeight = getTaskHeight(task_key, taskDisplaySettings);
+                            const isSmall = taskDisplaySettings[task_key]?.size === 'small';
+                            const visibleTaskIndex = visibleTasks.indexOf(task_key);
+                            const isLastVisible = visibleTaskIndex === visibleTasks.length - 1;
+                            
+                            return (
+                              <div
+                                className="border-l border-slate-200 flex justify-between w-full items-center hover:bg-slate-50/50 transition-colors"
+                                style={{
+                                  height: `${taskHeight}px`,
+                                  width: `${TASKWIDTH}px`,
+                                  borderBottom: isLastVisible ? "none" : "1px solid #e2e8f0",
+                                  opacity: taskGhost?.taskKey === task_key ? 0.3 : 1,
+                                }}
+                                key={`${task_key}_container`}
+                              >
+                                {/* Task Name */}
+                                <div
+                                  onMouseDown={(e) => {
+                                    if (mode === "drag") {
+                                      handleTaskDrag(e, task_key, team_key, visibleTaskIndex);
+                                    }
+                                  }}
+                                  className={`flex-1 h-full flex items-center px-2 cursor-grab active:cursor-grabbing truncate text-slate-600 ${isSmall ? 'text-xs' : 'text-sm'}`}
+                                >
+                                  {tasks[task_key]?.name}
+                                </div>
+
+                                {/* Task Controls */}
+                                <div className="flex items-center gap-0.5 pr-1.5 opacity-60 hover:opacity-100 transition-opacity">
+                                  {/* Size Toggle */}
+                                  <button
+                                    onClick={() => toggleTaskSize(task_key)}
+                                    className={`flex items-center justify-center rounded hover:bg-slate-200 transition ${isSmall ? 'h-5 w-5' : 'h-6 w-6'}`}
+                                    title={isSmall ? "Expand task" : "Collapse task"}
+                                  >
+                                    {isSmall ? (
+                                      <UnfoldMoreIcon style={{ fontSize: isSmall ? 12 : 14 }} className="text-slate-500" />
+                                    ) : (
+                                      <UnfoldLessIcon style={{ fontSize: 14 }} className="text-slate-500" />
+                                    )}
+                                  </button>
+                                  
+                                  {/* Hide Task */}
+                                  <button
+                                    onClick={() => toggleTaskVisibility(task_key)}
+                                    className={`flex items-center justify-center rounded hover:bg-slate-200 transition ${isSmall ? 'h-5 w-5' : 'h-6 w-6'}`}
+                                    title="Hide task"
+                                  >
+                                    <VisibilityOffIcon style={{ fontSize: isSmall ? 12 : 14 }} className="text-slate-500" />
+                                  </button>
+                                  
+                                  {/* Add Milestone */}
+                                  {!isSmall && (
+                                    <button 
+                                      onClick={() => add_milestone_local(task_key)}
+                                      className="h-6 w-6 flex justify-center items-center rounded hover:bg-slate-200 transition cursor-pointer"
+                                    >
+                                      <AddIcon style={{ fontSize: 14 }} className="text-slate-500" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* SCROLLABLE RIGHT: Milestones/Days - day grid with interactive cells in milestone mode */}
+                    {!isTeamCollapsed(team_key) && (
+                      <div
+                        className="border-y border-slate-200 bg-white"
+                        style={{ height: `${teamHeight}px` }}
+                      >
                         {team.tasks.map((task_key, taskIndex) => {
                           if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
                           
                           const taskHeight = getTaskHeight(task_key, taskDisplaySettings);
-                          const isSmall = taskDisplaySettings[task_key]?.size === 'small';
                           const visibleTaskIndex = visibleTasks.indexOf(task_key);
                           const isLastVisible = visibleTaskIndex === visibleTasks.length - 1;
                           
                           return (
                             <div
-                              className="border-b border-l flex justify-between w-full items-center"
+                              className="flex relative"
                               style={{
                                 height: `${taskHeight}px`,
-                                width: `${TASKWIDTH}px`,
-                                borderBottom: isLastVisible ? "none" : "1px solid black",
-                                opacity: taskGhost?.taskKey === task_key ? 0.3 : 1,
+                                borderBottom: isLastVisible ? "none" : "1px solid #e2e8f0",
                               }}
-                              key={`${task_key}_container`}
+                              key={`${task_key}_milestone`}
                             >
-                              {/* Task Name */}
-                              <div
-                                onMouseDown={(e) => {
-                                  if (mode === "drag") {
-                                    handleTaskDrag(e, task_key, team_key, visibleTaskIndex);
-                                  }
-                                }}
-                                className={`flex-1 h-full flex items-center px-1 cursor-grab active:cursor-grabbing truncate ${isSmall ? 'text-xs' : 'text-sm'}`}
-                              >
-                                {tasks[task_key]?.name}
-                              </div>
-
-                              {/* Task Controls */}
-                              <div className="flex items-center gap-0.5 pr-1">
-                                {/* Size Toggle */}
-                                <button
-                                  onClick={() => toggleTaskSize(task_key)}
-                                  className={`flex items-center justify-center rounded hover:bg-white/70 transition ${isSmall ? 'h-5 w-5' : 'h-6 w-6'}`}
-                                  title={isSmall ? "Expand task" : "Collapse task"}
-                                >
-                                  {isSmall ? (
-                                    <UnfoldMoreIcon style={{ fontSize: isSmall ? 12 : 16 }} />
-                                  ) : (
-                                    <UnfoldLessIcon style={{ fontSize: 16 }} />
-                                  )}
-                                </button>
+                              {/* Day rendering - interactive in milestone mode */}
+                              {[...Array(days)].map((_, i) => {
+                                const isHovered = viewMode === "milestone" && 
+                                  hoveredDayCell?.taskId === task_key && 
+                                  hoveredDayCell?.dayIndex === i;
                                 
-                                {/* Hide Task */}
-                                <button
-                                  onClick={() => toggleTaskVisibility(task_key)}
-                                  className={`flex items-center justify-center rounded hover:bg-white/70 transition ${isSmall ? 'h-5 w-5' : 'h-6 w-6'}`}
-                                  title="Hide task"
-                                >
-                                  <VisibilityOffIcon style={{ fontSize: isSmall ? 12 : 16 }} />
-                                </button>
-                                
-                                {/* Add Milestone */}
-                                {!isSmall && (
-                                  <div 
-                                    onClick={() => add_milestone_local(task_key)}
-                                    className="bg-white h-6 w-6 flex justify-center items-center rounded hover:bg-gray-100 active:bg-gray-200 cursor-pointer"
-                                  >
-                                    <AddIcon style={{ fontSize: 16 }} />
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* SCROLLABLE RIGHT: Milestones/Days - day grid with interactive cells in milestone mode */}
-                    <div
-                      className="border-t border-b bg-white"
-                      style={{ height: `${teamHeight}px` }}
-                    >
-                      {team.tasks.map((task_key, taskIndex) => {
-                        if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
-                        
-                        const taskHeight = getTaskHeight(task_key, taskDisplaySettings);
-                        const visibleTaskIndex = visibleTasks.indexOf(task_key);
-                        const isLastVisible = visibleTaskIndex === visibleTasks.length - 1;
-                        
-                        return (
-                          <div
-                            className="flex relative"
-                            style={{
-                              height: `${taskHeight}px`,
-                              borderBottom: isLastVisible ? "none" : "1px solid black",
-                            }}
-                            key={`${task_key}_milestone`}
-                          >
-                            {/* Day rendering - interactive in milestone mode */}
-                            {[...Array(days)].map((_, i) => {
-                              const isHovered = viewMode === "milestone" && 
-                                hoveredDayCell?.taskId === task_key && 
-                                hoveredDayCell?.dayIndex === i;
-                              
-                              return (
-                                <div
-                                  className={`border-r transition-colors ${
-                                    viewMode === "milestone" ? 'cursor-pointer hover:bg-blue-100' : ''
-                                  } ${isHovered ? 'bg-blue-200' : ''}`}
-                                  style={{
-                                    height: `${taskHeight}px`,
-                                    width: `${DAYWIDTH}px`,
-                                    opacity: ghost?.id === team_key ? 0.2 : 1,
-                                    pointerEvents: viewMode === "milestone" ? 'auto' : 'none',
-                                  }}
-                                  key={i}
+                                return (
+                                  <div
+                                    className={`border-r border-slate-100 transition-colors ${
+                                      viewMode === "milestone" ? 'cursor-pointer hover:bg-blue-50' : ''
+                                    } ${isHovered ? 'bg-blue-100' : ''}`}
+                                    style={{
+                                      height: `${taskHeight}px`,
+                                      width: `${DAYWIDTH}px`,
+                                      opacity: ghost?.id === team_key ? 0.2 : 1,
+                                      pointerEvents: viewMode === "milestone" ? 'auto' : 'none',
+                                    }}
+                                    key={i}
                                   onMouseEnter={() => viewMode === "milestone" && setHoveredDayCell({ taskId: task_key, dayIndex: i })}
                                   onMouseLeave={() => setHoveredDayCell(null)}
                                   onClick={() => viewMode === "milestone" && handleDayCellClick(task_key, i)}
@@ -2337,6 +2461,15 @@ export default function Dependencies() {
                         </div>
                       )}
                     </div>
+                    )}
+                    
+                    {/* Empty day grid placeholder for collapsed teams */}
+                    {isTeamCollapsed(team_key) && (
+                      <div
+                        className="border-y border-slate-200 bg-slate-50"
+                        style={{ height: `${teamHeight}px` }}
+                      />
+                    )}
                   </div>
                 </div>
               );
@@ -2649,9 +2782,9 @@ export default function Dependencies() {
                           </>
                         )}
 
-                        {/* Selection indicator */}
+                        {/* Selection indicator - subtle underline */}
                         {isSelected && (
-                          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-blue-500 rounded-full border border-white" />
+                          <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-blue-500 rounded-full opacity-80" />
                         )}
                       </div>
                     );
