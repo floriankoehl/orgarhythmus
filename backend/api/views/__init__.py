@@ -61,6 +61,9 @@ from .tasks import (
     update_start_index,
     delete_milestones,
     change_duration,
+    get_all_dependencies,
+    create_dependency,
+    delete_dependency,
 )
 
 from .attempts import (

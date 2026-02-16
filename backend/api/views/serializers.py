@@ -7,6 +7,7 @@ from ..models import (
     Team,
     Task,
     Milestone,
+    Dependency,
     Idea,
     Category,
     LegendType,
@@ -216,6 +217,12 @@ class TaskSerializer_Deps(serializers.ModelSerializer):
 
     class Meta:
         model = Task
+        fields = "__all__"
+
+
+class DependencySerializer_Deps(serializers.ModelSerializer):
+    class Meta:
+        model = Dependency
         fields = "__all__"
 
 

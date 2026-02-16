@@ -10,6 +10,9 @@ import {
   update_start_index,
   delete_milestone,
   change_duration,
+  get_all_dependencies,
+  create_dependency,
+  delete_dependency_api,
 } from '../api/dependencies_api.js';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
@@ -202,6 +205,18 @@ useEffect(() => {
       setTeams(teamObject);
       setTasks(resTasks.tasks);
       setMilestones(updated_milestones)
+
+      // 4️⃣ fetch dependencies
+      try {
+        const resDeps = await get_all_dependencies(projectId);
+        const fetched_deps = resDeps.dependencies;
+        if (Array.isArray(fetched_deps)) {
+          setConnections(fetched_deps.map(d => ({ source: d.source, target: d.target })));
+        }
+      } catch (err) {
+        console.error("Failed to load dependencies:", err);
+        setConnections([]);
+      }
     };
 
     load_all();
@@ -552,6 +567,11 @@ const handleMileStoneDrag = (event, milestone_key) => {
     if (exists) return;
 
     setConnections(prev => [...prev, { source: sourceId, target: targetId }]);
+
+    // Persist to backend
+    create_dependency(projectId, sourceId, targetId).catch(err =>
+      console.error("Failed to save dependency:", err)
+    );
   };
 
   // Generate SVG path for a connection (bezier curve)
@@ -574,6 +594,11 @@ const handleMileStoneDrag = (event, milestone_key) => {
     if (selectedConnection?.source === sourceId && selectedConnection?.target === targetId) {
       setSelectedConnection(null);
     }
+
+    // Persist to backend
+    delete_dependency_api(projectId, sourceId, targetId).catch(err =>
+      console.error("Failed to delete dependency:", err)
+    );
   };
 
   // Select a connection

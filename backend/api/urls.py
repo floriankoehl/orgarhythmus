@@ -176,7 +176,12 @@ urlpatterns = [
     path("projects/<int:project_id>/add_milestone/", views.add_milestone),
     path("projects/<int:project_id>/update_start_index/", views.update_start_index),
     path("projects/<int:project_id>/delete_milestones/", views.delete_milestones),
-    path("projects/<int:project_id>/change_duration/", views.change_duration)
+    path("projects/<int:project_id>/change_duration/", views.change_duration),
+
+    # Dependencies
+    path("projects/<int:project_id>/get_all_dependencies/", views.get_all_dependencies),
+    path("projects/<int:project_id>/create_dependency/", views.create_dependency),
+    path("projects/<int:project_id>/delete_dependency/", views.delete_dependency),
 
     # _____________________________ END OF NEW ADDING ______________________________
     # _____________________________ END OF NEW ADDING ______________________________

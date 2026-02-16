@@ -126,3 +126,45 @@ export async function change_duration(projectId, milestone_id, duration_change){
 
     return null
 }
+
+
+
+// Dependencies (connections between milestones)
+
+export async function get_all_dependencies(projectId){
+    const res = await authFetch(`/api/projects/${projectId}/get_all_dependencies/`)
+    if (!res.ok) throw new Error('Failed to fetch dependencies');
+    const answer = await res.json()
+    return answer
+}
+
+export async function create_dependency(projectId, sourceId, targetId){
+    const res = await authFetch(`/api/projects/${projectId}/create_dependency/`, {
+        method: "POST",
+        body: JSON.stringify({
+            source: sourceId,
+            target: targetId
+        })
+    })
+    if (!res.ok) throw new Error('Failed to create dependency');
+    const answer = await res.json()
+    return answer
+}
+
+export async function delete_dependency_api(projectId, sourceId, targetId){
+    const res = await authFetch(`/api/projects/${projectId}/delete_dependency/`, {
+        method: "DELETE",
+        body: JSON.stringify({
+            source: sourceId,
+            target: targetId
+        })
+    })
+
+    if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`Delete dependency failed (${res.status}): ${text}`)
+    }
+
+    if (res.status === 204) return null
+    return await res.json()
+}
