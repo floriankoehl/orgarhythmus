@@ -16,10 +16,12 @@ import {
   delete_dependency_api,
   reorder_team_tasks,
 } from '../../api/dependencies_api.js';
+import {
+  createTeamForProject,
+  createTaskForProject,
+} from '../../api/org_API.js';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
-import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
@@ -29,19 +31,20 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import FlagIcon from '@mui/icons-material/Flag';
+import GroupAddIcon from '@mui/icons-material/GroupAdd';
+import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 
-// Height constants
-const TASKHEIGHT_NORMAL = 32;
-const TASKHEIGHT_SMALL = 22;
+// Height constants (defaults)
+const DEFAULT_TASKHEIGHT_NORMAL = 32;
+const DEFAULT_TASKHEIGHT_SMALL = 22;
 const TASKWIDTH = 200;
 
 const TEAMWIDTH = 150;
-const TEAM_MIN_HEIGHT = TASKHEIGHT_NORMAL; // Minimum team height
 
 const TEAM_DRAG_HIGHLIGHT_HEIGHT = 5;
 const MARIGN_BETWEEN_DRAG_HIGHLIGHT = 5;
 
-const DAYWIDTH = 60;
+const DEFAULT_DAYWIDTH = 60;
 const HEADER_HEIGHT = 40;
 const TASK_DROP_INDICATOR_HEIGHT = 3;
 
@@ -57,13 +60,6 @@ function daysBetween(start, end) {
 
     return diffDays
 }
-
-// Helper to get task height based on size
-const getTaskHeight = (taskId, taskDisplaySettings) => {
-  const settings = taskDisplaySettings[taskId];
-  if (!settings || settings.hidden) return 0;
-  return settings.size === 'small' ? TASKHEIGHT_SMALL : TASKHEIGHT_NORMAL;
-};
 
 // Helper to check if task is visible
 const isTaskVisible = (taskId, taskDisplaySettings) => {
@@ -124,6 +120,40 @@ export default function Dependencies() {
   // Milestone editing state
   const [editingMilestoneId, setEditingMilestoneId] = useState(null);
   const [editingMilestoneName, setEditingMilestoneName] = useState("");
+
+  // Day cell hover state for milestone creation
+  const [hoveredDayCell, setHoveredDayCell] = useState(null); // { taskId, dayIndex }
+
+  // Create modals
+  const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
+  const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
+  const [newTeamName, setNewTeamName] = useState("");
+  const [newTeamColor, setNewTeamColor] = useState("#facc15");
+  const [newTaskName, setNewTaskName] = useState("");
+  const [newTaskTeamId, setNewTaskTeamId] = useState(null);
+  const [isCreating, setIsCreating] = useState(false);
+
+  // Advanced settings
+  const [hideCollapsedDependencies, setHideCollapsedDependencies] = useState(false);
+  const [hideCollapsedMilestones, setHideCollapsedMilestones] = useState(false);
+  const [customDayWidth, setCustomDayWidth] = useState(DEFAULT_DAYWIDTH);
+  const [customTaskHeightNormal, setCustomTaskHeightNormal] = useState(DEFAULT_TASKHEIGHT_NORMAL);
+  const [customTaskHeightSmall, setCustomTaskHeightSmall] = useState(DEFAULT_TASKHEIGHT_SMALL);
+  const [hideAllDependencies, setHideAllDependencies] = useState(false);
+  const [showEmptyTeams, setShowEmptyTeams] = useState(true);
+  const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
+
+  // Dynamic constants based on settings
+  const DAYWIDTH = customDayWidth;
+  const TASKHEIGHT_NORMAL = customTaskHeightNormal;
+  const TASKHEIGHT_SMALL = customTaskHeightSmall;
+
+  // Helper to get task height (using current settings)
+  const getTaskHeight = (taskId, taskDisplaySettings) => {
+    const settings = taskDisplaySettings[taskId];
+    if (!settings || settings.hidden) return 0;
+    return settings.size === 'small' ? TASKHEIGHT_SMALL : TASKHEIGHT_NORMAL;
+  };
 
 
   // ________Global Event Listener___________
@@ -220,7 +250,7 @@ export default function Dependencies() {
           const milestone = fetched_Milestones[i]
           updated_milestones[milestone.id] = {
             ...milestone, 
-            x: milestone.start_index * DAYWIDTH,
+            // Don't pre-calculate x - it will be calculated dynamically based on current DAYWIDTH
             display: "default"
           }
         }
@@ -256,14 +286,14 @@ export default function Dependencies() {
   // Calculate team height based on visible tasks and their sizes (with minimum)
   const getTeamHeight = (teamId) => {
     const team = teams[teamId];
-    if (!team) return TEAM_MIN_HEIGHT;
+    if (!team) return TASKHEIGHT_NORMAL; // Use dynamic minimum
     
     let height = 0;
     for (const taskId of team.tasks) {
       height += getTaskHeight(taskId, taskDisplaySettings);
     }
-    // Ensure minimum height
-    return Math.max(height, TEAM_MIN_HEIGHT);
+    // Ensure minimum height (use dynamic task height)
+    return Math.max(height, TASKHEIGHT_NORMAL);
   };
 
   // Get raw team height (without minimum, for calculations)
@@ -286,9 +316,10 @@ export default function Dependencies() {
     const settings = teamDisplaySettings[teamId];
     if (settings?.hidden) return false;
     
-    // Also hide if all tasks are hidden
+    // Check for empty teams
     const team = teams[teamId];
-    if (!team || team.tasks.length === 0) return true; // Show empty teams
+    if (!team) return false;
+    if (team.tasks.length === 0) return showEmptyTeams; // Respect showEmptyTeams setting
     
     const hasVisibleTask = team.tasks.some(taskId => isTaskVisible(taskId, taskDisplaySettings));
     return hasVisibleTask;
@@ -806,8 +837,9 @@ export default function Dependencies() {
   const handleMileStoneDrag = (event, milestone_key) => {
     event.preventDefault() 
 
-    const startX = event.clientX - milestones[milestone_key].x
-    let new_x = milestones[milestone_key].x
+    const currentX = milestones[milestone_key].x ?? (milestones[milestone_key].start_index * DAYWIDTH);
+    const startX = event.clientX - currentX
+    let new_x = currentX
 
     const onMouseMove = (e) => {
       if (e.ctrlKey) {
@@ -930,7 +962,12 @@ export default function Dependencies() {
 
     const startX = e.clientX;
     const startDuration = milestone.duration;
-    const startMilestoneX = milestone.x || (milestone.start_index * DAYWIDTH);
+    const startMilestoneX = milestone.x ?? (milestone.start_index * DAYWIDTH);
+    const startIndex = milestone.start_index;
+    
+    // Track final values via closure variables (like handleMileStoneDrag does)
+    let finalDuration = startDuration;
+    let finalIndex = startIndex;
 
     const onMouseMove = (moveE) => {
       const deltaX = moveE.clientX - startX;
@@ -939,6 +976,7 @@ export default function Dependencies() {
       if (edge === "right") {
         // Resize from right edge - change duration
         const newDuration = Math.max(1, startDuration + daysDelta);
+        finalDuration = newDuration;
         setMilestones(prev => ({
           ...prev,
           [milestoneId]: {
@@ -949,17 +987,20 @@ export default function Dependencies() {
       } else if (edge === "left") {
         // Resize from left edge - change start position and duration
         const maxDeltaDays = startDuration - 1; // Can't shrink below 1
-        const clampedDaysDelta = Math.max(-Math.floor(startMilestoneX / DAYWIDTH), Math.min(maxDeltaDays, daysDelta));
+        const clampedDaysDelta = Math.max(-startIndex, Math.min(maxDeltaDays, daysDelta));
         const newDuration = startDuration - clampedDaysDelta;
-        const newX = startMilestoneX + (clampedDaysDelta * DAYWIDTH);
+        const newIndex = startIndex + clampedDaysDelta;
         
-        if (newDuration >= 1) {
+        if (newDuration >= 1 && newIndex >= 0) {
+          finalDuration = newDuration;
+          finalIndex = newIndex;
           setMilestones(prev => ({
             ...prev,
             [milestoneId]: {
               ...prev[milestoneId],
               duration: newDuration,
-              x: newX
+              start_index: newIndex,
+              x: newIndex * DAYWIDTH
             }
           }));
         }
@@ -970,30 +1011,83 @@ export default function Dependencies() {
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
       
-      // Save the changes to backend
-      const updatedMilestone = milestones[milestoneId];
-      if (updatedMilestone) {
-        const newIndex = Math.round((updatedMilestone.x || 0) / DAYWIDTH);
-        const durationChange = updatedMilestone.duration - startDuration;
-        
-        // Update start index if left edge was dragged
-        if (edge === "left") {
-          update_start_index(projectId, milestoneId, newIndex).catch(err => 
-            console.error("Failed to update start index:", err)
-          );
-        }
-        
-        // Update duration if it changed
-        if (durationChange !== 0) {
-          change_duration(projectId, milestoneId, durationChange).catch(err =>
-            console.error("Failed to update duration:", err)
-          );
-        }
+      // Save the changes to backend using tracked final values
+      // Update start index if left edge was dragged and position changed
+      if (edge === "left" && finalIndex !== startIndex) {
+        update_start_index(projectId, milestoneId, finalIndex).catch(err => 
+          console.error("Failed to update start index:", err)
+        );
+      }
+      
+      // Update duration if it changed
+      const durationChange = finalDuration - startDuration;
+      if (durationChange !== 0) {
+        change_duration(projectId, milestoneId, durationChange).catch(err =>
+          console.error("Failed to update duration:", err)
+        );
       }
     };
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
+  };
+
+  // Handle day cell click to create milestone (in milestone mode)
+  const handleDayCellClick = async (taskId, dayIndex) => {
+    if (viewMode !== "milestone") return;
+    
+    try {
+      const result = await add_milestone(projectId, taskId);
+      // After creating, update the start_index to the clicked day position
+      if (result && result.milestone && result.milestone.id) {
+        await update_start_index(projectId, result.milestone.id, dayIndex);
+      }
+      setReloadData(true);
+    } catch (err) {
+      console.error("Failed to create milestone:", err);
+    }
+  };
+
+  // Create team handler
+  const handleCreateTeam = async () => {
+    if (!newTeamName.trim()) return;
+    
+    setIsCreating(true);
+    try {
+      await createTeamForProject(projectId, {
+        name: newTeamName.trim(),
+        color: newTeamColor
+      });
+      setNewTeamName("");
+      setNewTeamColor("#facc15");
+      setShowCreateTeamModal(false);
+      setReloadData(true);
+    } catch (err) {
+      console.error("Failed to create team:", err);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // Create task handler
+  const handleCreateTask = async () => {
+    if (!newTaskName.trim() || !newTaskTeamId) return;
+    
+    setIsCreating(true);
+    try {
+      await createTaskForProject(projectId, {
+        name: newTaskName.trim(),
+        team_id: newTaskTeamId
+      });
+      setNewTaskName("");
+      setNewTaskTeamId(null);
+      setShowCreateTaskModal(false);
+      setReloadData(true);
+    } catch (err) {
+      console.error("Failed to create task:", err);
+    } finally {
+      setIsCreating(false);
+    }
   };
 
 
@@ -1268,6 +1362,117 @@ export default function Dependencies() {
         </div>
       )}
 
+      {/* Create Team Modal */}
+      {showCreateTeamModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Create New Team</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Team Name</label>
+                <input
+                  type="text"
+                  value={newTeamName}
+                  onChange={(e) => setNewTeamName(e.target.value)}
+                  placeholder="Enter team name..."
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Team Color</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={newTeamColor}
+                    onChange={(e) => setNewTeamColor(e.target.value)}
+                    className="h-10 w-14 cursor-pointer rounded border border-slate-200"
+                  />
+                  <span className="text-sm text-slate-500">{newTeamColor}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowCreateTeamModal(false);
+                  setNewTeamName("");
+                  setNewTeamColor("#facc15");
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                disabled={isCreating}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateTeam}
+                disabled={!newTeamName.trim() || isCreating}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isCreating ? "Creating..." : "Create Team"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Task Modal */}
+      {showCreateTaskModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Create New Task</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Task Name</label>
+                <input
+                  type="text"
+                  value={newTaskName}
+                  onChange={(e) => setNewTaskName(e.target.value)}
+                  placeholder="Enter task name..."
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Assign to Team</label>
+                <select
+                  value={newTaskTeamId || ""}
+                  onChange={(e) => setNewTaskTeamId(e.target.value ? parseInt(e.target.value) : null)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="">Select a team...</option>
+                  {Object.entries(teams).map(([teamId, team]) => (
+                    <option key={teamId} value={teamId}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowCreateTaskModal(false);
+                  setNewTaskName("");
+                  setNewTaskTeamId(null);
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                disabled={isCreating}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateTask}
+                disabled={!newTaskName.trim() || !newTaskTeamId || isCreating}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isCreating ? "Creating..." : "Create Task"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Team Settings Dropdown - Rendered outside the transformed container */}
       {openTeamSettings && teams[openTeamSettings] && (() => {
         const btn = document.getElementById(`team-settings-btn-${openTeamSettings}`);
@@ -1347,11 +1552,12 @@ export default function Dependencies() {
           setOpenTeamSettings(null);
           setShowFilterDropdown(false);
           setSelectedMilestone(null);
+          setShowSettingsDropdown(false);
         }}
       >
         {/* Control Board Toolbar */}
         <div className="mb-4 rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="grid grid-cols-3 divide-x divide-slate-200">
+          <div className="grid grid-cols-4 divide-x divide-slate-200">
             
             {/* Section 1: Settings */}
             <div className="p-3">
@@ -1397,6 +1603,134 @@ export default function Dependencies() {
                     <span>Show {hiddenTeamCount} Hidden</span>
                   </button>
                 )}
+                
+                {/* Advanced Settings Dropdown */}
+                <div className="relative">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowSettingsDropdown(!showSettingsDropdown);
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
+                      showSettingsDropdown 
+                        ? 'border-blue-300 bg-blue-50 text-blue-700' 
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <SettingsIcon style={{ fontSize: 14 }} />
+                    <span>More</span>
+                  </button>
+                  
+                  {showSettingsDropdown && (
+                    <div 
+                      className="absolute left-0 top-full mt-1 w-72 rounded-lg border border-slate-200 bg-white p-3 shadow-xl z-[1000]"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="space-y-3">
+                        {/* Visibility options */}
+                        <div>
+                          <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Visibility</h4>
+                          <div className="space-y-2">
+                            <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={hideAllDependencies}
+                                onChange={(e) => setHideAllDependencies(e.target.checked)}
+                                className="rounded border-slate-300"
+                              />
+                              <span>Hide all dependencies</span>
+                            </label>
+                            <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={hideCollapsedDependencies}
+                                onChange={(e) => setHideCollapsedDependencies(e.target.checked)}
+                                className="rounded border-slate-300"
+                              />
+                              <span>Hide dependencies for collapsed tasks</span>
+                            </label>
+                            <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={hideCollapsedMilestones}
+                                onChange={(e) => setHideCollapsedMilestones(e.target.checked)}
+                                className="rounded border-slate-300"
+                              />
+                              <span>Hide milestones for collapsed tasks</span>
+                            </label>
+                            <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={showEmptyTeams}
+                                onChange={(e) => setShowEmptyTeams(e.target.checked)}
+                                className="rounded border-slate-300"
+                              />
+                              <span>Show empty teams</span>
+                            </label>
+                          </div>
+                        </div>
+                        
+                        <div className="border-t border-slate-100 pt-3">
+                          <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Dimensions</h4>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs text-slate-600">Day width</span>
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min="30"
+                                  max="120"
+                                  value={customDayWidth}
+                                  onChange={(e) => setCustomDayWidth(Math.max(30, Math.min(120, parseInt(e.target.value) || DEFAULT_DAYWIDTH)))}
+                                  className="w-16 px-2 py-1 text-xs border border-slate-200 rounded text-right"
+                                />
+                                <span className="text-xs text-slate-400">px</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs text-slate-600">Task height (normal)</span>
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min="20"
+                                  max="60"
+                                  value={customTaskHeightNormal}
+                                  onChange={(e) => setCustomTaskHeightNormal(Math.max(20, Math.min(60, parseInt(e.target.value) || DEFAULT_TASKHEIGHT_NORMAL)))}
+                                  className="w-16 px-2 py-1 text-xs border border-slate-200 rounded text-right"
+                                />
+                                <span className="text-xs text-slate-400">px</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs text-slate-600">Task height (collapsed)</span>
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min="14"
+                                  max="40"
+                                  value={customTaskHeightSmall}
+                                  onChange={(e) => setCustomTaskHeightSmall(Math.max(14, Math.min(40, parseInt(e.target.value) || DEFAULT_TASKHEIGHT_SMALL)))}
+                                  className="w-16 px-2 py-1 text-xs border border-slate-200 rounded text-right"
+                                />
+                                <span className="text-xs text-slate-400">px</span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setCustomDayWidth(DEFAULT_DAYWIDTH);
+                                setCustomTaskHeightNormal(DEFAULT_TASKHEIGHT_NORMAL);
+                                setCustomTaskHeightSmall(DEFAULT_TASKHEIGHT_SMALL);
+                              }}
+                              className="w-full mt-1 px-2 py-1 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded transition"
+                            >
+                              Reset to defaults
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1539,13 +1873,47 @@ export default function Dependencies() {
                 )}
               </div>
             </div>
+
+            {/* Section 4: Create */}
+            <div className="p-3">
+              <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                Create
+              </h3>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowCreateTeamModal(true);
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+                >
+                  <GroupAddIcon style={{ fontSize: 14 }} />
+                  <span>New Team</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (teamOrder.length > 0) {
+                      setNewTaskTeamId(teamOrder[0]);
+                    }
+                    setShowCreateTaskModal(true);
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+                  disabled={teamOrder.length === 0}
+                  title={teamOrder.length === 0 ? "Create a team first" : "Create a new task"}
+                >
+                  <PlaylistAddIcon style={{ fontSize: 14 }} />
+                  <span>New Task</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Scroll container - wrapper to flip scrollbar to top */}
         <div
           style={{ height: `${contentHeight + 16}px`, transform: 'scaleY(-1)' }}
-          className="overflow-x-auto overflow-y-hidden"
+          className="overflow-x-auto overflow-y-hidden rounded-xl border border-slate-200 shadow-sm"
         >
           {/* Inner container - flip back to normal */}
           <div
@@ -1818,7 +2186,7 @@ export default function Dependencies() {
                       </div>
                     </div>
 
-                    {/* SCROLLABLE RIGHT: Milestones/Days - this is the day grid, NO pointer events */}
+                    {/* SCROLLABLE RIGHT: Milestones/Days - day grid with interactive cells in milestone mode */}
                     <div
                       className="border-t border-b bg-white"
                       style={{ height: `${teamHeight}px` }}
@@ -1839,18 +2207,30 @@ export default function Dependencies() {
                             }}
                             key={`${task_key}_milestone`}
                           >
-                            {/* Day rendering - these are just visual grid lines */}
-                            {[...Array(days)].map((_, i) => (
-                              <div
-                                className="border-r"
-                                style={{
-                                  height: `${taskHeight}px`,
-                                  width: `${DAYWIDTH}px`,
-                                  opacity: ghost?.id === team_key ? 0.2 : 1,
-                                }}
-                                key={i}
-                              />
-                            ))}
+                            {/* Day rendering - interactive in milestone mode */}
+                            {[...Array(days)].map((_, i) => {
+                              const isHovered = viewMode === "milestone" && 
+                                hoveredDayCell?.taskId === task_key && 
+                                hoveredDayCell?.dayIndex === i;
+                              
+                              return (
+                                <div
+                                  className={`border-r transition-colors ${
+                                    viewMode === "milestone" ? 'cursor-pointer hover:bg-blue-100' : ''
+                                  } ${isHovered ? 'bg-blue-200' : ''}`}
+                                  style={{
+                                    height: `${taskHeight}px`,
+                                    width: `${DAYWIDTH}px`,
+                                    opacity: ghost?.id === team_key ? 0.2 : 1,
+                                    pointerEvents: viewMode === "milestone" ? 'auto' : 'none',
+                                  }}
+                                  key={i}
+                                  onMouseEnter={() => viewMode === "milestone" && setHoveredDayCell({ taskId: task_key, dayIndex: i })}
+                                  onMouseLeave={() => setHoveredDayCell(null)}
+                                  onClick={() => viewMode === "milestone" && handleDayCellClick(task_key, i)}
+                                />
+                              );
+                            })}
                           </div>
                         );
                       })}
@@ -1943,11 +2323,24 @@ export default function Dependencies() {
                 </style>
               </defs>
 
-              {connections.map((conn) => {
+              {!hideAllDependencies && connections.map((conn) => {
                 const sourcePos = getMilestoneHandlePosition(conn.source, "source");
                 const targetPos = getMilestoneHandlePosition(conn.target, "target");
 
                 if (!sourcePos || !targetPos) return null;
+
+                // Check if we should hide dependencies for collapsed tasks
+                if (hideCollapsedDependencies) {
+                  const sourceMilestone = milestones[conn.source];
+                  const targetMilestone = milestones[conn.target];
+                  if (sourceMilestone && targetMilestone) {
+                    const sourceTaskId = sourceMilestone.task;
+                    const targetTaskId = targetMilestone.task;
+                    const sourceTaskCollapsed = taskDisplaySettings[sourceTaskId]?.size === 'small';
+                    const targetTaskCollapsed = taskDisplaySettings[targetTaskId]?.size === 'small';
+                    if (sourceTaskCollapsed || targetTaskCollapsed) return null;
+                  }
+                }
 
                 const isSelected = selectedConnection?.source === conn.source && 
                                    selectedConnection?.target === conn.target;
@@ -2027,6 +2420,9 @@ export default function Dependencies() {
 
                   const taskHeight = getTaskHeight(task_key, taskDisplaySettings);
                   const isSmall = taskDisplaySettings[task_key]?.size === 'small';
+
+                  // Hide milestones for collapsed tasks if setting is enabled
+                  if (hideCollapsedMilestones && isSmall) return null;
 
                   // Calculate Y position for this task
                   const teamYOffset = getTeamYOffset(team_key);
@@ -2118,26 +2514,6 @@ export default function Dependencies() {
                             style={{ pointerEvents: 'auto' }}
                           >
                             <DeleteForeverIcon style={{ fontSize: 16, color: 'white' }} />
-                          </div>
-                        )}
-
-                        {/* Duration controls (only in milestone mode) */}
-                        {showDurationPlus && viewMode === "milestone" && (
-                          <div 
-                            className="absolute -top-2 -right-2 bg-blue-500 rounded-full p-0.5 shadow-md cursor-pointer hover:bg-blue-600"
-                            style={{ pointerEvents: 'auto' }}
-                            onClick={(e) => handleDurationChange(e, milestone.id, 1)}
-                          >
-                            <AddCircleOutlineIcon style={{ fontSize: 16, color: 'white' }} />
-                          </div>
-                        )}
-                        {showDurationMinus && viewMode === "milestone" && (
-                          <div 
-                            className="absolute -top-2 -left-2 bg-orange-500 rounded-full p-0.5 shadow-md cursor-pointer hover:bg-orange-600"
-                            style={{ pointerEvents: 'auto' }}
-                            onClick={(e) => handleDurationChange(e, milestone.id, -1)}
-                          >
-                            <RemoveCircleOutlineIcon style={{ fontSize: 16, color: 'white' }} />
                           </div>
                         )}
 
