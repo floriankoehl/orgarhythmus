@@ -1818,7 +1818,7 @@ export default function Dependencies() {
                         }}
                         key={milestone.id}
                       >
-                        {/* Milestone name */}
+                        {/* Milestone name s*/}
                         <div className={`h-full flex items-center justify-center overflow-hidden px-1 ${isSmall ? 'text-[10px]' : 'text-xs'}`}>
                           <span className={`truncate font-medium ${isSelected ? 'text-white' : ''}`}>
                             {milestone.name}
