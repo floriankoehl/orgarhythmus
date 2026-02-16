@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   fetch_project_details,
@@ -616,30 +616,47 @@ const handleMileStoneDrag = (event, milestone_key) => {
   };
 
 
-
-
-
-
-
-
-
+  // ___________DYNAMIC HEIGHT______________
+  // ________________________________________
+  // Calculate content height so the scroll container has
+  // exactly the height it needs (no Y overflow).
+  const contentHeight = useMemo(() => {
+    let height = 0;
+    for (const teamId of teamOrder) {
+      const team = teams[teamId];
+      if (!team) continue;
+      // Drop highlight before each team: marginTop + height + marginBottom
+      height += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+      // Team row height
+      height += team.height;
+    }
+    // Last drop highlight
+    height += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+    return height;
+  }, [teamOrder, teams]);
 
 
   return (
     <>
-      {/* Single scrollable container - scrolls both X and Y */}
+      {/* Page wrapper – natural flow, page-level Y scroll */}
       <div 
-        className="h-screen w-screen p-10 overflow-auto select-none"
-        onClick={() => setSelectedConnection(null)} // Deselect on background click
+        className="p-10 w-full min-w-0 select-none"
+        onClick={() => setSelectedConnection(null)}
       >
-        {/* Inner container with full width for horizontal scroll */}
+        {/* Scroll container – exact height, horizontal scroll only */}
         <div
-          ref={teamContainerRef}
-          style={{
-            width: `${TEAMWIDTH + TASKWIDTH + (days || 0) * DAYWIDTH}px`,
-          }}
-          className="relative"
+          style={{ height: `${contentHeight}px` }}
+          className="overflow-x-auto overflow-y-hidden"
         >
+          {/* Inner container with full width for horizontal scroll */}
+          <div
+            ref={teamContainerRef}
+            style={{
+              width: `${TEAMWIDTH + TASKWIDTH + (days || 0) * DAYWIDTH}px`,
+              height: `${contentHeight}px`,
+            }}
+            className="relative"
+          >
           {/* SVG Layer for Connections */}
           <svg
             className="absolute top-0 left-0 w-full h-full pointer-events-none"
@@ -1038,6 +1055,7 @@ const handleMileStoneDrag = (event, milestone_key) => {
               {ghost.name}
             </div>
           )}
+          </div>
         </div>
       </div>
     </>
