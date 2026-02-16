@@ -457,18 +457,38 @@ export default function Dependencies() {
     const mouseOffsetY = startY - teamTopOffset;
     const currentTeamHeight = getTeamHeight(team_key);
 
-    setGhost({
-      ...team,
-      x: 0, // Start at left edge
-      y: teamTopOffset, // Start at actual team position
-      offsetX: startX, // Store mouse offset
-      offsetY: mouseOffsetY,
-      height: currentTeamHeight,
-    });
+    // Track if we've started dragging (only show ghost after movement threshold)
+    let isDragging = false;
+    const DRAG_THRESHOLD = 5;
 
     const onMouseMove = (e) => {
       const new_x = e.clientX - parent_rect.x;
       const new_y = e.clientY - parent_rect.y;
+
+      // Check if we've moved enough to start dragging
+      if (!isDragging) {
+        const deltaX = Math.abs(new_x - startX);
+        const deltaY = Math.abs(new_y - startY);
+        if (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD) {
+          isDragging = true;
+          setGhost({
+            ...team,
+            x: new_x - startX,
+            y: new_y - mouseOffsetY,
+            offsetX: startX,
+            offsetY: mouseOffsetY,
+            height: currentTeamHeight,
+          });
+        } else {
+          return; // Don't do anything until threshold is met
+        }
+      } else {
+        setGhost((prev) => ({
+          ...prev,
+          x: new_x - prev.offsetX,
+          y: new_y - prev.offsetY,
+        }));
+      }
 
       const mouseY = e.clientY - parent_rect.top;
 
@@ -499,27 +519,27 @@ export default function Dependencies() {
 
       const clamped = Math.max(0, Math.min(index, visibleTeams.length));
       to_index = clamped;
-      setDropIndex(clamped);
-
-      setGhost((prev) => ({
-        ...prev,
-        x: new_x - prev.offsetX,
-        y: new_y - prev.offsetY,
-      }));
+      if (isDragging) {
+        setDropIndex(clamped);
+      }
     };
 
     const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+
+      // Only reorder if we actually dragged
+      if (!isDragging) {
+        setGhost(null);
+        setDropIndex(null);
+        return;
+      }
+
       // Convert visible index back to full teamOrder index
       const visibleTeams = teamOrder.filter(tid => isTeamVisible(tid));
       
       let copy = [...teamOrder];
       const [moved] = copy.splice(order_index, 1);
-      
-      // Find the actual target index in the full array
-      let targetIndex = to_index;
-      if (from_index < order_index) {
-        // Need to adjust for the removed item
-      }
       
       // Map visible index to actual index
       if (to_index >= visibleTeams.length) {
@@ -536,8 +556,6 @@ export default function Dependencies() {
 
       setGhost(null);
       setDropIndex(null);
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
     };
 
     document.addEventListener("mousemove", onMouseMove);
@@ -1171,17 +1189,18 @@ export default function Dependencies() {
           </div>
         </div>
 
-        {/* Scroll container */}
+        {/* Scroll container - wrapper to flip scrollbar to top */}
         <div
-          style={{ height: `${contentHeight}px` }}
+          style={{ height: `${contentHeight + 16}px`, transform: 'scaleY(-1)' }}
           className="overflow-x-auto overflow-y-hidden"
         >
-          {/* Inner container */}
+          {/* Inner container - flip back to normal */}
           <div
             ref={teamContainerRef}
             style={{
               width: `${TEAMWIDTH + TASKWIDTH + (days || 0) * DAYWIDTH}px`,
               height: `${contentHeight}px`,
+              transform: 'scaleY(-1)',
             }}
             className="relative"
           >
