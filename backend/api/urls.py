@@ -97,7 +97,8 @@ urlpatterns = [
 
     # Tasks
     path("projects/<int:project_id>/fetch_project_tasks/", views.fetch_project_tasks),
-
+    path("projects/<int:project_id>/reorder_team_tasks/", views.reorder_team_tasks),
+    
     # Milestones
     path("projects/<int:project_id>/get_all_milestones/", views.get_all_milestones),
     path("projects/<int:project_id>/add_milestone/", views.add_milestone),

@@ -665,6 +665,76 @@ def delete_dependency(request, project_id):
 # _____________________________ END OF NEW ADDING ______________________________
 # _____________________________ END OF NEW ADDING ______________________________
 
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def reorder_team_tasks(request, project_id):
+    """
+    Reorder tasks within a team, or move a task to another team.
+    Body:
+      {
+        "task_id": 123,
+        "target_team_id": 45,       # team to place the task in (can be same or different)
+        "order": [10, 123, 11, 12]  # task ids in desired order for target team
+      }
+    """
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    task_id = request.data.get("task_id")
+    target_team_id = request.data.get("target_team_id")
+    order = request.data.get("order")
+
+    if not task_id or target_team_id is None or not isinstance(order, list):
+        return Response(
+            {"detail": "Expected body {task_id: int, target_team_id: int, order: [int, ...]}"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        task = Task.objects.get(pk=task_id, project=project)
+    except Task.DoesNotExist:
+        return Response({"detail": "Task not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        target_team = Team.objects.get(pk=target_team_id, project=project)
+    except Team.DoesNotExist:
+        return Response({"detail": "Target team not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    changed_team = task.team_id != target_team_id
+
+    with transaction.atomic():
+        # If moving to a different team, update the task's team
+        if changed_team:
+            old_team_id = task.team_id
+            task.team = target_team
+            task.save(update_fields=["team"])
+
+            # Re-index remaining tasks in the old team
+            if old_team_id:
+                old_team_tasks = (
+                    Task.objects.filter(project=project, team_id=old_team_id)
+                    .order_by("order_index")
+                )
+                for idx, t in enumerate(old_team_tasks):
+                    if t.order_index != idx:
+                        Task.objects.filter(pk=t.pk).update(order_index=idx)
+
+        # Apply new order in target team
+        for idx, tid in enumerate(order):
+            Task.objects.filter(pk=tid, project=project, team=target_team).update(order_index=idx)
+
+    return Response({
+        "status": "ok",
+        "changed_team": changed_team,
+        "task_id": task_id,
+        "target_team_id": target_team_id,
+    })
+
 
 
 

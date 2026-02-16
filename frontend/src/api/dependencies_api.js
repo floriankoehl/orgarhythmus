@@ -168,3 +168,17 @@ export async function delete_dependency_api(projectId, sourceId, targetId){
     if (res.status === 204) return null
     return await res.json()
 }
+
+export async function reorder_team_tasks(projectId, taskId, targetTeamId, order) {
+    const res = await authFetch(`${API}/projects/${projectId}/reorder_team_tasks/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            task_id: taskId,
+            target_team_id: targetTeamId,
+            order: order,
+        }),
+    });
+    if (!res.ok) throw new Error('Failed to reorder tasks');
+    return await res.json();
+}

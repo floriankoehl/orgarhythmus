@@ -64,6 +64,7 @@ from .tasks import (
     get_all_dependencies,
     create_dependency,
     delete_dependency,
+    reorder_team_tasks,
 )
 
 from .ideas import (
