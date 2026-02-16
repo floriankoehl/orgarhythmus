@@ -909,8 +909,8 @@ export default function Dependencies() {
     const milestoneWidth = DAYWIDTH * milestone.duration;
     
     const handleX = handleType === "source"
-      ? milestoneAreaStart + milestoneX + milestoneWidth - 4
-      : milestoneAreaStart + milestoneX + 4;
+      ? milestoneAreaStart + milestoneX + milestoneWidth
+      : milestoneAreaStart + milestoneX;
 
     const teamYOffset = getTeamYOffset(teamId);
     const taskYOffset = getTaskYOffset(milestone.task, teamId);
@@ -1130,6 +1130,77 @@ export default function Dependencies() {
           </div>
         </div>
       )}
+
+      {/* Team Settings Dropdown - Rendered outside the transformed container */}
+      {openTeamSettings && teams[openTeamSettings] && (() => {
+        const btn = document.getElementById(`team-settings-btn-${openTeamSettings}`);
+        if (!btn) return null;
+        const rect = btn.getBoundingClientRect();
+        const team_key = openTeamSettings;
+        
+        return (
+          <div 
+            className="fixed w-48 rounded-lg border border-slate-200 bg-white shadow-xl"
+            style={{
+              top: `${rect.bottom + 4}px`,
+              left: `${rect.left}px`,
+              zIndex: 9999,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-2 space-y-1">
+              {/* Collapse/Expand all */}
+              <button
+                onClick={() => {
+                  allVisibleTasksSmall(team_key) ? setTeamTasksNormal(team_key) : setTeamTasksSmall(team_key);
+                  setOpenTeamSettings(null);
+                }}
+                className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left"
+              >
+                {allVisibleTasksSmall(team_key) ? (
+                  <>
+                    <UnfoldMoreIcon style={{ fontSize: 14 }} />
+                    <span>Expand all tasks</span>
+                  </>
+                ) : (
+                  <>
+                    <UnfoldLessIcon style={{ fontSize: 14 }} />
+                    <span>Collapse all tasks</span>
+                  </>
+                )}
+              </button>
+              
+              {/* Show hidden tasks */}
+              {teamHasHiddenTasks(team_key) && (
+                <button
+                  onClick={() => {
+                    showAllTeamTasks(team_key);
+                    setOpenTeamSettings(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left text-blue-700"
+                >
+                  <VisibilityIcon style={{ fontSize: 14 }} />
+                  <span>Show hidden tasks</span>
+                </button>
+              )}
+              
+              <div className="border-t border-slate-100 my-1" />
+              
+              {/* Hide Team */}
+              <button
+                onClick={() => {
+                  toggleTeamVisibility(team_key);
+                  setOpenTeamSettings(null);
+                }}
+                className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-red-50 transition text-left text-red-700"
+              >
+                <VisibilityOffIcon style={{ fontSize: 14 }} />
+                <span>Hide team</span>
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Page wrapper */}
       <div 
@@ -1537,91 +1608,6 @@ export default function Dependencies() {
               );
             })}
 
-            {/* Team Settings Dropdown - Rendered as fixed portal to appear above everything */}
-            {openTeamSettings && teams[openTeamSettings] && (() => {
-              const btn = document.getElementById(`team-settings-btn-${openTeamSettings}`);
-              if (!btn) return null;
-              const rect = btn.getBoundingClientRect();
-              const team_key = openTeamSettings;
-              const visibleTasks = getVisibleTasks(team_key);
-              
-              return (
-                <div 
-                  className="fixed w-48 rounded-lg border border-slate-200 bg-white shadow-xl"
-                  style={{
-                    top: `${rect.bottom + 4}px`,
-                    left: `${rect.left}px`,
-                    zIndex: 9999,
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="p-2 space-y-1">
-                    {/* Collapse/Expand all */}
-                    <button
-                      onClick={() => {
-                        allVisibleTasksSmall(team_key) ? setTeamTasksNormal(team_key) : setTeamTasksSmall(team_key);
-                        setOpenTeamSettings(null);
-                      }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left"
-                    >
-                      {allVisibleTasksSmall(team_key) ? (
-                        <>
-                          <UnfoldMoreIcon style={{ fontSize: 14 }} />
-                          <span>Expand all tasks</span>
-                        </>
-                      ) : (
-                        <>
-                          <UnfoldLessIcon style={{ fontSize: 14 }} />
-                          <span>Collapse all tasks</span>
-                        </>
-                      )}
-                    </button>
-                    
-                    {/* Show hidden tasks */}
-                    {teamHasHiddenTasks(team_key) && (
-                      <button
-                        onClick={() => {
-                          showAllTeamTasks(team_key);
-                          setOpenTeamSettings(null);
-                        }}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left text-blue-700"
-                      >
-                        <VisibilityIcon style={{ fontSize: 14 }} />
-                        <span>Show hidden tasks</span>
-                      </button>
-                    )}
-                    
-                    {/* Hide all tasks */}
-                    {visibleTasks.length > 0 && (
-                      <button
-                        onClick={() => {
-                          hideAllTeamTasks(team_key);
-                          setOpenTeamSettings(null);
-                        }}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left text-orange-700"
-                      >
-                        <VisibilityOffIcon style={{ fontSize: 14 }} />
-                        <span>Hide all tasks</span>
-                      </button>
-                    )}
-                    
-      
-                    {/* Hide Team */}
-                    <button
-                      onClick={() => {
-                        toggleTeamVisibility(team_key);
-                        setOpenTeamSettings(null);
-                      }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-red-50 transition text-left text-red-700"
-                    >
-                      <VisibilityOffIcon style={{ fontSize: 14 }} />
-                      <span>Hide team</span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })()}
-
             {/* LAST DROP HIGHLIGHT */}
             <div className="flex" style={{ position: 'relative', backgroundColor: 'white' }}>
               <div
@@ -1807,6 +1793,7 @@ export default function Dependencies() {
                         }`}
                         style={{
                           pointerEvents: 'auto',
+                          overflow: 'visible',
                           left: `${TEAMWIDTH + TASKWIDTH + milestone.x}px`,
                           top: `${taskY}px`,
                           width: `${DAYWIDTH * milestone.duration}px`,
@@ -1855,23 +1842,33 @@ export default function Dependencies() {
                           </div>
                         )}
 
-                        {/* Connection handles */}
-                        {showConnect && (
-                          <>
-                            {/* Target handle (left) */}
-                            <div
-                              className="absolute top-1/2 -translate-y-1/2 -left-2 w-4 h-4 bg-indigo-500 rounded-full border-2 border-white shadow cursor-crosshair hover:scale-125 transition-transform"
-                              style={{ pointerEvents: 'auto' }}
-                              onMouseDown={(e) => handleConnectionDragStart(e, milestone.id, "target")}
-                            />
-                            {/* Source handle (right) */}
-                            <div
-                              className="absolute top-1/2 -translate-y-1/2 -right-2 w-4 h-4 bg-indigo-500 rounded-full border-2 border-white shadow cursor-crosshair hover:scale-125 transition-transform"
-                              style={{ pointerEvents: 'auto' }}
-                              onMouseDown={(e) => handleConnectionDragStart(e, milestone.id, "source")}
-                            />
-                          </>
-                        )}
+                        {/* Connection handles - always visible */}
+                        {/* Target handle (left) */}
+                        <div
+                          className={`absolute top-1/2 -translate-y-1/2 left-0 -translate-x-1/2 rounded-full border-2 border-white shadow cursor-crosshair transition-all ${
+                            showConnect 
+                              ? 'w-4 h-4 bg-indigo-500 hover:scale-125' 
+                              : 'w-3 h-3 bg-slate-400 hover:bg-indigo-500 hover:w-4 hover:h-4'
+                          }`}
+                          style={{ pointerEvents: 'auto', zIndex: 10 }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            handleConnectionDragStart(e, milestone.id, "target");
+                          }}
+                        />
+                        {/* Source handle (right) */}
+                        <div
+                          className={`absolute top-1/2 -translate-y-1/2 right-0 translate-x-1/2 rounded-full border-2 border-white shadow cursor-crosshair transition-all ${
+                            showConnect 
+                              ? 'w-4 h-4 bg-indigo-500 hover:scale-125' 
+                              : 'w-3 h-3 bg-slate-400 hover:bg-indigo-500 hover:w-4 hover:h-4'
+                          }`}
+                          style={{ pointerEvents: 'auto', zIndex: 10 }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            handleConnectionDragStart(e, milestone.id, "source");
+                          }}
+                        />
 
                         {/* Selection indicator */}
                         {isSelected && (
