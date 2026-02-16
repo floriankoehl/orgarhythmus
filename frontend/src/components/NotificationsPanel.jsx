@@ -19,10 +19,8 @@ export default function NotificationsPanel({ isOpen, onClose }) {
     ? notifications.filter(n => !n.read)
     : notifications;
 
-  // Sort notifications: overdue first, then by creation date
+  // Sort notifications by creation date
   const sortedNotifications = [...filteredNotifications].sort((a, b) => {
-    if (a.action_type === 'attempt_overdue' && b.action_type !== 'attempt_overdue') return -1;
-    if (a.action_type !== 'attempt_overdue' && b.action_type === 'attempt_overdue') return 1;
     return new Date(b.created_at) - new Date(a.created_at);
   });
 

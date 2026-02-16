@@ -6,7 +6,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
 
-import { BASE_URL } from '../config/api';
+import { BASE_URL } from '../../config/api';
 
 const API = `${BASE_URL}/api`;
 
@@ -110,7 +110,7 @@ function ConfirmModal({ message, onConfirm, onCancel }) {
   );
 }
 
-export default function IdeaFactory() {
+export default function Ideas() {
   const { projectId } = useParams();
   const API = `${BASE_URL}/api/projects/${projectId}`;
 

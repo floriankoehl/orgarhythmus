@@ -1,6 +1,6 @@
 import { BASE_URL } from '../config/api';
 import { redirect } from 'react-router-dom';
-import { authFetch } from '../auth'; // Pfad ggf. anpassen
+import { authFetch } from '../auth';
 
 //_______________________________________________
 //_______________________________________________
@@ -10,10 +10,8 @@ import { authFetch } from '../auth'; // Pfad ggf. anpassen
 
 // getCurrentProjectIdFromLocation (helper)
 function getCurrentProjectIdFromLocation() {
-  // Beispiel-Pfad: /projects/1/attempts
   const path = window.location.pathname;
   const parts = path.split('/').filter(Boolean);
-  // ["orgarhythmus", "projects", "1", "attempts"]
 
   const projectsIndex = parts.indexOf('projects');
   if (projectsIndex === -1 || projectsIndex + 1 >= parts.length) {
@@ -21,10 +19,7 @@ function getCurrentProjectIdFromLocation() {
   }
 
   const id = parseInt(parts[projectsIndex + 1], 10);
-
   const projectId = Number.isNaN(id) ? null : id;
-
-  // console.log('Inside getCurrentProjectIdFromLocation (PROJECT ID): ', projectId);
   return projectId;
 }
 
@@ -54,15 +49,6 @@ export async function leaveTeam(projectId, teamId) {
   }
   return await res.json();
 }
-// ...existing code...
-
-
-
-
-
-
-
-
 
 
 
@@ -196,7 +182,6 @@ export async function fetch_project_detail(projectId) {
   return await res.json();
 }
 
-// TODO ADDED
 // delete_project
 export async function delete_project(projectId) {
   const res = await authFetch(`/api/projects/${projectId}/delete/`, {
@@ -272,7 +257,6 @@ export async function createTeamForProject(projectId, payload) {
   const res = await authFetch(`/api/projects/${projectId}/teams/`, {
     method: 'POST',
     body: JSON.stringify(payload),
-    // Content-Type setzt authFetch automatisch
   });
 
   if (!res.ok) {
@@ -292,12 +276,10 @@ export async function deleteTeamForProject(projectId, teamId) {
     throw new Error('Failed to delete team');
   }
 
-  // If response is 204 No Content → return nothing
   if (res.status === 204) {
     return null;
   }
 
-  // Otherwise try to parse JSON
   try {
     return await res.json();
   } catch {
@@ -315,7 +297,6 @@ export async function reorder_project_teams(projectId, order) {
     body: JSON.stringify({ order }),
   });
 
-  // helpful debug
   const text = await res.text();
   console.log('[reorder_project_teams] status:', res.status, 'body:', text);
 
@@ -330,7 +311,6 @@ export async function reorder_project_teams(projectId, order) {
   }
 }
 
-// TODO ADDED Team
 // fetchSingleTeam
 export async function fetchSingleTeam(projectId, teamId) {
   const res = await authFetch(`/api/projects/${projectId}/teams/${teamId}/detail/`, {
@@ -344,7 +324,6 @@ export async function fetchSingleTeam(projectId, teamId) {
   return await res.json();
 }
 
-// TODO ADDED Team
 // updateTeam
 export async function updateTeam(projectId, teamId, payload) {
   const res = await authFetch(`/api/projects/${projectId}/teams/${teamId}/detail/`, {
@@ -398,7 +377,7 @@ export async function delete_task(projectId, id) {
     return null;
   }
 
-  return true; // 204 No Content
+  return true;
 }
 
 // fetchTasksForProject
@@ -412,7 +391,6 @@ export async function fetchTasksForProject(projectId) {
   }
 
   const data = await res.json();
-  // falls dein Backend { tasks: [...] } zurückgibt, nimm data.tasks
   return data.tasks || data;
 }
 
@@ -421,7 +399,6 @@ export async function createTaskForProject(projectId, payload) {
   const res = await authFetch(`/api/projects/${projectId}/tasks/`, {
     method: 'POST',
     body: JSON.stringify(payload),
-    // Content-Type kommt von authFetch
   });
 
   if (!res.ok) {
@@ -488,208 +465,6 @@ export async function unassignTaskMember(projectId, taskId, userId) {
   return await res.json();
 }
 
-//__________________ATTEMPTS____________________
-//_______________________________________________
-//_______________________________________________
-//_______________________________________________
-//_______________________________________________
-
-// ═══════════════════════════════════════════════
-//  ALL ATTEMPT API FUNCTIONS — COMMENTED OUT
-//  Attempts are being replaced by Milestones.
-// ═══════════════════════════════════════════════
-
-// // fetch_all_attempts (accept projectId to avoid relying on window.location during navigation)
-// export async function fetch_all_attempts(projectIdFromParam) {
-//   const projectId = projectIdFromParam ?? getCurrentProjectIdFromLocation();
-//   if (!projectId) {
-//     throw new Error('Missing projectId for fetching attempts');
-//   }
-//   const token = localStorage.getItem('access_token');
-//   if (!token) {
-//     throw redirect('/login');
-//   }
-//   const res = await fetch(
-//     `${BASE_URL}/api/projects/${projectId}/all_attempts_for_this_project/`,
-//     { headers: { Authorization: `Bearer ${token}` } },
-//   );
-//   if (res.status === 401 || res.status === 403) {
-//     throw new Error('Could not load tasks');
-//   }
-//   const data = await res.json();
-//   return data.attempts;
-// }
-
-// // add_attempt_dependency
-// export async function add_attempt_dependency(vortakt_attempt_id, nachtakt_attempt_id) {
-//   const token = localStorage.getItem('access_token');
-//   if (!token) { throw redirect('/login'); }
-//   const res = await fetch(`${BASE_URL}/api/add_attempt_dependency/`, {
-//     method: 'POST',
-//     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-//     body: JSON.stringify({ vortakt_attempt_id, nachtakt_attempt_id }),
-//   });
-//   if (!res.ok) { console.error('Backend failed:', res.status); throw new Error('Failed to add dependency'); }
-//   return await res.json();
-// }
-
-// // fetch_all_attempt_dependencies
-// export async function fetch_all_attempt_dependencies() {
-//   const token = localStorage.getItem('access_token');
-//   if (!token) { throw redirect('/login'); }
-//   const res = await fetch(`${BASE_URL}/api/all_attempt_dependencies/`, {
-//     method: 'GET',
-//     headers: { Authorization: `Bearer ${token}` },
-//   });
-//   if (!res.ok) { throw new Error('Failed to fetch attempt dependencies'); }
-//   return await res.json();
-// }
-
-// // update_attempt_slot_index
-// export async function update_attempt_slot_index(attempt_id, slot_index) {
-//   const token = localStorage.getItem('access_token');
-//   if (!token) throw redirect('/login');
-//   const res = await fetch(`${BASE_URL}/api/update_attempt_slot_index/`, {
-//     method: 'POST',
-//     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-//     body: JSON.stringify({ attempt_id, slot_index }),
-//   });
-//   if (!res.ok) { console.error('Backend failed:', res.status); throw new Error('Failed to update attempt slot_index'); }
-//   return await res.json();
-// }
-
-// // toggle attempt todo
-// export async function toggle_attempt_todo(projectId, attemptId, todoId) {
-//   const token = localStorage.getItem('access_token');
-//   if (!token) throw redirect('/login');
-//   const res = await fetch(
-//     `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/todos/`,
-//     {
-//       method: 'POST',
-//       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-//       body: JSON.stringify({ action: 'toggle', todo_id: todoId }),
-//     },
-//   );
-//   if (!res.ok) { throw new Error('Failed to toggle todo'); }
-//   return await res.json();
-// }
-
-// // delete_attempt_dependency
-// export async function delete_attempt_dependency(dependency_id) {
-//   const token = localStorage.getItem('access_token');
-//   if (!token) { throw redirect('/login'); }
-//   const res = await fetch(`${BASE_URL}/api/delete_attempt_dependency/`, {
-//     method: 'POST',
-//     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-//     body: JSON.stringify({ dependency_id }),
-//   });
-//   if (!res.ok) { console.error('Backend failed:', res.status); throw new Error('Failed to delete attempt dependency'); }
-//   return await res.json();
-// }
-
-// // fetchAttemptDetail
-// export async function fetchAttemptDetail(projectId, attemptId) {
-//   const token = localStorage.getItem('access_token');
-//   if (!token) throw redirect('/login');
-//   const res = await fetch(
-//     `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/`,
-//     { headers: { Authorization: `Bearer ${token}` } },
-//   );
-//   if (!res.ok) throw new Error('Failed to load attempt');
-//   return await res.json();
-// }
-
-// // updateAttempt
-// export async function updateAttempt(projectId, attemptId, payload) {
-//   const token = localStorage.getItem('access_token');
-//   if (!token) throw redirect('/login');
-//   const res = await fetch(
-//     `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/`,
-//     {
-//       method: 'PATCH',
-//       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-//       body: JSON.stringify(payload),
-//     },
-//   );
-//   if (!res.ok) throw new Error('Failed to update attempt');
-//   return await res.json();
-// }
-
-// // createAttemptTodo
-// export async function createAttemptTodo(projectId, attemptId, text) {
-//   const token = localStorage.getItem('access_token');
-//   if (!token) throw redirect('/login');
-//   const res = await fetch(
-//     `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/todos/`,
-//     {
-//       method: 'POST',
-//       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-//       body: JSON.stringify({ action: 'create', text }),
-//     },
-//   );
-//   if (!res.ok) throw new Error('Failed to create todo');
-//   return await res.json();
-// }
-
-// // toggleAttemptTodo
-// export async function toggleAttemptTodo(projectId, attemptId, todoId) {
-//   const token = localStorage.getItem('access_token');
-//   if (!token) throw redirect('/login');
-//   const res = await fetch(
-//     `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/todos/`,
-//     {
-//       method: 'POST',
-//       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-//       body: JSON.stringify({ action: 'toggle', todo_id: todoId }),
-//     },
-//   );
-//   if (!res.ok) throw new Error('Failed to toggle todo');
-//   return await res.json();
-// }
-
-// // deleteAttemptTodo
-// export async function deleteAttemptTodo(projectId, attemptId, todoId) {
-//   const token = localStorage.getItem('access_token');
-//   if (!token) throw redirect('/login');
-//   const res = await fetch(
-//     `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/todos/`,
-//     {
-//       method: 'POST',
-//       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-//       body: JSON.stringify({ action: 'delete', todo_id: todoId }),
-//     },
-//   );
-//   if (!res.ok) throw new Error('Failed to delete todo');
-//   return await res.json();
-// }
-
-// // createAttempt
-// export async function createAttempt(projectId, taskId, name) {
-//   const token = localStorage.getItem('access_token');
-//   if (!token) throw redirect('/login');
-//   const res = await fetch(`${BASE_URL}/api/projects/${projectId}/attempts/`, {
-//     method: 'POST',
-//     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-//     body: JSON.stringify({ task_id: taskId, name: name || '' }),
-//   });
-//   if (!res.ok) throw new Error('Failed to create attempt');
-//   return await res.json();
-// }
-
-// // deleteAttempt
-// export async function deleteAttempt(projectId, attemptId) {
-//   const token = localStorage.getItem('access_token');
-//   if (!token) throw redirect('/login');
-//   const res = await fetch(
-//     `${BASE_URL}/api/projects/${projectId}/attempts/${attemptId}/delete/`,
-//     {
-//       method: 'DELETE',
-//       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-//     },
-//   );
-//   if (!res.ok) throw new Error('Failed to delete attempt');
-//   return await res.json();
-// }
 
 //____________________NOTIFICATIONS______________________
 //_______________________________________________
@@ -710,9 +485,6 @@ export async function fetchUserNotifications(readFilter = null) {
 export async function markNotificationAsRead(notificationId) {
   const res = await authFetch(`/api/notifications/${notificationId}/read/`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
   });
   
   if (!res.ok) {
@@ -726,9 +498,6 @@ export async function markNotificationAsRead(notificationId) {
 export async function markAllNotificationsAsRead() {
   const res = await authFetch(`/api/notifications/read-all/`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
   });
   
   if (!res.ok) {
@@ -742,9 +511,6 @@ export async function markAllNotificationsAsRead() {
 export async function deleteNotification(notificationId) {
   const res = await authFetch(`/api/notifications/${notificationId}/delete/`, {
     method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-    },
   });
   
   if (!res.ok) {
@@ -762,30 +528,25 @@ export async function deleteNotification(notificationId) {
 
 // Get current demo date from backend
 export async function getDemoDate() {
-  const res = await authFetch('/api/demo-date/');
+  const res = await authFetch(`/api/demo-date/`);
   
   if (!res.ok) {
     throw new Error('Failed to fetch demo date');
   }
   
-  const data = await res.json();
-  return data.date;
+  return await res.json();
 }
 
 // Set demo date on backend
 export async function setDemoDate(date) {
-  const res = await authFetch('/api/demo-date/', {
+  const res = await authFetch(`/api/demo-date/`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ date: date.format('YYYY-MM-DD') }),
+    body: JSON.stringify({ date }),
   });
   
   if (!res.ok) {
     throw new Error('Failed to set demo date');
   }
   
-  const data = await res.json();
-  return data.date;
+  return await res.json();
 }

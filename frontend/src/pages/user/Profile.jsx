@@ -1,11 +1,11 @@
-import { useAuth } from "../auth/AuthContext";
+import { useAuth } from "../../auth/AuthContext";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { fetch_all_projects, fetchUserTeams, fetchUserTasks } from '../api/org_API.js';
+import { fetch_all_projects, fetchUserTeams, fetchUserTasks } from '../../api/org_API.js';
 import { User, Mail, Calendar, Folder, LogOut, ArrowRight, Loader2, Users, AlertCircle, Zap, ListTodo } from "lucide-react";
 import Button from "@mui/material/Button";
 
-export default function ProfilePage() {
+export default function Profile() {
   const { user, isAuthenticated, loadingUser, logout } = useAuth();
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);

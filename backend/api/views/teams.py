@@ -98,8 +98,8 @@ def project_teams_expanded(request, project_id):
     all_teams = (
         Team.objects
         .prefetch_related(
-            "tasks",           # Team → Task
-            "tasks__attempts", # Task → Attempt
+            "tasks",
+            "tasks__milestones",  # was "tasks__attempts"
         )
         .filter(project_id=project_id)
     )

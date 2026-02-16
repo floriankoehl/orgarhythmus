@@ -8,33 +8,30 @@ import { AuthProvider } from './auth/AuthContext';
 import { NotificationProvider } from './auth/NotificationContext';
 import { DemoDateProvider } from './auth/DemoDateContext';
 
-// import Layout from './layouts/MainLayout.jsx';
 import OrgaLayout from './layouts/OrgaLayout.jsx';
-import LoginPage from './pages/LoginPage';
-import ProfilePage from './pages/ProfilePage';
-import RegisterPage from './pages/RegisterPage';
-// import ProjectAttemptsWrapper from './pages/ProjectAttemptsWrapper.jsx';
+import Login from './pages/user/Login.jsx';
+import Profile from './pages/user/Profile.jsx';
+import RegisterPage from './pages/user/Register.jsx';
 import ProjectLayout from './layouts/ProjectLayout.jsx';
-import ProjectMain, { project_loader } from './pages/ProjectMain.jsx';
-import OrgaProjects from './pages/OrgaProjects.jsx';
-import ProjectTeams from './pages/ProjectTeams.jsx';
-import ProjectTasks from './pages/ProjectTasks.jsx';
-import ProjectTeamDetail from './pages/ProjectTeamDetail.jsx';
-import ProjectTaskDetail from './pages/ProjectTaskDetail.jsx';
-import Calender from './pages/Calender.jsx';
-// import AttemptDetail from './pages/AttemptDetail.jsx';
-import IdeaFactory from './pages/IdeaFactory';
-import Dependencies from './pages/Dependencies';
+import ProjectMain, { project_loader } from './pages/general/ProjectMain.jsx';
+import AllProjects from './pages/AllProjects.jsx';
+import Teams from './pages/overview/Teams.jsx';
+import Tasks from './pages/overview/Tasks.jsx';
+import TeamDetail from './pages/detail/TeamDetail.jsx';
+import TaskDetail from './pages/detail/TaskDetail.jsx';
+import Calendar from './pages/general/Calender.jsx';
+import Ideas from './pages/general/Ideas.jsx';
+import Dependencies from './pages/general/Dependencies.jsx';
 
 const router = createBrowserRouter([
   {
     path: '/',
     element: <OrgaLayout />,
     children: [
-      { index: true, element: <OrgaProjects /> },
-      { path: '/login', element: <LoginPage /> },
+      { index: true, element: <AllProjects /> },
+      { path: '/login', element: <Login /> },
       { path: '/register', element: <RegisterPage /> },
-      { path: '/profile', element: <ProfilePage /> },
+      { path: '/profile', element: <Profile /> },
       {
         path: 'projects/:projectId/',
         element: <ProjectLayout />,
@@ -44,48 +41,17 @@ const router = createBrowserRouter([
             element: <ProjectMain />,
             loader: project_loader,
           },
-          { path: 'ideas', element: <IdeaFactory /> },
-          { path: 'teams', element: <ProjectTeams /> },
-          { path: 'teams/:teamId', element: <ProjectTeamDetail /> },
-          { path: 'tasks', element: <ProjectTasks /> },
-          { path: 'tasks/:taskId', element: <ProjectTaskDetail /> },
+          { path: 'ideas', element: <Ideas /> },
+          { path: 'teams', element: <Teams /> },
+          { path: 'teams/:teamId', element: <TeamDetail /> },
+          { path: 'tasks', element: <Tasks /> },
+          { path: 'tasks/:taskId', element: <TaskDetail /> },
           { path: 'dependencies', element: <Dependencies /> },
-          { path: 'calender', element: <Calender /> },
-          // { path: 'attempts/:attemptId', element: <AttemptDetail /> },
+          { path: 'calender', element: <Calendar /> },
         ],
       },
     ],
   },
-  // TODO When going from Projects page to one project you initially come to orgarythmus/projects/8 for example, but then if you reload to orgarythmus/projects/8/
-  // TODO I dont know if this will be a problem later but could be!
-  // {
-  //   path: '/orgarhythmus',
-  //   element: <OrgaLayout />,
-  //   children: [
-      
-  //     // { path: 'login', element: <LoginPage /> },
-  //     // { path: 'register', element: <RegisterPage /> },
-  //     // { path: 'profile', element: <ProfilePage /> },
-  //     {
-  //       path: 'projects/:projectId/',
-  //       element: <ProjectLayout />,
-  //       children: [
-  //         {
-  //           index: true,
-  //           element: <ProjectMain />,
-  //           loader: project_loader,
-  //         },
-  //         { path: 'teams', element: <ProjectTeams /> },
-  //         { path: 'teams/:teamId', element: <ProjectTeamDetail /> },
-  //         { path: 'tasks', element: <ProjectTasks /> },
-  //         { path: 'tasks/:taskId', element: <ProjectTaskDetail /> },
-  //         { path: 'attempts', element: <ProjectAttemptsWrapper /> },
-  //         { path: 'next_steps', element: <NextSteps /> },
-  //         { path: 'attempts/:attemptId', element: <AttemptDetail /> },
-  //       ],
-  //     },
-  //   ],
-  // },
 ]);
 
 export default function App() {
@@ -97,7 +63,6 @@ export default function App() {
     return (
       <>
         <RouterProvider router={router} />
-        {/* Mobile Floating Notifications Button (global, not in headers) */}
         {!loadingUser && isAuthenticated && (
           <>
             <button

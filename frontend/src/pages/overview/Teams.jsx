@@ -3,17 +3,17 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { HexColorPicker } from 'react-colorful';
 
 import {
-  project_teams_expanded, // Change this
+  project_teams_expanded,
   createTeamForProject,
   deleteTeamForProject,
-} from '../api/org_API.js';
+} from '../../api/org_API.js';
 
 import { Users, Plus, Trash2, Loader2 } from 'lucide-react';
 
 import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
 
-export default function ProjectTeams() {
+export default function Teams() {
   const { projectId } = useParams();
   const navigate = useNavigate();
 

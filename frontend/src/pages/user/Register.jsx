@@ -1,8 +1,8 @@
 // frontend/src/pages/RegisterPage.jsx
 import { useState } from "react";
 import { useNavigate, NavLink } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
-import { login, authFetch } from "../auth";
+import { useAuth } from "../../auth/AuthContext";
+import { login, authFetch } from "../../auth";
 import { UserPlus, AlertCircle, CheckCircle2, Loader2, Eye, EyeOff } from "lucide-react";
 import Button from "@mui/material/Button";
 

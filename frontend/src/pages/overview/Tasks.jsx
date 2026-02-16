@@ -5,9 +5,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Button from '@mui/material/Button';
 import { Plus, Filter, X } from 'lucide-react';
 
-import { fetchTasksForProject, fetchTeamsForProject, fetch_project_detail } from '../api/org_API.js';
-import SMTaskCard from '../components/TaskCardSM';
-import ProjectCreateTaskForm from '../components/ProjectCreateTaskForm';
+import { fetchTasksForProject, fetchTeamsForProject, fetch_project_detail } from '../../api/org_API.js';
+import SMTaskCard from '../../components/TaskCardSM.jsx';
+import ProjectCreateTaskForm from '../../components/ProjectCreateTaskForm.jsx';
 
 /* ---- Stats ---- */
 function ProjectStats({ tasks, teams }) {
@@ -53,7 +53,7 @@ function ProjectStats({ tasks, teams }) {
 }
 
 /* ---- Hauptkomponente ---- */
-export default function ProjectTasks() {
+export default function Tasks() {
   const { projectId } = useParams();
   const navigate = useNavigate();
 

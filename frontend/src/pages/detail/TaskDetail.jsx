@@ -22,7 +22,7 @@ import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../../auth/AuthContext';
 
 import {
   fetchSingleTask,
@@ -31,9 +31,9 @@ import {
   assignTaskMember,
   unassignTaskMember,
   fetch_project_detail,
-} from '../api/org_API.js';
+} from '../../api/org_API.js';
 
-export default function ProjectTaskDetail() {
+export default function TaskDetail() {
   const { projectId, taskId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -53,8 +53,6 @@ export default function ProjectTaskDetail() {
   const [editDifficulty, setEditDifficulty] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  // Attempts removed - milestones used instead
-  const [expandedAttemptIds, setExpandedAttemptIds] = useState([]);
   
   // Member assignment
   const [assigningMemberId, setAssigningMemberId] = useState(null);
@@ -132,14 +130,6 @@ export default function ProjectTaskDetail() {
     setError(null);
   }
 
-  function toggleAttemptExpanded(attemptId) {
-    setExpandedAttemptIds((prev) =>
-      prev.includes(attemptId) ? prev.filter((id) => id !== attemptId) : [...prev, attemptId],
-    );
-  }
-
-  // Attempt CRUD removed - milestones used instead
-
   async function handleAssignMember(userId) {
     setAssigningMemberId(userId);
     try {
@@ -195,9 +185,6 @@ export default function ProjectTaskDetail() {
 
   const currentTeam = task?.team;
   const teamColor = currentTeam?.color || '#64748b';
-  const attempts = (task?.attempts || [])
-    .slice()
-    .sort((a, b) => (a.slot_index || 0) - (b.slot_index || 0));
 
   return (
     <div className="flex min-h-screen w-full justify-center bg-gradient-to-b from-slate-50 to-slate-100 px-4">
@@ -493,7 +480,7 @@ export default function ProjectTaskDetail() {
           </div>
         </header>
 
-        {/* Milestones info - attempts have been replaced */}
+        {/* Milestones info */}
         {task && (
           <section className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur-sm">
             <div className="flex items-center gap-3">

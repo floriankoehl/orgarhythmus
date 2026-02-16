@@ -4,11 +4,11 @@ import {
   fetch_project_teams,
   fetch_project_tasks,
   get_all_milestones,
-} from '../api/dependencies_api.js';
-import { useAuth } from '../auth/AuthContext';
+} from '../../api/dependencies_api.js';
+import { useAuth } from '../../auth/AuthContext';
 import { useEffect, useState, useMemo } from 'react';
 import {
-  Calendar,
+  Calendar as CalendarIcon,
   Loader2,
   Filter,
   X,
@@ -26,7 +26,7 @@ import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 dayjs.extend(isBetween);
 dayjs.extend(isSameOrAfter);
 
-export default function CalendarPage() {
+export default function Calendar() {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
@@ -219,7 +219,7 @@ export default function CalendarPage() {
         <header className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white shadow">
-              <Calendar size={18} />
+              <CalendarIcon size={18} />
             </div>
             <h1 className="text-lg font-semibold text-slate-900">Project Calendar</h1>
           </div>
@@ -522,7 +522,7 @@ export default function CalendarPage() {
         {/* Empty State */}
         {filteredMilestones.length === 0 && (
           <section className="rounded-2xl border border-slate-200 bg-white/70 p-12 text-center shadow-sm backdrop-blur-sm">
-            <Calendar size={48} className="mx-auto mb-4 text-slate-300" />
+            <CalendarIcon size={48} className="mx-auto mb-4 text-slate-300" />
             <h3 className="text-lg font-semibold text-slate-900">No milestones scheduled</h3>
             <p className="mt-1 text-sm text-slate-600">
               {selectedTeamIds.length > 0

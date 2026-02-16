@@ -160,7 +160,7 @@ function ProjectCard({
   );
 }
 
-export default function OrgaProjects() {
+export default function AllProjects() {
   const navigate = useNavigate();
 
   // Tab state

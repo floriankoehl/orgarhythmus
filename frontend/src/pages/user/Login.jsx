@@ -2,12 +2,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { NavLink } from "react-router-dom";
-import { login, authFetch } from "../auth";
-import { useAuth } from "../auth/AuthContext";
+import { login, authFetch } from "../../auth";
+import { useAuth } from "../../auth/AuthContext";
 import { LogIn, AlertCircle, Loader2 } from "lucide-react";
 import Button from "@mui/material/Button";
 
-export default function LoginPage() {
+export default function Login() {
   const { setUser } = useAuth();
   const navigate = useNavigate();
 

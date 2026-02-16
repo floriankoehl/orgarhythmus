@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
-import { useAuth } from '../auth/AuthContext';
+import { useAuth } from '../../auth/AuthContext';
 import {
   fetchSingleTeam,
   updateTeam,
@@ -24,9 +24,9 @@ import {
   fetchSingleTask,
   joinTeam,
   leaveTeam,
-} from '../api/org_API.js';
+} from '../../api/org_API.js';
 
-export default function ProjectTeamDetail() {
+export default function TeamDetail() {
   const { projectId, teamId } = useParams();
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();

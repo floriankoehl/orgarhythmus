@@ -13,7 +13,7 @@ import {
   get_all_dependencies,
   create_dependency,
   delete_dependency_api,
-} from '../api/dependencies_api.js';
+} from '../../api/dependencies_api.js';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
@@ -170,10 +170,9 @@ useEffect(() => {
       const resTasks = await fetch_project_tasks(projectId);
 
       for (const team_id in teamObject) {
-        teamObject[team_id].tasks = resTasks.taskOrder?.[String(team_id)] || [];
-
-        teamObject[team_id].height =
-          resTasks.taskOrder?.[String(team_id)].length * TASKHEIGHT;
+        const teamTasks = resTasks.taskOrder?.[String(team_id)] || [];
+        teamObject[team_id].tasks = teamTasks;
+        teamObject[team_id].height = teamTasks.length * TASKHEIGHT;
       }
 
 
