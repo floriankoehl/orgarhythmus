@@ -76,6 +76,7 @@ export default function Dependencies() {
   const [projectStartDate, setProjectStartDate] = useState(null)
   const [milestones, setMilestones] = useState({})
   const [hoveredMilestone, setHoveredMilestone] = useState(null)
+  const [selectedMilestone, setSelectedMilestone] = useState(null)
 
   const [teamOrder, setTeamOrder] = useState([]);
   const [teams, setTeams] = useState({});
@@ -471,10 +472,12 @@ export default function Dependencies() {
         if (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD) {
           isDragging = true;
           setGhost({
-            ...team,
+            id: team_key,
+            name: team.name,
+            color: team.color,
+            height: currentTeamHeight,
             y: new_y - mouseOffsetY,
             offsetY: mouseOffsetY,
-            height: currentTeamHeight,
           });
         } else {
           return; // Don't do anything until threshold is met
@@ -832,7 +835,21 @@ export default function Dependencies() {
     }
     else if (mode === "delete") {
       setReloadData(true)
+      // Deselect if deleting the selected milestone
+      if (selectedMilestone === id) {
+        setSelectedMilestone(null);
+      }
       return delete_milestone(projectId, id)
+    }
+  }
+
+  const handleMilestoneClick = (e, id) => {
+    e.stopPropagation();
+    // Toggle selection
+    if (selectedMilestone === id) {
+      setSelectedMilestone(null);
+    } else {
+      setSelectedMilestone(id);
     }
   }
 
@@ -935,16 +952,12 @@ export default function Dependencies() {
         if (String(key) === String(milestoneId)) continue;
 
         for (let targetHandleType of ["source", "target"]) {
-          const handlePos = getMilestoneHandlePosition(key, targetHandleType);
-          if (!handlePos) continue;
+          const targetPos = getMilestoneHandlePosition(key, targetHandleType);
+          if (!targetPos) continue;
 
-          const distance = Math.sqrt(
-            Math.pow(mouseX - handlePos.x, 2) +
-            Math.pow(mouseY - handlePos.y, 2)
-          );
-
-          if (distance < CONNECTION_RADIUS) {
-            createConnection(milestoneId, handleType, key, targetHandleType);
+          const dist = Math.sqrt((mouseX - targetPos.x) ** 2 + (mouseY - targetPos.y) ** 2);
+          if (dist < CONNECTION_RADIUS) {
+            createConnection(milestoneId, handleType, parseInt(key), targetHandleType);
             break;
           }
         }
@@ -1125,6 +1138,7 @@ export default function Dependencies() {
           setSelectedConnection(null);
           setOpenTeamSettings(null);
           setShowGlobalSettings(false);
+          setSelectedMilestone(null);
         }}
       >
         {/* Global Settings Button */}
@@ -1367,6 +1381,7 @@ export default function Dependencies() {
                           {/* Team Settings Button */}
                           <div className="relative">
                             <button
+                              id={`team-settings-btn-${team_key}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setOpenTeamSettings(isSettingsOpen ? null : team_key);
@@ -1376,79 +1391,6 @@ export default function Dependencies() {
                             >
                               <MoreVertIcon style={{ fontSize: 16 }} />
                             </button>
-                            
-                            {/* Settings Dropdown */}
-                            {isSettingsOpen && (
-                              <div 
-                                className="absolute left-0 top-full mt-1 w-48 rounded-lg border border-slate-200 bg-white shadow-xl z-50"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <div className="p-2 space-y-1">
-                                  {/* Collapse/Expand all */}
-                                  <button
-                                    onClick={() => {
-                                      allVisibleTasksSmall(team_key) ? setTeamTasksNormal(team_key) : setTeamTasksSmall(team_key);
-                                      setOpenTeamSettings(null);
-                                    }}
-                                    className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left"
-                                  >
-                                    {allVisibleTasksSmall(team_key) ? (
-                                      <>
-                                        <UnfoldMoreIcon style={{ fontSize: 14 }} />
-                                        <span>Expand all tasks</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <UnfoldLessIcon style={{ fontSize: 14 }} />
-                                        <span>Collapse all tasks</span>
-                                      </>
-                                    )}
-                                  </button>
-                                  
-                                  {/* Show hidden tasks */}
-                                  {teamHasHiddenTasks(team_key) && (
-                                    <button
-                                      onClick={() => {
-                                        showAllTeamTasks(team_key);
-                                        setOpenTeamSettings(null);
-                                      }}
-                                      className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left text-blue-700"
-                                    >
-                                      <VisibilityIcon style={{ fontSize: 14 }} />
-                                      <span>Show hidden tasks</span>
-                                    </button>
-                                  )}
-                                  
-                                  {/* Hide all tasks */}
-                                  {visibleTasks.length > 0 && (
-                                    <button
-                                      onClick={() => {
-                                        hideAllTeamTasks(team_key);
-                                        setOpenTeamSettings(null);
-                                      }}
-                                      className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left text-orange-700"
-                                    >
-                                      <VisibilityOffIcon style={{ fontSize: 14 }} />
-                                      <span>Hide all tasks</span>
-                                    </button>
-                                  )}
-                                  
-                                  <div className="border-t border-slate-100 my-1" />
-                                  
-                                  {/* Hide Team */}
-                                  <button
-                                    onClick={() => {
-                                      toggleTeamVisibility(team_key);
-                                      setOpenTeamSettings(null);
-                                    }}
-                                    className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-red-50 transition text-left text-red-700"
-                                  >
-                                    <VisibilityOffIcon style={{ fontSize: 14 }} />
-                                    <span>Hide team</span>
-                                  </button>
-                                </div>
-                              </div>
-                            )}
                           </div>
                         </div>
                         
@@ -1595,6 +1537,91 @@ export default function Dependencies() {
               );
             })}
 
+            {/* Team Settings Dropdown - Rendered as fixed portal to appear above everything */}
+            {openTeamSettings && teams[openTeamSettings] && (() => {
+              const btn = document.getElementById(`team-settings-btn-${openTeamSettings}`);
+              if (!btn) return null;
+              const rect = btn.getBoundingClientRect();
+              const team_key = openTeamSettings;
+              const visibleTasks = getVisibleTasks(team_key);
+              
+              return (
+                <div 
+                  className="fixed w-48 rounded-lg border border-slate-200 bg-white shadow-xl"
+                  style={{
+                    top: `${rect.bottom + 4}px`,
+                    left: `${rect.left}px`,
+                    zIndex: 9999,
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="p-2 space-y-1">
+                    {/* Collapse/Expand all */}
+                    <button
+                      onClick={() => {
+                        allVisibleTasksSmall(team_key) ? setTeamTasksNormal(team_key) : setTeamTasksSmall(team_key);
+                        setOpenTeamSettings(null);
+                      }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left"
+                    >
+                      {allVisibleTasksSmall(team_key) ? (
+                        <>
+                          <UnfoldMoreIcon style={{ fontSize: 14 }} />
+                          <span>Expand all tasks</span>
+                        </>
+                      ) : (
+                        <>
+                          <UnfoldLessIcon style={{ fontSize: 14 }} />
+                          <span>Collapse all tasks</span>
+                        </>
+                      )}
+                    </button>
+                    
+                    {/* Show hidden tasks */}
+                    {teamHasHiddenTasks(team_key) && (
+                      <button
+                        onClick={() => {
+                          showAllTeamTasks(team_key);
+                          setOpenTeamSettings(null);
+                        }}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left text-blue-700"
+                      >
+                        <VisibilityIcon style={{ fontSize: 14 }} />
+                        <span>Show hidden tasks</span>
+                      </button>
+                    )}
+                    
+                    {/* Hide all tasks */}
+                    {visibleTasks.length > 0 && (
+                      <button
+                        onClick={() => {
+                          hideAllTeamTasks(team_key);
+                          setOpenTeamSettings(null);
+                        }}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left text-orange-700"
+                      >
+                        <VisibilityOffIcon style={{ fontSize: 14 }} />
+                        <span>Hide all tasks</span>
+                      </button>
+                    )}
+                    
+      
+                    {/* Hide Team */}
+                    <button
+                      onClick={() => {
+                        toggleTeamVisibility(team_key);
+                        setOpenTeamSettings(null);
+                      }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-red-50 transition text-left text-red-700"
+                    >
+                      <VisibilityOffIcon style={{ fontSize: 14 }} />
+                      <span>Hide team</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* LAST DROP HIGHLIGHT */}
             <div className="flex" style={{ position: 'relative', backgroundColor: 'white' }}>
               <div
@@ -1666,6 +1693,22 @@ export default function Dependencies() {
 
                 const isSelected = selectedConnection?.source === conn.source && 
                                    selectedConnection?.target === conn.target;
+                
+                // Determine if this connection is related to the selected milestone
+                const isOutgoing = selectedMilestone && conn.source === selectedMilestone;
+                const isIncoming = selectedMilestone && conn.target === selectedMilestone;
+                
+                // Determine stroke color based on selection state
+                let strokeColor = "#374151"; // default gray
+                if (isSelected) {
+                  strokeColor = "#6366f1"; // indigo when connection is selected
+                } else if (isOutgoing) {
+                  strokeColor = "#22c55e"; // green for outgoing edges
+                } else if (isIncoming) {
+                  strokeColor = "#ef4444"; // red for incoming edges
+                }
+                
+                const isHighlighted = isSelected || isOutgoing || isIncoming;
 
                 return (
                   <g key={`${conn.source}-${conn.target}`} style={{ pointerEvents: 'auto' }}>
@@ -1681,15 +1724,15 @@ export default function Dependencies() {
                     {/* Visible animated path */}
                     <path
                       d={getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y)}
-                      stroke={isSelected ? "#6366f1" : "#374151"}
-                      strokeWidth={isSelected ? "3.5" : "2.5"}
+                      stroke={strokeColor}
+                      strokeWidth={isHighlighted ? "3.5" : "2.5"}
                       fill="none"
                       strokeLinecap="round"
                       strokeDasharray="8, 4"
                       style={{
                         animation: "flowAnimation 3s linear infinite",
                         pointerEvents: "none",
-                        filter: isSelected ? "drop-shadow(0 0 3px rgba(99, 102, 241, 0.5))" : "none",
+                        filter: isHighlighted ? `drop-shadow(0 0 3px ${strokeColor}80)` : "none",
                       }}
                     />
                   </g>
@@ -1741,6 +1784,7 @@ export default function Dependencies() {
                     const showDurationPlus = hoveredMilestone === milestone.id && mode === "duration";
                     const showDurationMinus = hoveredMilestone === milestone.id && mode === "duration" && milestone.duration > 1;
                     const showConnect = mode === "connect";
+                    const isSelected = selectedMilestone === milestone.id;
 
                     return (
                       <div
@@ -1749,80 +1793,90 @@ export default function Dependencies() {
                             handleMileStoneMouseDown(e, milestone_from_task.id);
                           }
                         }}
+                        onClick={(e) => {
+                          if (mode === "drag") {
+                            handleMilestoneClick(e, milestone.id);
+                          }
+                        }}
                         onMouseEnter={() => setHoveredMilestone(milestone.id)}
                         onMouseLeave={() => setHoveredMilestone(null)}
-                        className="absolute p-0.5 group"
+                        className={`absolute rounded cursor-pointer ${
+                          isSelected 
+                            ? 'ring-2 ring-blue-500 ring-offset-1 shadow-lg' 
+                            : 'hover:brightness-95'
+                        }`}
                         style={{
                           pointerEvents: 'auto',
-                          height: `${taskHeight}px`,
-                          width: `${DAYWIDTH * milestone.duration}px`,
                           left: `${TEAMWIDTH + TASKWIDTH + milestone.x}px`,
                           top: `${taskY}px`,
-                          opacity: ghost?.id === team_key ? 0.2 : 1,
+                          width: `${DAYWIDTH * milestone.duration}px`,
+                          height: `${taskHeight}px`,
+                          backgroundColor: isSelected ? '#3b82f6' : team.color,
+                          boxShadow: isSelected 
+                            ? '0 4px 12px rgba(59, 130, 246, 0.4)' 
+                            : '0 1px 3px rgba(0,0,0,0.1)',
                         }}
                         key={milestone.id}
                       >
-                        <div className={`h-full w-full rounded bg-slate-200 shadow-xl border border-gray-500 text-black flex justify-center items-center relative ${isSmall ? 'text-xs' : ''}`}>
-                          {!showDelete && !showDurationPlus && !showDurationMinus && !showConnect && (isSmall ? "" : "M")}
-
-                          {showDelete && (
-                            <DeleteForeverIcon
-                              style={{ color: "#fa2020", fontSize: isSmall ? 16 : 24 }}
-                              className="animate-pulse"
-                            />
-                          )}
-
-                          <div 
-                            style={{ display: showDurationMinus || showDurationPlus ? "flex" : "none" }}
-                            className="w-full flex justify-between px-0.5"
-                          >
-                            {showDurationPlus && (
-                              <AddCircleOutlineIcon
-                                onClick={(e) => handleDurationChange(e, milestone.id, 1)}
-                                style={{ fontSize: isSmall ? 14 : 20 }}
-                                className="cursor-pointer"
-                              />
-                            )}
-                            {showDurationMinus && (
-                              <RemoveCircleOutlineIcon
-                                onClick={(e) => handleDurationChange(e, milestone.id, -1)}
-                                style={{ fontSize: isSmall ? 14 : 20 }}
-                                className="hover:text-blue-200 cursor-pointer"
-                              />
-                            )}
-                          </div>
-
-                          {/* Connection Handles */}
-                          <div
-                            className={`absolute w-2.5 h-2.5 bg-blue-500 rounded-full 
-                                       transition-all cursor-crosshair
-                                       border-2 border-white shadow
-                                       ${showConnect ? 'opacity-100 scale-110' : 'opacity-0 group-hover:opacity-100'}
-                                       hover:scale-150 hover:bg-blue-400`}
-                            style={{
-                              left: "-5px",
-                              top: "50%",
-                              transform: "translateY(-50%)",
-                              zIndex: 200,
-                            }}
-                            onMouseDown={(e) => handleConnectionDragStart(e, milestone.id, "target")}
-                          />
-
-                          <div
-                            className={`absolute w-2.5 h-2.5 bg-green-500 rounded-full 
-                                       transition-all cursor-crosshair
-                                       border-2 border-white shadow
-                                       ${showConnect ? 'opacity-100 scale-110' : 'opacity-0 group-hover:opacity-100'}
-                                       hover:scale-150 hover:bg-green-400`}
-                            style={{
-                              right: "-5px",
-                              top: "50%",
-                              transform: "translateY(-50%)",
-                              zIndex: 200,
-                            }}
-                            onMouseDown={(e) => handleConnectionDragStart(e, milestone.id, "source")}
-                          />
+                        {/* Milestone name */}
+                        <div className={`h-full flex items-center justify-center overflow-hidden px-1 ${isSmall ? 'text-[10px]' : 'text-xs'}`}>
+                          <span className={`truncate font-medium ${isSelected ? 'text-white' : ''}`}>
+                            {milestone.name}
+                          </span>
                         </div>
+
+                        {/* Delete icon */}
+                        {showDelete && (
+                          <div 
+                            className="absolute -top-2 -right-2 bg-red-500 rounded-full p-0.5 shadow-md"
+                            style={{ pointerEvents: 'auto' }}
+                          >
+                            <DeleteForeverIcon style={{ fontSize: 16, color: 'white' }} />
+                          </div>
+                        )}
+
+                        {/* Duration controls */}
+                        {showDurationPlus && (
+                          <div 
+                            className="absolute -top-2 -right-2 bg-blue-500 rounded-full p-0.5 shadow-md cursor-pointer hover:bg-blue-600"
+                            style={{ pointerEvents: 'auto' }}
+                            onClick={(e) => handleDurationChange(e, milestone.id, 1)}
+                          >
+                            <AddCircleOutlineIcon style={{ fontSize: 16, color: 'white' }} />
+                          </div>
+                        )}
+                        {showDurationMinus && (
+                          <div 
+                            className="absolute -top-2 -left-2 bg-orange-500 rounded-full p-0.5 shadow-md cursor-pointer hover:bg-orange-600"
+                            style={{ pointerEvents: 'auto' }}
+                            onClick={(e) => handleDurationChange(e, milestone.id, -1)}
+                          >
+                            <RemoveCircleOutlineIcon style={{ fontSize: 16, color: 'white' }} />
+                          </div>
+                        )}
+
+                        {/* Connection handles */}
+                        {showConnect && (
+                          <>
+                            {/* Target handle (left) */}
+                            <div
+                              className="absolute top-1/2 -translate-y-1/2 -left-2 w-4 h-4 bg-indigo-500 rounded-full border-2 border-white shadow cursor-crosshair hover:scale-125 transition-transform"
+                              style={{ pointerEvents: 'auto' }}
+                              onMouseDown={(e) => handleConnectionDragStart(e, milestone.id, "target")}
+                            />
+                            {/* Source handle (right) */}
+                            <div
+                              className="absolute top-1/2 -translate-y-1/2 -right-2 w-4 h-4 bg-indigo-500 rounded-full border-2 border-white shadow cursor-crosshair hover:scale-125 transition-transform"
+                              style={{ pointerEvents: 'auto' }}
+                              onMouseDown={(e) => handleConnectionDragStart(e, milestone.id, "source")}
+                            />
+                          </>
+                        )}
+
+                        {/* Selection indicator */}
+                        {isSelected && (
+                          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-blue-500 rounded-full border border-white" />
+                        )}
                       </div>
                     );
                   });
