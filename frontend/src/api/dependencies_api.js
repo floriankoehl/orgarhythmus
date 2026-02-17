@@ -222,12 +222,13 @@ export async function update_day(projectId, dayIndex, data) {
     return await res.json()
 }
 
-export async function set_day_purpose(projectId, dayIndex, purpose) {
+export async function set_day_purpose(projectId, dayIndex, purpose, purposeTeams = null) {
     const res = await authFetch(`/api/projects/${projectId}/days/set_purpose/`, {
         method: "POST",
         body: JSON.stringify({
             day_index: dayIndex,
-            purpose: purpose
+            purpose: purpose,
+            purpose_teams: purposeTeams
         })
     })
     if (!res.ok) throw new Error('Failed to set day purpose');

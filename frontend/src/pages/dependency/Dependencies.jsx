@@ -135,8 +135,9 @@ function DependenciesContent() {
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
 
   // Day purpose modal
-  const [dayPurposeModal, setDayPurposeModal] = useState(null); // { dayIndex, currentPurpose }
+  const [dayPurposeModal, setDayPurposeModal] = useState(null); // { dayIndex, currentPurpose, currentPurposeTeams }
   const [newDayPurpose, setNewDayPurpose] = useState("");
+  const [newDayPurposeTeams, setNewDayPurposeTeams] = useState(null); // null = all, array of IDs = specific
 
   // Column widths (resizable)
   const [teamColumnWidth, setTeamColumnWidth] = useState(DEFAULT_TEAMWIDTH_CONSTANT);
@@ -192,9 +193,11 @@ function DependenciesContent() {
     const dayData = projectDays[dayIndex] || {};
     setDayPurposeModal({
       dayIndex,
-      currentPurpose: dayData.purpose || ""
+      currentPurpose: dayData.purpose || "",
+      currentPurposeTeams: dayData.purpose_teams || null
     });
     setNewDayPurpose(dayData.purpose || "");
+    setNewDayPurposeTeams(dayData.purpose_teams || null);
   };
 
 
@@ -229,6 +232,7 @@ function DependenciesContent() {
         isSunday: dayData.is_sunday ?? isSunday,
         isWeekend: dayData.is_weekend ?? isWeekend,
         purpose: dayData.purpose || null,
+        purposeTeams: dayData.purpose_teams || null,
         isBlocked: dayData.is_blocked || false,
       });
     }
@@ -384,6 +388,7 @@ function DependenciesContent() {
     deleteConfirmModal,
     // Form state values
     newDayPurpose,
+    newDayPurposeTeams,
     newTeamName,
     newTeamColor,
     newTaskName,
@@ -402,6 +407,7 @@ function DependenciesContent() {
     setIsAddingMilestone,
     // Form state setters
     setNewDayPurpose,
+    setNewDayPurposeTeams,
     setNewTeamName,
     setNewTeamColor,
     setNewTaskName,
@@ -587,8 +593,12 @@ function DependenciesContent() {
         dayLabels={dayLabels}
         newDayPurpose={newDayPurpose}
         setNewDayPurpose={setNewDayPurpose}
+        newDayPurposeTeams={newDayPurposeTeams}
+        setNewDayPurposeTeams={setNewDayPurposeTeams}
         handleSaveDayPurpose={handleSaveDayPurpose}
         handleClearDayPurpose={handleClearDayPurpose}
+        teamOrder={teamOrder}
+        allTeams={teams}
         // Create Team Modal
         showCreateTeamModal={showCreateTeamModal}
         setShowCreateTeamModal={setShowCreateTeamModal}

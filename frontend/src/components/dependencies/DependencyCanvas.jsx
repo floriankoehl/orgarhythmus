@@ -237,6 +237,7 @@ export default function DependencyCanvas({
             <div className="flex border-b">
               {dayLabels.map((dayInfo, i) => {
                 const hasPurpose = !!dayInfo.purpose;
+                const isTeamSpecific = hasPurpose && Array.isArray(dayInfo.purposeTeams) && dayInfo.purposeTeams.length > 0;
                 const isSunday = dayInfo.isSunday;
                 const showDayName = DAYWIDTH >= DAY_NAME_WIDTH_THRESHOLD;
                 
@@ -246,7 +247,9 @@ export default function DependencyCanvas({
                     onClick={() => handleDayHeaderClick(i)}
                     className={`flex flex-col items-center justify-center text-xs border-r cursor-pointer transition-colors ${
                       hasPurpose 
-                        ? 'bg-slate-800 text-white hover:bg-slate-700' 
+                        ? isTeamSpecific
+                          ? 'bg-slate-600 text-white hover:bg-slate-500'
+                          : 'bg-slate-800 text-white hover:bg-slate-700' 
                         : isSunday 
                           ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
                           : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
@@ -255,7 +258,9 @@ export default function DependencyCanvas({
                       width: `${DAYWIDTH}px`,
                       height: `${HEADER_HEIGHT}px`,
                     }}
-                    title={hasPurpose ? `${dayInfo.purpose} - Click to edit` : 'Click to set purpose'}
+                    title={hasPurpose 
+                      ? `${dayInfo.purpose}${isTeamSpecific ? ' (team-specific)' : ' (all teams)'} - Click to edit` 
+                      : 'Click to set purpose'}
                   >
                     {showDayName && (
                       <span className={`text-[10px] font-medium ${hasPurpose ? 'text-slate-300' : isSunday ? 'text-purple-600' : 'text-slate-400'}`}>

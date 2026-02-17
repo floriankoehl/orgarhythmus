@@ -46,7 +46,14 @@ export default function DependencyDayGrid({
                   const isHovered = isAddingMilestone && 
                     hoveredDayCell?.taskId === task_key && 
                     hoveredDayCell?.dayIndex === i;
-                  const hasPurpose = dayLabels && dayLabels[i]?.purpose;
+                  const dayInfo = dayLabels && dayLabels[i];
+                  const hasPurpose = !!dayInfo?.purpose;
+                  const purposeTeams = dayInfo?.purposeTeams;
+                  // Highlight only if purpose exists AND (applies to all teams or this team)
+                  const showPurposeHighlight = hasPurpose && (
+                    purposeTeams === null || purposeTeams === undefined || 
+                    (Array.isArray(purposeTeams) && purposeTeams.includes(team_key))
+                  );
                   
                   return (
                     <div
@@ -58,7 +65,7 @@ export default function DependencyDayGrid({
                         width: `${DAYWIDTH}px`,
                         opacity: ghost?.id === team_key ? 0.2 : 1,
                         pointerEvents: isAddingMilestone ? 'auto' : 'none',
-                        ...(!isHovered && hasPurpose ? { backgroundColor: 'rgba(30, 41, 59, 0.06)' } : {}),
+                        ...(!isHovered && showPurposeHighlight ? { backgroundColor: 'rgba(30, 41, 59, 0.06)' } : {}),
                       }}
                       key={i}
                     onMouseEnter={() => isAddingMilestone && setHoveredDayCell({ taskId: task_key, dayIndex: i })}

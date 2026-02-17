@@ -28,6 +28,7 @@ export function useDependencyActions({
   
   // Form state values
   newDayPurpose,
+  newDayPurposeTeams,
   newTeamName,
   newTeamColor,
   newTaskName,
@@ -49,6 +50,7 @@ export function useDependencyActions({
   
   // Form state setters
   setNewDayPurpose,
+  setNewDayPurposeTeams,
   setNewTeamName,
   setNewTeamColor,
   setNewTaskName,
@@ -83,7 +85,7 @@ export function useDependencyActions({
     if (!dayPurposeModal) return;
     
     try {
-      const result = await set_day_purpose(projectId, dayPurposeModal.dayIndex, newDayPurpose);
+      const result = await set_day_purpose(projectId, dayPurposeModal.dayIndex, newDayPurpose, newDayPurposeTeams);
       if (result.success) {
         setProjectDays(prev => ({
           ...prev,
@@ -96,13 +98,14 @@ export function useDependencyActions({
     
     setDayPurposeModal(null);
     setNewDayPurpose("");
+    setNewDayPurposeTeams(null);
   };
 
   const handleClearDayPurpose = async () => {
     if (!dayPurposeModal) return;
     
     try {
-      const result = await set_day_purpose(projectId, dayPurposeModal.dayIndex, null);
+      const result = await set_day_purpose(projectId, dayPurposeModal.dayIndex, null, null);
       if (result.success) {
         setProjectDays(prev => ({
           ...prev,
@@ -115,6 +118,7 @@ export function useDependencyActions({
     
     setDayPurposeModal(null);
     setNewDayPurpose("");
+    setNewDayPurposeTeams(null);
   };
 
   // ________MILESTONE HANDLERS________

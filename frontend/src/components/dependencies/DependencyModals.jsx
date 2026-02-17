@@ -7,8 +7,12 @@ export default function DependencyModals({
   dayLabels,
   newDayPurpose,
   setNewDayPurpose,
+  newDayPurposeTeams,
+  setNewDayPurposeTeams,
   handleSaveDayPurpose,
   handleClearDayPurpose,
+  teamOrder,
+  allTeams,
   // Create Team Modal
   showCreateTeamModal,
   setShowCreateTeamModal,
@@ -78,6 +82,69 @@ export default function DependencyModals({
                 if (e.key === 'Escape') setDayPurposeModal(null);
               }}
             />
+
+            {/* Team scope selector */}
+            <div className="mb-4">
+              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Applies to</h4>
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer px-2 py-1 rounded hover:bg-slate-50">
+                  <input
+                    type="radio"
+                    name="purposeScope"
+                    checked={newDayPurposeTeams === null}
+                    onChange={() => setNewDayPurposeTeams(null)}
+                    className="text-blue-600"
+                  />
+                  <span className="font-medium">All Teams</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer px-2 py-1 rounded hover:bg-slate-50">
+                  <input
+                    type="radio"
+                    name="purposeScope"
+                    checked={newDayPurposeTeams !== null}
+                    onChange={() => setNewDayPurposeTeams([])}
+                    className="text-blue-600"
+                  />
+                  <span className="font-medium">Specific Teams</span>
+                </label>
+              </div>
+              
+              {newDayPurposeTeams !== null && (
+                <div className="mt-2 ml-6 space-y-1 max-h-36 overflow-y-auto border border-slate-100 rounded-lg p-2">
+                  {teamOrder && teamOrder.length > 0 ? teamOrder.map((teamId) => {
+                    const team = allTeams?.[teamId];
+                    if (!team) return null;
+                    const isSelected = newDayPurposeTeams.includes(teamId);
+                    return (
+                      <label
+                        key={teamId}
+                        className="flex items-center gap-2 px-2 py-1 rounded hover:bg-slate-50 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {
+                            setNewDayPurposeTeams(prev => 
+                              isSelected 
+                                ? prev.filter(id => id !== teamId)
+                                : [...prev, teamId]
+                            );
+                          }}
+                          className="rounded border-slate-300"
+                        />
+                        <div 
+                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: team.color || '#94a3b8' }}
+                        />
+                        <span className="text-xs text-slate-700 truncate">{team.name}</span>
+                      </label>
+                    );
+                  }) : (
+                    <p className="text-xs text-slate-400 italic px-2">No teams available</p>
+                  )}
+                </div>
+              )}
+            </div>
             
             <div className="flex justify-between gap-3">
               <button
@@ -97,6 +164,7 @@ export default function DependencyModals({
                 <button
                   onClick={handleSaveDayPurpose}
                   className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition"
+                  disabled={newDayPurposeTeams !== null && newDayPurposeTeams.length === 0}
                 >
                   Save
                 </button>

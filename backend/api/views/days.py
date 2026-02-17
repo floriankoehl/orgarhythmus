@@ -104,6 +104,7 @@ def set_day_purpose(request, project_id):
 
     day_index = request.data.get("day_index")
     purpose = request.data.get("purpose")
+    purpose_teams = request.data.get("purpose_teams", None)  # null = all, list of IDs = specific
 
     if day_index is None:
         return Response({"detail": "day_index is required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -114,6 +115,11 @@ def set_day_purpose(request, project_id):
         return Response({"detail": "Day not found"}, status=status.HTTP_404_NOT_FOUND)
 
     day.purpose = purpose.strip() if purpose else None
+    # If purpose is cleared, also clear purpose_teams
+    if not day.purpose:
+        day.purpose_teams = None
+    else:
+        day.purpose_teams = purpose_teams  # null means all teams
     day.save()
 
     serializer = DaySerializer(day)

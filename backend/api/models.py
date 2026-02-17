@@ -178,6 +178,7 @@ class Day(models.Model):
     date = models.DateField()
     day_index = models.IntegerField(default=0)  # 0-based index from project start
     purpose = models.CharField(max_length=200, blank=True, null=True)
+    purpose_teams = models.JSONField(blank=True, null=True, default=None)  # null = all teams, list of team IDs = specific teams
     description = models.TextField(blank=True, null=True)
     is_blocked = models.BooleanField(default=False)  # e.g., holiday, no work day
     color = models.CharField(max_length=20, blank=True, null=True)  # custom highlight color

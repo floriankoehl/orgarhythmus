@@ -206,6 +206,7 @@ class DaySerializer(serializers.ModelSerializer):
             "date",
             "day_index",
             "purpose",
+            "purpose_teams",
             "description",
             "is_blocked",
             "color",
