@@ -35,6 +35,7 @@ export default function DependencyTeamList({
   TEAM_HEADER_GAP,
   // State
   days,
+  dayLabels,
   taskDisplaySettings,
   ghost,
   dropIndex,
@@ -135,7 +136,7 @@ export default function DependencyTeamList({
               >
                 {/* Team Name Column */}
                 <div
-                  className="flex flex-col items-center justify-start border-r border-b border-slate-200 cursor-grab active:cursor-grabbing"
+                  className="flex flex-col items-center justify-start border-r border-b border-slate-200 cursor-grab-visible"
                   style={{
                     width: `${TEAMWIDTH}px`,
                     height: `${teamHeight}px`,
@@ -237,7 +238,7 @@ export default function DependencyTeamList({
                                 handleTaskDrag(e, task_key, team_key, visibleTaskIndex);
                               }
                             }}
-                            className={`flex-shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-colors`}
+                            className={`flex-shrink-0 flex items-center justify-center cursor-grab-visible text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-colors`}
                             style={{ width: '28px', height: '100%' }}
                             title="Drag to reorder task"
                           >
@@ -347,6 +348,7 @@ export default function DependencyTeamList({
                 visibleTasks={visibleTasks}
                 team_key={team_key}
                 days={days}
+                dayLabels={dayLabels}
                 DAYWIDTH={DAYWIDTH}
                 ghost={ghost}
                 isAddingMilestone={isAddingMilestone}

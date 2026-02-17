@@ -703,6 +703,7 @@ function DependenciesContent() {
       {/* Page wrapper */}
       <div 
         className="p-10 w-full min-w-0 select-none"
+        style={{ backgroundColor: '#f8f9fb' }}
         onClick={() => {
           if (justDraggedRef.current) return;
           setSelectedConnection(null);

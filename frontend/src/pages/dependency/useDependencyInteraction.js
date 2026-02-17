@@ -118,13 +118,7 @@ export function useDependencyInteraction({
       // Skip if user is typing in an input/textarea
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       
-      if (e.key === "Shift") {
-        setMode("duration");
-      } else if (e.key === "Alt") {
-        e.preventDefault();
-        setMode("connect");
-        setViewMode("dependency");
-      } else if (e.key === "Delete") {
+      if (e.key === "Delete") {
         // Delete handled by actions hook
       } else if (e.key === "Escape") {
         setSelectedMilestones(new Set());
@@ -144,12 +138,7 @@ export function useDependencyInteraction({
       }
     };
     const handleKeyUp = (e) => {
-      if (e.key === "Shift") {
-        setMode("drag");
-      } else if (e.key === "Alt") {
-        setMode("drag");
-        setViewMode(baseViewModeRef.current);
-      }
+      // No temporary mode switching needed
     };
     document.addEventListener("keydown", handleKeyDown);
     document.addEventListener("keyup", handleKeyUp);

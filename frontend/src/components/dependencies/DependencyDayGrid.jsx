@@ -6,6 +6,7 @@ export default function DependencyDayGrid({
   visibleTasks,
   team_key,
   days,
+  dayLabels,
   DAYWIDTH,
   ghost,
   isAddingMilestone,
@@ -21,8 +22,8 @@ export default function DependencyDayGrid({
       {/* SCROLLABLE RIGHT: Milestones/Days - day grid with interactive cells in milestone mode */}
       {!isCollapsed && (
         <div
-          className="border-y border-slate-200 bg-white"
-          style={{ height: `${teamHeight}px` }}
+          className="border-y border-slate-200"
+          style={{ height: `${teamHeight}px`, backgroundColor: '#fafbfc' }}
         >
           {teamTasks.map((task_key, taskIndex) => {
             if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
@@ -45,6 +46,7 @@ export default function DependencyDayGrid({
                   const isHovered = isAddingMilestone && 
                     hoveredDayCell?.taskId === task_key && 
                     hoveredDayCell?.dayIndex === i;
+                  const hasPurpose = dayLabels && dayLabels[i]?.purpose;
                   
                   return (
                     <div
@@ -56,6 +58,7 @@ export default function DependencyDayGrid({
                         width: `${DAYWIDTH}px`,
                         opacity: ghost?.id === team_key ? 0.2 : 1,
                         pointerEvents: isAddingMilestone ? 'auto' : 'none',
+                        ...(!isHovered && hasPurpose ? { backgroundColor: 'rgba(30, 41, 59, 0.06)' } : {}),
                       }}
                       key={i}
                     onMouseEnter={() => isAddingMilestone && setHoveredDayCell({ taskId: task_key, dayIndex: i })}

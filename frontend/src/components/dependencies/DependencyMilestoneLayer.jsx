@@ -72,9 +72,8 @@ export default function DependencyMilestoneLayer({
               return null;
             }
 
-            const showDurationPlus = hoveredMilestone === milestone.id && mode === "duration";
-            const showDurationMinus = hoveredMilestone === milestone.id && mode === "duration" && milestone.duration > 1;
-            const showConnect = mode === "connect";
+            const showDurationMinus = false;
+            const showConnect = false;
             const isSelected = selectedMilestones.has(milestone.id);
             const isEditing = editingMilestoneId === milestone.id;
             const showEdgeResize = viewMode === "schedule" && hoveredMilestone === milestone.id;
@@ -88,7 +87,7 @@ export default function DependencyMilestoneLayer({
                 data-milestone
                 onMouseDown={(e) => {
                   e.stopPropagation();
-                  if (mode !== "connect" && !isEditing) {
+                  if (!isEditing) {
                     handleMileStoneMouseDown(e, milestone_from_task.id);
                   }
                 }}
@@ -170,31 +169,7 @@ export default function DependencyMilestoneLayer({
                   </div>
                 )}
 
-                {/* Duration controls */}
-                {showDurationPlus && (
-                  <div 
-                    className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center cursor-pointer hover:bg-green-600 shadow"
-                    style={{ pointerEvents: 'auto', zIndex: 30 }}
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      handleMilestoneEdgeResize(e, milestone.id, "right");
-                    }}
-                  >
-                    +
-                  </div>
-                )}
-                {showDurationMinus && (
-                  <div 
-                    className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center cursor-pointer hover:bg-red-600 shadow"
-                    style={{ pointerEvents: 'auto', zIndex: 30 }}
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      handleMilestoneEdgeResize(e, milestone.id, "left");
-                    }}
-                  >
-                    -
-                  </div>
-                )}
+                {/* Duration controls removed - use edge resize handles in Edit mode instead */}
 
                 {/* Edge resize handles - only in edit (schedule) mode */}
                 {showEdgeResize && (

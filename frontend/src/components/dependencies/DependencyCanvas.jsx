@@ -105,7 +105,7 @@ export default function DependencyCanvas({
       {/* Scroll container - wrapper to flip scrollbar to top */}
       <div
         style={{ height: `${contentHeight + 16}px`, transform: 'scaleY(-1)' }}
-        className="overflow-x-auto overflow-y-hidden rounded-xl border border-slate-200 shadow-sm"
+        className="overflow-x-auto overflow-y-hidden rounded-xl border border-slate-200 shadow-sm dep-scroll"
       >
         {/* Inner container - flip back to normal */}
         <div
@@ -301,6 +301,7 @@ export default function DependencyCanvas({
             TEAM_HEADER_GAP={TEAM_HEADER_GAP}
             // State
             days={days}
+            dayLabels={dayLabels}
             taskDisplaySettings={taskDisplaySettings}
             ghost={ghost}
             dropIndex={dropIndex}

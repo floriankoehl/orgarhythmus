@@ -84,10 +84,17 @@ export default function DependencyToolbar({
   const noTeamsHidden = filteredTeamCount === 0;
   
   const getDeleteLabel = () => {
-    if (selectedConnection) return 'Delete Dependency';
-    if (selectedMilestones?.size > 1) return `Delete ${selectedMilestones.size} Milestones`;
-    if (selectedMilestones?.size === 1) return 'Delete Milestone';
-    return 'Delete';
+    if (selectedConnection) return 'Dep';
+    if (selectedMilestones?.size > 1) return `${selectedMilestones.size}`;
+    if (selectedMilestones?.size === 1) return '1';
+    return '';
+  };
+
+  const getDeleteTooltip = () => {
+    if (selectedConnection) return 'Delete selected dependency';
+    if (selectedMilestones?.size > 1) return `Delete ${selectedMilestones.size} milestones`;
+    if (selectedMilestones?.size === 1) return 'Delete selected milestone';
+    return 'Select milestones or connections to delete';
   };
 
   return (
@@ -311,7 +318,7 @@ export default function DependencyToolbar({
         </div>
 
         {/* Section 2: Mode */}
-        <div className="p-3 flex-shrink-0">
+        <div className="p-3 flex-1 min-w-0">
           <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
             Mode
           </h3>
@@ -414,22 +421,22 @@ export default function DependencyToolbar({
               <span>Add Milestone</span>
             </button>
             
-            {/* Delete Button - always rendered for stable layout, disabled when nothing selected */}
+            {/* Delete Button - compact, always rendered for stable layout */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 if (hasSelection) onDeleteSelected();
               }}
               disabled={!hasSelection}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
+              className={`flex items-center gap-1 px-2 py-1.5 text-xs rounded-lg border transition whitespace-nowrap ${
                 hasSelection
                   ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
                   : 'border-slate-200 text-slate-300 cursor-not-allowed'
               }`}
-              title={hasSelection ? getDeleteLabel() : "Select milestones or connections to delete"}
+              title={getDeleteTooltip()}
             >
               <DeleteIcon style={{ fontSize: 14 }} />
-              <span>{hasSelection ? getDeleteLabel() : "Delete"}</span>
+              {hasSelection && <span>{getDeleteLabel()}</span>}
             </button>
           </div>
           {isAddingMilestone && (
