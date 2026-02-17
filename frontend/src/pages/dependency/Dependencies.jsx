@@ -22,6 +22,38 @@ import {
   createTeamForProject,
   createTaskForProject,
 } from '../../api/org_API.js';
+import { 
+  daysBetween, 
+  getTaskHeight as getTaskHeightBase, 
+  getRawTeamHeight as getRawTeamHeightBase, 
+  getTeamYOffset as getTeamYOffsetBase, 
+  getTaskYOffset as getTaskYOffsetBase,
+  getTeamHeightBase,
+  getVisibleTasks as getVisibleTasksBase,
+  getVisibleTeamIndex as getVisibleTeamIndexBase,
+  isTeamVisibleBase,
+  getTaskDropIndicatorY as getTaskDropIndicatorYBase,
+  calculateContentHeight,
+  getConnectionPath,
+  getStraightPath,
+  lightenColor,
+  isTaskVisible,
+  // Constants
+  DEFAULT_TASKHEIGHT_NORMAL,
+  DEFAULT_TASKHEIGHT_SMALL,
+  TASKWIDTH,
+  TEAMWIDTH,
+  TEAM_DRAG_HIGHLIGHT_HEIGHT,
+  MARIGN_BETWEEN_DRAG_HIGHLIGHT,
+  TEAM_HEADER_LINE_HEIGHT,
+  TEAM_HEADER_GAP,
+  DEFAULT_DAYWIDTH,
+  HEADER_HEIGHT,
+  TASK_DROP_INDICATOR_HEIGHT,
+  CONNECTION_RADIUS,
+  DAY_NAME_WIDTH_THRESHOLD,
+  TEAM_COLLAPSED_HEIGHT,
+} from './layoutMath';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -37,60 +69,6 @@ import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import CloseIcon from '@mui/icons-material/Close';
 import SettingsIcon from '@mui/icons-material/Settings';
-
-// Helper function to lighten a hex color while keeping high opacity
-const lightenColor = (hex, amount = 0.9) => {
-  // Remove # if present
-  const color = hex.replace('#', '');
-  const r = parseInt(color.substring(0, 2), 16);
-  const g = parseInt(color.substring(2, 4), 16);
-  const b = parseInt(color.substring(4, 6), 16);
-  
-  // Blend with white (255,255,255) by the amount
-  const newR = Math.round(r + (255 - r) * amount);
-  const newG = Math.round(g + (255 - g) * amount);
-  const newB = Math.round(b + (255 - b) * amount);
-  
-  return `rgba(${newR}, ${newG}, ${newB}, 0.95)`;
-};
-
-// Height constants (defaults)
-const DEFAULT_TASKHEIGHT_NORMAL = 32;
-const DEFAULT_TASKHEIGHT_SMALL = 22;
-const TASKWIDTH = 200;
-
-const TEAMWIDTH = 150;
-
-const TEAM_DRAG_HIGHLIGHT_HEIGHT = 5;
-const MARIGN_BETWEEN_DRAG_HIGHLIGHT = 5;
-const TEAM_HEADER_LINE_HEIGHT = 3;
-const TEAM_HEADER_GAP = 2; // Gap after header line before milestones
-
-const DEFAULT_DAYWIDTH = 60;
-const HEADER_HEIGHT = 48;
-const TASK_DROP_INDICATOR_HEIGHT = 3;
-
-// Connection constants
-const CONNECTION_RADIUS = 20;
-
-// Threshold for showing day name abbreviation
-const DAY_NAME_WIDTH_THRESHOLD = 45;
-
-function daysBetween(start, end) {
-    const startDate = new Date(start)
-    const endDate = new Date(end)
-
-    const diffMs = endDate - startDate
-    const diffDays = diffMs / (1000 * 60 * 60 * 24)
-
-    return diffDays
-}
-
-// Helper to check if task is visible
-const isTaskVisible = (taskId, taskDisplaySettings) => {
-  const settings = taskDisplaySettings[taskId];
-  return settings ? !settings.hidden : true;
-};
 
 export default function Dependencies() {
     
@@ -193,11 +171,8 @@ export default function Dependencies() {
   const TASKHEIGHT_SMALL = customTaskHeightSmall;
 
   // Helper to get task height (using current settings)
-  const getTaskHeight = (taskId, taskDisplaySettings) => {
-    const settings = taskDisplaySettings[taskId];
-    if (!settings || settings.hidden) return 0;
-    return settings.size === 'small' ? TASKHEIGHT_SMALL : TASKHEIGHT_NORMAL;
-  };
+  const getTaskHeight = (taskId, taskDisplaySettings) => 
+    getTaskHeightBase(taskId, taskDisplaySettings, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL);
 
 
   // ________Global Event Listener___________
@@ -525,54 +500,18 @@ export default function Dependencies() {
 
   // Calculate team height based on visible tasks and their sizes (with minimum)
   const TEAM_MIN_HEIGHT = TASKHEIGHT_NORMAL;
-  const TEAM_COLLAPSED_HEIGHT = 32; // Just enough for the team name row
   
-  const getTeamHeight = (teamId) => {
-    const team = teams[teamId];
-    if (!team) return TEAM_MIN_HEIGHT;
-    
-    // If team is collapsed, return collapsed height
-    if (teamDisplaySettings[teamId]?.collapsed) {
-      return TEAM_COLLAPSED_HEIGHT;
-    }
-    
-    let height = 0;
-    for (const taskId of team.tasks) {
-      height += getTaskHeight(taskId, taskDisplaySettings);
-    }
-    return Math.max(height, TEAM_MIN_HEIGHT);
-  };
+  const getTeamHeight = (teamId) => 
+    getTeamHeightBase(teams[teamId], teamDisplaySettings, taskDisplaySettings, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL, TEAM_MIN_HEIGHT, TEAM_COLLAPSED_HEIGHT);
 
-  const getRawTeamHeight = (teamId) => {
-    const team = teams[teamId];
-    if (!team) return 0;
-    
-    let height = 0;
-    for (const taskId of team.tasks) {
-      height += getTaskHeight(taskId, taskDisplaySettings);
-    }
-    return height;
-  };
+  const getRawTeamHeight = (teamId) => 
+    getRawTeamHeightBase(teams[teamId], taskDisplaySettings, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL);
 
-  const isTeamVisible = (teamId) => {
-    // Check teamFilter first - if filter is active and this team isn't in it, hide it
-    if (teamFilter.length > 0 && !teamFilter.includes(teamId)) return false;
-    
-    const settings = teamDisplaySettings[teamId];
-    if (settings?.hidden) return false;
-    
-    const team = teams[teamId];
-    if (!team || team.tasks.length === 0) return true;
-    
-    const hasVisibleTask = team.tasks.some(taskId => isTaskVisible(taskId, taskDisplaySettings));
-    return hasVisibleTask;
-  };
+  const isTeamVisible = (teamId) => 
+    isTeamVisibleBase(teamId, teamFilter, teamDisplaySettings, teams, taskDisplaySettings);
 
-  const getVisibleTasks = (teamId) => {
-    const team = teams[teamId];
-    if (!team) return [];
-    return team.tasks.filter(taskId => isTaskVisible(taskId, taskDisplaySettings));
-  };
+  const getVisibleTasks = (teamId) => 
+    getVisibleTasksBase(teams[teamId], taskDisplaySettings);
 
   const getHiddenTeamCount = () => {
     return teamOrder.filter(tid => !isTeamVisible(tid)).length;
@@ -582,69 +521,27 @@ export default function Dependencies() {
   const hiddenTeamCount = getHiddenTeamCount();
 
   // Calculate content height
+  const layoutConstants = { HEADER_HEIGHT, TEAM_DRAG_HIGHLIGHT_HEIGHT, MARIGN_BETWEEN_DRAG_HIGHLIGHT, TEAM_HEADER_LINE_HEIGHT, TEAM_HEADER_GAP };
+  
   const contentHeight = useMemo(() => {
-    let height = HEADER_HEIGHT;
-    for (const teamId of teamOrder) {
-      if (!isTeamVisible(teamId)) continue;
-      height += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-      height += TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
-      height += getTeamHeight(teamId);
-    }
-    height += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-    return height;
+    return calculateContentHeight(teamOrder, isTeamVisible, getTeamHeight, layoutConstants);
   }, [teamOrder, teams, taskDisplaySettings, teamDisplaySettings, TASKHEIGHT_NORMAL, TASKHEIGHT_SMALL]);
 
   // Get visible team index (accounting for hidden teams)
-  const getVisibleTeamIndex = (teamId) => {
-    let index = 0;
-    for (const tid of teamOrder) {
-      if (tid === teamId) return index;
-      if (isTeamVisible(tid)) index++;
-    }
-    return index;
-  };
+  const getVisibleTeamIndex = (teamId) => 
+    getVisibleTeamIndexBase(teamId, teamOrder, isTeamVisible);
 
   // Get Y offset for a team
-  const getTeamYOffset = (teamId) => {
-    let offset = HEADER_HEIGHT;
-    for (const tid of teamOrder) {
-      if (tid === teamId) break;
-      if (!isTeamVisible(tid)) continue;
-      offset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-      offset += TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
-      offset += getTeamHeight(tid);
-    }
-    return offset;
-  };
+  const getTeamYOffset = (teamId) => 
+    getTeamYOffsetBase(teamId, teamOrder, isTeamVisible, getTeamHeight, layoutConstants);
 
   // Get Y offset for a task within its team
-  const getTaskYOffset = (taskId, teamId) => {
-    const team = teams[teamId];
-    if (!team) return 0;
-    let offset = 0;
-    for (const tid of team.tasks) {
-      if (tid === taskId) break;
-      if (!isTaskVisible(tid, taskDisplaySettings)) continue;
-      offset += getTaskHeight(tid, taskDisplaySettings);
-    }
-    return offset;
-  };
+  const getTaskYOffset = (taskId, teamId) => 
+    getTaskYOffsetBase(taskId, teams[teamId], isTaskVisible, getTaskHeight, taskDisplaySettings);
 
   // Get task drop indicator Y position
-  const getTaskDropIndicatorY = () => {
-    if (!taskDropTarget) return 0;
-    const { teamId, insertIndex } = taskDropTarget;
-    const teamYOffset = getTeamYOffset(teamId);
-    const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-    
-    const visibleTasks = getVisibleTasks(teamId);
-    let taskOffset = 0;
-    for (let i = 0; i < insertIndex && i < visibleTasks.length; i++) {
-      taskOffset += getTaskHeight(visibleTasks[i], taskDisplaySettings);
-    }
-    
-    return teamYOffset + dropHighlightOffset + taskOffset;
-  };
+  const getTaskDropIndicatorY = () => 
+    getTaskDropIndicatorYBase(taskDropTarget, getTeamYOffset, getVisibleTasks, getTaskHeight, taskDisplaySettings, layoutConstants);
 
   // Toggle task size
   const toggleTaskSize = (taskId) => {
@@ -1692,17 +1589,6 @@ export default function Dependencies() {
     } else {
       return { x: milestoneX, y: milestoneY };
     }
-  };
-
-  // Get connection path
-  const getConnectionPath = (x1, y1, x2, y2) => {
-    const midX = (x1 + x2) / 2;
-    return `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
-  };
-
-  // Get straight path (for dragging)
-  const getStraightPath = (x1, y1, x2, y2) => {
-    return `M ${x1} ${y1} L ${x2} ${y2}`;
   };
 
   // Handle connection click - just select/deselect

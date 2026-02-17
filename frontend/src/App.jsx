@@ -21,7 +21,7 @@ import TeamDetail from './pages/detail/TeamDetail.jsx';
 import TaskDetail from './pages/detail/TaskDetail.jsx';
 import Calendar from './pages/general/Calender.jsx';
 import Ideas from './pages/general/Ideas.jsx';
-import Dependencies from './pages/general/Dependencies.jsx';
+import Dependencies from './pages/dependency/Dependencies';
 
 const router = createBrowserRouter([
   {
