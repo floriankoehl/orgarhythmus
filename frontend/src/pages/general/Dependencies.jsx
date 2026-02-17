@@ -149,7 +149,8 @@ export default function Dependencies() {
   const [editingMilestoneName, setEditingMilestoneName] = useState("");
 
   // Day cell hover state for milestone creation
-  const [hoveredDayCell, setHoveredDayCell] = useState(null); // { taskId, dayIndex }
+  const [hoveredDayCell, setHoveredDayCell] = useState(null);
+  const [isAddingMilestone, setIsAddingMilestone] = useState(false); // { taskId, dayIndex }
   
   // Milestone creation confirmation modal
   const [milestoneCreateModal, setMilestoneCreateModal] = useState(null); // { taskId, dayIndex }
@@ -229,12 +230,15 @@ export default function Dependencies() {
           setViewMode("dependency");
         }
       }
-      // Delete key - delete selected connection or milestones
-      else if (e.key === "Delete" || e.key === "Backspace") {
+      // 'd' key - delete selected connection or milestones
+      else if (e.key === "d" || e.key === "D") {
         // Delete selected connection (works in dependency mode)
         if (selectedConnection) {
-          handleDeleteConnection(selectedConnection);
-          setSelectedConnection(null);
+          // Show delete modal for connection
+          setDeleteConfirmModal({ 
+            connectionId: selectedConnection.id, 
+            connectionName: `Connection from ${milestones[selectedConnection.from_milestone]?.name || 'milestone'} to ${milestones[selectedConnection.to_milestone]?.name || 'milestone'}`
+          });
         }
         // Delete selected milestones (show confirmation for the first one, delete all)
         else if (selectedMilestones.size > 0) {
@@ -297,6 +301,47 @@ export default function Dependencies() {
       return () => document.removeEventListener('click', handleClickOutside);
     }
   }, [showFilterDropdown]);
+
+  // When autoSelectBlocking is active, ensure selected milestones stay visible
+  useEffect(() => {
+    if (!autoSelectBlocking || selectedMilestones.size === 0) return;
+    
+    // For each selected milestone, ensure its team and task are visible
+    for (const milestoneId of selectedMilestones) {
+      const milestone = milestones[milestoneId];
+      if (!milestone) continue;
+      
+      const task = tasks[milestone.task];
+      if (!task) continue;
+      
+      const teamId = task.team;
+      
+      // Ensure team is in filter (add it if filter is active and team isn't included)
+      setTeamFilter(prev => {
+        if (prev.length === 0) return prev; // No filter active
+        if (prev.includes(teamId)) return prev; // Already included
+        return [...prev, teamId];
+      });
+      
+      // Ensure task is visible (not hidden)
+      setTaskDisplaySettings(prev => {
+        if (!prev[milestone.task]?.hidden) return prev;
+        return {
+          ...prev,
+          [milestone.task]: { ...prev[milestone.task], hidden: false }
+        };
+      });
+      
+      // Ensure team is not collapsed
+      setTeamDisplaySettings(prev => {
+        if (!prev[teamId]?.collapsed) return prev;
+        return {
+          ...prev,
+          [teamId]: { ...prev[teamId], collapsed: false }
+        };
+      });
+    }
+  }, [autoSelectBlocking, selectedMilestones, milestones, tasks]);
 
 
   // ________________Loading_________________
@@ -1501,6 +1546,7 @@ export default function Dependencies() {
     }
     
     setMilestoneCreateModal(null);
+    setIsAddingMilestone(false);
   };
 
   // Connection handling
@@ -1588,9 +1634,10 @@ export default function Dependencies() {
       const teamYOffset = getTeamYOffset(task.team);
       const taskYOffset = getTaskYOffset(milestone.task, task.team);
       const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+      const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
 
       const milestoneX = TEAMWIDTH + TASKWIDTH + milestone.start_index * DAYWIDTH;
-      const milestoneY = teamYOffset + dropHighlightOffset + taskYOffset + taskHeight / 2;
+      const milestoneY = teamYOffset + dropHighlightOffset + headerOffset + taskYOffset + taskHeight / 2;
       const milestoneWidth = DAYWIDTH * milestone.duration;
 
       if (
@@ -1621,9 +1668,10 @@ export default function Dependencies() {
     const teamYOffset = getTeamYOffset(task.team);
     const taskYOffset = getTaskYOffset(milestone.task, task.team);
     const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+    const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
 
     const milestoneX = TEAMWIDTH + TASKWIDTH + (milestone.x ?? milestone.start_index * DAYWIDTH);
-    const milestoneY = teamYOffset + dropHighlightOffset + taskYOffset + taskHeight / 2;
+    const milestoneY = teamYOffset + dropHighlightOffset + headerOffset + taskYOffset + taskHeight / 2;
     const milestoneWidth = DAYWIDTH * milestone.duration;
 
     if (handleType === "source") {
@@ -1989,21 +2037,23 @@ export default function Dependencies() {
         </div>
       )}
 
-      {/* Milestone Delete Confirmation Modal */}
+      {/* Milestone/Connection Delete Confirmation Modal */}
       {deleteConfirmModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">
-              Delete {deleteConfirmModal.milestoneIds ? 'Milestones' : 'Milestone'}?
+              Delete {deleteConfirmModal.connectionId ? 'Connection' : deleteConfirmModal.milestoneIds ? 'Milestones' : 'Milestone'}?
             </h2>
             <p className="text-sm text-slate-600 mb-4">
               Are you sure you want to delete{" "}
               <span className="font-medium text-slate-800">
-                {deleteConfirmModal.milestoneIds 
-                  ? `${deleteConfirmModal.milestoneIds.length} milestones`
-                  : `"${deleteConfirmModal.milestoneName}"`
+                {deleteConfirmModal.connectionId
+                  ? deleteConfirmModal.connectionName
+                  : deleteConfirmModal.milestoneIds 
+                    ? `${deleteConfirmModal.milestoneIds.length} milestones`
+                    : `"${deleteConfirmModal.milestoneName}"`
                 }
-              </span>? This will also remove any dependencies connected to {deleteConfirmModal.milestoneIds ? 'them' : 'it'}.
+              </span>?{!deleteConfirmModal.connectionId && ` This will also remove any dependencies connected to ${deleteConfirmModal.milestoneIds ? 'them' : 'it'}.`}
             </p>
             <div className="flex justify-end gap-3">
               <button
@@ -2014,7 +2064,11 @@ export default function Dependencies() {
               </button>
               <button
                 onClick={async () => {
-                  if (deleteConfirmModal.milestoneIds) {
+                  if (deleteConfirmModal.connectionId) {
+                    // Delete connection
+                    handleDeleteConnection(selectedConnection);
+                    setSelectedConnection(null);
+                  } else if (deleteConfirmModal.milestoneIds) {
                     // Delete multiple milestones
                     for (const mId of deleteConfirmModal.milestoneIds) {
                       await handleMilestoneDelete(mId);
@@ -2137,6 +2191,7 @@ export default function Dependencies() {
           setOpenTeamSettings(null);
           setShowSettingsDropdown(false);
           setSelectedMilestones(new Set());
+          setIsAddingMilestone(false);
         }}
       >
         {/* Control Board Toolbar */}
@@ -2542,7 +2597,26 @@ export default function Dependencies() {
                   <PlaylistAddIcon style={{ fontSize: 14 }} />
                   <span>New Task</span>
                 </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsAddingMilestone(!isAddingMilestone);
+                  }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
+                    isAddingMilestone 
+                      ? 'border-blue-400 bg-blue-50 text-blue-700' 
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                  disabled={safeMode}
+                  title={isAddingMilestone ? "Click on a task row to place milestone" : "Add a new milestone"}
+                >
+                  <FlagIcon style={{ fontSize: 14 }} />
+                  <span>Add Milestone</span>
+                </button>
               </div>
+              {isAddingMilestone && (
+                <p className="text-xs text-blue-600 mt-2">Click on a day cell in any task row to create a milestone there.</p>
+              )}
             </div>
           </div>
         </div>
@@ -2923,27 +2997,32 @@ export default function Dependencies() {
                               }}
                               key={`${task_key}_milestone`}
                             >
-                              {/* Day rendering - interactive in milestone mode */}
+                              {/* Day rendering - interactive when adding milestone */}
                               {[...Array(days)].map((_, i) => {
-                                const isHovered = viewMode === "milestone" && 
+                                const isHovered = isAddingMilestone && 
                                   hoveredDayCell?.taskId === task_key && 
                                   hoveredDayCell?.dayIndex === i;
                                 
                                 return (
                                   <div
                                     className={`border-r border-slate-100 transition-colors ${
-                                      viewMode === "milestone" ? 'cursor-pointer hover:bg-blue-50' : ''
+                                      isAddingMilestone ? 'cursor-pointer hover:bg-blue-50' : ''
                                     } ${isHovered ? 'bg-blue-100' : ''}`}
                                     style={{
                                       height: `${taskHeight}px`,
                                       width: `${DAYWIDTH}px`,
                                       opacity: ghost?.id === team_key ? 0.2 : 1,
-                                      pointerEvents: viewMode === "milestone" ? 'auto' : 'none',
+                                      pointerEvents: isAddingMilestone ? 'auto' : 'none',
                                     }}
                                     key={i}
-                                  onMouseEnter={() => viewMode === "milestone" && setHoveredDayCell({ taskId: task_key, dayIndex: i })}
+                                  onMouseEnter={() => isAddingMilestone && setHoveredDayCell({ taskId: task_key, dayIndex: i })}
                                   onMouseLeave={() => setHoveredDayCell(null)}
-                                  onClick={() => viewMode === "milestone" && handleDayCellClick(task_key, i)}
+                                  onClick={(e) => {
+                                    if (isAddingMilestone) {
+                                      e.stopPropagation();
+                                      handleDayCellClick(task_key, i);
+                                    }
+                                  }}
                                 />
                               );
                             })}
