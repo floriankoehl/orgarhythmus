@@ -8,9 +8,11 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from ..models import Project
-from .serializers import ProjectSerializer
+from .serializers import (
+    ProjectSerializer,
+    ProjectSerializer_Deps,
+)
 from .helpers import user_has_project_access
-
 
 # List Projects
 @api_view(["GET"])
@@ -247,3 +249,24 @@ def update_project(request, pk):
 
     serializer = ProjectSerializer(project)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# _____________________________ DEPENDENCY VIEW PROJECT FUNCTIONS ______________________________
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_project_details(request, project_id):
+    """
+    Get detailed project information.
+    Used by the Dependencies view.
+    """
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    serialized = ProjectSerializer_Deps(project).data
+    return Response({"project": serialized})

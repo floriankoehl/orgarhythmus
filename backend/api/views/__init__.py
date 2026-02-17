@@ -34,6 +34,7 @@ from .projects import (
     get_project,
     delete_project,
     update_project,
+    get_project_details,
 )
 
 from .teams import (
@@ -45,6 +46,8 @@ from .teams import (
     reorder_project_teams,
     team_detail_view,
     user_teams,
+    fetch_project_teams,
+    safe_team_order,
 )
 
 from .tasks import (
@@ -53,20 +56,26 @@ from .tasks import (
     task_detail_view,
     assign_task_member,
     user_tasks,
-    get_project_details,
-    fetch_project_teams,
-    safe_team_order,
     fetch_project_tasks,
+    reorder_team_tasks,
+)
+
+from .milestones import (
     get_all_milestones,
     add_milestone,
     update_start_index,
     delete_milestones,
     change_duration,
     rename_milestone,
+)
+
+from .dependencies import (
     get_all_dependencies,
     create_dependency,
     delete_dependency,
-    reorder_team_tasks,
+)
+
+from .days import (
     get_project_days,
     update_day,
     set_day_purpose,

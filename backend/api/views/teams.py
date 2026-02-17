@@ -6,9 +6,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from ..models import Project, Team
-from .serializers import BasicTeamSerializer, TeamExpandedSerializer
+from .serializers import (
+    TeamExpandedSerializer,
+    BasicTeamSerializer,
+    TeamSerializer_Deps,
+)
 from .helpers import user_has_project_access
-
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -229,3 +232,53 @@ def user_teams(request):
         for t in teams
     ]
     return Response({"teams": data}, status=status.HTTP_200_OK)
+
+
+# _____________________________ DEPENDENCY VIEW TEAM FUNCTIONS ______________________________
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def fetch_project_teams(request, project_id):
+    """
+    Fetch all teams for a project ordered by order_index.
+    Used by the Dependencies view.
+    """
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    all_teams = Team.objects.filter(project=project).order_by("order_index")
+    serialized_teams = TeamSerializer_Deps(all_teams, many=True)
+
+    return Response({"teams": serialized_teams.data})
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def safe_team_order(request, project_id):
+    """
+    Save the team order for a project.
+    Body: { "order": [team_id, team_id, ...] }
+    """
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    order = request.data.get("order")
+
+    if not isinstance(order, list):
+        return Response({"error": "order must be a list"}, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        for index, team_id in enumerate(order):
+            Team.objects.filter(id=team_id, project=project).update(order_index=index)
+
+    return Response({"status": "ok"})
