@@ -63,6 +63,7 @@ import DependencyToolbar from '../../components/dependencies/DependencyToolbar';
 import DependencyDayGrid from '../../components/dependencies/DependencyDayGrid';
 import DependencyMilestoneLayer from '../../components/dependencies/DependencyMilestoneLayer';
 import DependencyModals from '../../components/dependencies/DependencyModals';
+import { DependencyProvider } from './DependencyContext.jsx';
 
 export default function Dependencies() {
     
@@ -693,7 +694,7 @@ export default function Dependencies() {
   };
 
   return (
-    <>
+    <DependencyProvider projectId={projectId}>
       <DependencyModals
         // Day Purpose Modal
         dayPurposeModal={dayPurposeModal}
@@ -1479,6 +1480,6 @@ export default function Dependencies() {
           </div>
         </div>
       </div>
-    </>
+    </DependencyProvider>
   );
 }
