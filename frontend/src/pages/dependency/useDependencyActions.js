@@ -11,6 +11,7 @@ import {
 } from '../../api/org_API.js';
 import { isTaskVisible } from './layoutMath';
 import { useDependency } from './DependencyContext.jsx';
+import { playSound } from '../../assets/sound_registry';
 
 /**
  * Custom hook for backend operations and state mutations in the Dependencies component.
@@ -141,6 +142,7 @@ export function useDependencyActions({
             milestones: [...(prev[taskId]?.milestones || []), result.added_milestone]
           }
         }));
+        playSound('milestoneCreate');
       }
     } catch (err) {
       console.error("Failed to add milestone:", err);
@@ -173,6 +175,7 @@ export function useDependencyActions({
             milestones: [...(prev[taskId]?.milestones || []), newMilestone]
           }
         }));
+        playSound('milestoneCreate');
       }
     } catch (err) {
       console.error("Failed to create milestone:", err);
@@ -315,6 +318,7 @@ export function useDependencyActions({
         setShowCreateTeamModal(false);
         setNewTeamName("");
         setNewTeamColor("#facc15");
+        playSound('uiClick');
       }
     } catch (err) {
       console.error("Failed to create team:", err);
@@ -336,6 +340,7 @@ export function useDependencyActions({
         setShowCreateTaskModal(false);
         setNewTaskName("");
         setNewTaskTeamId(null);
+        playSound('uiClick');
       }
     } catch (err) {
       console.error("Failed to create task:", err);

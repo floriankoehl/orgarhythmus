@@ -1,5 +1,6 @@
 // interaction logic for dependencies timeline
 import { useRef, useState, useEffect } from 'react';
+import { playSound } from '../../assets/sound_registry';
 import {
   update_start_index,
   rename_milestone,
@@ -108,6 +109,7 @@ export function useDependencyInteraction({
   const addWarning = (message, details = null) => {
     const id = ++warningIdCounter.current;
     setWarningMessages(prev => [...prev, { id, message, details, timestamp: Date.now() }]);
+    playSound('warning');
   };
 
   // ________Global Event Listener___________
@@ -126,15 +128,19 @@ export function useDependencyInteraction({
         setEditingMilestoneId(null);
         setEditingMilestoneName("");
         setIsAddingMilestone(false);
+        playSound('milestoneDeselect');
       } else if (e.key === "e" || e.key === "E") {
         setViewMode("schedule");
         baseViewModeRef.current = "schedule";
+        playSound('modeSwitch');
       } else if (e.key === "d" || e.key === "D") {
         setViewMode("dependency");
         baseViewModeRef.current = "dependency";
+        playSound('modeSwitch');
       } else if (e.key === "v" || e.key === "V") {
         setViewMode("inspection");
         baseViewModeRef.current = "inspection";
+        playSound('modeSwitch');
       }
     };
     const handleKeyUp = (e) => {
@@ -355,6 +361,7 @@ export function useDependencyInteraction({
         setTeamOrder(newOrder);
         try {
           await safe_team_order(projectId, newOrder);
+          playSound('teamDragDrop');
         } catch (err) {
           console.error("Failed to save team order:", err);
         }
@@ -459,6 +466,7 @@ export function useDependencyInteraction({
 
             try {
               await reorder_team_tasks(projectId, taskId, teamId, fullOrder);
+              playSound('taskDragDrop');
             } catch (err) {
               console.error("Failed to reorder tasks:", err);
             }
@@ -654,6 +662,7 @@ export function useDependencyInteraction({
       }
 
       // Validation passed — save for all milestones
+      playSound('milestoneMove');
       for (const mId of milestonesToMove) {
         const initial = initialPositions[mId];
         if (!initial) continue;
@@ -681,6 +690,7 @@ export function useDependencyInteraction({
   const handleMilestoneDelete = async (milestoneId) => {
     try {
       await delete_milestone(projectId, milestoneId);
+      playSound('milestoneDelete');
 
       setMilestones(prev => {
         const updated = { ...prev };
@@ -726,6 +736,8 @@ export function useDependencyInteraction({
 
     setSelectedConnection(null);
     
+    const wasSelected = selectedMilestones.has(milestoneId);
+    
     if (e.ctrlKey || e.metaKey) {
       setSelectedMilestones(prev => {
         const newSet = new Set(prev);
@@ -736,13 +748,16 @@ export function useDependencyInteraction({
         }
         return newSet;
       });
+      playSound(wasSelected ? 'milestoneDeselect' : 'milestoneSelect');
     } else {
+      const willDeselect = selectedMilestones.size === 1 && wasSelected;
       setSelectedMilestones(prev => {
         if (prev.size === 1 && prev.has(milestoneId)) {
           return new Set();
         }
         return new Set([milestoneId]);
       });
+      playSound(willDeselect ? 'milestoneDeselect' : 'milestoneSelect');
     }
   };
 
@@ -958,6 +973,7 @@ export function useDependencyInteraction({
 
     try {
       await rename_milestone(projectId, milestoneId, editingMilestoneNameVal.trim());
+      playSound('milestoneRename');
       
       setMilestones(prev => ({
         ...prev,
@@ -1135,6 +1151,7 @@ export function useDependencyInteraction({
       }
 
       // Validation passed — save changes for all milestones
+      playSound('milestoneResize');
       for (const mId of milestonesToResize) {
         const initial = initialStates[mId];
         if (!initial) continue;
@@ -1280,6 +1297,7 @@ export function useDependencyInteraction({
           setSelectedMilestones(newSelection);
         }
         setSelectedConnection(null);
+        playSound('marqueeSelect');
         // Prevent the page-wrapper onClick from clearing selection
         justDraggedRef.current = true;
         setTimeout(() => { justDraggedRef.current = false; }, 0);
@@ -1379,6 +1397,7 @@ export function useDependencyInteraction({
               try {
                 await create_dependency(projectId, sourceId, targetId);
                 setConnections(prev => [...prev, { source: sourceId, target: targetId }]);
+                playSound('connectionCreate');
               } catch (err) {
                 console.error("Failed to create dependency:", err);
               }
@@ -1465,8 +1484,10 @@ export function useDependencyInteraction({
     
     if (selectedConnection?.source === connection.source && selectedConnection?.target === connection.target) {
       setSelectedConnection(null);
+      playSound('milestoneDeselect');
     } else {
       setSelectedConnection(connection);
+      playSound('connectionSelect');
     }
   };
 
@@ -1476,6 +1497,7 @@ export function useDependencyInteraction({
       await delete_dependency(projectId, connection.source, connection.target);
       setConnections(prev => prev.filter(c => !(c.source === connection.source && c.target === connection.target)));
       setSelectedConnection(null);
+      playSound('connectionDelete');
     } catch (err) {
       console.error("Failed to delete dependency:", err);
     }

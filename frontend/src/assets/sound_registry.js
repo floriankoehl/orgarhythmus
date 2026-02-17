@@ -3,49 +3,70 @@
 // ==========================================
 // Change any sound mapping here — no need to touch component files.
 //
-// Usage:  import { playSound } from '../config/sounds';
+// Usage:  import { playSound } from '../assets/sound_registry';
 //         playSound('milestoneMove');
+//
+// To swap a sound: just change the import path below.
+// To disable a sound: set it to null.
 // ==========================================
 
-// -- Import all dependency sound files --
-// Update these paths to match your actual asset filenames in /public/sounds/ or /src/assets/sounds/
+// -- Static imports (Vite resolves these at build time) --
+import selectSound from './dependency/select.wav';
+import subtleSound from './dependency/subtle.wav';
+import scifiSound from './dependency/scifi.wav';
+import rewindSound from './dependency/rewind.wav';
+import mixkitClickSound from './dependency/mixkit-sci-fi-click-900.wav';
+import messageSound from './dependency/message.wav';
+import errorSound from './dependency/error.wav';
+import error2Sound from './dependency/error_2.wav';
+import connectionDragSound from './dependency/connection_drag.wav';
+import connectionSound from './dependency/connection.wav';
+import collapseSound from './dependency/collapse.wav';
+import snapSound from './snap.mp3';
+import clackSound from './clack.mp3';
+import penDownSound from './pen_down.mp3';
+import whipSound from './whip.mp3';
+import whip2Sound from './whip_2.mp3';
+
+// ==========================================
+//  SOUND MAP — edit this to reassign sounds
+// ==========================================
+// Each key = event name used in code.
+// Each value = an imported sound file (or null to disable).
+//
 const SOUND_FILES = {
-  // Milestone interactions
-  milestoneSelect:       '/sounds/dependency/milestone_select.mp3',
-  milestoneDeselect:     '/sounds/dependency/milestone_deselect.mp3',
-  milestoneMove:         '/sounds/dependency/milestone_move.mp3',
-  milestoneResize:       '/sounds/dependency/milestone_resize.mp3',
-  milestoneCreate:       '/sounds/dependency/milestone_create.mp3',
-  milestoneDelete:       '/sounds/dependency/milestone_delete.mp3',
-  milestoneRename:       '/sounds/dependency/milestone_rename.mp3',
+  // ── Milestone interactions ──
+  milestoneSelect:       selectSound,            // clicking a milestone
+  milestoneDeselect:     subtleSound,            // deselecting / escape
+  milestoneMove:         snapSound,              // drag-drop milestone to new day
+  milestoneResize:       clackSound,             // edge-resize completes
+  milestoneCreate:       messageSound,           // new milestone created
+  milestoneDelete:       rewindSound,            // milestone removed
+  milestoneRename:       penDownSound,           // rename confirmed
 
-  // Connection interactions
-  connectionCreate:      '/sounds/dependency/connection_create.mp3',
-  connectionDelete:      '/sounds/dependency/connection_delete.mp3',
-  connectionSelect:      '/sounds/dependency/connection_select.mp3',
+  // ── Connection interactions ──
+  connectionCreate:      connectionSound,        // dependency line created
+  connectionDelete:      rewindSound,            // dependency line removed
+  connectionSelect:      connectionDragSound,    // click on a connection
+  connectionDragStart:   connectionDragSound,    // start dragging connection handle
 
-  // Drag interactions
-  teamDragStart:         '/sounds/dependency/team_drag_start.mp3',
-  teamDragDrop:          '/sounds/dependency/team_drag_drop.mp3',
-  taskDragStart:         '/sounds/dependency/task_drag_start.mp3',
-  taskDragDrop:          '/sounds/dependency/task_drag_drop.mp3',
+  // ── Drag interactions ──
+  teamDragDrop:          whipSound,              // team reorder completes
+  taskDragDrop:          whip2Sound,             // task reorder completes
 
-  // Warnings / blocked actions
-  warning:               '/sounds/dependency/warning.mp3',
-  blocked:               '/sounds/dependency/blocked.mp3',
-  moveBlocked:           '/sounds/dependency/move_blocked.mp3',
+  // ── Warnings / blocked actions ──
+  warning:               errorSound,             // dependency violation / overlap
+  blocked:               error2Sound,            // general blocked action
 
-  // View mode changes
-  modeSwitch:            '/sounds/dependency/mode_switch.mp3',
+  // ── View mode changes ──
+  modeSwitch:            mixkitClickSound,       // E / D / V mode toggle
 
-  // UI feedback
-  click:                 '/sounds/dependency/click.mp3',
-  toggleCollapse:        '/sounds/dependency/toggle_collapse.mp3',
-  toggleVisibility:      '/sounds/dependency/toggle_visibility.mp3',
+  // ── UI feedback ──
+  collapse:              collapseSound,          // team collapse / expand
+  uiClick:               scifiSound,             // generic UI click
 
-  // Multi-select / marquee
-  marqueeStart:          '/sounds/dependency/marquee_start.mp3',
-  marqueeEnd:            '/sounds/dependency/marquee_end.mp3',
+  // ── Multi-select / marquee ──
+  marqueeSelect:         subtleSound,            // marquee selection completes
 };
 
 // ==========================================
@@ -69,12 +90,13 @@ export function playSound(key, options = {}) {
 
   const src = SOUND_FILES[key];
   if (!src) {
-    console.warn(`[sounds] Unknown sound key: "${key}"`);
+    // null means intentionally disabled — only warn for truly unknown keys
+    if (src === undefined) console.warn(`[sounds] Unknown sound key: "${key}"`);
     return;
   }
 
   try {
-    // Reuse or create Audio element
+    // Create a fresh Audio each time for overlapping playback support
     if (!audioCache[key]) {
       audioCache[key] = new Audio(src);
     }

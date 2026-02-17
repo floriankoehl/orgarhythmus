@@ -41,6 +41,7 @@ import DependencyModals from '../../components/dependencies/DependencyModals';
 import DependencyCanvas from '../../components/dependencies/DependencyCanvas';
 import DependencyWarningToast from '../../components/dependencies/DependencyWarningToast';
 import { DependencyProvider, useDependency } from './DependencyContext.jsx';
+import { playSound, preloadSounds } from '../../assets/sound_registry';
 
 export default function Dependencies() {
   return (
@@ -438,6 +439,7 @@ function DependenciesContent() {
   // Toggle task visibility
   // Auto-collapse team when all tasks hidden, un-collapse when a task is shown
   const toggleTaskVisibility = (taskId) => {
+    playSound('collapse');
     setTaskDisplaySettings(prev => {
       const updated = {
         ...prev,
@@ -527,6 +529,7 @@ function DependenciesContent() {
         collapsed: !prev[teamId]?.collapsed
       }
     }));
+    playSound('collapse');
     // When expanding, show all tasks so the user always sees every task
     if (wasCollapsed) {
       const team = teams[teamId];
