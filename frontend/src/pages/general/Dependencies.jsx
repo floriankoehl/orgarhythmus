@@ -1194,6 +1194,11 @@ export default function Dependencies() {
 
   // Handle milestone delete
   const handleMilestoneDelete = async (milestoneId) => {
+    if (!milestoneId) {
+      console.error("No milestone ID provided for deletion");
+      return;
+    }
+    
     try {
       await delete_milestone(projectId, milestoneId);
       
@@ -1220,6 +1225,14 @@ export default function Dependencies() {
 
       // Remove connections involving this milestone
       setConnections(prev => prev.filter(c => c.source !== milestoneId && c.target !== milestoneId));
+      
+      // Clear selection if deleted milestone was selected
+      setSelectedMilestones(prev => {
+        const updated = new Set(prev);
+        updated.delete(milestoneId);
+        return updated;
+      });
+      
     } catch (err) {
       console.error("Failed to delete milestone:", err);
     }
