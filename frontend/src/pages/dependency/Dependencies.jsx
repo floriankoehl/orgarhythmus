@@ -35,6 +35,7 @@ import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import DependencyToolbar from '../../components/dependencies/DependencyToolbar';
 import DependencyModals from '../../components/dependencies/DependencyModals';
 import DependencyCanvas from '../../components/dependencies/DependencyCanvas';
+import DependencyWarningToast from '../../components/dependencies/DependencyWarningToast';
 import { DependencyProvider, useDependency } from './DependencyContext.jsx';
 
 export default function Dependencies() {
@@ -264,6 +265,8 @@ function DependenciesContent() {
     findMilestoneAtPosition,
     getMilestoneHandlePosition,
     showBlockingFeedback,
+    // Warning messages for toast
+    warningMessages,
     // Transient interaction state
     ghost,
     setGhost,
@@ -672,6 +675,11 @@ function DependenciesContent() {
           </div>
         );
       })()}
+
+      {/* Warning Toast */}
+      <DependencyWarningToast
+        warningMessages={warningMessages}
+      />
 
       {/* Page wrapper */}
       <div 

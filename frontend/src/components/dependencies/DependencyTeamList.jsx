@@ -3,7 +3,10 @@ import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
+// import InboxIcon from '@mui/icons-material/Inbox';
 import DependencyDayGrid from './DependencyDayGrid';
+import { useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 
 export default function DependencyTeamList({
   // Data
@@ -53,27 +56,30 @@ export default function DependencyTeamList({
   handleDayCellClick,
   showAllHiddenTeams,
 }) {
+  const navigate = useNavigate();
+  const { projectId } = useParams();
+
   return (
     <>
-      {/* Teams List */}
-      {teamOrder.map((team_key, orderIndex) => {
+      {teamOrder.map((team_key) => {
+        if (!isTeamVisible(team_key)) return null;
+
         const team = teams[team_key];
         if (!team) return null;
-        
-        // Skip hidden teams
-        if (!isTeamVisible(team_key)) return null;
-        
+
         const visibleIndex = getVisibleTeamIndex(team_key);
         const teamHeight = getTeamHeight(team_key);
         const rawHeight = getRawTeamHeight(team_key);
         const visibleTasks = getVisibleTasks(team_key);
-        const isTargetTeam = taskGhost && taskDropTarget?.teamId === team_key && taskDropTarget?.teamId !== taskGhost.fromTeamId;
-        const isSettingsOpen = openTeamSettings === team_key;
-        
+        const isCollapsed = isTeamCollapsed(team_key);
+        const teamColor = team.color || '#94a3b8';
+        const hasNoTasks = team.tasks.length === 0;
+        const allTasksHidden = team.tasks.length > 0 && visibleTasks.length === 0;
+
         return (
-          <div key={`${team_key}_container`} style={{ position: 'relative' }}>
-            {/* Drop Highlighter */}
-            <div className="flex" style={{ backgroundColor: 'white' }}>
+          <div key={team_key}>
+            {/* DROP HIGHLIGHT */}
+            <div className="flex" style={{ position: 'relative', backgroundColor: 'white' }}>
               <div
                 style={{
                   marginBottom: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
@@ -102,106 +108,75 @@ export default function DependencyTeamList({
 
             {/* Team Color Header Line - spans full width */}
             <div 
-              className="flex"
               style={{ 
                 height: `${TEAM_HEADER_LINE_HEIGHT}px`,
-                backgroundColor: team.color,
-                boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                marginBottom: `${TEAM_HEADER_GAP}px`,
+                backgroundColor: teamColor,
               }}
-            >
-              <div 
-                style={{ 
-                  width: `${TEAMWIDTH + TASKWIDTH}px`,
-                  position: 'sticky',
-                  left: 0,
-                  zIndex: 41,
-                  backgroundColor: team.color,
-                }}
-              />
-              <div style={{ flex: 1 }} />
-            </div>
-            
-            {/* Gap after header line */}
-            <div style={{ height: `${TEAM_HEADER_GAP}px` }} />
+            />
 
             {/* Team Row */}
-            <div className="flex">
-              {/* STICKY LEFT: Team + Tasks */}
+            <div className="flex" style={{ position: 'relative' }}>
+              {/* STICKY LEFT: Team + Tasks columns */}
               <div
+                className="flex"
                 style={{
-                  height: teamHeight,
-                  width: `${TEAMWIDTH + TASKWIDTH}px`,
-                  backgroundColor: isTargetTeam ? '#dbeafe' : lightenColor(team.color, 0.9),
-                  opacity: ghost?.id === team_key ? 0.2 : 1,
                   position: 'sticky',
                   left: 0,
-                  zIndex: 40,
-                  transition: 'all 0.15s ease',
-                  boxShadow: isTargetTeam ? 'inset 0 0 0 2px #3b82f6' : '2px 0 4px rgba(0,0,0,0.05)',
-                  borderLeft: `3px solid ${team.color}`,
+                  zIndex: 30,
+                  width: `${TEAMWIDTH + TASKWIDTH}px`,
+                  height: `${teamHeight}px`,
+                  opacity: ghost?.id === team_key ? 0.3 : 1,
                 }}
-                className="flex border-y border-r border-slate-200 flex-shrink-0"
               >
-                {/* Team Column */}
+                {/* Team Name Column */}
                 <div
-                  style={{ width: isTeamCollapsed(team_key) ? `${TEAMWIDTH + TASKWIDTH}px` : `${TEAMWIDTH}px` }}
-                  className="flex flex-col"
+                  className="flex flex-col items-center justify-start border-r border-b border-slate-200 cursor-grab active:cursor-grabbing"
+                  style={{
+                    width: `${TEAMWIDTH}px`,
+                    height: `${teamHeight}px`,
+                    backgroundColor: lightenColor(teamColor, 0.92),
+                  }}
+                  onMouseDown={(e) => handleTeamDrag(e, team_key, visibleIndex)}
                 >
-                  {/* Team Name Row - Draggable + Settings */}
-                  <div className={`${isTeamCollapsed(team_key) ? '' : 'border-b border-slate-200'} h-8 px-3 flex items-center justify-between`}>
-                    <div 
-                      onMouseDown={(e) => handleTeamDrag(e, team_key, orderIndex)}
-                      className="flex-1 flex items-center gap-2 cursor-grab active:cursor-grabbing overflow-hidden"
+                  <div className="flex items-center gap-1.5 px-2 py-1.5 w-full">
+                    <div
+                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: teamColor }}
+                    />
+                    <span
+                      className="text-sm font-medium truncate flex-1 cursor-pointer hover:text-blue-600 hover:underline transition-colors"
+                      title={`Go to ${team.name} detail page`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/projects/${projectId}/teams/${team_key}`);
+                      }}
                     >
-                      <div 
-                        className="w-2 h-2 rounded-full flex-shrink-0" 
-                        style={{ backgroundColor: team.color }}
-                      />
-                      <span className="truncate text-sm font-semibold text-slate-700">{team.name}</span>
-                      {isTeamCollapsed(team_key) && (
-                        <span className="text-xs text-slate-400 ml-1">
-                          ({team.tasks.length} task{team.tasks.length !== 1 ? 's' : ''})
-                        </span>
-                      )}
-                    </div>
-                    
-                    {/* Expand button for collapsed teams */}
-                    {isTeamCollapsed(team_key) && (
-                      <button
-                        onClick={() => toggleTeamCollapsed(team_key)}
-                        className="flex items-center justify-center h-6 w-6 rounded hover:bg-slate-100 transition mr-1"
-                        title="Expand team"
-                      >
-                        <UnfoldMoreIcon style={{ fontSize: 16 }} className="text-slate-500" />
-                      </button>
-                    )}
-                    
-                    {/* Team Settings Button */}
-                    <div className="relative">
-                      <button
-                        id={`team-settings-btn-${team_key}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOpenTeamSettings(isSettingsOpen ? null : team_key);
-                        }}
-                        className={`flex items-center justify-center h-6 w-6 rounded hover:bg-slate-100 transition ${isSettingsOpen ? 'bg-slate-100' : ''}`}
-                        title="Team settings"
-                      >
-                        <MoreVertIcon style={{ fontSize: 16 }} className="text-slate-500" />
-                      </button>
-                    </div>
+                      {team.name}
+                    </span>
+                    <button
+                      id={`team-settings-btn-${team_key}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenTeamSettings(openTeamSettings === team_key ? null : team_key);
+                      }}
+                      className="h-5 w-5 flex items-center justify-center rounded hover:bg-white/50 transition"
+                    >
+                      <MoreVertIcon style={{ fontSize: 14 }} className="text-slate-500" />
+                    </button>
                   </div>
                   
-                  {/* Empty space indicator when all tasks hidden but team shown due to min height */}
-                  {!isTeamCollapsed(team_key) && rawHeight === 0 && teamHeight > 0 && (
-                    <div className="flex-1 flex items-center justify-center">
-                      <span className="text-xs text-slate-400 italic">All tasks hidden</span>
+                  {/* All tasks hidden indicator */}
+                  {allTasksHidden && !isCollapsed && (
+                    <div className="flex flex-col items-center justify-center flex-1 px-2 pb-1.5">
+                      <VisibilityOffIcon style={{ fontSize: 14 }} className="text-slate-300 mb-0.5" />
+                      <span className="text-[10px] text-slate-400 italic">All tasks hidden</span>
                     </div>
                   )}
                 </div>
 
                 {/* Tasks Column - only show when not collapsed AND has visible tasks */}
-                {!isTeamCollapsed(team_key) && visibleTasks.length > 0 && (
+                {!isCollapsed && visibleTasks.length > 0 && (
                   <div className="flex flex-col bg-white">
                     {team.tasks.map((task_key, taskIndex) => {
                       if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
@@ -231,7 +206,16 @@ export default function DependencyTeamList({
                             }}
                             className={`flex-1 h-full flex items-center px-2 cursor-grab active:cursor-grabbing truncate text-slate-600 ${isSmall ? 'text-xs' : 'text-sm'}`}
                           >
-                            {tasks[task_key]?.name}
+                            <span
+                              className="truncate cursor-pointer hover:text-blue-600 hover:underline transition-colors"
+                              title={`Go to ${tasks[task_key]?.name} detail page`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/projects/${projectId}/tasks/${task_key}`);
+                              }}
+                            >
+                              {tasks[task_key]?.name}
+                            </span>
                           </div>
 
                           {/* Task Controls */}
@@ -271,6 +255,43 @@ export default function DependencyTeamList({
                         </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {/* Empty tasks column placeholder */}
+                {!isCollapsed && visibleTasks.length === 0 && (
+                  <div
+                    className="border-l border-slate-200 flex flex-col items-center justify-center"
+                    style={{
+                      width: `${TASKWIDTH}px`,
+                      height: `${teamHeight}px`,
+                      backgroundColor: hasNoTasks ? 'rgba(241,245,249,0.6)' : 'rgba(241,245,249,0.4)',
+                      borderLeft: hasNoTasks ? '2px dashed #cbd5e1' : '1px solid #e2e8f0',
+                    }}
+                  >
+                    {hasNoTasks ? (
+                      <span className="text-[10px] text-slate-400 italic">No tasks yet</span>
+                    ) : (
+                      <>
+                        <VisibilityOffIcon style={{ fontSize: 14 }} className="text-slate-300 mb-0.5" />
+                        <span className="text-[10px] text-slate-400 italic">All hidden</span>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Collapsed team placeholder */}
+                {isCollapsed && (
+                  <div
+                    className="border-l border-slate-200 flex items-center px-2 bg-slate-50/50"
+                    style={{
+                      width: `${TASKWIDTH}px`,
+                      height: `${teamHeight}px`,
+                    }}
+                  >
+                    <span className="text-[10px] text-slate-400 italic">
+                      {team.tasks.length} task{team.tasks.length !== 1 ? 's' : ''} (collapsed)
+                    </span>
                   </div>
                 )}
               </div>
@@ -326,21 +347,14 @@ export default function DependencyTeamList({
         />
       </div>
 
-      {/* Hidden Teams Indicator */}
+      {/* Hidden Teams Banner */}
       {hiddenTeamCount > 0 && (
-        <div 
-          className="flex items-center gap-2 px-4 py-2 bg-slate-100 border-t"
-          style={{ position: 'sticky', left: 0, width: `${TEAMWIDTH + TASKWIDTH}px`, zIndex: 45 }}
-        >
-          <VisibilityOffIcon style={{ fontSize: 16 }} className="text-slate-500" />
-          <span className="text-xs text-slate-600">
-            {hiddenTeamCount} hidden team(s)
-          </span>
+        <div className="flex items-center justify-center py-2 text-xs text-slate-500">
           <button
-            onClick={() => showAllHiddenTeams()}
-            className="text-xs text-blue-600 hover:text-blue-800 underline"
+            onClick={showAllHiddenTeams}
+            className="hover:text-blue-600 hover:underline transition-colors"
           >
-            Show all
+            {hiddenTeamCount} hidden team{hiddenTeamCount !== 1 ? 's' : ''} — click to show all
           </button>
         </div>
       )}

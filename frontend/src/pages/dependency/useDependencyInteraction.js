@@ -1,26 +1,25 @@
 // interaction logic for dependencies timeline
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import {
-  TEAMWIDTH,
-  TASKWIDTH,
-  HEADER_HEIGHT,
+  update_start_index,
+  rename_milestone,
+  safe_team_order,
+  reorder_team_tasks,
+  create_dependency,
+  delete_dependency_api as delete_dependency,
+  delete_milestone,
+  change_duration,
+} from '../../api/dependencies_api.js';
+import { isTaskVisible } from './layoutMath';
+import { useDependency } from './DependencyContext.jsx';
+import {
   TEAM_DRAG_HIGHLIGHT_HEIGHT,
   MARIGN_BETWEEN_DRAG_HIGHLIGHT,
   TEAM_HEADER_LINE_HEIGHT,
   TEAM_HEADER_GAP,
-  isTaskVisible,
+  TEAMWIDTH,
+  TASKWIDTH,
 } from './layoutMath';
-import {
-  safe_team_order,
-  reorder_team_tasks,
-  update_start_index,
-  delete_milestone,
-  rename_milestone,
-  change_duration,
-  create_dependency,
-  delete_dependency_api,
-} from '../../api/dependencies_api';
-import { useDependency } from './DependencyContext.jsx';
 
 /**
  * Custom hook for managing all interaction behavior in the Dependencies component.
@@ -83,7 +82,7 @@ export function useDependencyInteraction({
     warningDuration,
   } = useDependency();
   // Transient interaction state
-  const justDraggedRef = useRef(false); // Prevents click handler from firing after drag ends
+  const justDraggedRef = useRef(false);
   const [ghost, setGhost] = useState(null);
   const [dropIndex, setDropIndex] = useState(null);
   const [isDraggingConnection, setIsDraggingConnection] = useState(false);
@@ -93,54 +92,76 @@ export function useDependencyInteraction({
   const [taskDropTarget, setTaskDropTarget] = useState(null);
   const [moveModal, setMoveModal] = useState(null);
   const [blockedMoveHighlight, setBlockedMoveHighlight] = useState(null);
+  
+  // Warning messages state (Feature 5)
+  const [warningMessages, setWarningMessages] = useState([]);
+  const warningIdCounter = useRef(0);
+
+  // Helper to add a warning message
+  const addWarning = (message, details = null) => {
+    const id = ++warningIdCounter.current;
+    setWarningMessages(prev => [...prev, { id, message, details, timestamp: Date.now() }]);
+  };
 
   // ________Global Event Listener___________
   // ________________________________________
 
   useEffect(() => {
-    const down = (e) => {
-      // Don't handle keys when typing in an input/textarea
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
-
-      // v => switch to view mode
-      if (e.key === 'v' || e.key === 'V') {
-        setViewMode("inspection");
-        baseViewModeRef.current = "inspection";
-        setMode("drag");
-      }
-      // e => switch to edit mode
-      else if (e.key === 'e' || e.key === 'E') {
-        setViewMode("schedule");
-        baseViewModeRef.current = "schedule";
-        setMode("drag");
-      }
-      // d => switch to dependency mode
-      else if (e.key === 'd' || e.key === 'D') {
-        setViewMode("dependency");
-        baseViewModeRef.current = "dependency";
+    const handleKeyDown = (e) => {
+      // Skip if user is typing in an input/textarea
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      
+      if (e.key === "Shift") {
+        setMode("duration");
+      } else if (e.key === "Alt") {
+        e.preventDefault();
         setMode("connect");
-      }
-      // Escape key - clear selections and close modals
-      else if (e.key === "Escape") {
+        setViewMode("dependency");
+      } else if (e.key === "Delete") {
+        // Delete handled by actions hook
+      } else if (e.key === "Escape") {
         setSelectedMilestones(new Set());
         setSelectedConnection(null);
-        setOpenTeamSettings(null);
-        setShowFilterDropdown(false);
+        setEditingMilestoneId(null);
+        setEditingMilestoneName("");
+        setIsAddingMilestone(false);
+      } else if (e.key === "e" || e.key === "E") {
+        setViewMode("schedule");
+        baseViewModeRef.current = "schedule";
+      } else if (e.key === "d" || e.key === "D") {
+        setViewMode("dependency");
+        baseViewModeRef.current = "dependency";
+      } else if (e.key === "v" || e.key === "V") {
+        setViewMode("inspection");
+        baseViewModeRef.current = "inspection";
       }
-    }
-
-    window.addEventListener("keydown", down)
+    };
+    const handleKeyUp = (e) => {
+      if (e.key === "Shift") {
+        setMode("drag");
+      } else if (e.key === "Alt") {
+        setMode("drag");
+        setViewMode(baseViewModeRef.current);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keyup", handleKeyUp);
     return () => {
-      window.removeEventListener("keydown", down)
-    }
-  }, [setMode, setViewMode])
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [setMode, setViewMode]);
 
   // Close team settings when clicking outside
   useEffect(() => {
-    const handleClickOutside = () => {
-      setOpenTeamSettings(null);
+    const handleClickOutside = (e) => {
+      const btn = document.getElementById(`team-settings-btn-${openTeamSettings}`);
+      const dropdown = document.querySelector('[data-team-settings-dropdown]');
+      if (btn && !btn.contains(e.target) && (!dropdown || !dropdown.contains(e.target))) {
+        setOpenTeamSettings(null);
+      }
     };
-    if (openTeamSettings !== null) {
+    if (openTeamSettings) {
       document.addEventListener('click', handleClickOutside);
       return () => document.removeEventListener('click', handleClickOutside);
     }
@@ -149,7 +170,6 @@ export function useDependencyInteraction({
   // Close filter dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
-      // Check if click is outside the filter area
       const filterArea = document.querySelector('[data-filter-dropdown]');
       if (filterArea && !filterArea.contains(e.target)) {
         setShowFilterDropdown(false);
@@ -165,7 +185,6 @@ export function useDependencyInteraction({
   useEffect(() => {
     if (!autoSelectBlocking || selectedMilestones.size === 0) return;
     
-    // For each selected milestone, ensure its team and task are visible
     for (const milestoneId of selectedMilestones) {
       const milestone = milestones[milestoneId];
       if (!milestone) continue;
@@ -175,34 +194,106 @@ export function useDependencyInteraction({
       
       const teamId = task.team;
       
-      // Ensure team is visible (not hidden via filter)
       setTeamDisplaySettings(prev => {
         if (!prev[teamId]?.hidden) return prev;
-        return {
-          ...prev,
-          [teamId]: { ...prev[teamId], hidden: false }
-        };
+        return { ...prev, [teamId]: { ...prev[teamId], hidden: false } };
       });
       
-      // Ensure task is visible (not hidden)
       setTaskDisplaySettings(prev => {
         if (!prev[milestone.task]?.hidden) return prev;
-        return {
-          ...prev,
-          [milestone.task]: { ...prev[milestone.task], hidden: false }
-        };
+        return { ...prev, [milestone.task]: { ...prev[milestone.task], hidden: false } };
       });
       
-      // Ensure team is not collapsed
       setTeamDisplaySettings(prev => {
         if (!prev[teamId]?.collapsed) return prev;
-        return {
-          ...prev,
-          [teamId]: { ...prev[teamId], collapsed: false }
-        };
+        return { ...prev, [teamId]: { ...prev[teamId], collapsed: false } };
       });
     }
   }, [autoSelectBlocking, selectedMilestones, milestones, tasks, setTaskDisplaySettings, setTeamDisplaySettings]);
+
+  // ________Overlap Check Helper___________
+  // ________________________________________
+
+  /**
+   * Check if a milestone would overlap with other milestones in the same task.
+   * Returns { valid: true } or { valid: false, overlapping: [...milestoneIds] }
+   * 
+   * @param {string} milestoneId - The milestone being moved/resized
+   * @param {number} newStartIndex - The new start index
+   * @param {number} newDuration - The new duration
+   * @param {Set} excludeIds - Set of milestone IDs to exclude from check (e.g. milestones being moved together)
+   */
+  const checkMilestoneOverlap = (milestoneId, newStartIndex, newDuration, excludeIds = new Set()) => {
+    const milestone = milestones[milestoneId];
+    if (!milestone) return { valid: true };
+
+    const taskId = milestone.task;
+    const task = tasks[taskId];
+    if (!task) return { valid: true };
+
+    const newEnd = newStartIndex + newDuration - 1;
+    const overlapping = [];
+
+    // Check all milestones in the same task
+    const taskMilestones = task.milestones || [];
+    for (const mRef of taskMilestones) {
+      if (mRef.id === milestoneId) continue;
+      if (excludeIds.has(mRef.id)) continue;
+
+      const other = milestones[mRef.id];
+      if (!other) continue;
+
+      const otherStart = other.start_index;
+      const otherEnd = otherStart + (other.duration || 1) - 1;
+
+      // Overlap check: two ranges [newStartIndex, newEnd] and [otherStart, otherEnd]
+      if (newStartIndex <= otherEnd && newEnd >= otherStart) {
+        overlapping.push({
+          blockingMilestoneId: mRef.id,
+          blockingConnection: null, // No connection, it's an overlap
+          reason: 'overlap',
+        });
+      }
+    }
+
+    if (overlapping.length > 0) {
+      return { valid: false, overlapping };
+    }
+    return { valid: true };
+  };
+
+  /**
+   * Check overlap for multiple milestones being moved by the same delta.
+   * Each milestone checks against non-moving milestones in its task.
+   */
+  const checkMultiMilestoneOverlap = (milestoneIds, deltaIndex) => {
+    const movingSet = new Set(milestoneIds);
+    const allOverlapping = [];
+
+    for (const milestoneId of milestoneIds) {
+      const milestone = milestones[milestoneId];
+      if (!milestone) continue;
+
+      const newStart = milestone.start_index + deltaIndex;
+      const newDuration = milestone.duration || 1;
+      
+      const result = checkMilestoneOverlap(milestoneId, newStart, newDuration, movingSet);
+      if (!result.valid) {
+        allOverlapping.push(...result.overlapping);
+      }
+    }
+
+    if (allOverlapping.length > 0) {
+      const seen = new Set();
+      const unique = allOverlapping.filter(b => {
+        if (seen.has(b.blockingMilestoneId)) return false;
+        seen.add(b.blockingMilestoneId);
+        return true;
+      });
+      return { valid: false, allBlocking: unique };
+    }
+    return { valid: true };
+  };
 
   // Handle team drag — allowed in all modes (reordering is non-destructive)
   const handleTeamDrag = (e, teamId, orderIndex) => {
@@ -211,46 +302,42 @@ export function useDependencyInteraction({
     if (!containerRect) return;
 
     const team = teams[teamId];
-    const teamHeight = getTeamHeight(teamId);
-    const startY = e.clientY;
+    if (!team) return;
 
-    // Track current drop index in closure variable
-    let currentDropIndex = null;
+    const startY = e.clientY;
+    let currentOrderIndex = orderIndex;
 
     setGhost({
       id: teamId,
       name: team.name,
       color: team.color,
-      height: teamHeight,
       y: e.clientY - containerRect.top,
     });
+    setDropIndex(orderIndex);
 
     const onMouseMove = (moveEvent) => {
-      const y = moveEvent.clientY - containerRect.top;
-      setGhost(prev => prev ? { ...prev, y } : null);
+      const deltaY = moveEvent.clientY - containerRect.top;
+      setGhost(prev => prev ? { ...prev, y: deltaY } : null);
 
-      // Calculate drop index
-      let accumulatedHeight = HEADER_HEIGHT;
+      // Per-team overhead: drop highlight area + header line
+      const perTeamOverhead =
+        TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2 +
+        TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
+
+      let cumulativeY = 0;
       let newDropIndex = 0;
+      const visibleTeams = teamOrder.filter(tid => isTeamVisible(tid));
       
-      for (let i = 0; i < teamOrder.length; i++) {
-        const tid = teamOrder[i];
-        if (!isTeamVisible(tid)) continue;
-        
-        const dropHighlightHeight = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-        const tHeight = getTeamHeight(tid);
-        const midPoint = accumulatedHeight + dropHighlightHeight + tHeight / 2;
-        
-        if (y < midPoint) {
-          currentDropIndex = newDropIndex;
-          setDropIndex(newDropIndex);
-          return;
+      for (let i = 0; i < visibleTeams.length; i++) {
+        const tid = visibleTeams[i];
+        const totalH = perTeamOverhead + getTeamHeight(tid);
+        if (deltaY < cumulativeY + totalH / 2) {
+          newDropIndex = i;
+          break;
         }
-        
-        accumulatedHeight += dropHighlightHeight + tHeight;
-        newDropIndex++;
+        cumulativeY += totalH;
+        newDropIndex = i + 1;
       }
-      currentDropIndex = newDropIndex;
       setDropIndex(newDropIndex);
     };
 
@@ -258,25 +345,16 @@ export function useDependencyInteraction({
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
 
-      // Get visible index for the dragged team
-      const visibleOrderIndex = getVisibleTeamIndex(teamId);
+      const visibleTeams = teamOrder.filter(tid => isTeamVisible(tid));
+      const currentVisibleIndex = visibleTeams.indexOf(teamId);
 
-      if (currentDropIndex !== null && currentDropIndex !== visibleOrderIndex) {
-        // Build new order based on visible teams
-        const visibleTeams = teamOrder.filter(tid => isTeamVisible(tid));
+      if (dropIndex !== null && dropIndex !== currentVisibleIndex) {
+        const newVisibleTeams = visibleTeams.filter(tid => tid !== teamId);
+        newVisibleTeams.splice(dropIndex, 0, teamId);
+
         const hiddenTeams = teamOrder.filter(tid => !isTeamVisible(tid));
-        
-        // Remove the dragged team from visible teams
-        const draggedTeamIdx = visibleTeams.indexOf(teamId);
-        visibleTeams.splice(draggedTeamIdx, 1);
-        
-        // Insert at new position
-        const insertAt = currentDropIndex > draggedTeamIdx ? currentDropIndex - 1 : currentDropIndex;
-        visibleTeams.splice(insertAt, 0, teamId);
-        
-        // Reconstruct full order: visible teams first, then hidden
-        const newOrder = [...visibleTeams, ...hiddenTeams];
-        
+        const newOrder = [...newVisibleTeams, ...hiddenTeams];
+
         setTeamOrder(newOrder);
         try {
           await safe_team_order(projectId, newOrder);
@@ -300,15 +378,16 @@ export function useDependencyInteraction({
     if (!containerRect) return;
 
     const task = tasks[taskId];
-    const taskHeight = getTaskHeight(taskId, taskDisplaySettings);
+    if (!task) return;
 
-    // Track current drop target in closure variable
-    let currentDropTarget = null;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const taskHeight = getTaskHeight(taskId, taskDisplaySettings);
 
     setTaskGhost({
       taskKey: taskId,
-      fromTeamId: teamId,
-      name: task?.name || 'Task',
+      teamKey: teamId,
+      name: task.name,
       height: taskHeight,
       width: TASKWIDTH,
       x: e.clientX - containerRect.left,
@@ -320,101 +399,80 @@ export function useDependencyInteraction({
       const y = moveEvent.clientY - containerRect.top;
       setTaskGhost(prev => prev ? { ...prev, x, y } : null);
 
-      // Find which team we're over
-      let accumulatedHeight = HEADER_HEIGHT;
+      // Find target team and insert position
+      let targetTeamId = null;
+      let insertIndex = 0;
+
       for (const tid of teamOrder) {
         if (!isTeamVisible(tid)) continue;
+        const teamYOff = getTeamYOffset(tid);
+        const teamH = getTeamHeight(tid);
         
-        const dropHighlightHeight = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-        const tHeight = getTeamHeight(tid);
-        const teamTop = accumulatedHeight + dropHighlightHeight;
-        const teamBottom = teamTop + tHeight;
-        
-        if (y >= teamTop && y < teamBottom) {
-          // We're over this team, find insert index
+        if (y >= teamYOff && y <= teamYOff + teamH) {
+          targetTeamId = tid;
           const visibleTasks = getVisibleTasks(tid);
-          let insertIndex = 0;
-          let taskAccHeight = 0;
-          const relativeY = y - teamTop;
+          let taskCumY = teamYOff;
           
           for (let i = 0; i < visibleTasks.length; i++) {
-            const tHeight = getTaskHeight(visibleTasks[i], taskDisplaySettings);
-            if (relativeY < taskAccHeight + tHeight / 2) {
+            const th = getTaskHeight(visibleTasks[i], taskDisplaySettings);
+            if (y < taskCumY + th / 2) {
+              insertIndex = i;
               break;
             }
-            taskAccHeight += tHeight;
+            taskCumY += th;
             insertIndex = i + 1;
           }
-          
-          currentDropTarget = { teamId: tid, insertIndex };
-          setTaskDropTarget({ teamId: tid, insertIndex });
-          return;
+          break;
         }
-        
-        accumulatedHeight += dropHighlightHeight + tHeight;
       }
-      currentDropTarget = null;
-      setTaskDropTarget(null);
+
+      if (targetTeamId) {
+        setTaskDropTarget({ teamId: targetTeamId, insertIndex });
+      }
     };
 
     const onMouseUp = async () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
 
-      if (currentDropTarget) {
-        const { teamId: targetTeamId, insertIndex } = currentDropTarget;
-        const sourceTeamId = teamId; // Use the closure variable, not state
-        
-        if (targetTeamId !== sourceTeamId) {
-          // Cross-team move - show confirmation modal
-          setMoveModal({
-            taskId,
-            taskName: task?.name,
-            sourceTeamId,
-            sourceTeamName: teams[sourceTeamId]?.name,
-            targetTeamId,
-            targetTeamName: teams[targetTeamId]?.name,
-            insertIndex,
-          });
-        } else {
+      if (taskDropTarget) {
+        const { teamId: targetTeamId, insertIndex } = taskDropTarget;
+
+        if (targetTeamId === teamId) {
           // Same team reorder
-          const team = teams[targetTeamId];
-          const visibleTasks = getVisibleTasks(targetTeamId);
+          const visibleTasks = getVisibleTasks(teamId);
           const currentIndex = visibleTasks.indexOf(taskId);
           
-          if (currentIndex !== insertIndex && currentIndex !== insertIndex - 1) {
-            const newOrder = [...team.tasks];
-            const taskCurrentIndex = newOrder.indexOf(taskId);
-            newOrder.splice(taskCurrentIndex, 1);
-            
-            // Calculate actual insert position
-            let actualInsertIndex = 0;
-            let visibleCount = 0;
-            for (let i = 0; i < team.tasks.length; i++) {
-              if (team.tasks[i] === taskId) continue;
-              if (isTaskVisible(team.tasks[i], taskDisplaySettings)) {
-                if (visibleCount === insertIndex) {
-                  actualInsertIndex = i;
-                  break;
-                }
-                visibleCount++;
-              }
-              actualInsertIndex = i + 1;
-            }
-            
-            newOrder.splice(actualInsertIndex, 0, taskId);
-            
+          if (currentIndex !== -1 && insertIndex !== currentIndex) {
+            const newOrder = [...visibleTasks];
+            newOrder.splice(currentIndex, 1);
+            const adjustedIndex = insertIndex > currentIndex ? insertIndex - 1 : insertIndex;
+            newOrder.splice(adjustedIndex, 0, taskId);
+
+            // Rebuild full order including hidden tasks
+            const team = teams[teamId];
+            const hiddenTasks = team.tasks.filter(tid => !isTaskVisible(tid, taskDisplaySettings));
+            const fullOrder = [...newOrder, ...hiddenTasks];
+
             setTeams(prev => ({
               ...prev,
-              [targetTeamId]: { ...prev[targetTeamId], tasks: newOrder }
+              [teamId]: { ...prev[teamId], tasks: fullOrder }
             }));
-            
+
             try {
-              await reorder_team_tasks(projectId, taskId, targetTeamId, newOrder);
+              await reorder_team_tasks(projectId, taskId, teamId, fullOrder);
             } catch (err) {
               console.error("Failed to reorder tasks:", err);
             }
           }
+        } else {
+          // Cross-team move — show modal
+          setMoveModal({
+            taskId,
+            sourceTeamId: teamId,
+            targetTeamId,
+            insertIndex,
+          });
         }
       }
 
@@ -439,36 +497,33 @@ export function useDependencyInteraction({
     if (!milestone) return;
 
     // Determine which milestones to move
-    // If the clicked milestone is in the selection, move all selected
-    // Otherwise, just move this one milestone
-    const milestonesToMove = selectedMilestones.has(milestoneId) && selectedMilestones.size > 0
-      ? Array.from(selectedMilestones)
-      : [milestoneId];
+    let milestonesToMove;
+    if (selectedMilestones.has(milestoneId) && selectedMilestones.size > 1) {
+      milestonesToMove = Array.from(selectedMilestones);
+    } else {
+      milestonesToMove = [milestoneId];
+    }
 
-    // Store initial positions of all milestones being moved
+    // Store initial positions
     const initialPositions = {};
     for (const mId of milestonesToMove) {
       const m = milestones[mId];
       if (m) {
         initialPositions[mId] = {
           startIndex: m.start_index,
-          startVisualX: m.start_index * DAYWIDTH
+          startVisualX: m.start_index * DAYWIDTH,
         };
       }
     }
 
     const startX = e.clientX;
-    
-    // Track the delta index for validation
+    const DRAG_THRESHOLD = 3;
+    let hasDragged = false;
     let currentDeltaIndex = 0;
-    let lastValidDeltaIndex = 0;
-    let hasDragged = false; // Track if mouse actually moved beyond threshold
-    const DRAG_THRESHOLD = 4; // Minimum pixels before treating as drag
 
     const onMouseMove = (moveEvent) => {
       const deltaX = moveEvent.clientX - startX;
       
-      // Only start dragging after passing the threshold
       if (!hasDragged && Math.abs(deltaX) < DRAG_THRESHOLD) return;
       hasDragged = true;
       
@@ -496,54 +551,89 @@ export function useDependencyInteraction({
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
       
-      // Only block the click handler if we actually dragged
       if (hasDragged) {
         justDraggedRef.current = true;
         setTimeout(() => { justDraggedRef.current = false; }, 0);
       } else {
-        // No drag happened — this was just a click, let the click handler handle selection
+        // Clear visual x property
+        setMilestones(prev => {
+          const updated = { ...prev };
+          for (const mId of milestonesToMove) {
+            if (updated[mId]) {
+              const { x, ...rest } = updated[mId];
+              updated[mId] = rest;
+            }
+          }
+          return updated;
+        });
         return;
       }
 
-      // Calculate target positions for validation
-      const targetPositions = {};
-      let minNewIndex = Infinity;
-      for (const mId of milestonesToMove) {
-        const initial = initialPositions[mId];
-        if (initial) {
-          const newIndex = Math.max(0, initial.startIndex + currentDeltaIndex);
-          targetPositions[mId] = newIndex;
-          minNewIndex = Math.min(minNewIndex, newIndex);
-        }
+      if (currentDeltaIndex === 0) {
+        // No movement, just clear visual
+        setMilestones(prev => {
+          const updated = { ...prev };
+          for (const mId of milestonesToMove) {
+            if (updated[mId]) {
+              const { x, ...rest } = updated[mId];
+              updated[mId] = rest;
+            }
+          }
+          return updated;
+        });
+        return;
       }
 
-      // Ensure we don't go below 0
-      if (minNewIndex < 0) {
-        currentDeltaIndex = currentDeltaIndex - minNewIndex;
-        for (const mId of Object.keys(targetPositions)) {
-          targetPositions[mId] = Math.max(0, targetPositions[mId]);
-        }
+      // Validate dependency constraints
+      let validation;
+      if (milestonesToMove.length === 1) {
+        const newStart = initialPositions[milestonesToMove[0]].startIndex + currentDeltaIndex;
+        validation = validateMilestoneMove(milestonesToMove[0], newStart);
+      } else {
+        validation = validateMultiMilestoneMove(milestonesToMove, currentDeltaIndex);
       }
 
-      // Validate the move for all milestones
-      const validation = validateMultiMilestoneMove(milestonesToMove, currentDeltaIndex);
-      
-      if (!validation.valid) {
-        // Move is blocked - show feedback for ALL blocking milestones
-        const allBlocking = validation.allBlocking || [];
+      // Also validate overlap constraints
+      const overlapValidation = checkMultiMilestoneOverlap(milestonesToMove, currentDeltaIndex);
+
+      if (!validation.valid || !overlapValidation.valid) {
+        // Combine all blocking milestones
+        const allBlocking = [
+          ...(validation.allBlocking || []),
+          ...(overlapValidation.allBlocking || []),
+        ];
+
+        // Deduplicate
+        const seen = new Set();
+        const uniqueBlocking = allBlocking.filter(b => {
+          if (seen.has(b.blockingMilestoneId)) return false;
+          seen.add(b.blockingMilestoneId);
+          return true;
+        });
+
+        // Show warning with reason (Feature 5)
+        const hasDepBlocking = (validation.allBlocking || []).length > 0;
+        const hasOverlapBlocking = (overlapValidation.allBlocking || []).length > 0;
         
-        for (const { blockingMilestoneId, blockingConnection } of allBlocking) {
+        if (hasDepBlocking && hasOverlapBlocking) {
+          addWarning("Move blocked: dependency constraint & milestone overlap", "Milestones cannot overlap within a task, and dependencies must be respected.");
+        } else if (hasOverlapBlocking) {
+          addWarning("Move blocked: milestones would overlap", "Milestones within the same task cannot occupy the same days.");
+        } else {
+          addWarning("Move blocked: dependency constraint", "A connected milestone prevents this move.");
+        }
+
+        for (const { blockingMilestoneId, blockingConnection } of uniqueBlocking) {
           showBlockingFeedback(blockingMilestoneId, blockingConnection);
         }
           
-        // Auto-select all blocking milestones along with the milestones being moved
-        if (autoSelectBlocking && allBlocking.length > 0) {
+        if (autoSelectBlocking && uniqueBlocking.length > 0) {
           setSelectedMilestones(prev => {
             const newSet = new Set(prev);
             for (const mId of milestonesToMove) {
               newSet.add(mId);
             }
-            for (const { blockingMilestoneId } of allBlocking) {
+            for (const { blockingMilestoneId } of uniqueBlocking) {
               newSet.add(blockingMilestoneId);
             }
             return newSet;
@@ -556,10 +646,8 @@ export function useDependencyInteraction({
           for (const mId of milestonesToMove) {
             const initial = initialPositions[mId];
             if (initial) {
-              updated[mId] = {
-                ...updated[mId],
-                x: undefined, // Clear visual X
-              };
+              const { x, ...rest } = updated[mId];
+              updated[mId] = { ...rest, start_index: initial.startIndex };
             }
           }
           return updated;
@@ -567,41 +655,23 @@ export function useDependencyInteraction({
         return;
       }
 
-      // Move is valid - snap all milestones to their final positions
-      setMilestones(prev => {
-        const updated = { ...prev };
-        for (const mId of milestonesToMove) {
-          const initial = initialPositions[mId];
-          if (initial) {
-            const newIndex = Math.max(0, initial.startIndex + currentDeltaIndex);
-            updated[mId] = {
-              ...updated[mId],
-              start_index: newIndex,
-              x: undefined, // Clear visual X so it uses start_index * DAYWIDTH
-            };
-          }
-        }
-        return updated;
-      });
-
-      // Save all changes if any position changed
-      const savePromises = [];
+      // Validation passed — save for all milestones
       for (const mId of milestonesToMove) {
         const initial = initialPositions[mId];
-        if (initial) {
-          const newIndex = Math.max(0, initial.startIndex + currentDeltaIndex);
-          if (newIndex !== initial.startIndex) {
-            savePromises.push(
-              update_start_index(projectId, mId, newIndex).catch(err => {
-                console.error(`Failed to update milestone ${mId} position:`, err);
-              })
-            );
-          }
+        if (!initial) continue;
+        
+        const newStart = initial.startIndex + currentDeltaIndex;
+        
+        setMilestones(prev => {
+          const { x, ...rest } = prev[mId];
+          return { ...prev, [mId]: { ...rest, start_index: newStart } };
+        });
+        
+        try {
+          await update_start_index(projectId, mId, newStart);
+        } catch (err) {
+          console.error("Failed to update start index:", err);
         }
-      }
-      
-      if (savePromises.length > 0) {
-        await Promise.all(savePromises);
       }
     };
 
@@ -611,15 +681,9 @@ export function useDependencyInteraction({
 
   // Handle milestone delete
   const handleMilestoneDelete = async (milestoneId) => {
-    if (!milestoneId) {
-      console.error("No milestone ID provided for deletion");
-      return;
-    }
-    
     try {
       await delete_milestone(projectId, milestoneId);
-      
-      // Remove from milestones state
+
       setMilestones(prev => {
         const updated = { ...prev };
         delete updated[milestoneId];
@@ -640,10 +704,8 @@ export function useDependencyInteraction({
         return updated;
       });
 
-      // Remove connections involving this milestone
       setConnections(prev => prev.filter(c => c.source !== milestoneId && c.target !== milestoneId));
       
-      // Clear selection if deleted milestone was selected
       setSelectedMilestones(prev => {
         const updated = new Set(prev);
         updated.delete(milestoneId);
@@ -656,17 +718,17 @@ export function useDependencyInteraction({
     }
   };
 
-  // Handle milestone click (selection) - supports multi-select with Ctrl/Cmd
+  // Handle milestone click (selection)
   const handleMilestoneClick = (e, milestoneId) => {
     e.stopPropagation();
     
-    // Skip click handling if we just finished dragging (prevents resetting selection after blocked move)
     if (justDraggedRef.current) {
       return;
     }
+
+    setSelectedConnection(null);
     
     if (e.ctrlKey || e.metaKey) {
-      // Multi-select: toggle this milestone in selection
       setSelectedMilestones(prev => {
         const newSet = new Set(prev);
         if (newSet.has(milestoneId)) {
@@ -677,7 +739,6 @@ export function useDependencyInteraction({
         return newSet;
       });
     } else {
-      // Single click: select only this milestone (or deselect if already selected alone)
       setSelectedMilestones(prev => {
         if (prev.size === 1 && prev.has(milestoneId)) {
           return new Set();
@@ -687,16 +748,13 @@ export function useDependencyInteraction({
     }
   };
 
-  // Check if a move would violate dependencies (both incoming and outgoing)
-  // Returns { valid: true } or { valid: false, allBlocking: [...] }
-  // Collects ALL blocking milestones (not just the first)
+  // Check if a move would violate dependencies
   const validateMilestoneMove = (milestoneId, newStartIndex) => {
     const milestone = milestones[milestoneId];
     if (!milestone) return { valid: true };
 
     const allBlocking = [];
 
-    // Check incoming connections (moving left - source must finish before target starts)
     const incomingConnections = connections.filter(c => c.target === milestoneId);
     
     for (const conn of incomingConnections) {
@@ -710,21 +768,19 @@ export function useDependencyInteraction({
       }
     }
 
-    // Check outgoing connections (moving right - this milestone must finish before target starts)
     const outgoingConnections = connections.filter(c => c.source === milestoneId);
     const newEndIndex = newStartIndex + (milestone.duration || 1) - 1;
 
     for (const conn of outgoingConnections) {
       const targetMilestone = milestones[conn.target];
       if (!targetMilestone) continue;
-
+      
       if (newEndIndex >= targetMilestone.start_index) {
         allBlocking.push({ blockingMilestoneId: conn.target, blockingConnection: conn });
       }
     }
     
     if (allBlocking.length > 0) {
-      // Deduplicate by milestone id
       const seen = new Set();
       const unique = allBlocking.filter(b => {
         if (seen.has(b.blockingMilestoneId)) return false;
@@ -742,10 +798,9 @@ export function useDependencyInteraction({
   };
 
   // Check if moving multiple milestones by a delta would be valid
-  // Collects ALL blocking milestones (not just the first)
   const validateMultiMilestoneMove = (milestoneIds, deltaIndex) => {
     const movingSet = new Set(milestoneIds);
-    const allBlocking = []; // { blockingMilestoneId, blockingConnection }
+    const allBlocking = [];
     
     for (const milestoneId of milestoneIds) {
       const milestone = milestones[milestoneId];
@@ -756,7 +811,6 @@ export function useDependencyInteraction({
         return { valid: false, reason: "Cannot move before project start", blockingMilestoneIds: [milestoneId], allBlocking: [] };
       }
       
-      // Check incoming connections (moving left), skip if source is also moving
       const incomingConnections = connections.filter(c => c.target === milestoneId);
       
       for (const conn of incomingConnections) {
@@ -772,24 +826,22 @@ export function useDependencyInteraction({
         }
       }
 
-      // Check outgoing connections (moving right), skip if target is also moving
       const outgoingConnections = connections.filter(c => c.source === milestoneId);
       const newEndIndex = newStartIndex + (milestone.duration || 1) - 1;
 
       for (const conn of outgoingConnections) {
         if (movingSet.has(conn.target)) continue;
-
+        
         const targetMilestone = milestones[conn.target];
         if (!targetMilestone) continue;
-
+        
         if (newEndIndex >= targetMilestone.start_index) {
           allBlocking.push({ blockingMilestoneId: conn.target, blockingConnection: conn });
         }
       }
     }
-
+    
     if (allBlocking.length > 0) {
-      // Deduplicate by milestone id
       const seen = new Set();
       const unique = allBlocking.filter(b => {
         if (seen.has(b.blockingMilestoneId)) return false;
@@ -799,7 +851,6 @@ export function useDependencyInteraction({
       return {
         valid: false,
         allBlocking: unique,
-        // Keep first for backwards compat
         blockingConnection: unique[0].blockingConnection,
         blockingMilestoneId: unique[0].blockingMilestoneId,
       };
@@ -808,8 +859,6 @@ export function useDependencyInteraction({
   };
 
   // Show blocking feedback with temporary expansion of hidden/collapsed items
-  // When autoSelectBlocking is ON:  reveal permanently (don't revert)
-  // When autoSelectBlocking is OFF: reveal for 2s then revert to original state
   const showBlockingFeedback = (blockingMilestoneId, connectionId) => {
     const milestone = milestones[blockingMilestoneId];
     if (!milestone) return;
@@ -820,7 +869,6 @@ export function useDependencyInteraction({
     
     const teamId = task.team;
     
-    // Store original states so we can revert if needed
     const originalState = {
       taskHidden: taskDisplaySettings[taskId]?.hidden || false,
       taskSize: taskDisplaySettings[taskId]?.size || 'normal',
@@ -828,7 +876,6 @@ export function useDependencyInteraction({
       teamHidden: teamDisplaySettings[teamId]?.hidden || false,
     };
     
-    // Reveal the blocking milestone — unhide team, unhide task, expand task, uncollapse team
     if (originalState.teamHidden) {
       setTeamDisplaySettings(prev => ({
         ...prev,
@@ -854,7 +901,6 @@ export function useDependencyInteraction({
       }));
     }
     
-    // Set the highlight state
     setBlockedMoveHighlight({
       milestoneId: blockingMilestoneId,
       connectionSource: connectionId?.source,
@@ -862,12 +908,10 @@ export function useDependencyInteraction({
     });
     
     if (autoSelectBlocking) {
-      // Auto-select is ON: keep everything revealed, only clear highlight
       setTimeout(() => {
         setBlockedMoveHighlight(null);
       }, warningDuration);
     } else {
-      // Auto-select is OFF: revert visibility to original state
       setTimeout(() => {
         setBlockedMoveHighlight(null);
         
@@ -907,21 +951,21 @@ export function useDependencyInteraction({
   };
 
   // Handle milestone rename submit
-  const handleMilestoneRenameSubmit = async (milestoneId, editingMilestoneName) => {
-    if (!editingMilestoneName.trim()) {
+  const handleMilestoneRenameSubmit = async (milestoneId, editingMilestoneNameVal) => {
+    if (!editingMilestoneNameVal.trim()) {
       setEditingMilestoneId(null);
       setEditingMilestoneName("");
       return;
     }
 
     try {
-      await rename_milestone(projectId, milestoneId, editingMilestoneName.trim());
+      await rename_milestone(projectId, milestoneId, editingMilestoneNameVal.trim());
       
       setMilestones(prev => ({
         ...prev,
         [milestoneId]: {
           ...prev[milestoneId],
-          name: editingMilestoneName.trim()
+          name: editingMilestoneNameVal.trim()
         }
       }));
     } catch (err) {
@@ -932,7 +976,8 @@ export function useDependencyInteraction({
     setEditingMilestoneName("");
   };
 
-  // Handle milestone edge resize — with dependency validation
+  // Handle milestone edge resize — with dependency validation AND overlap check
+  // Feature 3: When multiple milestones are selected, resize all of them
   const handleMilestoneEdgeResize = (e, milestoneId, edge) => {
     if (safeMode) return;
     e.stopPropagation();
@@ -941,83 +986,148 @@ export function useDependencyInteraction({
     const milestone = milestones[milestoneId];
     if (!milestone) return;
 
-    const startX = e.clientX;
-    const startDuration = milestone.duration;
-    const startIndex = milestone.start_index;
+    // Determine which milestones to resize (Feature 3)
+    let milestonesToResize;
+    if (selectedMilestones.has(milestoneId) && selectedMilestones.size > 1) {
+      milestonesToResize = Array.from(selectedMilestones);
+    } else {
+      milestonesToResize = [milestoneId];
+    }
 
-    // Track current values in closure variables
-    let currentDuration = startDuration;
-    let currentStartIndex = startIndex;
+    // Store initial state for all milestones
+    const initialStates = {};
+    for (const mId of milestonesToResize) {
+      const m = milestones[mId];
+      if (m) {
+        initialStates[mId] = {
+          startIndex: m.start_index,
+          duration: m.duration || 1,
+        };
+      }
+    }
+
+    const startX = e.clientX;
+    let currentIndexDelta = 0;
 
     const onMouseMove = (moveEvent) => {
       const deltaX = moveEvent.clientX - startX;
       const indexDelta = Math.round(deltaX / DAYWIDTH);
+      currentIndexDelta = indexDelta;
 
-      if (edge === "right") {
-        currentDuration = Math.max(1, startDuration + indexDelta);
-        setMilestones(prev => ({
-          ...prev,
-          [milestoneId]: { ...prev[milestoneId], duration: currentDuration }
-        }));
-      } else if (edge === "left") {
-        currentStartIndex = Math.max(0, startIndex + indexDelta);
-        const durationChange = startIndex - currentStartIndex;
-        currentDuration = Math.max(1, startDuration + durationChange);
-        setMilestones(prev => ({
-          ...prev,
-          [milestoneId]: { 
-            ...prev[milestoneId], 
-            start_index: currentStartIndex,
-            duration: currentDuration 
+      setMilestones(prev => {
+        const updated = { ...prev };
+        for (const mId of milestonesToResize) {
+          const initial = initialStates[mId];
+          if (!initial) continue;
+
+          if (edge === "right") {
+            const newDuration = Math.max(1, initial.duration + indexDelta);
+            updated[mId] = { ...updated[mId], duration: newDuration };
+          } else if (edge === "left") {
+            const newStartIndex = Math.max(0, initial.startIndex + indexDelta);
+            const durationChange = initial.startIndex - newStartIndex;
+            const newDuration = Math.max(1, initial.duration + durationChange);
+            updated[mId] = { ...updated[mId], start_index: newStartIndex, duration: newDuration };
           }
-        }));
-      }
+        }
+        return updated;
+      });
     };
 
     const onMouseUp = async () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
 
-      // Validate the resize against dependencies — collect ALL violations
-      const newEndIndex = currentStartIndex + currentDuration - 1;
-      const resizeBlocking = [];
+      // Validate ALL milestones being resized using tracked delta (not stale closure)
+      const allResizeBlocking = [];
+      let hasOverlapViolation = false;
+      let hasDepViolation = false;
 
-      // Check outgoing deps (right edge expand — our end might now overlap a dependent's start)
-      const outgoingConnections = connections.filter(c => c.source === milestoneId);
-      for (const conn of outgoingConnections) {
-        const targetMilestone = milestones[conn.target];
-        if (!targetMilestone) continue;
-        if (newEndIndex >= targetMilestone.start_index) {
-          resizeBlocking.push({ blockingMilestoneId: conn.target, blockingConnection: conn });
+      for (const mId of milestonesToResize) {
+        const initial = initialStates[mId];
+        if (!initial) continue;
+
+        // Compute current values from initial + delta (avoids stale closure issue)
+        let currentStartIndex, currentDuration;
+        if (edge === "right") {
+          currentStartIndex = initial.startIndex;
+          currentDuration = Math.max(1, initial.duration + currentIndexDelta);
+        } else {
+          currentStartIndex = Math.max(0, initial.startIndex + currentIndexDelta);
+          const durationChange = initial.startIndex - currentStartIndex;
+          currentDuration = Math.max(1, initial.duration + durationChange);
+        }
+
+        const newEndIndex = currentStartIndex + currentDuration - 1;
+
+        // Check dependency constraints
+        const outgoingConnections = connections.filter(c => c.source === mId);
+        for (const conn of outgoingConnections) {
+          const targetMilestone = milestones[conn.target];
+          if (!targetMilestone) continue;
+          if (milestonesToResize.includes(conn.target)) continue;
+          if (newEndIndex >= targetMilestone.start_index) {
+            allResizeBlocking.push({ blockingMilestoneId: conn.target, blockingConnection: conn });
+            hasDepViolation = true;
+          }
+        }
+
+        const incomingConnections = connections.filter(c => c.target === mId);
+        for (const conn of incomingConnections) {
+          const sourceMilestone = milestones[conn.source];
+          if (!sourceMilestone) continue;
+          if (milestonesToResize.includes(conn.source)) continue;
+          const sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
+          if (sourceEndIndex >= currentStartIndex) {
+            allResizeBlocking.push({ blockingMilestoneId: conn.source, blockingConnection: conn });
+            hasDepViolation = true;
+          }
+        }
+
+        // Check overlap constraints (Feature 4)
+        const excludeSet = new Set(milestonesToResize);
+        const overlapResult = checkMilestoneOverlap(mId, currentStartIndex, currentDuration, excludeSet);
+        if (!overlapResult.valid) {
+          for (const ov of overlapResult.overlapping) {
+            allResizeBlocking.push(ov);
+          }
+          hasOverlapViolation = true;
         }
       }
 
-      // Check incoming deps (left edge expand — our start might now overlap a source's end)
-      const incomingConnections = connections.filter(c => c.target === milestoneId);
-      for (const conn of incomingConnections) {
-        const sourceMilestone = milestones[conn.source];
-        if (!sourceMilestone) continue;
-        const sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
-        if (sourceEndIndex >= currentStartIndex) {
-          resizeBlocking.push({ blockingMilestoneId: conn.source, blockingConnection: conn });
-        }
-      }
+      if (allResizeBlocking.length > 0) {
+        // Revert all milestones to original
+        setMilestones(prev => {
+          const updated = { ...prev };
+          for (const mId of milestonesToResize) {
+            const initial = initialStates[mId];
+            if (initial) {
+              updated[mId] = { ...updated[mId], start_index: initial.startIndex, duration: initial.duration };
+            }
+          }
+          return updated;
+        });
 
-      if (resizeBlocking.length > 0) {
-        // Revert to original
-        setMilestones(prev => ({
-          ...prev,
-          [milestoneId]: { ...prev[milestoneId], start_index: startIndex, duration: startDuration }
-        }));
-        // Show feedback for ALL blocking milestones
-        for (const { blockingMilestoneId, blockingConnection } of resizeBlocking) {
+        // Show warning with reason (Feature 5)
+        if (hasDepViolation && hasOverlapViolation) {
+          addWarning("Resize blocked: dependency & overlap conflict", "Milestones cannot overlap within a task, and dependencies must be respected.");
+        } else if (hasOverlapViolation) {
+          addWarning("Resize blocked: milestones would overlap", "Milestones within the same task cannot occupy the same days.");
+        } else {
+          addWarning("Resize blocked: dependency constraint", "A connected milestone prevents this resize.");
+        }
+
+        // Show feedback for all blocking milestones
+        for (const { blockingMilestoneId, blockingConnection } of allResizeBlocking) {
           showBlockingFeedback(blockingMilestoneId, blockingConnection);
         }
         if (autoSelectBlocking) {
           setSelectedMilestones(prev => {
             const newSet = new Set(prev);
-            newSet.add(milestoneId);
-            for (const { blockingMilestoneId } of resizeBlocking) {
+            for (const mId of milestonesToResize) {
+              newSet.add(mId);
+            }
+            for (const { blockingMilestoneId } of allResizeBlocking) {
               newSet.add(blockingMilestoneId);
             }
             return newSet;
@@ -1026,21 +1136,29 @@ export function useDependencyInteraction({
         return;
       }
 
-      // Validation passed — save changes
-      const durationChange = currentDuration - startDuration;
-      if (durationChange !== 0) {
-        try {
-          await change_duration(projectId, milestoneId, durationChange);
-        } catch (err) {
-          console.error("Failed to change duration:", err);
-        }
-      }
+      // Validation passed — save changes for all milestones
+      for (const mId of milestonesToResize) {
+        const initial = initialStates[mId];
+        if (!initial) continue;
+        
+        const currentM = milestones[mId];
+        if (!currentM) continue;
 
-      if (edge === "left" && currentStartIndex !== startIndex) {
-        try {
-          await update_start_index(projectId, milestoneId, currentStartIndex);
-        } catch (err) {
-          console.error("Failed to update start index:", err);
+        const durationChange = currentM.duration - initial.duration;
+        if (durationChange !== 0) {
+          try {
+            await change_duration(projectId, mId, durationChange);
+          } catch (err) {
+            console.error("Failed to change duration:", err);
+          }
+        }
+
+        if (edge === "left" && currentM.start_index !== initial.startIndex) {
+          try {
+            await update_start_index(projectId, mId, currentM.start_index);
+          } catch (err) {
+            console.error("Failed to update start index:", err);
+          }
         }
       }
     };
@@ -1051,7 +1169,6 @@ export function useDependencyInteraction({
 
   // Handle day cell click (create milestone)
   const handleDayCellClick = (taskId, dayIndex) => {
-    // Show confirmation modal instead of creating directly
     setMilestoneCreateModal({ taskId, dayIndex });
   };
 
@@ -1066,7 +1183,6 @@ export function useDependencyInteraction({
     const initialX = e.clientX - containerRect.left;
     const initialY = e.clientY - containerRect.top;
 
-    // Set both start and end to the same initial position to avoid jump to (0,0)
     setConnectionStart({
       milestoneId,
       handleType,
@@ -1076,37 +1192,30 @@ export function useDependencyInteraction({
     setConnectionEnd({ x: initialX, y: initialY });
     setIsDraggingConnection(true);
 
-    // Use requestAnimationFrame for smoother updates
     let rafId = null;
-    let lastX = initialX;
-    let lastY = initialY;
 
     const onMouseMove = (moveEvent) => {
-      // Re-get container rect in case it moved (scrolling, etc.)
-      const currentRect = teamContainerRef.current?.getBoundingClientRect();
-      if (!currentRect) return;
-      
-      lastX = moveEvent.clientX - currentRect.left;
-      lastY = moveEvent.clientY - currentRect.top;
-      
-      if (rafId === null) {
-        rafId = requestAnimationFrame(() => {
-          setConnectionEnd({ x: lastX, y: lastY });
-          rafId = null;
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        const currentRect = teamContainerRef.current?.getBoundingClientRect();
+        if (!currentRect) { rafId = null; return; }
+        
+        setConnectionEnd({
+          x: moveEvent.clientX - currentRect.left,
+          y: moveEvent.clientY - currentRect.top,
         });
-      }
+        rafId = null;
+      });
     };
 
     const onMouseUp = async (upEvent) => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      
-      // Cancel any pending animation frame
+
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
       }
 
-      // Re-get container rect for accurate position calculation
       const currentRect = teamContainerRef.current?.getBoundingClientRect();
       if (!currentRect) {
         setIsDraggingConnection(false);
@@ -1114,7 +1223,6 @@ export function useDependencyInteraction({
         return;
       }
 
-      // Find if we're over a milestone handle
       const targetMilestone = findMilestoneAtPosition(
         upEvent.clientX - currentRect.left,
         upEvent.clientY - currentRect.top
@@ -1124,13 +1232,10 @@ export function useDependencyInteraction({
         const sourceId = handleType === "source" ? milestoneId : targetMilestone.id;
         const targetId = handleType === "source" ? targetMilestone.id : milestoneId;
 
-        // Check if connection already exists
         const exists = connections.some(c => c.source === sourceId && c.target === targetId);
-        // Also check reverse direction (would create a cycle)
         const reverseExists = connections.some(c => c.source === targetId && c.target === sourceId);
 
         if (!exists && !reverseExists) {
-          // Validate scheduling: source must end before target starts
           const sourceMilestone = milestones[sourceId];
           const targetMilestoneData = milestones[targetId];
 
@@ -1138,14 +1243,13 @@ export function useDependencyInteraction({
             const sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
 
             if (sourceEndIndex >= targetMilestoneData.start_index) {
-              // Connection would violate scheduling — show warning highlight on both
               setBlockedMoveHighlight({
                 milestoneId: sourceId,
                 connectionSource: sourceId,
                 connectionTarget: targetId,
               });
               setTimeout(() => setBlockedMoveHighlight(null), warningDuration);
-              console.warn("Cannot create dependency: source must finish before target starts");
+              addWarning("Cannot create dependency", "Source milestone must finish before target starts.");
             } else {
               try {
                 await create_dependency(projectId, sourceId, targetId);
@@ -1155,6 +1259,8 @@ export function useDependencyInteraction({
               }
             }
           }
+        } else {
+          addWarning("Dependency already exists", exists ? "This exact dependency already exists." : "A reverse dependency already exists (would create cycle).");
         }
       }
 
@@ -1176,22 +1282,21 @@ export function useDependencyInteraction({
       if (!team || !isTeamVisible(task.team)) continue;
       if (!isTaskVisible(milestone.task, taskDisplaySettings)) continue;
 
-      const taskHeight = getTaskHeight(milestone.task, taskDisplaySettings);
-      const teamYOffset = getTeamYOffset(task.team);
-      const taskYOffset = getTaskYOffset(milestone.task, task.team);
+      const taskHeightVal = getTaskHeight(milestone.task, taskDisplaySettings);
+      const teamYOff = getTeamYOffset(task.team);
+      const taskYOff = getTaskYOffset(milestone.task, task.team);
       const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
       const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
 
       const milestoneX = TEAMWIDTH + TASKWIDTH + milestone.start_index * DAYWIDTH;
-      // Calculate actual top Y position (not center)
-      const milestoneTopY = teamYOffset + dropHighlightOffset + headerOffset + taskYOffset;
+      const milestoneTopY = teamYOff + dropHighlightOffset + headerOffset + taskYOff;
       const milestoneWidth = DAYWIDTH * milestone.duration;
 
       if (
         x >= milestoneX - 10 &&
         x <= milestoneX + milestoneWidth + 10 &&
         y >= milestoneTopY &&
-        y <= milestoneTopY + taskHeight
+        y <= milestoneTopY + taskHeightVal
       ) {
         return { id: parseInt(id), ...milestone };
       }
@@ -1211,14 +1316,14 @@ export function useDependencyInteraction({
     if (!team || !isTeamVisible(task.team)) return null;
     if (!isTaskVisible(milestone.task, taskDisplaySettings)) return null;
 
-    const taskHeight = getTaskHeight(milestone.task, taskDisplaySettings);
-    const teamYOffset = getTeamYOffset(task.team);
-    const taskYOffset = getTaskYOffset(milestone.task, task.team);
+    const taskHeightVal = getTaskHeight(milestone.task, taskDisplaySettings);
+    const teamYOff = getTeamYOffset(task.team);
+    const taskYOff = getTaskYOffset(milestone.task, task.team);
     const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
     const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
 
     const milestoneX = TEAMWIDTH + TASKWIDTH + (milestone.x ?? milestone.start_index * DAYWIDTH);
-    const milestoneY = teamYOffset + dropHighlightOffset + headerOffset + taskYOffset + taskHeight / 2;
+    const milestoneY = teamYOff + dropHighlightOffset + headerOffset + taskYOff + taskHeightVal / 2;
     const milestoneWidth = DAYWIDTH * milestone.duration;
 
     if (handleType === "source") {
@@ -1228,9 +1333,11 @@ export function useDependencyInteraction({
     }
   };
 
-  // Handle connection click - just select/deselect
+  // Handle connection click
   const handleConnectionClick = (e, connection) => {
     e.stopPropagation();
+    setSelectedMilestones(new Set());
+    
     if (selectedConnection?.source === connection.source && selectedConnection?.target === connection.target) {
       setSelectedConnection(null);
     } else {
@@ -1240,30 +1347,17 @@ export function useDependencyInteraction({
 
   // Handle delete connection
   const handleDeleteConnection = async (connection) => {
-    if (!connection) {
-      console.error("No connection provided for deletion");
-      return;
-    }
-    
     try {
-      await delete_dependency_api(projectId, connection.source, connection.target);
-      
-      // Remove from connections state
-      setConnections(prev => prev.filter(c => 
-        !(c.source === connection.source && c.target === connection.target)
-      ));
-      
-      // Clear selection
+      await delete_dependency(projectId, connection.source, connection.target);
+      setConnections(prev => prev.filter(c => !(c.source === connection.source && c.target === connection.target)));
       setSelectedConnection(null);
     } catch (err) {
       console.error("Failed to delete dependency:", err);
-      throw err;
     }
   };
 
-  // Return all handlers
   return {
-    // Transient interaction state
+    // Transient state
     ghost,
     setGhost,
     dropIndex,
@@ -1283,6 +1377,9 @@ export function useDependencyInteraction({
     setMoveModal,
     blockedMoveHighlight,
     setBlockedMoveHighlight,
+
+    // Warning messages (Feature 5)
+    warningMessages,
 
     // Drag handlers
     handleTeamDrag,
@@ -1307,6 +1404,8 @@ export function useDependencyInteraction({
     // Validation functions
     validateMilestoneMove,
     validateMultiMilestoneMove,
+    checkMilestoneOverlap,
+    checkMultiMilestoneOverlap,
     
     // Position helpers
     findMilestoneAtPosition,
@@ -1314,5 +1413,6 @@ export function useDependencyInteraction({
     
     // Feedback
     showBlockingFeedback,
+    addWarning,
   };
 }

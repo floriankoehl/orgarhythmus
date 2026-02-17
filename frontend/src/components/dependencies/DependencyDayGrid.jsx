@@ -73,7 +73,7 @@ export default function DependencyDayGrid({
           );
         })}
         
-        {/* Empty placeholder when all tasks hidden */}
+        {/* Empty placeholder when all tasks hidden or team is empty */}
         {rawHeight === 0 && teamHeight > 0 && (
           <div
             className="flex"
@@ -81,11 +81,12 @@ export default function DependencyDayGrid({
           >
             {[...Array(days)].map((_, i) => (
               <div
-                className="border-r"
+                className="border-r border-dashed border-slate-200"
                 style={{
                   height: `${teamHeight}px`,
                   width: `${DAYWIDTH}px`,
-                  opacity: 0.3,
+                  opacity: 0.4,
+                  background: 'repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(148,163,184,0.06) 8px, rgba(148,163,184,0.06) 16px)',
                 }}
                 key={i}
               />
