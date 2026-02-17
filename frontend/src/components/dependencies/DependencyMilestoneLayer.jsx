@@ -1,4 +1,5 @@
 import CloseIcon from '@mui/icons-material/Close';
+import EditIcon from '@mui/icons-material/Edit';
 
 export default function DependencyMilestoneLayer({
   teamOrder,
@@ -31,7 +32,6 @@ export default function DependencyMilestoneLayer({
   getTaskYOffset,
   handleMileStoneMouseDown,
   handleMilestoneClick,
-  handleMilestoneDoubleClick,
   setHoveredMilestone,
   setEditingMilestoneName,
   setEditingMilestoneId,
@@ -95,7 +95,6 @@ export default function DependencyMilestoneLayer({
                     handleMilestoneClick(e, milestone.id);
                   }
                 }}
-                onDoubleClick={(e) => handleMilestoneDoubleClick(e, milestone)}
                 onMouseEnter={() => setHoveredMilestone(milestone.id)}
                 onMouseLeave={() => setHoveredMilestone(null)}
                 className={`absolute rounded cursor-pointer ${
@@ -117,29 +116,55 @@ export default function DependencyMilestoneLayer({
                 }}
                 key={milestone.id}
               >
-                {/* Content */}
-                {isEditing ? (
-                  <input
-                    autoFocus
-                    value={editingMilestoneName}
-                    onChange={(e) => setEditingMilestoneName(e.target.value)}
-                    onBlur={() => handleMilestoneRenameSubmit(milestone.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleMilestoneRenameSubmit(milestone.id);
-                      if (e.key === 'Escape') {
-                        setEditingMilestoneId(null);
-                        setEditingMilestoneName('');
-                      }
-                    }}
-                    onClick={(e) => e.stopPropagation()}
+                {/* Milestone name */}
+                <div className="flex items-center h-full px-2 overflow-hidden">
+                  <span className={`truncate text-xs ${isSelected ? 'text-white' : ''}`}>
+                    {milestone.name}
+                  </span>
+                </div>
+
+                {/* Edit name icon - shown when selected (single) and not already editing */}
+                {isSelected && selectedMilestones.size === 1 && !isEditing && (
+                  <div
+                    className="absolute -top-7 left-0 flex items-center gap-1 bg-white rounded shadow-md border border-slate-200 px-1.5 py-0.5 cursor-pointer hover:bg-slate-50 transition"
+                    style={{ pointerEvents: 'auto', zIndex: 30 }}
                     onMouseDown={(e) => e.stopPropagation()}
-                    className="w-full h-full px-2 text-xs font-medium bg-white border-2 border-blue-500 rounded outline-none"
-                  />
-                ) : (
-                  <div className="flex items-center h-full px-2 overflow-hidden">
-                    <span className={`truncate text-xs ${isSelected ? 'text-white' : ''}`}>
-                      {milestone.name}
-                    </span>
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingMilestoneId(milestone.id);
+                      setEditingMilestoneName(milestone.name);
+                    }}
+                  >
+                    <EditIcon style={{ fontSize: 12 }} className="text-slate-500" />
+                    <span className="text-[10px] text-slate-500">Rename</span>
+                  </div>
+                )}
+
+                {/* Inline rename input - shown above the milestone when editing */}
+                {isEditing && (
+                  <div
+                    className="absolute -top-8 left-0 z-30"
+                    style={{ pointerEvents: 'auto', minWidth: '160px' }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      autoFocus
+                      value={editingMilestoneName}
+                      onChange={(e) => setEditingMilestoneName(e.target.value)}
+                      onBlur={() => handleMilestoneRenameSubmit(milestone.id, editingMilestoneName)}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === 'Enter') {
+                          handleMilestoneRenameSubmit(milestone.id, editingMilestoneName);
+                        }
+                        if (e.key === 'Escape') {
+                          setEditingMilestoneId(null);
+                          setEditingMilestoneName('');
+                        }
+                      }}
+                      className="w-full px-2 py-1 text-xs font-medium bg-white border-2 border-blue-500 rounded shadow-lg outline-none"
+                    />
                   </div>
                 )}
 

@@ -463,9 +463,16 @@ export function useDependencyInteraction({
     // Track the delta index for validation
     let currentDeltaIndex = 0;
     let lastValidDeltaIndex = 0;
+    let hasDragged = false; // Track if mouse actually moved beyond threshold
+    const DRAG_THRESHOLD = 4; // Minimum pixels before treating as drag
 
     const onMouseMove = (moveEvent) => {
       const deltaX = moveEvent.clientX - startX;
+      
+      // Only start dragging after passing the threshold
+      if (!hasDragged && Math.abs(deltaX) < DRAG_THRESHOLD) return;
+      hasDragged = true;
+      
       const deltaIndex = Math.round(deltaX / DAYWIDTH);
       
       // Update visual positions smoothly for all milestones
@@ -490,9 +497,14 @@ export function useDependencyInteraction({
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
       
-      // Set flag to prevent click handler from firing after drag
-      justDraggedRef.current = true;
-      setTimeout(() => { justDraggedRef.current = false; }, 0);
+      // Only block the click handler if we actually dragged
+      if (hasDragged) {
+        justDraggedRef.current = true;
+        setTimeout(() => { justDraggedRef.current = false; }, 0);
+      } else {
+        // No drag happened — this was just a click, let the click handler handle selection
+        return;
+      }
 
       // Calculate target positions for validation
       const targetPositions = {};

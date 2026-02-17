@@ -775,7 +775,6 @@ function DependenciesContent() {
           handleConnectionClick={handleConnectionClick}
           handleMileStoneMouseDown={handleMileStoneMouseDown}
           handleMilestoneClick={handleMilestoneClick}
-          handleMilestoneDoubleClick={handleMilestoneDoubleClick}
           handleMilestoneEdgeResize={handleMilestoneEdgeResize}
           handleConnectionDragStart={handleConnectionDragStart}
           handleMilestoneRenameSubmit={handleMilestoneRenameSubmit}

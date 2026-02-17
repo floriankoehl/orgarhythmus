@@ -79,7 +79,6 @@ export default function DependencyCanvas({
   handleConnectionClick,
   handleMileStoneMouseDown,
   handleMilestoneClick,
-  handleMilestoneDoubleClick,
   handleMilestoneEdgeResize,
   handleConnectionDragStart,
   handleMilestoneRenameSubmit,
@@ -424,7 +423,6 @@ export default function DependencyCanvas({
             getTaskYOffset={getTaskYOffset}
             handleMileStoneMouseDown={handleMileStoneMouseDown}
             handleMilestoneClick={handleMilestoneClick}
-            handleMilestoneDoubleClick={handleMilestoneDoubleClick}
             setHoveredMilestone={setHoveredMilestone}
             setEditingMilestoneName={setEditingMilestoneName}
             setEditingMilestoneId={setEditingMilestoneId}
