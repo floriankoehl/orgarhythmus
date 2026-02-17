@@ -1,14 +1,8 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  fetch_project_details,
-  fetch_project_teams,
-  fetch_project_tasks,
-  get_all_milestones,
   add_milestone,
   update_start_index,
-  get_all_dependencies,
-  get_project_days,
   set_day_purpose,
 } from '../../api/dependencies_api.js';
 import {
@@ -16,7 +10,6 @@ import {
   createTaskForProject,
 } from '../../api/org_API.js';
 import { 
-  daysBetween, 
   getTaskHeight as getTaskHeightBase, 
   getRawTeamHeight as getRawTeamHeightBase, 
   getTeamYOffset as getTeamYOffsetBase, 
@@ -48,6 +41,7 @@ import {
   TEAM_COLLAPSED_HEIGHT,
 } from './layoutMath';
 import { useDependencyInteraction } from './useDependencyInteraction';
+import { useDependencyData } from './useDependencyData';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -68,29 +62,44 @@ export default function Dependencies() {
     
   const { projectId } = useParams();
 
-  const [days, setDays] = useState(null)
-  const [projectStartDate, setProjectStartDate] = useState(null)
-  const [milestones, setMilestones] = useState({})
+  // ________Data Hook___________
+  // ________________________________________
+  const {
+    days,
+    projectStartDate,
+    projectDays,
+    setProjectDays,
+    milestones,
+    setMilestones,
+    teamOrder,
+    setTeamOrder,
+    teams,
+    setTeams,
+    tasks,
+    setTasks,
+    connections,
+    setConnections,
+    taskDisplaySettings,
+    setTaskDisplaySettings,
+    teamDisplaySettings,
+    setTeamDisplaySettings,
+    setReloadData,
+  } = useDependencyData(projectId);
+
+  // UI state
   const [hoveredMilestone, setHoveredMilestone] = useState(null)
   const [selectedMilestones, setSelectedMilestones] = useState(new Set())
   const [autoSelectBlocking, setAutoSelectBlocking] = useState(true) // Auto-select blocking milestone on failed move
   const justDraggedRef = useRef(false); // Prevents click handler from firing after drag ends
 
-  const [teamOrder, setTeamOrder] = useState([]);
-  const [teams, setTeams] = useState({});
   const [ghost, setGhost] = useState(null);
   const teamContainerRef = useRef(null);
   const [dropIndex, setDropIndex] = useState(null);
-
-  const [tasks, setTasks] = useState({});
-
-  const [reloadData, setReloadData] = useState(false)
 
   // Connection state
   const [isDraggingConnection, setIsDraggingConnection] = useState(false);
   const [connectionStart, setConnectionStart] = useState(null);
   const [connectionEnd, setConnectionEnd] = useState({ x: 0, y: 0 });
-  const [connections, setConnections] = useState([]);
   const [selectedConnection, setSelectedConnection] = useState(null);
 
   // Task drag state
@@ -99,12 +108,6 @@ export default function Dependencies() {
 
   // Cross-team move confirmation modal
   const [moveModal, setMoveModal] = useState(null);
-
-  // Display settings for tasks: { [taskId]: { size: 'normal' | 'small', hidden: boolean } }
-  const [taskDisplaySettings, setTaskDisplaySettings] = useState({});
-
-  // Display settings for teams: { [teamId]: { hidden: boolean, collapsed: boolean } }
-  const [teamDisplaySettings, setTeamDisplaySettings] = useState({});
 
   // Team settings dropdown
   const [openTeamSettings, setOpenTeamSettings] = useState(null);
@@ -152,9 +155,6 @@ export default function Dependencies() {
   const [showEmptyTeams, setShowEmptyTeams] = useState(true);
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
 
-  // Days data from backend
-  const [projectDays, setProjectDays] = useState({}); // { dayIndex: { purpose, is_sunday, day_name_short, ... } }
-  
   // Day purpose modal
   const [dayPurposeModal, setDayPurposeModal] = useState(null); // { dayIndex, currentPurpose }
   const [newDayPurpose, setNewDayPurpose] = useState("");
@@ -176,96 +176,6 @@ export default function Dependencies() {
 
   // safeMode is derived from viewMode - inspection mode is safe
   const safeMode = viewMode === "inspection";
-
-
-  // ________________Loading_________________
-  // ________________________________________
-
-  useEffect(() => {
-    const load_all = async () => {
-        const resProjcet = await fetch_project_details(projectId);
-        const project = resProjcet.project
-        const start_date = project.start_date
-        const end_date = project.end_date
-
-        const num_days = daysBetween(start_date, end_date)
-        setDays(num_days)
-        setProjectStartDate(new Date(start_date))
-
-      const resTeams = await fetch_project_teams(projectId);
-      const fetched_teams = resTeams.teams;
-
-      const newTeamOrder = [];
-      const teamObject = {};
-      const initialTeamDisplaySettings = {};
-
-      for (const team of fetched_teams) {
-        newTeamOrder.push(team.id);
-        teamObject[team.id] = {
-          ...team,
-          tasks: [],
-        };
-        initialTeamDisplaySettings[team.id] = { hidden: false };
-      }
-
-      const resTasks = await fetch_project_tasks(projectId);
-      const initialTaskDisplaySettings = {};
-
-      for (const team_id in teamObject) {
-        const teamTasks = resTasks.taskOrder?.[String(team_id)] || [];
-        teamObject[team_id].tasks = teamTasks;
-        
-        // Initialize display settings for each task
-        for (const taskId of teamTasks) {
-          initialTaskDisplaySettings[taskId] = { size: 'normal', hidden: false };
-        }
-      }
-
-      const resMilestones = await get_all_milestones(projectId);
-      const fetched_Milestones = resMilestones.milestones;
-
-      const updated_milestones = {}
-      if (Array.isArray(fetched_Milestones)) {
-        for (let i = 0; i < fetched_Milestones.length; i++) {
-          const milestone = fetched_Milestones[i]
-          updated_milestones[milestone.id] = {
-            ...milestone, 
-            display: "default"
-          }
-        }
-      }
-
-      // Load project days
-      try {
-        const resDays = await get_project_days(projectId);
-        setProjectDays(resDays.days || {});
-      } catch (err) {
-        console.error("Failed to load project days:", err);
-        setProjectDays({});
-      }
-
-      setTeamOrder(newTeamOrder);
-      setTeams(teamObject);
-      setTasks(resTasks.tasks);
-      setMilestones(updated_milestones);
-      setTaskDisplaySettings(initialTaskDisplaySettings);
-      setTeamDisplaySettings(initialTeamDisplaySettings);
-
-      try {
-        const resDeps = await get_all_dependencies(projectId);
-        const fetched_deps = resDeps.dependencies;
-        if (Array.isArray(fetched_deps)) {
-          setConnections(fetched_deps.map(d => ({ source: d.source, target: d.target })));
-        }
-      } catch (err) {
-        console.error("Failed to load dependencies:", err);
-        setConnections([]);
-      }
-    };
-
-    load_all();
-    setReloadData(false)
-  }, [reloadData, projectId]);
 
 
   // ________DAY PURPOSE HANDLERS________
