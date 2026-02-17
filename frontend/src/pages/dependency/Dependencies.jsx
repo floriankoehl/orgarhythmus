@@ -86,6 +86,8 @@ function DependenciesContent() {
     baseViewModeRef,
     autoSelectBlocking,
     setAutoSelectBlocking,
+    warningDuration,
+    setWarningDuration,
     editingMilestoneId,
     setEditingMilestoneId,
     editingMilestoneName,
@@ -700,6 +702,9 @@ function DependenciesContent() {
           // Auto-select
           autoSelectBlocking={autoSelectBlocking}
           setAutoSelectBlocking={setAutoSelectBlocking}
+          // Warning settings
+          warningDuration={warningDuration}
+          setWarningDuration={setWarningDuration}
           // Settings dropdown
           showSettingsDropdown={showSettingsDropdown}
           setShowSettingsDropdown={setShowSettingsDropdown}

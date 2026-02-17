@@ -30,6 +30,7 @@ export function DependencyProvider({ children }) {
   const [viewMode, setViewMode] = useState("inspection");
   const baseViewModeRef = useRef("inspection");
   const [autoSelectBlocking, setAutoSelectBlocking] = useState(true);
+  const [warningDuration, setWarningDuration] = useState(2000); // ms
   const [editingMilestoneId, setEditingMilestoneId] = useState(null);
   const [editingMilestoneName, setEditingMilestoneName] = useState("");
 
@@ -48,6 +49,8 @@ export function DependencyProvider({ children }) {
     baseViewModeRef,
     autoSelectBlocking,
     setAutoSelectBlocking,
+    warningDuration,
+    setWarningDuration,
     editingMilestoneId,
     setEditingMilestoneId,
     editingMilestoneName,

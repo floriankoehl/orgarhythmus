@@ -80,6 +80,7 @@ export function useDependencyInteraction({
     autoSelectBlocking,
     setEditingMilestoneId,
     setEditingMilestoneName,
+    warningDuration,
   } = useDependency();
   // Transient interaction state
   const justDraggedRef = useRef(false); // Prevents click handler from firing after drag ends
@@ -426,9 +427,9 @@ export function useDependencyInteraction({
   };
 
   // Handle milestone mouse down (drag) - supports moving multiple selected milestones
-  // Only allowed in schedule mode
+  // Allowed in schedule and dependency modes
   const handleMileStoneMouseDown = (e, milestoneId) => {
-    if (viewMode !== "schedule") return;
+    if (viewMode !== "schedule" && viewMode !== "dependency") return;
 
     e.preventDefault();
     const containerRect = teamContainerRef.current?.getBoundingClientRect();
@@ -528,26 +529,25 @@ export function useDependencyInteraction({
       const validation = validateMultiMilestoneMove(milestonesToMove, currentDeltaIndex);
       
       if (!validation.valid) {
-        // Move is blocked - show feedback and optionally auto-select blocking milestone
-        if (validation.blockingMilestoneId) {
-          // Show visual feedback if there's a blocking connection
-          if (validation.blockingConnection) {
-            showBlockingFeedback(validation.blockingMilestoneId, validation.blockingConnection);
-          }
+        // Move is blocked - show feedback for ALL blocking milestones
+        const allBlocking = validation.allBlocking || [];
+        
+        for (const { blockingMilestoneId, blockingConnection } of allBlocking) {
+          showBlockingFeedback(blockingMilestoneId, blockingConnection);
+        }
           
-          // Auto-select the blocking milestone along with the milestones being moved (if enabled)
-          if (autoSelectBlocking) {
-            setSelectedMilestones(prev => {
-              const newSet = new Set(prev);
-              // Add all milestones that were being moved
-              for (const mId of milestonesToMove) {
-                newSet.add(mId);
-              }
-              // Add the blocking milestone
-              newSet.add(validation.blockingMilestoneId);
-              return newSet;
-            });
-          }
+        // Auto-select all blocking milestones along with the milestones being moved
+        if (autoSelectBlocking && allBlocking.length > 0) {
+          setSelectedMilestones(prev => {
+            const newSet = new Set(prev);
+            for (const mId of milestonesToMove) {
+              newSet.add(mId);
+            }
+            for (const { blockingMilestoneId } of allBlocking) {
+              newSet.add(blockingMilestoneId);
+            }
+            return newSet;
+          });
         }
         
         // Revert all milestones to their original positions
@@ -687,20 +687,19 @@ export function useDependencyInteraction({
     }
   };
 
-  // Check if a move would violate incoming dependencies
-  // Returns { valid: true } or { valid: false, blockingConnection, blockingMilestone }
+  // Check if a move would violate dependencies (both incoming and outgoing)
+  // Returns { valid: true } or { valid: false, blockingConnection, blockingMilestoneId }
   const validateMilestoneMove = (milestoneId, newStartIndex) => {
-    // Find all incoming connections (where this milestone is the target)
+    const milestone = milestones[milestoneId];
+    if (!milestone) return { valid: true };
+
+    // Check incoming connections (moving left - source must finish before target starts)
     const incomingConnections = connections.filter(c => c.target === milestoneId);
     
     for (const conn of incomingConnections) {
       const sourceMilestone = milestones[conn.source];
       if (!sourceMilestone) continue;
       
-      // Source must finish (end) before target starts
-      // Source end day = source.start_index + source.duration - 1
-      // Target start day = newStartIndex
-      // For valid dependency: source end < target start
       const sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
       
       if (sourceEndIndex >= newStartIndex) {
@@ -712,14 +711,33 @@ export function useDependencyInteraction({
         };
       }
     }
+
+    // Check outgoing connections (moving right - this milestone must finish before target starts)
+    const outgoingConnections = connections.filter(c => c.source === milestoneId);
+    const newEndIndex = newStartIndex + (milestone.duration || 1) - 1;
+
+    for (const conn of outgoingConnections) {
+      const targetMilestone = milestones[conn.target];
+      if (!targetMilestone) continue;
+
+      if (newEndIndex >= targetMilestone.start_index) {
+        return {
+          valid: false,
+          blockingConnection: conn,
+          blockingMilestoneId: conn.target,
+          reason: `This milestone must finish before "${targetMilestone.name}" starts`
+        };
+      }
+    }
     
     return { valid: true };
   };
 
   // Check if moving multiple milestones by a delta would be valid
-  // Skip checking dependencies where the source milestone is also being moved
+  // Collects ALL blocking milestones (not just the first)
   const validateMultiMilestoneMove = (milestoneIds, deltaIndex) => {
     const movingSet = new Set(milestoneIds);
+    const allBlocking = []; // { blockingMilestoneId, blockingConnection }
     
     for (const milestoneId of milestoneIds) {
       const milestone = milestones[milestoneId];
@@ -727,36 +745,63 @@ export function useDependencyInteraction({
       
       const newStartIndex = milestone.start_index + deltaIndex;
       if (newStartIndex < 0) {
-        return { valid: false, reason: "Cannot move before project start", blockingMilestoneId: milestoneId };
+        return { valid: false, reason: "Cannot move before project start", blockingMilestoneIds: [milestoneId], allBlocking: [] };
       }
       
-      // Check incoming connections, but skip ones where source is also moving
+      // Check incoming connections (moving left), skip if source is also moving
       const incomingConnections = connections.filter(c => c.target === milestoneId);
       
       for (const conn of incomingConnections) {
-        // Skip if source milestone is also being moved (dependency will move with it)
         if (movingSet.has(conn.source)) continue;
         
         const sourceMilestone = milestones[conn.source];
         if (!sourceMilestone) continue;
         
-        // Source must finish (end) before target starts
         const sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
         
         if (sourceEndIndex >= newStartIndex) {
-          return {
-            valid: false,
-            blockingConnection: conn,
-            blockingMilestoneId: conn.source,
-            reason: `Dependency from "${sourceMilestone.name}" must finish before this milestone can start`
-          };
+          allBlocking.push({ blockingMilestoneId: conn.source, blockingConnection: conn });
         }
       }
+
+      // Check outgoing connections (moving right), skip if target is also moving
+      const outgoingConnections = connections.filter(c => c.source === milestoneId);
+      const newEndIndex = newStartIndex + (milestone.duration || 1) - 1;
+
+      for (const conn of outgoingConnections) {
+        if (movingSet.has(conn.target)) continue;
+
+        const targetMilestone = milestones[conn.target];
+        if (!targetMilestone) continue;
+
+        if (newEndIndex >= targetMilestone.start_index) {
+          allBlocking.push({ blockingMilestoneId: conn.target, blockingConnection: conn });
+        }
+      }
+    }
+
+    if (allBlocking.length > 0) {
+      // Deduplicate by milestone id
+      const seen = new Set();
+      const unique = allBlocking.filter(b => {
+        if (seen.has(b.blockingMilestoneId)) return false;
+        seen.add(b.blockingMilestoneId);
+        return true;
+      });
+      return {
+        valid: false,
+        allBlocking: unique,
+        // Keep first for backwards compat
+        blockingConnection: unique[0].blockingConnection,
+        blockingMilestoneId: unique[0].blockingMilestoneId,
+      };
     }
     return { valid: true };
   };
 
-  // Show blocking feedback with temporary expansion of hidden/collapsed items and filter clearing
+  // Show blocking feedback with temporary expansion of hidden/collapsed items
+  // When autoSelectBlocking is ON:  reveal permanently (don't revert)
+  // When autoSelectBlocking is OFF: reveal for 2s then revert to original state
   const showBlockingFeedback = (blockingMilestoneId, connectionId) => {
     const milestone = milestones[blockingMilestoneId];
     if (!milestone) return;
@@ -767,7 +812,7 @@ export function useDependencyInteraction({
     
     const teamId = task.team;
     
-    // Store original states
+    // Store original states so we can revert if needed
     const originalState = {
       taskHidden: taskDisplaySettings[taskId]?.hidden || false,
       taskSize: taskDisplaySettings[taskId]?.size || 'normal',
@@ -775,11 +820,17 @@ export function useDependencyInteraction({
       teamHidden: teamDisplaySettings[teamId]?.hidden || false,
     };
     
-    // Temporarily show the milestone - unhide team if hidden
+    // Reveal the blocking milestone — unhide team, unhide task, expand task, uncollapse team
     if (originalState.teamHidden) {
       setTeamDisplaySettings(prev => ({
         ...prev,
         [teamId]: { ...prev[teamId], hidden: false }
+      }));
+    }
+    if (originalState.teamCollapsed) {
+      setTeamDisplaySettings(prev => ({
+        ...prev,
+        [teamId]: { ...prev[teamId], collapsed: false }
       }));
     }
     if (originalState.taskHidden) {
@@ -794,12 +845,6 @@ export function useDependencyInteraction({
         [taskId]: { ...prev[taskId], size: 'normal' }
       }));
     }
-    if (originalState.teamCollapsed) {
-      setTeamDisplaySettings(prev => ({
-        ...prev,
-        [teamId]: { ...prev[teamId], collapsed: false }
-      }));
-    }
     
     // Set the highlight state
     setBlockedMoveHighlight({
@@ -808,35 +853,42 @@ export function useDependencyInteraction({
       connectionTarget: connectionId?.target,
     });
     
-    // Restore original state after 2 seconds
-    setTimeout(() => {
-      setBlockedMoveHighlight(null);
-      
-      if (originalState.teamHidden) {
-        setTeamDisplaySettings(prev => ({
-          ...prev,
-          [teamId]: { ...prev[teamId], hidden: true }
-        }));
-      }
-      if (originalState.taskHidden) {
-        setTaskDisplaySettings(prev => ({
-          ...prev,
-          [taskId]: { ...prev[taskId], hidden: true }
-        }));
-      }
-      if (originalState.taskSize === 'small') {
-        setTaskDisplaySettings(prev => ({
-          ...prev,
-          [taskId]: { ...prev[taskId], size: 'small' }
-        }));
-      }
-      if (originalState.teamCollapsed) {
-        setTeamDisplaySettings(prev => ({
-          ...prev,
-          [teamId]: { ...prev[teamId], collapsed: true }
-        }));
-      }
-    }, 2000);
+    if (autoSelectBlocking) {
+      // Auto-select is ON: keep everything revealed, only clear highlight
+      setTimeout(() => {
+        setBlockedMoveHighlight(null);
+      }, warningDuration);
+    } else {
+      // Auto-select is OFF: revert visibility to original state
+      setTimeout(() => {
+        setBlockedMoveHighlight(null);
+        
+        if (originalState.teamHidden) {
+          setTeamDisplaySettings(prev => ({
+            ...prev,
+            [teamId]: { ...prev[teamId], hidden: true }
+          }));
+        }
+        if (originalState.teamCollapsed) {
+          setTeamDisplaySettings(prev => ({
+            ...prev,
+            [teamId]: { ...prev[teamId], collapsed: true }
+          }));
+        }
+        if (originalState.taskHidden) {
+          setTaskDisplaySettings(prev => ({
+            ...prev,
+            [taskId]: { ...prev[taskId], hidden: true }
+          }));
+        }
+        if (originalState.taskSize === 'small') {
+          setTaskDisplaySettings(prev => ({
+            ...prev,
+            [taskId]: { ...prev[taskId], size: 'small' }
+          }));
+        }
+      }, warningDuration);
+    }
   };
 
   // Handle milestone double click (rename)
@@ -872,7 +924,7 @@ export function useDependencyInteraction({
     setEditingMilestoneName("");
   };
 
-  // Handle milestone edge resize
+  // Handle milestone edge resize — with dependency validation
   const handleMilestoneEdgeResize = (e, milestoneId, edge) => {
     if (safeMode) return;
     e.stopPropagation();
@@ -918,7 +970,59 @@ export function useDependencyInteraction({
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
 
-      // Save duration change if it changed
+      // Validate the resize against dependencies
+      const newEndIndex = currentStartIndex + currentDuration - 1;
+
+      // Check outgoing deps (right edge expand — our end might now overlap a dependent's start)
+      const outgoingConnections = connections.filter(c => c.source === milestoneId);
+      for (const conn of outgoingConnections) {
+        const targetMilestone = milestones[conn.target];
+        if (!targetMilestone) continue;
+        if (newEndIndex >= targetMilestone.start_index) {
+          // Blocked — revert to original
+          setMilestones(prev => ({
+            ...prev,
+            [milestoneId]: { ...prev[milestoneId], start_index: startIndex, duration: startDuration }
+          }));
+          showBlockingFeedback(conn.target, conn);
+          if (autoSelectBlocking) {
+            setSelectedMilestones(prev => {
+              const newSet = new Set(prev);
+              newSet.add(milestoneId);
+              newSet.add(conn.target);
+              return newSet;
+            });
+          }
+          return;
+        }
+      }
+
+      // Check incoming deps (left edge expand — our start might now overlap a source's end)
+      const incomingConnections = connections.filter(c => c.target === milestoneId);
+      for (const conn of incomingConnections) {
+        const sourceMilestone = milestones[conn.source];
+        if (!sourceMilestone) continue;
+        const sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
+        if (sourceEndIndex >= currentStartIndex) {
+          // Blocked — revert to original
+          setMilestones(prev => ({
+            ...prev,
+            [milestoneId]: { ...prev[milestoneId], start_index: startIndex, duration: startDuration }
+          }));
+          showBlockingFeedback(conn.source, conn);
+          if (autoSelectBlocking) {
+            setSelectedMilestones(prev => {
+              const newSet = new Set(prev);
+              newSet.add(milestoneId);
+              newSet.add(conn.source);
+              return newSet;
+            });
+          }
+          return;
+        }
+      }
+
+      // Validation passed — save changes
       const durationChange = currentDuration - startDuration;
       if (durationChange !== 0) {
         try {
@@ -928,7 +1032,6 @@ export function useDependencyInteraction({
         }
       }
 
-      // Save start index change if it changed (only for left edge)
       if (edge === "left" && currentStartIndex !== startIndex) {
         try {
           await update_start_index(projectId, milestoneId, currentStartIndex);
@@ -1019,12 +1122,34 @@ export function useDependencyInteraction({
 
         // Check if connection already exists
         const exists = connections.some(c => c.source === sourceId && c.target === targetId);
-        if (!exists) {
-          try {
-            await create_dependency(projectId, sourceId, targetId);
-            setConnections(prev => [...prev, { source: sourceId, target: targetId }]);
-          } catch (err) {
-            console.error("Failed to create dependency:", err);
+        // Also check reverse direction (would create a cycle)
+        const reverseExists = connections.some(c => c.source === targetId && c.target === sourceId);
+
+        if (!exists && !reverseExists) {
+          // Validate scheduling: source must end before target starts
+          const sourceMilestone = milestones[sourceId];
+          const targetMilestoneData = milestones[targetId];
+
+          if (sourceMilestone && targetMilestoneData) {
+            const sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
+
+            if (sourceEndIndex >= targetMilestoneData.start_index) {
+              // Connection would violate scheduling — show warning highlight on both
+              setBlockedMoveHighlight({
+                milestoneId: sourceId,
+                connectionSource: sourceId,
+                connectionTarget: targetId,
+              });
+              setTimeout(() => setBlockedMoveHighlight(null), warningDuration);
+              console.warn("Cannot create dependency: source must finish before target starts");
+            } else {
+              try {
+                await create_dependency(projectId, sourceId, targetId);
+                setConnections(prev => [...prev, { source: sourceId, target: targetId }]);
+              } catch (err) {
+                console.error("Failed to create dependency:", err);
+              }
+            }
           }
         }
       }

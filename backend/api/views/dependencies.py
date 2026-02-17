@@ -54,6 +54,22 @@ def create_dependency(request, project_id):
     except Milestone.DoesNotExist:
         return Response({"detail": "Milestone not found in this project"}, status=status.HTTP_404_NOT_FOUND)
 
+    # Prevent self-dependency
+    if source_id == target_id:
+        return Response({"detail": "A milestone cannot depend on itself"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Prevent reverse/circular dependency
+    if Dependency.objects.filter(source=target, target=source).exists():
+        return Response({"detail": "Reverse dependency already exists — would create a cycle"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Validate scheduling: source must finish before target starts
+    source_end_index = source.start_index + (source.duration or 1) - 1
+    if source_end_index >= target.start_index:
+        return Response(
+            {"detail": "Cannot create dependency: source milestone must finish before target milestone starts"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     dependency, created = Dependency.objects.get_or_create(source=source, target=target)
     serialized = DependencySerializer_Deps(dependency)
     return Response(

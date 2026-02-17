@@ -33,6 +33,9 @@ export default function DependencyToolbar({
   // Auto-select
   autoSelectBlocking,
   setAutoSelectBlocking,
+  // Warning settings
+  warningDuration,
+  setWarningDuration,
   // Settings dropdown
   showSettingsDropdown,
   setShowSettingsDropdown,
@@ -197,6 +200,40 @@ export default function DependencyToolbar({
                         />
                         <span>Show empty teams</span>
                       </label>
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-3">
+                      <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Warning Behavior</h4>
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={autoSelectBlocking}
+                            onChange={(e) => setAutoSelectBlocking(e.target.checked)}
+                            className="rounded border-slate-300"
+                          />
+                          <span>Auto-select blocking milestones</span>
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-600 w-24">Warn time:</span>
+                          <input
+                            type="range"
+                            min="100"
+                            max="5000"
+                            step="100"
+                            value={warningDuration}
+                            onChange={(e) => setWarningDuration(Number(e.target.value))}
+                            className="flex-1"
+                          />
+                          <span className="text-xs text-slate-500 w-10">{(warningDuration / 1000).toFixed(1)}s</span>
+                          <button
+                            onClick={() => setWarningDuration(2000)}
+                            className="text-[10px] text-blue-600 hover:underline"
+                          >
+                            Reset
+                          </button>
+                        </div>
+                      </div>
                     </div>
                     
                     <div className="border-t border-slate-100 pt-3">
@@ -427,22 +464,6 @@ export default function DependencyToolbar({
               <span>Deps</span>
             </button>
           </div>
-          
-          {/* Auto-select blocking milestone toggle */}
-          <label 
-            className="flex items-center gap-2 mt-3 cursor-pointer group"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <input
-              type="checkbox"
-              checked={autoSelectBlocking}
-              onChange={(e) => setAutoSelectBlocking(e.target.checked)}
-              className="rounded border-slate-300"
-            />
-            <span className="text-xs text-slate-600 group-hover:text-slate-800">
-              Auto-select blocking milestones
-            </span>
-          </label>
         </div>
 
         {/* Section 4: Create & Delete */}
