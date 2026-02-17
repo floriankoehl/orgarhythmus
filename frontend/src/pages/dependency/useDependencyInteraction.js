@@ -688,10 +688,13 @@ export function useDependencyInteraction({
   };
 
   // Check if a move would violate dependencies (both incoming and outgoing)
-  // Returns { valid: true } or { valid: false, blockingConnection, blockingMilestoneId }
+  // Returns { valid: true } or { valid: false, allBlocking: [...] }
+  // Collects ALL blocking milestones (not just the first)
   const validateMilestoneMove = (milestoneId, newStartIndex) => {
     const milestone = milestones[milestoneId];
     if (!milestone) return { valid: true };
+
+    const allBlocking = [];
 
     // Check incoming connections (moving left - source must finish before target starts)
     const incomingConnections = connections.filter(c => c.target === milestoneId);
@@ -703,12 +706,7 @@ export function useDependencyInteraction({
       const sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
       
       if (sourceEndIndex >= newStartIndex) {
-        return {
-          valid: false,
-          blockingConnection: conn,
-          blockingMilestoneId: conn.source,
-          reason: `Dependency from "${sourceMilestone.name}" must finish before this milestone can start`
-        };
+        allBlocking.push({ blockingMilestoneId: conn.source, blockingConnection: conn });
       }
     }
 
@@ -721,15 +719,25 @@ export function useDependencyInteraction({
       if (!targetMilestone) continue;
 
       if (newEndIndex >= targetMilestone.start_index) {
-        return {
-          valid: false,
-          blockingConnection: conn,
-          blockingMilestoneId: conn.target,
-          reason: `This milestone must finish before "${targetMilestone.name}" starts`
-        };
+        allBlocking.push({ blockingMilestoneId: conn.target, blockingConnection: conn });
       }
     }
     
+    if (allBlocking.length > 0) {
+      // Deduplicate by milestone id
+      const seen = new Set();
+      const unique = allBlocking.filter(b => {
+        if (seen.has(b.blockingMilestoneId)) return false;
+        seen.add(b.blockingMilestoneId);
+        return true;
+      });
+      return {
+        valid: false,
+        allBlocking: unique,
+        blockingConnection: unique[0].blockingConnection,
+        blockingMilestoneId: unique[0].blockingMilestoneId,
+      };
+    }
     return { valid: true };
   };
 
@@ -970,8 +978,9 @@ export function useDependencyInteraction({
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
 
-      // Validate the resize against dependencies
+      // Validate the resize against dependencies — collect ALL violations
       const newEndIndex = currentStartIndex + currentDuration - 1;
+      const resizeBlocking = [];
 
       // Check outgoing deps (right edge expand — our end might now overlap a dependent's start)
       const outgoingConnections = connections.filter(c => c.source === milestoneId);
@@ -979,21 +988,7 @@ export function useDependencyInteraction({
         const targetMilestone = milestones[conn.target];
         if (!targetMilestone) continue;
         if (newEndIndex >= targetMilestone.start_index) {
-          // Blocked — revert to original
-          setMilestones(prev => ({
-            ...prev,
-            [milestoneId]: { ...prev[milestoneId], start_index: startIndex, duration: startDuration }
-          }));
-          showBlockingFeedback(conn.target, conn);
-          if (autoSelectBlocking) {
-            setSelectedMilestones(prev => {
-              const newSet = new Set(prev);
-              newSet.add(milestoneId);
-              newSet.add(conn.target);
-              return newSet;
-            });
-          }
-          return;
+          resizeBlocking.push({ blockingMilestoneId: conn.target, blockingConnection: conn });
         }
       }
 
@@ -1004,22 +999,31 @@ export function useDependencyInteraction({
         if (!sourceMilestone) continue;
         const sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
         if (sourceEndIndex >= currentStartIndex) {
-          // Blocked — revert to original
-          setMilestones(prev => ({
-            ...prev,
-            [milestoneId]: { ...prev[milestoneId], start_index: startIndex, duration: startDuration }
-          }));
-          showBlockingFeedback(conn.source, conn);
-          if (autoSelectBlocking) {
-            setSelectedMilestones(prev => {
-              const newSet = new Set(prev);
-              newSet.add(milestoneId);
-              newSet.add(conn.source);
-              return newSet;
-            });
-          }
-          return;
+          resizeBlocking.push({ blockingMilestoneId: conn.source, blockingConnection: conn });
         }
+      }
+
+      if (resizeBlocking.length > 0) {
+        // Revert to original
+        setMilestones(prev => ({
+          ...prev,
+          [milestoneId]: { ...prev[milestoneId], start_index: startIndex, duration: startDuration }
+        }));
+        // Show feedback for ALL blocking milestones
+        for (const { blockingMilestoneId, blockingConnection } of resizeBlocking) {
+          showBlockingFeedback(blockingMilestoneId, blockingConnection);
+        }
+        if (autoSelectBlocking) {
+          setSelectedMilestones(prev => {
+            const newSet = new Set(prev);
+            newSet.add(milestoneId);
+            for (const { blockingMilestoneId } of resizeBlocking) {
+              newSet.add(blockingMilestoneId);
+            }
+            return newSet;
+          });
+        }
+        return;
       }
 
       // Validation passed — save changes

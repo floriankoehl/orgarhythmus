@@ -513,20 +513,23 @@ export default function DependencyToolbar({
               <span>Add Milestone</span>
             </button>
             
-            {/* Delete Button - only visible when something is selected */}
-            {hasSelection && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteSelected();
-                }}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition"
-                title={getDeleteLabel()}
-              >
-                <DeleteIcon style={{ fontSize: 14 }} />
-                <span>{getDeleteLabel()}</span>
-              </button>
-            )}
+            {/* Delete Button - always rendered for stable layout, disabled when nothing selected */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (hasSelection) onDeleteSelected();
+              }}
+              disabled={!hasSelection}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
+                hasSelection
+                  ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
+                  : 'border-slate-200 text-slate-300 cursor-not-allowed'
+              }`}
+              title={hasSelection ? getDeleteLabel() : "Select milestones or connections to delete"}
+            >
+              <DeleteIcon style={{ fontSize: 14 }} />
+              <span>{hasSelection ? getDeleteLabel() : "Delete"}</span>
+            </button>
           </div>
           {isAddingMilestone && (
             <p className="text-xs text-blue-600 mt-2">Click on a day cell in any task row to create a milestone there.</p>
