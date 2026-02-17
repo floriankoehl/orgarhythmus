@@ -352,13 +352,20 @@ export default function DependencyCanvas({
 
               if (!sourcePos || !targetPos) return null;
 
-              // Check if we should hide dependencies for collapsed tasks
-              if (hideCollapsedDependencies) {
-                const sourceMilestone = milestones[conn.source];
-                const targetMilestone = milestones[conn.target];
-                if (sourceMilestone && targetMilestone) {
-                  const sourceTaskId = sourceMilestone.task;
-                  const targetTaskId = targetMilestone.task;
+              // Hide connections when either endpoint's team is collapsed
+              const sourceMilestone = milestones[conn.source];
+              const targetMilestone = milestones[conn.target];
+              if (sourceMilestone && targetMilestone) {
+                const sourceTaskId = sourceMilestone.task;
+                const targetTaskId = targetMilestone.task;
+                // Always hide for collapsed teams
+                for (const tId of teamOrder) {
+                  const t = teams[tId];
+                  if (t && t.tasks.includes(sourceTaskId) && isTeamCollapsed(tId)) return null;
+                  if (t && t.tasks.includes(targetTaskId) && isTeamCollapsed(tId)) return null;
+                }
+                // Optionally hide dependencies for collapsed (small) tasks
+                if (hideCollapsedDependencies) {
                   const sourceTaskCollapsed = taskDisplaySettings[sourceTaskId]?.size === 'small';
                   const targetTaskCollapsed = taskDisplaySettings[targetTaskId]?.size === 'small';
                   if (sourceTaskCollapsed || targetTaskCollapsed) return null;
@@ -504,7 +511,7 @@ export default function DependencyCanvas({
                 left: `${taskGhost.x}px`,
                 top: `${taskGhost.y}px`,
                 zIndex: 100,
-                transform: 'translate(-50%, -50%)',
+                transform: 'translate(-12px, -50%)',
                 boxShadow: '0 4px 16px rgba(0,0,0,0.25), 0 0 0 1px rgba(59,130,246,0.3)',
               }}
             >

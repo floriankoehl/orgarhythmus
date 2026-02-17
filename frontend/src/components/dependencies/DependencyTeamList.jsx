@@ -130,6 +130,7 @@ export default function DependencyTeamList({
                   width: `${TEAMWIDTH + TASKWIDTH}px`,
                   height: `${teamHeight}px`,
                   opacity: ghost?.id === team_key ? 0.3 : 1,
+                  backgroundColor: 'white',
                 }}
               >
                 {/* Team Name Column */}
@@ -209,7 +210,7 @@ export default function DependencyTeamList({
 
                 {/* Tasks Column - only show when not collapsed AND has visible tasks */}
                 {!isCollapsed && visibleTasks.length > 0 && (
-                  <div className="flex flex-col bg-white">
+                  <div className="flex flex-col border-r border-slate-200" style={{ backgroundColor: 'rgba(255,255,255,0.97)' }}>
                     {team.tasks.map((task_key, taskIndex) => {
                       if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
                       
@@ -324,10 +325,11 @@ export default function DependencyTeamList({
                 {/* Collapsed team placeholder */}
                 {isCollapsed && (
                   <div
-                    className="border-l border-slate-200 flex items-center px-2 bg-slate-50/50"
+                    className="border-l border-r border-slate-200 flex items-center px-2"
                     style={{
                       width: `${TASKWIDTH}px`,
                       height: `${teamHeight}px`,
+                      backgroundColor: 'rgba(248,250,252,0.97)',
                     }}
                   >
                     <span className="text-[10px] text-slate-400 italic">

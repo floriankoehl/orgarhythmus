@@ -640,27 +640,6 @@ function DependenciesContent() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-2 space-y-1">
-              {/* Collapse/Expand Team (entire team) */}
-              <button
-                onClick={() => {
-                  toggleTeamCollapsed(team_key);
-                  setOpenTeamSettings(null);
-                }}
-                className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left"
-              >
-                {isTeamCollapsed(team_key) ? (
-                  <>
-                    <UnfoldMoreIcon style={{ fontSize: 14 }} />
-                    <span>Expand team</span>
-                  </>
-                ) : (
-                  <>
-                    <UnfoldLessIcon style={{ fontSize: 14 }} />
-                    <span>Collapse team</span>
-                  </>
-                )}
-              </button>
-              
               {/* Collapse/Expand all tasks (only when team is not collapsed) */}
               {!isTeamCollapsed(team_key) && (
                 <button

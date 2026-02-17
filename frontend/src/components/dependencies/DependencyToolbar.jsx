@@ -92,10 +92,10 @@ export default function DependencyToolbar({
 
   return (
     <div className="mb-4 rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="grid grid-cols-4 divide-x divide-slate-200">
+      <div className="flex divide-x divide-slate-200">
         
         {/* Section 1: Settings */}
-        <div className="p-3">
+        <div className="p-3 flex-1 min-w-0">
           <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
             Settings
           </h3>
@@ -177,19 +177,27 @@ export default function DependencyToolbar({
                         <input
                           type="checkbox"
                           checked={hideCollapsedDependencies}
-                          onChange={(e) => setHideCollapsedDependencies(e.target.checked)}
+                          onChange={(e) => {
+                            setHideCollapsedDependencies(e.target.checked);
+                            // If unchecking deps, also uncheck milestones since milestones option implies deps
+                            if (!e.target.checked) setHideCollapsedMilestones(false);
+                          }}
                           className="rounded border-slate-300"
                         />
-                        <span>Hide dependencies for collapsed tasks</span>
+                        <span>Hide deps for collapsed tasks</span>
                       </label>
                       <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={hideCollapsedMilestones}
-                          onChange={(e) => setHideCollapsedMilestones(e.target.checked)}
+                          onChange={(e) => {
+                            setHideCollapsedMilestones(e.target.checked);
+                            // Hiding milestones implies hiding deps too
+                            if (e.target.checked) setHideCollapsedDependencies(true);
+                          }}
                           className="rounded border-slate-300"
                         />
-                        <span>Hide milestones for collapsed tasks</span>
+                        <span>Hide deps &amp; milestones for collapsed tasks</span>
                       </label>
                       <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                         <input
@@ -302,8 +310,135 @@ export default function DependencyToolbar({
           </div>
         </div>
 
-        {/* Section 2: Filter */}
-        <div className="p-3">
+        {/* Section 2: Mode */}
+        <div className="p-3 flex-shrink-0">
+          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+            Mode
+          </h3>
+          <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setViewMode("inspection");
+                baseViewModeRef.current = "inspection";
+              }}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
+                viewMode === "inspection"
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+              title="View only - no data changes (V)"
+            >
+              <VisibilityIcon style={{ fontSize: 14 }} />
+              <span>View</span>
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setViewMode("schedule");
+                baseViewModeRef.current = "schedule";
+              }}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
+                viewMode === "schedule"
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+              title="Edit milestones, schedule and resize (E)"
+            >
+              <ScheduleIcon style={{ fontSize: 14 }} />
+              <span>Edit</span>
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setViewMode("dependency");
+                baseViewModeRef.current = "dependency";
+              }}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
+                viewMode === "dependency"
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+              title="Edit dependency connections (D)"
+            >
+              <AccountTreeIcon style={{ fontSize: 14 }} />
+              <span>Deps</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Section 3: Create & Delete */}
+        <div className="p-3 flex-1 min-w-0">
+          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+            Actions
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowCreateTeamModal(true);
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+            >
+              <GroupAddIcon style={{ fontSize: 14 }} />
+              <span>New Team</span>
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (teamOrder.length > 0) {
+                  setNewTaskTeamId(teamOrder[0]);
+                }
+                setShowCreateTaskModal(true);
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+              disabled={teamOrder.length === 0}
+              title={teamOrder.length === 0 ? "Create a team first" : "Create a new task"}
+            >
+              <PlaylistAddIcon style={{ fontSize: 14 }} />
+              <span>New Task</span>
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsAddingMilestone(!isAddingMilestone);
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
+                isAddingMilestone 
+                  ? 'border-blue-400 bg-blue-50 text-blue-700' 
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+              title={isAddingMilestone ? "Click on a task row to place milestone" : "Add a new milestone"}
+            >
+              <FlagIcon style={{ fontSize: 14 }} />
+              <span>Add Milestone</span>
+            </button>
+            
+            {/* Delete Button - always rendered for stable layout, disabled when nothing selected */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (hasSelection) onDeleteSelected();
+              }}
+              disabled={!hasSelection}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
+                hasSelection
+                  ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
+                  : 'border-slate-200 text-slate-300 cursor-not-allowed'
+              }`}
+              title={hasSelection ? getDeleteLabel() : "Select milestones or connections to delete"}
+            >
+              <DeleteIcon style={{ fontSize: 14 }} />
+              <span>{hasSelection ? getDeleteLabel() : "Delete"}</span>
+            </button>
+          </div>
+          {isAddingMilestone && (
+            <p className="text-xs text-blue-600 mt-2">Click on a day cell in any task row to create a milestone there.</p>
+          )}
+        </div>
+
+        {/* Section 4: Filter */}
+        <div className="p-3 flex-shrink-0" style={{ minWidth: '130px' }}>
           <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
             Filter
           </h3>
@@ -332,7 +467,7 @@ export default function DependencyToolbar({
             
             {showFilterDropdown && (
               <div 
-                className="absolute top-full left-0 mt-1 w-56 rounded-lg border border-slate-200 bg-white shadow-xl z-50"
+                className="absolute top-full right-0 mt-1 w-56 rounded-lg border border-slate-200 bg-white shadow-xl z-50"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="p-2">
@@ -407,133 +542,6 @@ export default function DependencyToolbar({
               </div>
             )}
           </div>
-        </div>
-
-        {/* Section 3: Mode */}
-        <div className="p-3">
-          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            Mode
-          </h3>
-          <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setViewMode("inspection");
-                baseViewModeRef.current = "inspection";
-              }}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
-                viewMode === "inspection"
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-              title="View only - no data changes (V)"
-            >
-              <VisibilityIcon style={{ fontSize: 14 }} />
-              <span>View</span>
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setViewMode("schedule");
-                baseViewModeRef.current = "schedule";
-              }}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
-                viewMode === "schedule"
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-              title="Edit milestones, schedule and resize (E)"
-            >
-              <ScheduleIcon style={{ fontSize: 14 }} />
-              <span>Edit</span>
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setViewMode("dependency");
-                baseViewModeRef.current = "dependency";
-              }}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
-                viewMode === "dependency"
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-              title="Edit dependency connections (D)"
-            >
-              <AccountTreeIcon style={{ fontSize: 14 }} />
-              <span>Deps</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Section 4: Create & Delete */}
-        <div className="p-3">
-          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            Actions
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowCreateTeamModal(true);
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
-            >
-              <GroupAddIcon style={{ fontSize: 14 }} />
-              <span>New Team</span>
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (teamOrder.length > 0) {
-                  setNewTaskTeamId(teamOrder[0]);
-                }
-                setShowCreateTaskModal(true);
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
-              disabled={teamOrder.length === 0}
-              title={teamOrder.length === 0 ? "Create a team first" : "Create a new task"}
-            >
-              <PlaylistAddIcon style={{ fontSize: 14 }} />
-              <span>New Task</span>
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsAddingMilestone(!isAddingMilestone);
-              }}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
-                isAddingMilestone 
-                  ? 'border-blue-400 bg-blue-50 text-blue-700' 
-                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-              title={isAddingMilestone ? "Click on a task row to place milestone" : "Add a new milestone"}
-            >
-              <FlagIcon style={{ fontSize: 14 }} />
-              <span>Add Milestone</span>
-            </button>
-            
-            {/* Delete Button - always rendered for stable layout, disabled when nothing selected */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (hasSelection) onDeleteSelected();
-              }}
-              disabled={!hasSelection}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
-                hasSelection
-                  ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
-                  : 'border-slate-200 text-slate-300 cursor-not-allowed'
-              }`}
-              title={hasSelection ? getDeleteLabel() : "Select milestones or connections to delete"}
-            >
-              <DeleteIcon style={{ fontSize: 14 }} />
-              <span>{hasSelection ? getDeleteLabel() : "Delete"}</span>
-            </button>
-          </div>
-          {isAddingMilestone && (
-            <p className="text-xs text-blue-600 mt-2">Click on a day cell in any task row to create a milestone there.</p>
-          )}
         </div>
       </div>
     </div>
