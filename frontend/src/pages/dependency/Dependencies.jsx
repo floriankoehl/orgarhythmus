@@ -328,6 +328,7 @@ function DependenciesContent() {
     confirmMilestoneCreate,
     handleConfirmMove,
     handleConfirmDelete,
+    handleDeleteSelected,
     handleCreateTeam,
     handleCreateTask,
   } = useDependencyActions({
@@ -652,20 +653,26 @@ function DependenciesContent() {
       >
         {/* Control Board Toolbar */}
         <DependencyToolbar
+          // Data
           teamOrder={teamOrder}
           teams={teams}
+          // Filter state
           teamFilter={teamFilter}
           setTeamFilter={setTeamFilter}
           showFilterDropdown={showFilterDropdown}
           setShowFilterDropdown={setShowFilterDropdown}
+          // View mode
           viewMode={viewMode}
           setViewMode={setViewMode}
           mode={mode}
           baseViewModeRef={baseViewModeRef}
+          // Auto-select
           autoSelectBlocking={autoSelectBlocking}
           setAutoSelectBlocking={setAutoSelectBlocking}
+          // Settings dropdown
           showSettingsDropdown={showSettingsDropdown}
           setShowSettingsDropdown={setShowSettingsDropdown}
+          // Visibility settings
           hideAllDependencies={hideAllDependencies}
           setHideAllDependencies={setHideAllDependencies}
           hideCollapsedDependencies={hideCollapsedDependencies}
@@ -674,6 +681,7 @@ function DependenciesContent() {
           setHideCollapsedMilestones={setHideCollapsedMilestones}
           showEmptyTeams={showEmptyTeams}
           setShowEmptyTeams={setShowEmptyTeams}
+          // Dimension settings
           customDayWidth={customDayWidth}
           setCustomDayWidth={setCustomDayWidth}
           customTaskHeightNormal={customTaskHeightNormal}
@@ -691,6 +699,11 @@ function DependenciesContent() {
           setTeamTasksSmall={setTeamTasksSmall}
           setTeamTasksNormal={setTeamTasksNormal}
           showAllHiddenTeams={showAllHiddenTeams}
+          // Selection state for delete
+          selectedMilestones={selectedMilestones}
+          selectedConnection={selectedConnection}
+          // Delete handler
+          onDeleteSelected={handleDeleteSelected}
         />
 
         <DependencyCanvas

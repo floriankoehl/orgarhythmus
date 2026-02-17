@@ -8,6 +8,7 @@ import FlagIcon from '@mui/icons-material/Flag';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 import {
   DEFAULT_TASKHEIGHT_NORMAL,
@@ -66,7 +67,21 @@ export default function DependencyToolbar({
   setTeamTasksSmall,
   setTeamTasksNormal,
   showAllHiddenTeams,
+  // Selection state for delete
+  selectedMilestones,
+  selectedConnection,
+  // Delete handler
+  onDeleteSelected,
 }) {
+  const hasSelection = selectedMilestones?.size > 0 || selectedConnection;
+  
+  const getDeleteLabel = () => {
+    if (selectedConnection) return 'Delete Dependency';
+    if (selectedMilestones?.size > 1) return `Delete ${selectedMilestones.size} Milestones`;
+    if (selectedMilestones?.size === 1) return 'Delete Milestone';
+    return 'Delete';
+  };
+
   return (
     <div className="mb-4 rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="grid grid-cols-4 divide-x divide-slate-200">
@@ -109,14 +124,14 @@ export default function DependencyToolbar({
                   e.stopPropagation();
                   showAllHiddenTeams();
                 }}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition"
               >
                 <VisibilityIcon style={{ fontSize: 14 }} />
                 <span>Show {hiddenTeamCount} Hidden</span>
               </button>
             )}
             
-            {/* Advanced Settings Dropdown */}
+            {/* Settings Dropdown */}
             <div className="relative">
               <button
                 onClick={(e) => {
@@ -125,118 +140,117 @@ export default function DependencyToolbar({
                 }}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
                   showSettingsDropdown 
-                    ? 'border-blue-300 bg-blue-50 text-blue-700' 
+                    ? 'border-blue-400 bg-blue-50 text-blue-700' 
                     : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 <SettingsIcon style={{ fontSize: 14 }} />
-                <span>More</span>
+                <span>Advanced</span>
               </button>
               
               {showSettingsDropdown && (
                 <div 
-                  className="absolute left-0 top-full mt-1 w-72 rounded-lg border border-slate-200 bg-white p-3 shadow-xl z-[1000]"
+                  className="absolute top-full left-0 mt-1 w-72 rounded-lg border border-slate-200 bg-white shadow-xl z-50"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="space-y-3">
-                    {/* Visibility options */}
-                    <div>
-                      <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Visibility</h4>
-                      <div className="space-y-2">
-                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={hideAllDependencies}
-                            onChange={(e) => setHideAllDependencies(e.target.checked)}
-                            className="rounded border-slate-300"
-                          />
-                          <span>Hide all dependencies</span>
-                        </label>
-                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={hideCollapsedDependencies}
-                            onChange={(e) => setHideCollapsedDependencies(e.target.checked)}
-                            className="rounded border-slate-300"
-                          />
-                          <span>Hide dependencies for collapsed tasks</span>
-                        </label>
-                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={hideCollapsedMilestones}
-                            onChange={(e) => setHideCollapsedMilestones(e.target.checked)}
-                            className="rounded border-slate-300"
-                          />
-                          <span>Hide milestones for collapsed tasks</span>
-                        </label>
-                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={showEmptyTeams}
-                            onChange={(e) => setShowEmptyTeams(e.target.checked)}
-                            className="rounded border-slate-300"
-                          />
-                          <span>Show empty teams</span>
-                        </label>
-                      </div>
+                  <div className="p-3 space-y-3">
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Visibility</h4>
+                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={hideAllDependencies}
+                          onChange={(e) => setHideAllDependencies(e.target.checked)}
+                          className="rounded border-slate-300"
+                        />
+                        <span>Hide all dependencies</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={hideCollapsedDependencies}
+                          onChange={(e) => setHideCollapsedDependencies(e.target.checked)}
+                          className="rounded border-slate-300"
+                        />
+                        <span>Hide dependencies for collapsed tasks</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={hideCollapsedMilestones}
+                          onChange={(e) => setHideCollapsedMilestones(e.target.checked)}
+                          className="rounded border-slate-300"
+                        />
+                        <span>Hide milestones for collapsed tasks</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={showEmptyTeams}
+                          onChange={(e) => setShowEmptyTeams(e.target.checked)}
+                          className="rounded border-slate-300"
+                        />
+                        <span>Show empty teams</span>
+                      </label>
                     </div>
                     
                     <div className="border-t border-slate-100 pt-3">
                       <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Dimensions</h4>
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs text-slate-600">Day width</span>
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              min="30"
-                              max="120"
-                              value={customDayWidth}
-                              onChange={(e) => setCustomDayWidth(Math.max(30, Math.min(120, parseInt(e.target.value) || DEFAULT_DAYWIDTH)))}
-                              className="w-16 px-2 py-1 text-xs border border-slate-200 rounded text-right"
-                            />
-                            <span className="text-xs text-slate-400">px</span>
-                          </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-600 w-24">Day Width:</span>
+                          <input
+                            type="range"
+                            min="20"
+                            max="100"
+                            value={customDayWidth}
+                            onChange={(e) => setCustomDayWidth(Number(e.target.value))}
+                            className="flex-1"
+                          />
+                          <span className="text-xs text-slate-500 w-8">{customDayWidth}</span>
+                          <button
+                            onClick={() => setCustomDayWidth(DEFAULT_DAYWIDTH)}
+                            className="text-[10px] text-blue-600 hover:underline"
+                          >
+                            Reset
+                          </button>
                         </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs text-slate-600">Task height (normal)</span>
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              min="20"
-                              max="60"
-                              value={customTaskHeightNormal}
-                              onChange={(e) => setCustomTaskHeightNormal(Math.max(20, Math.min(60, parseInt(e.target.value) || DEFAULT_TASKHEIGHT_NORMAL)))}
-                              className="w-16 px-2 py-1 text-xs border border-slate-200 rounded text-right"
-                            />
-                            <span className="text-xs text-slate-400">px</span>
-                          </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-600 w-24">Task Height:</span>
+                          <input
+                            type="range"
+                            min="24"
+                            max="80"
+                            value={customTaskHeightNormal}
+                            onChange={(e) => setCustomTaskHeightNormal(Number(e.target.value))}
+                            className="flex-1"
+                          />
+                          <span className="text-xs text-slate-500 w-8">{customTaskHeightNormal}</span>
+                          <button
+                            onClick={() => setCustomTaskHeightNormal(DEFAULT_TASKHEIGHT_NORMAL)}
+                            className="text-[10px] text-blue-600 hover:underline"
+                          >
+                            Reset
+                          </button>
                         </div>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs text-slate-600">Task height (collapsed)</span>
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              min="14"
-                              max="40"
-                              value={customTaskHeightSmall}
-                              onChange={(e) => setCustomTaskHeightSmall(Math.max(14, Math.min(40, parseInt(e.target.value) || DEFAULT_TASKHEIGHT_SMALL)))}
-                              className="w-16 px-2 py-1 text-xs border border-slate-200 rounded text-right"
-                            />
-                            <span className="text-xs text-slate-400">px</span>
-                          </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-600 w-24">Collapsed:</span>
+                          <input
+                            type="range"
+                            min="16"
+                            max="40"
+                            value={customTaskHeightSmall}
+                            onChange={(e) => setCustomTaskHeightSmall(Number(e.target.value))}
+                            className="flex-1"
+                          />
+                          <span className="text-xs text-slate-500 w-8">{customTaskHeightSmall}</span>
+                          <button
+                            onClick={() => setCustomTaskHeightSmall(DEFAULT_TASKHEIGHT_SMALL)}
+                            className="text-[10px] text-blue-600 hover:underline"
+                          >
+                            Reset
+                          </button>
                         </div>
-                        <button
-                          onClick={() => {
-                            setCustomDayWidth(DEFAULT_DAYWIDTH);
-                            setCustomTaskHeightNormal(DEFAULT_TASKHEIGHT_NORMAL);
-                            setCustomTaskHeightSmall(DEFAULT_TASKHEIGHT_SMALL);
-                          }}
-                          className="w-full mt-1 px-2 py-1 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded transition"
-                        >
-                          Reset to defaults
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -246,11 +260,96 @@ export default function DependencyToolbar({
           </div>
         </div>
 
-        {/* Section 2: Mode Toggle */}
+        {/* Section 2: Filter */}
         <div className="p-3">
           <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            Mode {mode === "duration" && <span className="text-blue-500">(Shift held)</span>}
-            {mode === "connect" && <span className="text-purple-500">(Alt held)</span>}
+            Filter
+          </h3>
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowFilterDropdown(!showFilterDropdown);
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
+                teamFilter.length > 0
+                  ? 'border-blue-400 bg-blue-50 text-blue-700'
+                  : showFilterDropdown
+                    ? 'border-blue-400 bg-blue-50 text-blue-700'
+                    : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <FilterListIcon style={{ fontSize: 14 }} />
+              <span>
+                {teamFilter.length > 0 
+                  ? `${teamFilter.length} team${teamFilter.length > 1 ? 's' : ''} filtered`
+                  : 'Filter Teams'
+                }
+              </span>
+            </button>
+            
+            {showFilterDropdown && (
+              <div 
+                className="absolute top-full left-0 mt-1 w-56 rounded-lg border border-slate-200 bg-white shadow-xl z-50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="p-2">
+                  <div className="flex items-center justify-between mb-2 px-1">
+                    <span className="text-xs font-medium text-slate-700">Show teams:</span>
+                    {teamFilter.length > 0 && (
+                      <button
+                        onClick={() => setTeamFilter([])}
+                        className="text-[10px] text-blue-600 hover:underline"
+                      >
+                        Clear all
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                    {teamOrder.map((teamId) => {
+                      const team = teams[teamId];
+                      if (!team) return null;
+                      // teamFilter contains teams that are HIDDEN, so checked means NOT in filter
+                      const isVisible = !teamFilter.includes(teamId);
+                      return (
+                        <label
+                          key={teamId}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isVisible}
+                            onChange={() => {
+                              if (isVisible) {
+                                // Add to filter (hide it)
+                                setTeamFilter([...teamFilter, teamId]);
+                              } else {
+                                // Remove from filter (show it)
+                                setTeamFilter(teamFilter.filter(id => id !== teamId));
+                              }
+                            }}
+                            className="rounded border-slate-300"
+                          />
+                          <div 
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: team.color }}
+                          />
+                          <span className="text-xs text-slate-700 truncate">{team.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Section 3: Mode */}
+        <div className="p-3">
+          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+            Mode {viewMode === "schedule" && baseViewModeRef.current !== "schedule" && <span className="text-blue-500">(Shift held)</span>}
+            {viewMode === "dependency" && baseViewModeRef.current !== "dependency" && <span className="text-purple-500">(Alt held)</span>}
           </h3>
           <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
             <button
@@ -280,10 +379,10 @@ export default function DependencyToolbar({
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
-              title="Move and schedule milestones"
+              title="Edit milestones, schedule and resize (Shift)"
             >
               <ScheduleIcon style={{ fontSize: 14 }} />
-              <span>Sched</span>
+              <span>Edit</span>
             </button>
             <button
               onClick={(e) => {
@@ -301,22 +400,6 @@ export default function DependencyToolbar({
               <AccountTreeIcon style={{ fontSize: 14 }} />
               <span>Deps</span>
             </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setViewMode("milestone");
-                baseViewModeRef.current = "milestone";
-              }}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
-                viewMode === "milestone"
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-              title="Edit milestones (Shift)"
-            >
-              <FlagIcon style={{ fontSize: 14 }} />
-              <span>Miles</span>
-            </button>
           </div>
           
           {/* Auto-select blocking milestone toggle */}
@@ -328,123 +411,20 @@ export default function DependencyToolbar({
               type="checkbox"
               checked={autoSelectBlocking}
               onChange={(e) => setAutoSelectBlocking(e.target.checked)}
-              className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              className="rounded border-slate-300"
             />
             <span className="text-xs text-slate-600 group-hover:text-slate-800">
-              Auto-select blocking milestone
+              Auto-select blocking milestones
             </span>
           </label>
         </div>
 
-        {/* Section 3: Filter */}
+        {/* Section 4: Create & Delete */}
         <div className="p-3">
           <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            Team Filter
+            Actions
           </h3>
-          <div className="relative" data-filter-dropdown>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowFilterDropdown(!showFilterDropdown);
-              }}
-              className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-xs rounded-lg border transition ${
-                teamFilter.length > 0
-                  ? 'border-blue-300 bg-blue-50 text-blue-700' 
-                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <FilterListIcon style={{ fontSize: 14 }} />
-              <span className="flex-1 text-left">
-                {teamFilter.length === 0 
-                  ? 'All Teams' 
-                  : `${teamFilter.length} team${teamFilter.length > 1 ? 's' : ''} selected`}
-              </span>
-              {teamFilter.length > 0 && (
-                <span 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setTeamFilter([]);
-                  }}
-                  className="text-blue-500 hover:text-blue-700"
-                >
-                  ✕
-                </span>
-              )}
-            </button>
-            
-            {/* Team Filter Dropdown */}
-            {showFilterDropdown && (
-              <div 
-                className="absolute left-0 top-full mt-1 w-64 rounded-lg border border-slate-200 bg-white p-2 shadow-xl z-[1000]"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex items-center justify-between mb-2 px-1">
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase">
-                    Select Teams
-                  </span>
-                  {teamFilter.length > 0 && (
-                    <button
-                      onClick={() => setTeamFilter([])}
-                      className="text-[10px] text-blue-600 hover:text-blue-800"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-                
-                <div className="space-y-0.5 max-h-48 overflow-y-auto">
-                  {teamOrder.map((teamId) => {
-                    const team = teams[teamId];
-                    if (!team) return null;
-                    const isInFilter = teamFilter.includes(teamId);
-                    const isVisible = teamFilter.length === 0 || isInFilter;
-                    
-                    return (
-                      <button
-                        key={teamId}
-                        onClick={() => {
-                          if (teamFilter.length === 0) {
-                            setTeamFilter([teamId]);
-                          } else if (isInFilter) {
-                            const newFilter = teamFilter.filter(id => id !== teamId);
-                            setTeamFilter(newFilter);
-                          } else {
-                            setTeamFilter([...teamFilter, teamId]);
-                          }
-                        }}
-                        className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded transition text-left ${
-                          isVisible 
-                            ? 'bg-slate-50 text-slate-900' 
-                            : 'text-slate-400 hover:bg-slate-50'
-                        }`}
-                      >
-                        <span
-                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: team.color }}
-                        />
-                        <span className="truncate flex-1">{team.name}</span>
-                        {isInFilter && (
-                          <span className="text-blue-600 text-[10px]">✓</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-                
-                {teamOrder.length === 0 && (
-                  <p className="text-xs text-slate-400 italic px-2 py-1">No teams</p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Section 4: Create */}
-        <div className="p-3">
-          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            Create
-          </h3>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -480,12 +460,26 @@ export default function DependencyToolbar({
                   ? 'border-blue-400 bg-blue-50 text-blue-700' 
                   : 'border-slate-200 text-slate-600 hover:bg-slate-50'
               }`}
-              disabled={safeMode}
               title={isAddingMilestone ? "Click on a task row to place milestone" : "Add a new milestone"}
             >
               <FlagIcon style={{ fontSize: 14 }} />
               <span>Add Milestone</span>
             </button>
+            
+            {/* Delete Button - only visible when something is selected */}
+            {hasSelection && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteSelected();
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition"
+                title={getDeleteLabel()}
+              >
+                <DeleteIcon style={{ fontSize: 14 }} />
+                <span>{getDeleteLabel()}</span>
+              </button>
+            )}
           </div>
           {isAddingMilestone && (
             <p className="text-xs text-blue-600 mt-2">Click on a day cell in any task row to create a milestone there.</p>

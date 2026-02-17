@@ -132,7 +132,8 @@ export const getVisibleTeamIndex = (teamId, teamOrder, isTeamVisibleFn) => {
 };
 
 export const isTeamVisibleBase = (teamId, teamFilter, teamDisplaySettings, teams, taskDisplaySettings) => {
-    if (teamFilter.length > 0 && !teamFilter.includes(teamId)) return false;
+    // teamFilter contains teams to HIDE (blacklist)
+    if (teamFilter.includes(teamId)) return false;
     
     const settings = teamDisplaySettings[teamId];
     if (settings?.hidden) return false;

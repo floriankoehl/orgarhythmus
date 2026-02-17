@@ -93,4 +93,4 @@ def delete_dependency(request, project_id):
         return Response({"detail": "Dependency not found"}, status=status.HTTP_404_NOT_FOUND)
 
     dependency.delete()
-    return Response({"deleted": True}, status=status.HTTP_204_NO_CONTENT)
+    return Response({"deleted": True}, status=status.HTTP_200_OK)

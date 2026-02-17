@@ -126,7 +126,7 @@ def delete_milestones(request, project_id):
         return Response({"detail": "Milestone not found"}, status=status.HTTP_404_NOT_FOUND)
 
     milestone.delete()
-    return Response({"deleted": True}, status=204)
+    return Response({"deleted": True}, status=status.HTTP_200_OK)
 
 
 @api_view(["PATCH"])

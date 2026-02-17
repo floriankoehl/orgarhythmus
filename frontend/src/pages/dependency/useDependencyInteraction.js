@@ -100,57 +100,33 @@ export function useDependencyInteraction({
 
   useEffect(() => {
     const down = (e) => {
-      // Ctrl is used for multi-select, not a mode change
-      if (e.shiftKey) {
-        setMode("duration")
-        // Switch to milestone mode when shift is held (only if in inspection or schedule mode)
-        if (viewMode === "inspection" || viewMode === "schedule") {
-          baseViewModeRef.current = viewMode;
-          setViewMode("milestone");
+      // Shift => temporarily switch to edit (schedule) mode
+      if (e.shiftKey && !e.altKey) {
+        setMode("drag")
+        if (baseViewModeRef.current !== "schedule") {
+          setViewMode("schedule");
         }
       }
-      else if (e.altKey) {
+      // Alt => temporarily switch to dependency mode
+      else if (e.altKey && !e.shiftKey) {
         setMode("connect")
-        // Switch to dependency mode when alt is held (only if in inspection or schedule mode)
-        if (viewMode === "inspection" || viewMode === "schedule") {
-          baseViewModeRef.current = viewMode;
+        if (baseViewModeRef.current !== "dependency") {
           setViewMode("dependency");
         }
       }
-      // 'd' key - delete selected connection or milestones
-      else if (e.key === "d" || e.key === "D") {
-        // Delete selected connection (works in dependency mode)
-        if (selectedConnection) {
-          // Show delete modal for connection
-          setDeleteConfirmModal({ 
-            connectionId: selectedConnection.id, 
-            connectionName: `Connection from ${milestones[selectedConnection.from_milestone]?.name || 'milestone'} to ${milestones[selectedConnection.to_milestone]?.name || 'milestone'}`
-          });
-        }
-        // Delete selected milestones (show confirmation for the first one, delete all)
-        else if (selectedMilestones.size > 0) {
-          const milestoneIds = Array.from(selectedMilestones);
-          const firstMilestone = milestones[milestoneIds[0]];
-          if (firstMilestone) {
-            if (milestoneIds.length === 1) {
-              setDeleteConfirmModal({ milestoneId: firstMilestone.id, milestoneName: firstMilestone.name });
-            } else {
-              // For multiple, show a different message
-              setDeleteConfirmModal({ 
-                milestoneId: null, 
-                milestoneName: `${milestoneIds.length} milestones`,
-                milestoneIds: milestoneIds 
-              });
-            }
-          }
-        }
+      // Escape key - clear selections and close modals
+      else if (e.key === "Escape") {
+        setSelectedMilestones(new Set());
+        setSelectedConnection(null);
+        setOpenTeamSettings(null);
+        setShowFilterDropdown(false);
       }
     }
 
     const up = (e) => {
       setMode("drag")
-      // Restore original mode when modifier keys are released (if we switched from inspection or schedule)
-      if (!e.shiftKey && !e.altKey && (baseViewModeRef.current === "inspection" || baseViewModeRef.current === "schedule")) {
+      // Restore original mode when modifier keys are released
+      if (!e.shiftKey && !e.altKey) {
         setViewMode(baseViewModeRef.current);
       }
     }
@@ -161,7 +137,7 @@ export function useDependencyInteraction({
       window.removeEventListener("keydown", down)
       window.removeEventListener("keyup", up)
     }
-  }, [viewMode, selectedConnection, selectedMilestones, milestones, setMode, setViewMode, setDeleteConfirmModal])
+  }, [viewMode, setMode, setViewMode])
 
   // Close team settings when clicking outside
   useEffect(() => {
@@ -669,6 +645,7 @@ export function useDependencyInteraction({
       
     } catch (err) {
       console.error("Failed to delete milestone:", err);
+      throw err;
     }
   };
 
@@ -954,9 +931,8 @@ export function useDependencyInteraction({
     document.addEventListener('mouseup', onMouseUp);
   };
 
-  // Handle day cell click (create milestone in milestone mode)
+  // Handle day cell click (create milestone)
   const handleDayCellClick = (taskId, dayIndex) => {
-    if (safeMode) return;
     // Show confirmation modal instead of creating directly
     setMilestoneCreateModal({ taskId, dayIndex });
   };
@@ -1124,12 +1100,24 @@ export function useDependencyInteraction({
 
   // Handle delete connection
   const handleDeleteConnection = async (connection) => {
+    if (!connection) {
+      console.error("No connection provided for deletion");
+      return;
+    }
+    
     try {
       await delete_dependency_api(projectId, connection.source, connection.target);
-      setConnections(prev => prev.filter(c => !(c.source === connection.source && c.target === connection.target)));
+      
+      // Remove from connections state
+      setConnections(prev => prev.filter(c => 
+        !(c.source === connection.source && c.target === connection.target)
+      ));
+      
+      // Clear selection
       setSelectedConnection(null);
     } catch (err) {
       console.error("Failed to delete dependency:", err);
+      throw err;
     }
   };
 

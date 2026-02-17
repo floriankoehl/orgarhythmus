@@ -429,7 +429,6 @@ export default function DependencyCanvas({
             setEditingMilestoneName={setEditingMilestoneName}
             setEditingMilestoneId={setEditingMilestoneId}
             handleMilestoneRenameSubmit={handleMilestoneRenameSubmit}
-            setDeleteConfirmModal={setDeleteConfirmModal}
             handleMilestoneEdgeResize={handleMilestoneEdgeResize}
             handleConnectionDragStart={handleConnectionDragStart}
           />

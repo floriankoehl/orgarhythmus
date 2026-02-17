@@ -122,7 +122,6 @@ export function useDependencyActions({
 
   // Add milestone locally
   const addMilestoneLocal = async (taskId) => {
-    if (safeMode) return;
     try {
       const result = await add_milestone(projectId, taskId);
       if (result.added_milestone) {
@@ -237,21 +236,60 @@ export function useDependencyActions({
   // ________DELETE HANDLER________
   // ________________________________________
 
-  // Handle confirm delete (milestone or connection)
+  // Handle delete for selected items (called from toolbar) - shows modal first
+  const handleDeleteSelected = () => {
+    if (selectedConnection) {
+      // Show confirmation modal for dependency deletion
+      setDeleteConfirmModal({
+        connectionId: true,
+        connectionName: `Dependency`,
+        connection: selectedConnection,
+      });
+    } else if (selectedMilestones.size > 0) {
+      // Show confirmation modal for milestone deletion
+      const milestoneIds = Array.from(selectedMilestones);
+      if (milestoneIds.length === 1) {
+        const milestoneId = milestoneIds[0];
+        setDeleteConfirmModal({
+          milestoneId,
+          milestoneName: "this milestone",
+        });
+      } else {
+        setDeleteConfirmModal({
+          milestoneIds,
+        });
+      }
+    }
+  };
+
+  // Handle confirm delete (from modal)
   const handleConfirmDelete = async () => {
-    if (deleteConfirmModal.connectionId) {
+    if (deleteConfirmModal?.connectionId) {
       // Delete connection
-      handleDeleteConnection(selectedConnection);
-      setSelectedConnection(null);
-    } else if (deleteConfirmModal.milestoneIds) {
+      try {
+        const connection = deleteConfirmModal.connection || selectedConnection;
+        await handleDeleteConnection(connection);
+        setSelectedConnection(null);
+      } catch (err) {
+        console.error("Failed to delete dependency:", err);
+      }
+    } else if (deleteConfirmModal?.milestoneIds) {
       // Delete multiple milestones
       for (const mId of deleteConfirmModal.milestoneIds) {
-        await handleMilestoneDelete(mId);
+        try {
+          await handleMilestoneDelete(mId);
+        } catch (err) {
+          console.error("Failed to delete milestone:", err);
+        }
       }
       setSelectedMilestones(new Set());
-    } else {
+    } else if (deleteConfirmModal?.milestoneId) {
       // Delete single milestone
-      await handleMilestoneDelete(deleteConfirmModal.milestoneId);
+      try {
+        await handleMilestoneDelete(deleteConfirmModal.milestoneId);
+      } catch (err) {
+        console.error("Failed to delete milestone:", err);
+      }
     }
     setDeleteConfirmModal(null);
   };
@@ -308,6 +346,7 @@ export function useDependencyActions({
     confirmMilestoneCreate,
     handleConfirmMove,
     handleConfirmDelete,
+    handleDeleteSelected,
     handleCreateTeam,
     handleCreateTask,
   };

@@ -36,37 +36,27 @@ export default function DependencyMilestoneLayer({
   setEditingMilestoneName,
   setEditingMilestoneId,
   handleMilestoneRenameSubmit,
-  setDeleteConfirmModal,
   handleMilestoneEdgeResize,
   handleConnectionDragStart,
 }) {
   return (
     <div
       className="absolute top-0 left-0 w-full h-full"
-      style={{ zIndex: 15, pointerEvents: 'none' }}
+      style={{ zIndex: 20, pointerEvents: 'none' }}
     >
       {teamOrder.map((team_key) => {
-        const team = teams[team_key];
-        if (!team || !isTeamVisible(team_key)) return null;
-        
-        // Don't render milestones for collapsed teams
+        if (!isTeamVisible(team_key)) return null;
         if (isTeamCollapsed(team_key)) return null;
+        
+        const team = teams[team_key];
+        if (!team) return null;
 
         const visibleTasks = getVisibleTasks(team_key);
-        
-        // Don't render milestones if all tasks are hidden
-        if (visibleTasks.length === 0) return null;
 
-        return team.tasks.map((task_key) => {
+        return visibleTasks.map((task_key) => {
           if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
-
+          
           const taskHeight = getTaskHeight(task_key, taskDisplaySettings);
-          const isSmall = taskDisplaySettings[task_key]?.size === 'small';
-
-          // Hide milestones for collapsed tasks if setting is enabled
-          if (hideCollapsedMilestones && isSmall) return null;
-
-          // Calculate Y position for this task
           const teamYOffset = getTeamYOffset(team_key);
           const taskYOffset = getTaskYOffset(task_key, team_key);
           const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
@@ -77,14 +67,21 @@ export default function DependencyMilestoneLayer({
             const milestone = milestones[milestone_from_task.id];
             if (!milestone) return null;
 
-            const showDelete = hoveredMilestone === milestone.id && viewMode === "milestone";
+            // Hide milestones for collapsed tasks if setting is enabled
+            if (hideCollapsedMilestones && taskDisplaySettings[task_key]?.size === 'small') {
+              return null;
+            }
+
             const showDurationPlus = hoveredMilestone === milestone.id && mode === "duration";
             const showDurationMinus = hoveredMilestone === milestone.id && mode === "duration" && milestone.duration > 1;
             const showConnect = mode === "connect";
             const isSelected = selectedMilestones.has(milestone.id);
             const isEditing = editingMilestoneId === milestone.id;
-            const showEdgeResize = viewMode === "dependency" && hoveredMilestone === milestone.id;
+            const showEdgeResize = viewMode === "schedule" && hoveredMilestone === milestone.id;
             const isBlockedHighlight = blockedMoveHighlight?.milestoneId === milestone.id;
+
+            // Get team color for milestone
+            const milestoneColor = milestone.color || team.color || '#facc15';
 
             return (
               <div
@@ -94,7 +91,7 @@ export default function DependencyMilestoneLayer({
                   }
                 }}
                 onClick={(e) => {
-                  if (mode === "drag" && !isEditing) {
+                  if (!isEditing) {
                     handleMilestoneClick(e, milestone.id);
                   }
                 }}
@@ -109,70 +106,71 @@ export default function DependencyMilestoneLayer({
                       : 'hover:brightness-95'
                 }`}
                 style={{
-                  pointerEvents: 'auto',
-                  overflow: 'visible',
-                  left: `${TEAMWIDTH + TASKWIDTH + (milestone.x ?? (milestone.start_index * DAYWIDTH))}px`,
+                  left: `${TEAMWIDTH + TASKWIDTH + (milestone.x ?? milestone.start_index * DAYWIDTH)}px`,
                   top: `${taskY}px`,
                   width: `${DAYWIDTH * milestone.duration}px`,
-                  height: `${taskHeight}px`,
-                  backgroundColor: isBlockedHighlight ? '#dc2626' : isSelected ? '#3b82f6' : team.color,
-                  boxShadow: isBlockedHighlight
-                    ? '0 4px 12px rgba(220, 38, 38, 0.5)'
-                    : isSelected 
-                      ? '0 4px 12px rgba(59, 130, 246, 0.4)' 
-                      : '0 1px 3px rgba(0,0,0,0.1)',
+                  height: `${taskHeight - 4}px`,
+                  backgroundColor: milestoneColor,
+                  pointerEvents: 'auto',
+                  zIndex: isSelected ? 25 : 20,
+                  marginTop: '2px',
                 }}
                 key={milestone.id}
               >
-                {/* Milestone name / edit input */}
+                {/* Content */}
                 {isEditing ? (
-                  <div className="h-full flex items-center justify-center px-1">
-                    <input
-                      autoFocus
-                      type="text"
-                      value={editingMilestoneName}
-                      onChange={(e) => setEditingMilestoneName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          handleMilestoneRenameSubmit(milestone.id);
-                        } else if (e.key === 'Escape') {
-                          setEditingMilestoneId(null);
-                          setEditingMilestoneName("");
-                        }
-                      }}
-                      onBlur={() => handleMilestoneRenameSubmit(milestone.id)}
-                      className={`w-full bg-white/90 rounded px-1 text-slate-900 outline-none ${isSmall ? 'text-[9px]' : 'text-[11px]'}`}
-                      style={{ pointerEvents: 'auto' }}
-                      onClick={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => e.stopPropagation()}
-                    />
-                  </div>
+                  <input
+                    autoFocus
+                    value={editingMilestoneName}
+                    onChange={(e) => setEditingMilestoneName(e.target.value)}
+                    onBlur={() => handleMilestoneRenameSubmit(milestone.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleMilestoneRenameSubmit(milestone.id);
+                      if (e.key === 'Escape') {
+                        setEditingMilestoneId(null);
+                        setEditingMilestoneName('');
+                      }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="w-full h-full px-2 text-xs font-medium bg-white border-2 border-blue-500 rounded outline-none"
+                  />
                 ) : (
-                  <div className={`h-full flex items-center justify-center overflow-hidden px-1 ${isSmall ? 'text-[9px]' : 'text-[11px]'}`}>
-                    <span className={`truncate font-medium ${isSelected ? 'text-white' : ''}`}>
+                  <div className="flex items-center h-full px-2 overflow-hidden">
+                    <span className={`truncate text-xs ${isSelected ? 'text-white' : ''}`}>
                       {milestone.name}
                     </span>
                   </div>
                 )}
 
-                {/* Delete icon - only in milestone mode, tiny and top-right */}
-                {showDelete && (
+                {/* Duration controls */}
+                {showDurationPlus && (
                   <div 
-                    className="absolute -top-1 -right-1 bg-slate-400/60 rounded-full cursor-pointer hover:bg-red-500 transition-all"
-                    style={{ pointerEvents: 'auto', padding: '1px' }}
-                    onClick={(e) => {
+                    className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center cursor-pointer hover:bg-green-600 shadow"
+                    style={{ pointerEvents: 'auto', zIndex: 30 }}
+                    onMouseDown={(e) => {
                       e.stopPropagation();
-                      setDeleteConfirmModal({ milestoneId: milestone.id, milestoneName: milestone.name });
+                      handleMilestoneEdgeResize(e, milestone.id, "right");
                     }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    title="Delete milestone"
                   >
-                    <CloseIcon style={{ fontSize: 8, color: 'white' }} />
+                    +
+                  </div>
+                )}
+                {showDurationMinus && (
+                  <div 
+                    className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center cursor-pointer hover:bg-red-600 shadow"
+                    style={{ pointerEvents: 'auto', zIndex: 30 }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      handleMilestoneEdgeResize(e, milestone.id, "left");
+                    }}
+                  >
+                    -
                   </div>
                 )}
 
-                {/* Edge resize handles - only in milestone mode */}
-                {viewMode === "milestone" && (
+                {/* Edge resize handles - only in edit (schedule) mode */}
+                {showEdgeResize && (
                   <>
                     {/* Left edge resize handle */}
                     <div

@@ -168,22 +168,26 @@ export async function create_dependency(projectId, sourceId, targetId){
     return answer
 }
 
-export async function delete_dependency_api(projectId, sourceId, targetId){
-    const res = await authFetch(`/api/projects/${projectId}/delete_dependency/`, {
-        method: "DELETE",
+export async function delete_dependency_api(projectId, source_milestone_id, target_milestone_id) {
+    const response = await authFetch(`/api/projects/${projectId}/delete_dependency/`, {
+        method: 'DELETE',
         body: JSON.stringify({
-            source: sourceId,
-            target: targetId
+            source: source_milestone_id,
+            target: target_milestone_id
         })
-    })
-
-    if (!res.ok) {
-        const text = await res.text()
-        throw new Error(`Delete dependency failed (${res.status}): ${text}`)
+    });
+    
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to delete dependency: ${errorText}`);
     }
-
-    if (res.status === 204) return null
-    return await res.json()
+    
+    // Backend returns 204 No Content on success
+    if (response.status === 204) {
+        return { deleted: true };
+    }
+    
+    return response.json();
 }
 
 export async function reorder_team_tasks(projectId, taskId, targetTeamId, order) {
