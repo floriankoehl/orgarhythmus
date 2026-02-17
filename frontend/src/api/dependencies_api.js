@@ -54,11 +54,13 @@ export async function get_all_milestones(projectId){
 }
 
 
-export async function add_milestone(projectId, task_id) {
+export async function add_milestone(projectId, task_id, { name, description } = {}) {
     const res = await authFetch(`/api/projects/${projectId}/add_milestone/`, {
         method: "POST",
         body: JSON.stringify({
-            task_id: task_id
+            task_id: task_id,
+            ...(name ? { name } : {}),
+            ...(description ? { description } : {}),
         })
     })
     if (!res.ok) throw new Error('Failed to add milestone');

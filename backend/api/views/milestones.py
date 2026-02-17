@@ -35,7 +35,7 @@ def get_all_milestones(request, project_id):
 def add_milestone(request, project_id):
     """
     Add a new milestone to a task.
-    Body: { "task_id": <id> }
+    Body: { "task_id": <id>, "name": <optional>, "description": <optional> }
     """
     try:
         project = Project.objects.get(pk=project_id)
@@ -54,20 +54,22 @@ def add_milestone(request, project_id):
     except Task.DoesNotExist:
         return Response({"detail": "Task not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    name = f"{task.name}_0"
+    name = request.data.get("name") or f"{task.name}_0"
+    description = request.data.get("description") or ""
     start_index = 0
     duration = 1
-    milestone, created = Milestone.objects.get_or_create(
+    milestone = Milestone.objects.create(
         project=project,
         name=name,
+        description=description,
         task=task,
         start_index=start_index,
-        duration=duration
+        duration=duration,
     )
 
     serialized = MilestoneSerializer_Deps(milestone)
 
-    return Response({"added_milestone": serialized.data, "created": created})
+    return Response({"added_milestone": serialized.data, "created": True})
 
 
 @api_view(["PATCH"])

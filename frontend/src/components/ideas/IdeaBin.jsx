@@ -5,8 +5,10 @@ import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import EditIcon from "@mui/icons-material/Edit";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
-import { Lightbulb, Minus, Maximize2, Minimize2 } from "lucide-react";
+import { Lightbulb, Minus, Maximize2, Minimize2, Zap } from "lucide-react";
 import { BASE_URL } from "../../config/api";
+import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
+import { add_milestone, fetch_project_tasks } from "../../api/dependencies_api";
 
 // ───────────────────── Constants ─────────────────────
 const MIN_W = 290;
@@ -68,6 +70,7 @@ export default function IdeaBin() {
   const [preMaxState, setPreMaxState] = useState(null);
   const windowRef = useRef(null);
   const headlineInputRef = useRef(null);
+  const iconRef = useRef(null);
 
   // ───── Category state ─────
   const [categories, setCategories] = useState({});
@@ -103,6 +106,16 @@ export default function IdeaBin() {
 
   // ───── Confirm modal ─────
   const [confirmModal, setConfirmModal] = useState(null);
+
+  // ───── Transform modal ─────
+  const [transformModal, setTransformModal] = useState(null); // { idea, step: 'choose' | 'task' | 'milestone' }
+  const [transformName, setTransformName] = useState("");
+  const [transformTeamId, setTransformTeamId] = useState(null);
+  const [transformTaskId, setTransformTaskId] = useState(null);
+  const [transformTaskSearch, setTransformTaskSearch] = useState("");
+  const [projectTeams, setProjectTeams] = useState([]);
+  const [projectTasks, setProjectTasks] = useState([]);
+  const [transformLoading, setTransformLoading] = useState(false);
 
   // ───── Archive ─────
   const [showArchive, setShowArchive] = useState(false);
@@ -165,23 +178,33 @@ export default function IdeaBin() {
     }
   }, [isMaximized, preMaxState, windowPos, windowSize]);
 
-  // ── Icon drag ──
+  // ── Icon drag (direct DOM for performance) ──
   const handleIconDrag = useCallback((e) => {
     e.preventDefault();
+    const el = iconRef.current;
+    if (!el) return;
     const startX = e.clientX - iconPos.x;
     const startY = e.clientY - iconPos.y;
     let moved = false;
+    let curX = iconPos.x;
+    let curY = iconPos.y;
+
+    // Disable CSS transitions during drag for instant feedback
+    el.style.transition = 'none';
 
     const onMove = (ev) => {
       moved = true;
-      setIconPos({
-        x: Math.max(0, Math.min(ev.clientX - startX, window.innerWidth - 56)),
-        y: Math.max(0, Math.min(ev.clientY - startY, window.innerHeight - 56)),
-      });
+      curX = Math.max(0, Math.min(ev.clientX - startX, window.innerWidth - 56));
+      curY = Math.max(0, Math.min(ev.clientY - startY, window.innerHeight - 56));
+      el.style.left = curX + 'px';
+      el.style.top = curY + 'px';
     };
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      el.style.transition = '';
+      // Sync React state once
+      setIconPos({ x: curX, y: curY });
       if (!moved) openWindow();
     };
     document.addEventListener("mousemove", onMove);
@@ -716,6 +739,74 @@ export default function IdeaBin() {
     }
   }, [projectId, isOpen]);
 
+  // Fetch teams & tasks when transform modal opens
+  useEffect(() => {
+    if (transformModal && projectId) {
+      fetchTeamsForProject(projectId).then(data => {
+        const teams = data?.teams || data || [];
+        setProjectTeams(teams);
+      }).catch(() => {});
+      fetch_project_tasks(projectId).then(data => {
+        const raw = data?.tasks || data || [];
+        // API returns tasks as { id: taskObj } dict – convert to array
+        const tasks = Array.isArray(raw) ? raw : Object.values(raw);
+        setProjectTasks(tasks);
+      }).catch(() => {});
+    }
+  }, [transformModal, projectId]);
+
+  // ── Transform handlers ──
+  const openTransform = (idea) => {
+    setTransformModal({ idea, step: 'choose' });
+    setTransformName(idea.headline || idea.title.split(/\s+/).slice(0, 6).join(" "));
+    setTransformTeamId(null);
+    setTransformTaskId(null);
+    setTransformTaskSearch("");
+  };
+
+  const closeTransform = () => {
+    setTransformModal(null);
+    setTransformName("");
+    setTransformTeamId(null);
+    setTransformTaskId(null);
+    setTransformTaskSearch("");
+    setTransformLoading(false);
+  };
+
+  const executeTransformToTask = async () => {
+    if (!transformName.trim() || !transformTeamId) return;
+    setTransformLoading(true);
+    try {
+      await createTaskForProject(projectId, {
+        name: transformName.trim(),
+        description: transformModal.idea.title,
+        team_id: transformTeamId,
+      });
+      // Optionally delete the idea after transform
+      await delete_idea(transformModal.idea.id);
+      closeTransform();
+    } catch (err) {
+      console.error("Transform to task failed:", err);
+      setTransformLoading(false);
+    }
+  };
+
+  const executeTransformToMilestone = async () => {
+    if (!transformName.trim() || !transformTaskId) return;
+    setTransformLoading(true);
+    try {
+      await add_milestone(projectId, transformTaskId, {
+        name: transformName.trim(),
+        description: transformModal.idea.title,
+      });
+      await delete_idea(transformModal.idea.id);
+      closeTransform();
+    } catch (err) {
+      console.error("Transform to milestone failed:", err);
+      setTransformLoading(false);
+    }
+  };
+
   // ═══════════════════════════════════════════════════════
   // ═══════════  RENDER HELPERS  ══════════════════════════
   // ═══════════════════════════════════════════════════════
@@ -794,6 +885,15 @@ export default function IdeaBin() {
               </div>
             </div>
             <div className="flex-shrink-0 mt-0.5 flex items-center gap-0.5 text-gray-400">
+              <Zap
+                size={12}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openTransform(idea);
+                }}
+                className="hover:text-amber-500! cursor-pointer"
+                title="Transform to Task or Milestone"
+              />
               <EditIcon
                 onClick={(e) => {
                   e.stopPropagation();
@@ -844,6 +944,7 @@ export default function IdeaBin() {
       {/* ───── COLLAPSED: Floating icon ───── */}
       {!isOpen && (
         <div
+          ref={iconRef}
           onMouseDown={handleIconDrag}
           style={{
             position: "fixed",
@@ -853,7 +954,7 @@ export default function IdeaBin() {
           }}
           className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-400 to-yellow-500 shadow-lg
             flex items-center justify-center cursor-pointer select-none
-            hover:scale-110 hover:shadow-xl active:scale-95 transition-all duration-150
+            hover:scale-110 hover:shadow-xl active:scale-95 transition-shadow duration-150
             border-2 border-amber-300"
           title="Open Idea Bin"
         >
@@ -929,6 +1030,188 @@ export default function IdeaBin() {
             {/* Confirm modal overlay */}
             {confirmModal && (
               <ConfirmModal message={confirmModal.message} onConfirm={confirmModal.onConfirm} onCancel={confirmModal.onCancel} />
+            )}
+
+            {/* Transform modal overlay */}
+            {transformModal && (
+              <>
+                <div className="absolute inset-0 bg-black/30 z-[50] rounded-b-lg" onClick={closeTransform} />
+                <div
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-2xl z-[51] min-w-[260px] max-w-[90%] overflow-hidden"
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  {/* Header */}
+                  <div className="bg-gradient-to-r from-amber-400 to-yellow-400 px-4 py-2 flex items-center justify-between">
+                    <span className="text-sm font-semibold text-amber-900 flex items-center gap-1.5">
+                      <Zap size={14} /> Transform Idea
+                    </span>
+                    <button onClick={closeTransform} className="text-amber-800 hover:text-amber-950 text-sm font-bold">✕</button>
+                  </div>
+
+                  {/* Idea preview */}
+                  <div className="px-4 pt-3 pb-2 border-b border-gray-100 bg-gray-50">
+                    {transformModal.idea.headline && (
+                      <p className="text-xs font-semibold text-gray-700">{transformModal.idea.headline}</p>
+                    )}
+                    <p className="text-[11px] text-gray-500 line-clamp-2 mt-0.5">{transformModal.idea.title}</p>
+                  </div>
+
+                  <div className="p-4">
+                    {/* Step: Choose */}
+                    {transformModal.step === 'choose' && (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-xs text-gray-500 mb-1">Transform this idea into:</p>
+                        <button
+                          onClick={() => setTransformModal(prev => ({ ...prev, step: 'task' }))}
+                          className="w-full text-left px-3 py-2.5 border border-gray-200 rounded-lg hover:border-amber-400 hover:bg-amber-50 transition-colors group"
+                        >
+                          <span className="text-sm font-medium text-gray-800 group-hover:text-amber-800">📋 Task</span>
+                          <p className="text-[10px] text-gray-400 mt-0.5">Create a new task assigned to a team</p>
+                        </button>
+                        <button
+                          onClick={() => { setTransformTeamId(null); setTransformTaskId(null); setTransformModal(prev => ({ ...prev, step: 'milestone' })); }}                          className="w-full text-left px-3 py-2.5 border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors group"
+                        >
+                          <span className="text-sm font-medium text-gray-800 group-hover:text-blue-800">🏁 Milestone</span>
+                          <p className="text-[10px] text-gray-400 mt-0.5">Create a milestone on an existing task</p>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Step: Task */}
+                    {transformModal.step === 'task' && (
+                      <div className="flex flex-col gap-2.5">
+                        <div>
+                          <label className="text-[10px] text-gray-500 font-medium mb-0.5 block">Task Name</label>
+                          <input
+                            autoFocus
+                            value={transformName}
+                            onChange={(e) => setTransformName(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Escape") closeTransform(); }}
+                            className="w-full text-xs px-2 py-1.5 border border-gray-300 rounded outline-none focus:border-amber-400"
+                            placeholder="Task name..."
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-500 font-medium mb-0.5 block">Select Team</label>
+                          <div className="max-h-[140px] overflow-y-auto border border-gray-200 rounded">
+                            {projectTeams.length === 0 && (
+                              <p className="text-[10px] text-gray-400 p-2 italic">No teams found...</p>
+                            )}
+                            {projectTeams.map(team => (
+                              <div
+                                key={team.id}
+                                onClick={() => setTransformTeamId(team.id)}
+                                className={`px-2 py-1.5 text-xs cursor-pointer transition-colors flex items-center gap-2 ${
+                                  transformTeamId === team.id
+                                    ? "bg-amber-100 text-amber-900 font-medium"
+                                    : "hover:bg-gray-50 text-gray-700"
+                                }`}
+                              >
+                                {team.color && (
+                                  <span className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-300" style={{ backgroundColor: team.color }} />
+                                )}
+                                {team.name}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center pt-1">
+                          <button
+                            onClick={() => setTransformModal(prev => ({ ...prev, step: 'choose' }))}
+                            className="text-[10px] text-gray-500 hover:text-gray-700"
+                          >
+                            ← Back
+                          </button>
+                          <button
+                            onClick={executeTransformToTask}
+                            disabled={!transformName.trim() || !transformTeamId || transformLoading}
+                            className="px-3 py-1 bg-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium"
+                          >
+                            {transformLoading ? "Creating..." : "Create Task"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Step: Milestone */}
+                    {transformModal.step === 'milestone' && (
+                      <div className="flex flex-col gap-2.5">
+                        <div>
+                          <label className="text-[10px] text-gray-500 font-medium mb-0.5 block">Milestone Name</label>
+                          <input
+                            autoFocus
+                            value={transformName}
+                            onChange={(e) => setTransformName(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Escape") closeTransform(); }}
+                            className="w-full text-xs px-2 py-1.5 border border-gray-300 rounded outline-none focus:border-blue-400"
+                            placeholder="Milestone name..."
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-500 font-medium mb-0.5 block">Select Task</label>
+                          <input
+                            value={transformTaskSearch}
+                            onChange={(e) => setTransformTaskSearch(e.target.value)}
+                            className="w-full text-[10px] px-2 py-1 border border-gray-200 rounded outline-none focus:border-blue-300 mb-1"
+                            placeholder="Search tasks..."
+                          />
+                          <div className="max-h-[160px] overflow-y-auto border border-gray-200 rounded">
+                            {(() => {
+                              const filtered = projectTasks.filter(t => {
+                                if (!transformTaskSearch) return true;
+                                const q = transformTaskSearch.toLowerCase();
+                                const teamObj = projectTeams.find(tm => tm.id === (t.team || t.team_id));
+                                return (
+                                  (t.name || '').toLowerCase().includes(q) ||
+                                  (teamObj?.name || '').toLowerCase().includes(q)
+                                );
+                              });
+                              if (filtered.length === 0) return (
+                                <p className="text-[10px] text-gray-400 p-2 italic">No tasks found...</p>
+                              );
+                              return filtered.map(task => {
+                                const teamObj = projectTeams.find(tm => tm.id === (task.team || task.team_id));
+                                return (
+                                  <div
+                                    key={task.id}
+                                    onClick={() => setTransformTaskId(task.id)}
+                                    className={`px-2 py-1.5 text-xs cursor-pointer transition-colors flex items-center gap-1.5 ${
+                                      transformTaskId === task.id
+                                        ? "bg-blue-100 text-blue-900 font-medium"
+                                        : "hover:bg-gray-50 text-gray-700"
+                                    }`}
+                                  >
+                                    {teamObj?.color && (
+                                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: teamObj.color }} />
+                                    )}
+                                    <span>{task.name}</span>
+                                    {teamObj?.name && <span className="text-[10px] text-gray-400 ml-auto">{teamObj.name}</span>}
+                                  </div>
+                                );
+                              });
+                            })()}
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center pt-1">
+                          <button
+                            onClick={() => setTransformModal(prev => ({ ...prev, step: 'choose' }))}
+                            className="text-[10px] text-gray-500 hover:text-gray-700"
+                          >
+                            ← Back
+                          </button>
+                          <button
+                            onClick={executeTransformToMilestone}
+                            disabled={!transformName.trim() || !transformTaskId || transformLoading}
+                            className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium"
+                          >
+                            {transformLoading ? "Creating..." : "Create Milestone"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
             )}
 
             {/* ── LEFT: Sidebar (always visible) ── */}

@@ -219,6 +219,7 @@ class Day(models.Model):
 
 class Milestone(models.Model):
     name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, null=True)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, null=False)
     task = models.ForeignKey(Task, on_delete=models.CASCADE, null=False, related_name="milestones")
     start_index = models.IntegerField(default=0)
