@@ -466,8 +466,9 @@ function DependenciesContent() {
     return team.tasks.some(tid => taskDisplaySettings[tid]?.hidden);
   };
 
-  // Toggle team collapsed state
+  // Toggle team collapsed state — un-hide all tasks when expanding
   const toggleTeamCollapsed = (teamId) => {
+    const wasCollapsed = teamDisplaySettings[teamId]?.collapsed;
     setTeamDisplaySettings(prev => ({
       ...prev,
       [teamId]: {
@@ -475,6 +476,19 @@ function DependenciesContent() {
         collapsed: !prev[teamId]?.collapsed
       }
     }));
+    // When expanding, show all tasks so the user always sees every task
+    if (wasCollapsed) {
+      const team = teams[teamId];
+      if (team) {
+        setTaskDisplaySettings(prev => {
+          const updated = { ...prev };
+          for (const taskId of team.tasks) {
+            updated[taskId] = { ...updated[taskId], hidden: false };
+          }
+          return updated;
+        });
+      }
+    }
   };
 
   // Check if team is collapsed

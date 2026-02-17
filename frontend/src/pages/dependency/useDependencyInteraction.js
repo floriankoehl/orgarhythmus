@@ -203,9 +203,8 @@ export function useDependencyInteraction({
     }
   }, [autoSelectBlocking, selectedMilestones, milestones, tasks, setTaskDisplaySettings, setTeamDisplaySettings]);
 
-  // Handle team drag
+  // Handle team drag — allowed in all modes (reordering is non-destructive)
   const handleTeamDrag = (e, teamId, orderIndex) => {
-    if (safeMode) return;
     e.preventDefault();
     const containerRect = teamContainerRef.current?.getBoundingClientRect();
     if (!containerRect) return;
@@ -293,9 +292,8 @@ export function useDependencyInteraction({
     document.addEventListener('mouseup', onMouseUp);
   };
 
-  // Handle task drag
+  // Handle task drag — allowed in all modes (reordering is non-destructive)
   const handleTaskDrag = (e, taskId, teamId, taskIndex) => {
-    if (safeMode) return;
     e.preventDefault();
     const containerRect = teamContainerRef.current?.getBoundingClientRect();
     if (!containerRect) return;
