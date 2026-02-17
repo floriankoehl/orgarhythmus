@@ -17,8 +17,6 @@ import {
   MARIGN_BETWEEN_DRAG_HIGHLIGHT,
   TEAM_HEADER_LINE_HEIGHT,
   TEAM_HEADER_GAP,
-  TEAMWIDTH,
-  TASKWIDTH,
 } from './layoutMath';
 
 /**
@@ -54,6 +52,8 @@ export function useDependencyInteraction({
   
   // Layout helpers
   DAYWIDTH,
+  TEAMWIDTH,
+  TASKWIDTH,
   getTaskHeight,
   getTeamHeight,
   isTeamVisible,
@@ -84,12 +84,16 @@ export function useDependencyInteraction({
   // Transient interaction state
   const justDraggedRef = useRef(false);
   const [ghost, setGhost] = useState(null);
-  const [dropIndex, setDropIndex] = useState(null);
+  const [dropIndex, _setDropIndex] = useState(null);
+  const dropIndexRef = useRef(null);
+  const setDropIndex = (val) => { dropIndexRef.current = val; _setDropIndex(val); };
   const [isDraggingConnection, setIsDraggingConnection] = useState(false);
   const [connectionStart, setConnectionStart] = useState(null);
   const [connectionEnd, setConnectionEnd] = useState({ x: 0, y: 0 });
   const [taskGhost, setTaskGhost] = useState(null);
-  const [taskDropTarget, setTaskDropTarget] = useState(null);
+  const [taskDropTarget, _setTaskDropTarget] = useState(null);
+  const taskDropTargetRef = useRef(null);
+  const setTaskDropTarget = (val) => { taskDropTargetRef.current = val; _setTaskDropTarget(val); };
   const [moveModal, setMoveModal] = useState(null);
   const [blockedMoveHighlight, setBlockedMoveHighlight] = useState(null);
   
@@ -350,10 +354,11 @@ export function useDependencyInteraction({
 
       const visibleTeams = teamOrder.filter(tid => isTeamVisible(tid));
       const currentVisibleIndex = visibleTeams.indexOf(teamId);
+      const finalDropIndex = dropIndexRef.current;
 
-      if (dropIndex !== null && dropIndex !== currentVisibleIndex) {
+      if (finalDropIndex !== null && finalDropIndex !== currentVisibleIndex) {
         const newVisibleTeams = visibleTeams.filter(tid => tid !== teamId);
-        newVisibleTeams.splice(dropIndex, 0, teamId);
+        newVisibleTeams.splice(finalDropIndex, 0, teamId);
 
         const hiddenTeams = teamOrder.filter(tid => !isTeamVisible(tid));
         const newOrder = [...newVisibleTeams, ...hiddenTeams];
@@ -438,8 +443,9 @@ export function useDependencyInteraction({
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
 
-      if (taskDropTarget) {
-        const { teamId: targetTeamId, insertIndex } = taskDropTarget;
+      const finalTaskDropTarget = taskDropTargetRef.current;
+      if (finalTaskDropTarget) {
+        const { teamId: targetTeamId, insertIndex } = finalTaskDropTarget;
 
         if (targetTeamId === teamId) {
           // Same team reorder

@@ -88,6 +88,8 @@ export default function DependencyCanvas({
   toggleTeamCollapsed,
   addMilestoneLocal,
   showAllHiddenTeams,
+  toggleTeamVisibility,
+  handleColumnResize,
   // Setters
   setHoveredMilestone,
   setEditingMilestoneName,
@@ -166,12 +168,13 @@ export default function DependencyCanvas({
                   width: `${TEAMWIDTH + TASKWIDTH}px`,
                   backgroundColor: `${ghost.color}`,
                   zIndex: 100,
-                  opacity: 0.8,
-                  border: '2px dashed #374151',
+                  opacity: 0.85,
+                  border: '2px dashed #1e293b',
                   borderRadius: '4px',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.25), 0 0 0 1px rgba(0,0,0,0.1)',
                 }}
               >
-                <div className="p-2 text-sm font-medium">{ghost.name}</div>
+                <div className="p-2 text-sm font-medium text-slate-900">{ghost.name}</div>
               </div>
             )}
           </div>
@@ -189,16 +192,44 @@ export default function DependencyCanvas({
               }}
             >
               <div
-                className="flex items-center justify-center border-r"
-                style={{ width: `${TEAMWIDTH}px` }}
+                className="flex items-center justify-center border-r border-slate-300"
+                style={{ width: `${TEAMWIDTH}px`, position: 'relative' }}
               >
                 Team
+                {/* Resize divider: team column right edge */}
+                <div
+                  onMouseDown={(e) => handleColumnResize('team', e)}
+                  style={{
+                    position: 'absolute',
+                    right: -2,
+                    top: 0,
+                    width: '5px',
+                    height: '100%',
+                    cursor: 'col-resize',
+                    zIndex: 60,
+                  }}
+                  className="hover:bg-blue-400/40 transition-colors"
+                />
               </div>
               <div
-                className="flex items-center justify-center"
-                style={{ width: `${TASKWIDTH}px` }}
+                className="flex items-center justify-center border-r border-slate-300"
+                style={{ width: `${TASKWIDTH}px`, position: 'relative' }}
               >
                 Tasks
+                {/* Resize divider: task column right edge */}
+                <div
+                  onMouseDown={(e) => handleColumnResize('task', e)}
+                  style={{
+                    position: 'absolute',
+                    right: -2,
+                    top: 0,
+                    width: '5px',
+                    height: '100%',
+                    cursor: 'col-resize',
+                    zIndex: 60,
+                  }}
+                  className="hover:bg-blue-400/40 transition-colors"
+                />
               </div>
             </div>
             
@@ -292,6 +323,7 @@ export default function DependencyCanvas({
             setHoveredDayCell={setHoveredDayCell}
             handleDayCellClick={handleDayCellClick}
             showAllHiddenTeams={showAllHiddenTeams}
+            toggleTeamVisibility={toggleTeamVisibility}
           />
 
           {/* SVG Layer for Connections - ABOVE day grid */}
@@ -465,7 +497,7 @@ export default function DependencyCanvas({
           {/* Task Ghost */}
           {taskGhost && (
             <div
-              className="absolute rounded border border-blue-400 bg-blue-100/90 shadow-lg flex items-center px-2 text-sm font-medium text-blue-900 pointer-events-none"
+              className="absolute rounded border-2 border-blue-500 bg-blue-100/95 flex items-center px-2 text-sm font-medium text-blue-900 pointer-events-none"
               style={{
                 height: `${taskGhost.height}px`,
                 width: `${taskGhost.width}px`,
@@ -473,6 +505,7 @@ export default function DependencyCanvas({
                 top: `${taskGhost.y}px`,
                 zIndex: 100,
                 transform: 'translate(-50%, -50%)',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.25), 0 0 0 1px rgba(59,130,246,0.3)',
               }}
             >
               {taskGhost.name}

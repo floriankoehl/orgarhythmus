@@ -3,7 +3,9 @@ import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
-// import InboxIcon from '@mui/icons-material/Inbox';
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import ArrowRightIcon from '@mui/icons-material/ArrowRight';
 import DependencyDayGrid from './DependencyDayGrid';
 import { useNavigate } from 'react-router-dom';
 import { useParams } from 'react-router-dom';
@@ -55,6 +57,7 @@ export default function DependencyTeamList({
   setHoveredDayCell,
   handleDayCellClick,
   showAllHiddenTeams,
+  toggleTeamVisibility,
 }) {
   const navigate = useNavigate();
   const { projectId } = useParams();
@@ -137,24 +140,53 @@ export default function DependencyTeamList({
                     height: `${teamHeight}px`,
                     backgroundColor: lightenColor(teamColor, 0.92),
                   }}
-                  onMouseDown={(e) => handleTeamDrag(e, team_key, visibleIndex)}
+                  onMouseDown={(e) => {
+                    // Don't initiate drag if clicking on interactive elements
+                    if (e.target.closest('[data-no-drag]')) return;
+                    handleTeamDrag(e, team_key, visibleIndex);
+                  }}
                 >
-                  <div className="flex items-center gap-1.5 px-2 py-1.5 w-full">
-                    <div
-                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: teamColor }}
-                    />
+                  <div className="flex items-center gap-1 px-1 py-1.5 w-full">
+                    {/* Expand/collapse triangle */}
+                    <button
+                      data-no-drag
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleTeamCollapsed(team_key);
+                      }}
+                      className="flex-shrink-0 flex items-center justify-center rounded hover:bg-white/50 transition cursor-pointer"
+                      style={{ width: '18px', height: '18px' }}
+                      title={isCollapsed ? 'Expand team' : 'Collapse team'}
+                    >
+                      <ArrowRightIcon
+                        style={{
+                          fontSize: 16,
+                          color: teamColor,
+                          transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)',
+                          transition: 'transform 0.15s ease',
+                        }}
+                      />
+                    </button>
                     <span
-                      className="text-sm font-medium truncate flex-1 cursor-pointer hover:text-blue-600 hover:underline transition-colors"
-                      title={`Go to ${team.name} detail page`}
+                      className="text-sm font-medium truncate flex-1"
+                      title={team.name}
+                    >
+                      {team.name}
+                    </span>
+                    {/* Link to team detail page */}
+                    <button
+                      data-no-drag
                       onClick={(e) => {
                         e.stopPropagation();
                         navigate(`/projects/${projectId}/teams/${team_key}`);
                       }}
+                      className="h-5 w-5 flex items-center justify-center rounded hover:bg-white/50 transition cursor-pointer"
+                      title={`Go to ${team.name} detail page`}
                     >
-                      {team.name}
-                    </span>
+                      <OpenInNewIcon style={{ fontSize: 12 }} className="text-slate-400 hover:text-blue-500" />
+                    </button>
                     <button
+                      data-no-drag
                       id={`team-settings-btn-${team_key}`}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -188,7 +220,7 @@ export default function DependencyTeamList({
                       
                       return (
                         <div
-                          className="border-l border-slate-200 flex justify-between w-full items-center hover:bg-slate-50/50 transition-colors"
+                          className="border-l border-slate-200 flex w-full items-center hover:bg-slate-50/50 transition-colors"
                           style={{
                             height: `${taskHeight}px`,
                             width: `${TASKWIDTH}px`,
@@ -197,22 +229,31 @@ export default function DependencyTeamList({
                           }}
                           key={`${task_key}_container`}
                         >
-                          {/* Task Name */}
+                          {/* Drag Handle */}
                           <div
                             onMouseDown={(e) => {
                               if (mode === "drag") {
                                 handleTaskDrag(e, task_key, team_key, visibleTaskIndex);
                               }
                             }}
-                            className={`flex-1 h-full flex items-center px-2 cursor-grab active:cursor-grabbing truncate text-slate-600 ${isSmall ? 'text-xs' : 'text-sm'}`}
+                            className={`flex-shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 hover:bg-slate-100 transition-colors`}
+                            style={{ width: '28px', height: '100%' }}
+                            title="Drag to reorder task"
+                          >
+                            <DragIndicatorIcon style={{ fontSize: isSmall ? 12 : 14 }} />
+                          </div>
+
+                          {/* Task Name (click to navigate) */}
+                          <div
+                            className={`flex-1 h-full flex items-center min-w-0 cursor-pointer`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/projects/${projectId}/tasks/${task_key}`);
+                            }}
                           >
                             <span
-                              className="truncate cursor-pointer hover:text-blue-600 hover:underline transition-colors"
+                              className={`truncate hover:text-blue-600 hover:underline transition-colors text-slate-600 ${isSmall ? 'text-xs' : 'text-sm'}`}
                               title={`Go to ${tasks[task_key]?.name} detail page`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate(`/projects/${projectId}/tasks/${task_key}`);
-                              }}
                             >
                               {tasks[task_key]?.name}
                             </span>

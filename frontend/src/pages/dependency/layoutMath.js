@@ -16,6 +16,12 @@ export const CONNECTION_RADIUS = 20;
 export const DAY_NAME_WIDTH_THRESHOLD = 45;
 export const TEAM_COLLAPSED_HEIGHT = 32;
 
+// Column resize limits
+export const MIN_TEAMWIDTH = 80;
+export const MAX_TEAMWIDTH = 400;
+export const MIN_TASKWIDTH = 100;
+export const MAX_TASKWIDTH = 500;
+
 // ==========================================
 // Pure Utility Functions
 // ==========================================

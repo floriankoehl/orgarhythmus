@@ -14,8 +14,8 @@ import {
   // Constants
   DEFAULT_TASKHEIGHT_NORMAL,
   DEFAULT_TASKHEIGHT_SMALL,
-  TASKWIDTH,
-  TEAMWIDTH,
+  TASKWIDTH as DEFAULT_TASKWIDTH_CONSTANT,
+  TEAMWIDTH as DEFAULT_TEAMWIDTH_CONSTANT,
   TEAM_DRAG_HIGHLIGHT_HEIGHT,
   MARIGN_BETWEEN_DRAG_HIGHLIGHT,
   TEAM_HEADER_LINE_HEIGHT,
@@ -23,6 +23,10 @@ import {
   DEFAULT_DAYWIDTH,
   HEADER_HEIGHT,
   TEAM_COLLAPSED_HEIGHT,
+  MIN_TEAMWIDTH,
+  MAX_TEAMWIDTH,
+  MIN_TASKWIDTH,
+  MAX_TASKWIDTH,
 } from './layoutMath';
 import { useDependencyInteraction } from './useDependencyInteraction';
 import { useDependencyData } from './useDependencyData';
@@ -134,10 +138,42 @@ function DependenciesContent() {
   const [dayPurposeModal, setDayPurposeModal] = useState(null); // { dayIndex, currentPurpose }
   const [newDayPurpose, setNewDayPurpose] = useState("");
 
+  // Column widths (resizable)
+  const [teamColumnWidth, setTeamColumnWidth] = useState(DEFAULT_TEAMWIDTH_CONSTANT);
+  const [taskColumnWidth, setTaskColumnWidth] = useState(DEFAULT_TASKWIDTH_CONSTANT);
+
   // Dynamic constants based on settings
   const DAYWIDTH = customDayWidth;
+  const TEAMWIDTH = teamColumnWidth;
+  const TASKWIDTH = taskColumnWidth;
   const TASKHEIGHT_NORMAL = customTaskHeightNormal;
   const TASKHEIGHT_SMALL = customTaskHeightSmall;
+
+  // Column resize handler
+  const handleColumnResize = (column, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = column === 'team' ? TEAMWIDTH : TASKWIDTH;
+    const minW = column === 'team' ? MIN_TEAMWIDTH : MIN_TASKWIDTH;
+    const maxW = column === 'team' ? MAX_TEAMWIDTH : MAX_TASKWIDTH;
+    const setter = column === 'team' ? setTeamColumnWidth : setTaskColumnWidth;
+
+    const onMouseMove = (moveE) => {
+      const delta = moveE.clientX - startX;
+      setter(Math.min(maxW, Math.max(minW, startWidth + delta)));
+    };
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  };
 
   // Helper to get task height (using current settings)
   const getTaskHeight = (taskId, taskDisplaySettings) => 
@@ -313,6 +349,8 @@ function DependenciesContent() {
     setIsAddingMilestone,
     setTasks,
     DAYWIDTH,
+    TEAMWIDTH,
+    TASKWIDTH,
     getTaskHeight,
     getTeamHeight,
     isTeamVisible,
@@ -831,6 +869,8 @@ function DependenciesContent() {
           toggleTeamCollapsed={toggleTeamCollapsed}
           addMilestoneLocal={addMilestoneLocal}
           showAllHiddenTeams={showAllHiddenTeams}
+          toggleTeamVisibility={toggleTeamVisibility}
+          handleColumnResize={handleColumnResize}
           // Setters
           setHoveredMilestone={setHoveredMilestone}
           setEditingMilestoneName={setEditingMilestoneName}
