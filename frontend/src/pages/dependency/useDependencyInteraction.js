@@ -1,5 +1,5 @@
 // interaction logic for dependencies timeline
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   TEAMWIDTH,
   TASKWIDTH,
@@ -60,24 +60,14 @@ export function useDependencyInteraction({
   setTeamFilter,
   setTaskDisplaySettings,
   setTeamDisplaySettings,
-  setGhost,
-  setDropIndex,
-  setTaskGhost,
-  setTaskDropTarget,
-  setMoveModal,
-  setBlockedMoveHighlight,
   setEditingMilestoneId,
   setEditingMilestoneName,
   setMilestoneCreateModal,
   setIsAddingMilestone,
-  setIsDraggingConnection,
-  setConnectionStart,
-  setConnectionEnd,
   setTasks,
   
   // Refs
   teamContainerRef,
-  justDraggedRef,
   
   // Layout helpers
   DAYWIDTH,
@@ -92,6 +82,18 @@ export function useDependencyInteraction({
   // Computed
   safeMode,
 }) {
+  // Transient interaction state
+  const justDraggedRef = useRef(false); // Prevents click handler from firing after drag ends
+  const [ghost, setGhost] = useState(null);
+  const [dropIndex, setDropIndex] = useState(null);
+  const [isDraggingConnection, setIsDraggingConnection] = useState(false);
+  const [connectionStart, setConnectionStart] = useState(null);
+  const [connectionEnd, setConnectionEnd] = useState({ x: 0, y: 0 });
+  const [taskGhost, setTaskGhost] = useState(null);
+  const [taskDropTarget, setTaskDropTarget] = useState(null);
+  const [moveModal, setMoveModal] = useState(null);
+  const [blockedMoveHighlight, setBlockedMoveHighlight] = useState(null);
+
   // Store the base viewMode for when no modifier keys are held
   const baseViewModeRef = useRef(viewMode);
 
@@ -965,25 +967,35 @@ export function useDependencyInteraction({
   const handleConnectionDragStart = (e, milestoneId, handleType) => {
     if (safeMode) return;
     e.stopPropagation();
+    e.preventDefault();
     const containerRect = teamContainerRef.current?.getBoundingClientRect();
     if (!containerRect) return;
 
-    setIsDraggingConnection(true);
+    const initialX = e.clientX - containerRect.left;
+    const initialY = e.clientY - containerRect.top;
+
+    // Set both start and end to the same initial position to avoid jump to (0,0)
     setConnectionStart({
       milestoneId,
       handleType,
-      x: e.clientX - containerRect.left,
-      y: e.clientY - containerRect.top,
+      x: initialX,
+      y: initialY,
     });
+    setConnectionEnd({ x: initialX, y: initialY });
+    setIsDraggingConnection(true);
 
     // Use requestAnimationFrame for smoother updates
     let rafId = null;
-    let lastX = e.clientX - containerRect.left;
-    let lastY = e.clientY - containerRect.top;
+    let lastX = initialX;
+    let lastY = initialY;
 
     const onMouseMove = (moveEvent) => {
-      lastX = moveEvent.clientX - containerRect.left;
-      lastY = moveEvent.clientY - containerRect.top;
+      // Re-get container rect in case it moved (scrolling, etc.)
+      const currentRect = teamContainerRef.current?.getBoundingClientRect();
+      if (!currentRect) return;
+      
+      lastX = moveEvent.clientX - currentRect.left;
+      lastY = moveEvent.clientY - currentRect.top;
       
       if (rafId === null) {
         rafId = requestAnimationFrame(() => {
@@ -1002,10 +1014,18 @@ export function useDependencyInteraction({
         cancelAnimationFrame(rafId);
       }
 
+      // Re-get container rect for accurate position calculation
+      const currentRect = teamContainerRef.current?.getBoundingClientRect();
+      if (!currentRect) {
+        setIsDraggingConnection(false);
+        setConnectionStart(null);
+        return;
+      }
+
       // Find if we're over a milestone handle
       const targetMilestone = findMilestoneAtPosition(
-        upEvent.clientX - containerRect.left,
-        upEvent.clientY - containerRect.top
+        upEvent.clientX - currentRect.left,
+        upEvent.clientY - currentRect.top
       );
 
       if (targetMilestone && targetMilestone.id !== milestoneId) {
@@ -1049,14 +1069,15 @@ export function useDependencyInteraction({
       const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
 
       const milestoneX = TEAMWIDTH + TASKWIDTH + milestone.start_index * DAYWIDTH;
-      const milestoneY = teamYOffset + dropHighlightOffset + headerOffset + taskYOffset + taskHeight / 2;
+      // Calculate actual top Y position (not center)
+      const milestoneTopY = teamYOffset + dropHighlightOffset + headerOffset + taskYOffset;
       const milestoneWidth = DAYWIDTH * milestone.duration;
 
       if (
         x >= milestoneX - 10 &&
         x <= milestoneX + milestoneWidth + 10 &&
-        y >= milestoneY &&
-        y <= milestoneY + taskHeight
+        y >= milestoneTopY &&
+        y <= milestoneTopY + taskHeight
       ) {
         return { id: parseInt(id), ...milestone };
       }
@@ -1116,6 +1137,27 @@ export function useDependencyInteraction({
 
   // Return all handlers
   return {
+    // Transient interaction state
+    ghost,
+    setGhost,
+    dropIndex,
+    setDropIndex,
+    taskGhost,
+    setTaskGhost,
+    taskDropTarget,
+    setTaskDropTarget,
+    isDraggingConnection,
+    setIsDraggingConnection,
+    connectionStart,
+    setConnectionStart,
+    connectionEnd,
+    setConnectionEnd,
+    justDraggedRef,
+    moveModal,
+    setMoveModal,
+    blockedMoveHighlight,
+    setBlockedMoveHighlight,
+
     // Drag handlers
     handleTeamDrag,
     handleTaskDrag,

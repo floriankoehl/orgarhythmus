@@ -111,24 +111,8 @@ export default function Dependencies() {
     setEditingMilestoneName,
   } = useDependencyUIState();
 
-  // UI state
-  const justDraggedRef = useRef(false); // Prevents click handler from firing after drag ends
-
-  const [ghost, setGhost] = useState(null);
+  // Refs
   const teamContainerRef = useRef(null);
-  const [dropIndex, setDropIndex] = useState(null);
-
-  // Connection state
-  const [isDraggingConnection, setIsDraggingConnection] = useState(false);
-  const [connectionStart, setConnectionStart] = useState(null);
-  const [connectionEnd, setConnectionEnd] = useState({ x: 0, y: 0 });
-
-  // Task drag state
-  const [taskGhost, setTaskGhost] = useState(null);
-  const [taskDropTarget, setTaskDropTarget] = useState(null);
-
-  // Cross-team move confirmation modal
-  const [moveModal, setMoveModal] = useState(null);
 
   // Team settings dropdown
   const [openTeamSettings, setOpenTeamSettings] = useState(null);
@@ -146,9 +130,6 @@ export default function Dependencies() {
 
   // Milestone delete confirmation modal
   const [deleteConfirmModal, setDeleteConfirmModal] = useState(null); // { milestoneId, milestoneName }
-
-  // Move validation feedback state
-  const [blockedMoveHighlight, setBlockedMoveHighlight] = useState(null); // { milestoneId, connectionId, originalState }
 
   // Create modals
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
@@ -346,6 +327,26 @@ export default function Dependencies() {
     findMilestoneAtPosition,
     getMilestoneHandlePosition,
     showBlockingFeedback,
+    // Transient interaction state
+    ghost,
+    setGhost,
+    dropIndex,
+    setDropIndex,
+    taskGhost,
+    setTaskGhost,
+    taskDropTarget,
+    setTaskDropTarget,
+    isDraggingConnection,
+    setIsDraggingConnection,
+    connectionStart,
+    setConnectionStart,
+    connectionEnd,
+    setConnectionEnd,
+    justDraggedRef,
+    moveModal,
+    setMoveModal,
+    blockedMoveHighlight,
+    setBlockedMoveHighlight,
   } = useDependencyInteraction({
     projectId,
     milestones,
@@ -376,22 +377,12 @@ export default function Dependencies() {
     setTeamFilter,
     setTaskDisplaySettings,
     setTeamDisplaySettings,
-    setGhost,
-    setDropIndex,
-    setTaskGhost,
-    setTaskDropTarget,
-    setMoveModal,
-    setBlockedMoveHighlight,
     setEditingMilestoneId,
     setEditingMilestoneName,
     setMilestoneCreateModal,
     setIsAddingMilestone,
-    setIsDraggingConnection,
-    setConnectionStart,
-    setConnectionEnd,
     setTasks,
     teamContainerRef,
-    justDraggedRef,
     DAYWIDTH,
     getTaskHeight,
     getTeamHeight,
