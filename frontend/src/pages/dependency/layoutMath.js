@@ -131,18 +131,11 @@ export const getVisibleTeamIndex = (teamId, teamOrder, isTeamVisibleFn) => {
     return index;
 };
 
-export const isTeamVisibleBase = (teamId, teamFilter, teamDisplaySettings, teams, taskDisplaySettings) => {
-    // teamFilter contains teams to HIDE (blacklist)
-    if (teamFilter.includes(teamId)) return false;
-    
+export const isTeamVisibleBase = (teamId, teamDisplaySettings, teams, taskDisplaySettings) => {
     const settings = teamDisplaySettings[teamId];
     if (settings?.hidden) return false;
     
-    const team = teams[teamId];
-    if (!team || team.tasks.length === 0) return true;
-    
-    const hasVisibleTask = team.tasks.some(taskId => isTaskVisible(taskId, taskDisplaySettings));
-    return hasVisibleTask;
+    return true;
 };
 
 // ==========================================

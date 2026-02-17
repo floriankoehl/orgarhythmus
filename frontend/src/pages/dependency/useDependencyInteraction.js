@@ -35,7 +35,6 @@ export function useDependencyInteraction({
   connections,
   openTeamSettings,
   showFilterDropdown,
-  teamFilter,
   taskDisplaySettings,
   teamDisplaySettings,
   
@@ -48,7 +47,6 @@ export function useDependencyInteraction({
   setDeleteConfirmModal,
   setOpenTeamSettings,
   setShowFilterDropdown,
-  setTeamFilter,
   setTaskDisplaySettings,
   setTeamDisplaySettings,
   setMilestoneCreateModal,
@@ -176,11 +174,13 @@ export function useDependencyInteraction({
       
       const teamId = task.team;
       
-      // Ensure team is in filter (add it if filter is active and team isn't included)
-      setTeamFilter(prev => {
-        if (prev.length === 0) return prev; // No filter active
-        if (prev.includes(teamId)) return prev; // Already included
-        return [...prev, teamId];
+      // Ensure team is visible (not hidden via filter)
+      setTeamDisplaySettings(prev => {
+        if (!prev[teamId]?.hidden) return prev;
+        return {
+          ...prev,
+          [teamId]: { ...prev[teamId], hidden: false }
+        };
       });
       
       // Ensure task is visible (not hidden)
@@ -201,7 +201,7 @@ export function useDependencyInteraction({
         };
       });
     }
-  }, [autoSelectBlocking, selectedMilestones, milestones, tasks, setTeamFilter, setTaskDisplaySettings, setTeamDisplaySettings]);
+  }, [autoSelectBlocking, selectedMilestones, milestones, tasks, setTaskDisplaySettings, setTeamDisplaySettings]);
 
   // Handle team drag
   const handleTeamDrag = (e, teamId, orderIndex) => {
@@ -769,19 +769,20 @@ export function useDependencyInteraction({
     
     const teamId = task.team;
     
-    // Store original states (including filter)
+    // Store original states
     const originalState = {
       taskHidden: taskDisplaySettings[taskId]?.hidden || false,
       taskSize: taskDisplaySettings[taskId]?.size || 'normal',
       teamCollapsed: teamDisplaySettings[teamId]?.collapsed || false,
-      teamFilterActive: teamFilter.length > 0 && !teamFilter.includes(teamId),
-      originalTeamFilter: [...teamFilter],
+      teamHidden: teamDisplaySettings[teamId]?.hidden || false,
     };
     
-    // Temporarily show the milestone - clear filter if it's hiding this team
-    if (originalState.teamFilterActive) {
-      // Add this team temporarily to the filter so it becomes visible
-      setTeamFilter(prev => [...prev, teamId]);
+    // Temporarily show the milestone - unhide team if hidden
+    if (originalState.teamHidden) {
+      setTeamDisplaySettings(prev => ({
+        ...prev,
+        [teamId]: { ...prev[teamId], hidden: false }
+      }));
     }
     if (originalState.taskHidden) {
       setTaskDisplaySettings(prev => ({
@@ -813,8 +814,11 @@ export function useDependencyInteraction({
     setTimeout(() => {
       setBlockedMoveHighlight(null);
       
-      if (originalState.teamFilterActive) {
-        setTeamFilter(originalState.originalTeamFilter);
+      if (originalState.teamHidden) {
+        setTeamDisplaySettings(prev => ({
+          ...prev,
+          [teamId]: { ...prev[teamId], hidden: true }
+        }));
       }
       if (originalState.taskHidden) {
         setTaskDisplaySettings(prev => ({

@@ -21,8 +21,8 @@ export default function DependencyToolbar({
   teamOrder,
   teams,
   // Filter state
-  teamFilter,
-  setTeamFilter,
+  teamDisplaySettings,
+  setTeamDisplaySettings,
   showFilterDropdown,
   setShowFilterDropdown,
   // View mode
@@ -74,6 +74,11 @@ export default function DependencyToolbar({
   onDeleteSelected,
 }) {
   const hasSelection = selectedMilestones?.size > 0 || selectedConnection;
+  
+  // Compute how many teams are hidden via teamDisplaySettings
+  const filteredTeamCount = teamOrder.filter(tid => teamDisplaySettings[tid]?.hidden).length;
+  const allTeamsHidden = filteredTeamCount === teamOrder.length;
+  const noTeamsHidden = filteredTeamCount === 0;
   
   const getDeleteLabel = () => {
     if (selectedConnection) return 'Delete Dependency';
@@ -272,7 +277,7 @@ export default function DependencyToolbar({
                 setShowFilterDropdown(!showFilterDropdown);
               }}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
-                teamFilter.length > 0
+                filteredTeamCount > 0
                   ? 'border-blue-400 bg-blue-50 text-blue-700'
                   : showFilterDropdown
                     ? 'border-blue-400 bg-blue-50 text-blue-700'
@@ -281,8 +286,8 @@ export default function DependencyToolbar({
             >
               <FilterListIcon style={{ fontSize: 14 }} />
               <span>
-                {teamFilter.length > 0 
-                  ? `${teamFilter.length} team${teamFilter.length > 1 ? 's' : ''} filtered`
+                {filteredTeamCount > 0 
+                  ? `${filteredTeamCount} team${filteredTeamCount > 1 ? 's' : ''} hidden`
                   : 'Filter Teams'
                 }
               </span>
@@ -296,21 +301,46 @@ export default function DependencyToolbar({
                 <div className="p-2">
                   <div className="flex items-center justify-between mb-2 px-1">
                     <span className="text-xs font-medium text-slate-700">Show teams:</span>
-                    {teamFilter.length > 0 && (
-                      <button
-                        onClick={() => setTeamFilter([])}
-                        className="text-[10px] text-blue-600 hover:underline"
-                      >
-                        Clear all
-                      </button>
-                    )}
+                    <div className="flex gap-2">
+                      {!noTeamsHidden && (
+                        <button
+                          onClick={() => {
+                            setTeamDisplaySettings(prev => {
+                              const updated = { ...prev };
+                              for (const tid of teamOrder) {
+                                updated[tid] = { ...updated[tid], hidden: false };
+                              }
+                              return updated;
+                            });
+                          }}
+                          className="text-[10px] text-blue-600 hover:underline"
+                        >
+                          Select all
+                        </button>
+                      )}
+                      {!allTeamsHidden && (
+                        <button
+                          onClick={() => {
+                            setTeamDisplaySettings(prev => {
+                              const updated = { ...prev };
+                              for (const tid of teamOrder) {
+                                updated[tid] = { ...updated[tid], hidden: true };
+                              }
+                              return updated;
+                            });
+                          }}
+                          className="text-[10px] text-slate-500 hover:underline"
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-1 max-h-48 overflow-y-auto">
                     {teamOrder.map((teamId) => {
                       const team = teams[teamId];
                       if (!team) return null;
-                      // teamFilter contains teams that are HIDDEN, so checked means NOT in filter
-                      const isVisible = !teamFilter.includes(teamId);
+                      const isVisible = !teamDisplaySettings[teamId]?.hidden;
                       return (
                         <label
                           key={teamId}
@@ -320,13 +350,10 @@ export default function DependencyToolbar({
                             type="checkbox"
                             checked={isVisible}
                             onChange={() => {
-                              if (isVisible) {
-                                // Add to filter (hide it)
-                                setTeamFilter([...teamFilter, teamId]);
-                              } else {
-                                // Remove from filter (show it)
-                                setTeamFilter(teamFilter.filter(id => id !== teamId));
-                              }
+                              setTeamDisplaySettings(prev => ({
+                                ...prev,
+                                [teamId]: { ...prev[teamId], hidden: !prev[teamId]?.hidden }
+                              }));
                             }}
                             className="rounded border-slate-300"
                           />

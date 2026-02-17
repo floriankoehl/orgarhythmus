@@ -95,8 +95,7 @@ function DependenciesContent() {
   // Team settings dropdown
   const [openTeamSettings, setOpenTeamSettings] = useState(null);
 
-  // Team filter - empty array means show all teams
-  const [teamFilter, setTeamFilter] = useState([]);
+  // Filter dropdown visibility
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
 
   // Day cell hover state for milestone creation
@@ -208,7 +207,7 @@ function DependenciesContent() {
     getRawTeamHeightBase(teams[teamId], taskDisplaySettings, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL);
 
   const isTeamVisible = (teamId) => 
-    isTeamVisibleBase(teamId, teamFilter, teamDisplaySettings, teams, taskDisplaySettings);
+    isTeamVisibleBase(teamId, teamDisplaySettings, teams, taskDisplaySettings);
 
   const getVisibleTasks = (teamId) => 
     getVisibleTasksBase(teams[teamId], taskDisplaySettings);
@@ -291,7 +290,6 @@ function DependenciesContent() {
     connections,
     openTeamSettings,
     showFilterDropdown,
-    teamFilter,
     taskDisplaySettings,
     teamDisplaySettings,
     setMode,
@@ -302,7 +300,6 @@ function DependenciesContent() {
     setDeleteConfirmModal,
     setOpenTeamSettings,
     setShowFilterDropdown,
-    setTeamFilter,
     setTaskDisplaySettings,
     setTeamDisplaySettings,
     setMilestoneCreateModal,
@@ -388,14 +385,32 @@ function DependenciesContent() {
   };
 
   // Toggle task visibility
+  // Auto-collapse team when all tasks hidden, un-collapse when a task is shown
   const toggleTaskVisibility = (taskId) => {
-    setTaskDisplaySettings(prev => ({
-      ...prev,
-      [taskId]: {
-        ...prev[taskId],
-        hidden: !prev[taskId]?.hidden
+    setTaskDisplaySettings(prev => {
+      const updated = {
+        ...prev,
+        [taskId]: {
+          ...prev[taskId],
+          hidden: !prev[taskId]?.hidden
+        }
+      };
+
+      // Find which team this task belongs to and check if all tasks are now hidden
+      for (const tid of teamOrder) {
+        const team = teams[tid];
+        if (!team || !team.tasks.includes(taskId)) continue;
+
+        const allHidden = team.tasks.every(t => updated[t]?.hidden);
+        setTeamDisplaySettings(prev2 => ({
+          ...prev2,
+          [tid]: { ...prev2[tid], collapsed: allHidden }
+        }));
+        break;
       }
-    }));
+
+      return updated;
+    });
   };
 
   // Toggle team visibility
@@ -478,13 +493,15 @@ function DependenciesContent() {
       }
       return updated;
     });
+    // Un-collapse team since tasks are visible again
+    setTeamDisplaySettings(prev => ({
+      ...prev,
+      [teamId]: { ...prev[teamId], collapsed: false }
+    }));
   };
 
   // Show all hidden teams
   const showAllHiddenTeams = () => {
-    // Clear the team filter first
-    setTeamFilter([]);
-    
     setTeamDisplaySettings(prev => {
       const updated = { ...prev };
       for (const teamId of teamOrder) {
@@ -657,8 +674,8 @@ function DependenciesContent() {
           teamOrder={teamOrder}
           teams={teams}
           // Filter state
-          teamFilter={teamFilter}
-          setTeamFilter={setTeamFilter}
+          teamDisplaySettings={teamDisplaySettings}
+          setTeamDisplaySettings={setTeamDisplaySettings}
           showFilterDropdown={showFilterDropdown}
           setShowFilterDropdown={setShowFilterDropdown}
           // View mode
