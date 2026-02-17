@@ -93,6 +93,9 @@ export function useDependencyInteraction({
   const [moveModal, setMoveModal] = useState(null);
   const [blockedMoveHighlight, setBlockedMoveHighlight] = useState(null);
   
+  // Marquee (lasso) selection state
+  const [marqueeRect, setMarqueeRect] = useState(null); // { x, y, width, height } in container coords
+  
   // Warning messages state (Feature 5)
   const [warningMessages, setWarningMessages] = useState([]);
   const warningIdCounter = useRef(0);
@@ -1167,6 +1170,133 @@ export function useDependencyInteraction({
     document.addEventListener('mouseup', onMouseUp);
   };
 
+  // ________Marquee (Lasso) Selection___________
+  // ________________________________________
+
+  /**
+   * Start a marquee selection drag on the canvas background.
+   * Called from onMouseDown on the teamContainerRef.
+   * Only activates when clicking on empty space (not on milestones/UI).
+   */
+  const handleMarqueeStart = (e) => {
+    // Only left-click
+    if (e.button !== 0) return;
+    
+    const containerRect = teamContainerRef.current?.getBoundingClientRect();
+    if (!containerRect) return;
+    
+    const scrollLeft = teamContainerRef.current.parentElement?.scrollLeft || 0;
+    const startX = e.clientX - containerRect.left + scrollLeft;
+    const startY = e.clientY - containerRect.top;
+    
+    setMarqueeRect({ x: startX, y: startY, width: 0, height: 0 });
+    
+    const DRAG_THRESHOLD = 4;
+    let hasDragged = false;
+    let lastMoveX = startX;
+    let lastMoveY = startY;
+    
+    const onMouseMove = (moveEvent) => {
+      const sl = teamContainerRef.current?.parentElement?.scrollLeft || 0;
+      const currentX = moveEvent.clientX - containerRect.left + sl;
+      const currentY = moveEvent.clientY - containerRect.top;
+      
+      lastMoveX = currentX;
+      lastMoveY = currentY;
+      
+      const dx = currentX - startX;
+      const dy = currentY - startY;
+      
+      if (!hasDragged && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+      hasDragged = true;
+      
+      setMarqueeRect({
+        x: Math.min(startX, currentX),
+        y: Math.min(startY, currentY),
+        width: Math.abs(dx),
+        height: Math.abs(dy),
+      });
+    };
+    
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      
+      if (!hasDragged) {
+        setMarqueeRect(null);
+        return;
+      }
+      
+      const rect = {
+        x: Math.min(startX, lastMoveX),
+        y: Math.min(startY, lastMoveY),
+        width: Math.abs(lastMoveX - startX),
+        height: Math.abs(lastMoveY - startY),
+      };
+      
+      // Hit-test all visible milestones
+      const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+      const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
+      
+      const newSelection = new Set();
+      
+      for (const [id, milestone] of Object.entries(milestones)) {
+        const mId = parseInt(id);
+        const task = tasks[milestone.task];
+        if (!task) continue;
+        
+        const team = teams[task.team];
+        if (!team || !isTeamVisible(task.team)) continue;
+        if (!isTaskVisible(milestone.task, taskDisplaySettings)) continue;
+        
+        // Skip milestones in collapsed teams
+        const teamSettings = teamDisplaySettings[task.team];
+        if (teamSettings?.collapsed) continue;
+        
+        const taskHeightVal = getTaskHeight(milestone.task, taskDisplaySettings);
+        const teamYOff = getTeamYOffset(task.team);
+        const taskYOff = getTaskYOffset(milestone.task, task.team);
+        
+        const milestoneX = TEAMWIDTH + TASKWIDTH + milestone.start_index * DAYWIDTH;
+        const milestoneY = teamYOff + dropHighlightOffset + headerOffset + taskYOff + 2;
+        const milestoneW = DAYWIDTH * (milestone.duration || 1);
+        const milestoneH = taskHeightVal - 4;
+        
+        // AABB intersection check
+        if (
+          milestoneX < rect.x + rect.width &&
+          milestoneX + milestoneW > rect.x &&
+          milestoneY < rect.y + rect.height &&
+          milestoneY + milestoneH > rect.y
+        ) {
+          newSelection.add(mId);
+        }
+      }
+      
+      if (newSelection.size > 0) {
+        if (e.ctrlKey || e.metaKey) {
+          // Add to existing selection
+          setSelectedMilestones(prev => {
+            const merged = new Set(prev);
+            for (const mId of newSelection) merged.add(mId);
+            return merged;
+          });
+        } else {
+          setSelectedMilestones(newSelection);
+        }
+        setSelectedConnection(null);
+        // Prevent the page-wrapper onClick from clearing selection
+        justDraggedRef.current = true;
+        setTimeout(() => { justDraggedRef.current = false; }, 0);
+      }
+      
+      setMarqueeRect(null);
+    };
+    
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  };
+
   // Handle day cell click (create milestone)
   const handleDayCellClick = (taskId, dayIndex) => {
     setMilestoneCreateModal({ taskId, dayIndex });
@@ -1377,6 +1507,10 @@ export function useDependencyInteraction({
     setMoveModal,
     blockedMoveHighlight,
     setBlockedMoveHighlight,
+
+    // Marquee selection
+    marqueeRect,
+    handleMarqueeStart,
 
     // Warning messages (Feature 5)
     warningMessages,

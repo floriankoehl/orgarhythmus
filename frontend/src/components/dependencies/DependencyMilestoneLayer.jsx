@@ -85,7 +85,9 @@ export default function DependencyMilestoneLayer({
 
             return (
               <div
+                data-milestone
                 onMouseDown={(e) => {
+                  e.stopPropagation();
                   if (mode !== "connect" && !isEditing) {
                     handleMileStoneMouseDown(e, milestone_from_task.id);
                   }

@@ -287,6 +287,8 @@ function DependenciesContent() {
     setMoveModal,
     blockedMoveHighlight,
     setBlockedMoveHighlight,
+    marqueeRect,
+    handleMarqueeStart,
   } = useDependencyInteraction({
     milestones,
     teams,
@@ -685,6 +687,7 @@ function DependenciesContent() {
       <div 
         className="p-10 w-full min-w-0 select-none"
         onClick={() => {
+          if (justDraggedRef.current) return;
           setSelectedConnection(null);
           setOpenTeamSettings(null);
           setShowSettingsDropdown(false);
@@ -835,6 +838,8 @@ function DependenciesContent() {
           setDeleteConfirmModal={setDeleteConfirmModal}
           setOpenTeamSettings={setOpenTeamSettings}
           setHoveredDayCell={setHoveredDayCell}
+          marqueeRect={marqueeRect}
+          handleMarqueeStart={handleMarqueeStart}
         />
       </div>
     </>

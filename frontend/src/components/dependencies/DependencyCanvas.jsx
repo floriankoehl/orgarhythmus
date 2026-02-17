@@ -95,6 +95,8 @@ export default function DependencyCanvas({
   setDeleteConfirmModal,
   setOpenTeamSettings,
   setHoveredDayCell,
+  marqueeRect,
+  handleMarqueeStart,
 }) {
   return (
     <>
@@ -106,6 +108,17 @@ export default function DependencyCanvas({
         {/* Inner container - flip back to normal */}
         <div
           ref={teamContainerRef}
+          onMouseDown={(e) => {
+            // Only trigger marquee in the day-grid area and not on milestones
+            if (e.target.closest('[data-milestone]')) return;
+            const containerRect = teamContainerRef.current?.getBoundingClientRect();
+            if (!containerRect) return;
+            const scrollLeft = teamContainerRef.current.parentElement?.scrollLeft || 0;
+            const clickX = e.clientX - containerRect.left + scrollLeft;
+            if (clickX > TEAMWIDTH + TASKWIDTH) {
+              handleMarqueeStart?.(e);
+            }
+          }}
           style={{
             width: `${TEAMWIDTH + TASKWIDTH + (days || 0) * DAYWIDTH}px`,
             height: `${contentHeight}px`,
@@ -430,6 +443,24 @@ export default function DependencyCanvas({
             handleMilestoneEdgeResize={handleMilestoneEdgeResize}
             handleConnectionDragStart={handleConnectionDragStart}
           />
+
+          {/* Marquee selection overlay */}
+          {marqueeRect && marqueeRect.width > 0 && marqueeRect.height > 0 && (
+            <div
+              style={{
+                position: 'absolute',
+                left: `${marqueeRect.x}px`,
+                top: `${marqueeRect.y}px`,
+                width: `${marqueeRect.width}px`,
+                height: `${marqueeRect.height}px`,
+                backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                border: '1.5px solid rgba(59, 130, 246, 0.6)',
+                borderRadius: '2px',
+                zIndex: 200,
+                pointerEvents: 'none',
+              }}
+            />
+          )}
 
           {/* Task Ghost */}
           {taskGhost && (
