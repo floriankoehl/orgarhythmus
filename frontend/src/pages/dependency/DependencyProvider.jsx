@@ -1,4 +1,4 @@
-import { DependencyContext } from "./DependencyContext";
+import { DependencyContext } from "./DependencyContext.jsx";
 
 import { useDependencyData } from "../useDependencyData";
 import { useDependencyUIState } from "../useDependencyUIState";

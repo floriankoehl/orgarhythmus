@@ -20,54 +20,40 @@ import {
   create_dependency,
   delete_dependency_api,
 } from '../../api/dependencies_api';
+import { useDependency } from './DependencyContext.jsx';
 
 /**
  * Custom hook for managing all interaction behavior in the Dependencies component.
  * This includes keyboard handlers, drag logic, selection logic, and event handlers.
  */
 export function useDependencyInteraction({
-  // Project
-  projectId,
-  
-  // State values
+  // State values (non-UI)
   milestones,
   teams,
   tasks,
   teamOrder,
   connections,
-  viewMode,
-  selectedConnection,
-  selectedMilestones,
-  autoSelectBlocking,
   openTeamSettings,
   showFilterDropdown,
   teamFilter,
   taskDisplaySettings,
   teamDisplaySettings,
   
-  // State setters
+  // State setters (non-UI)
   setMode,
-  setViewMode,
   setMilestones,
   setTeams,
   setTeamOrder,
   setConnections,
-  setSelectedMilestones,
-  setSelectedConnection,
   setDeleteConfirmModal,
   setOpenTeamSettings,
   setShowFilterDropdown,
   setTeamFilter,
   setTaskDisplaySettings,
   setTeamDisplaySettings,
-  setEditingMilestoneId,
-  setEditingMilestoneName,
   setMilestoneCreateModal,
   setIsAddingMilestone,
   setTasks,
-  
-  // Refs
-  teamContainerRef,
   
   // Layout helpers
   DAYWIDTH,
@@ -82,6 +68,21 @@ export function useDependencyInteraction({
   // Computed
   safeMode,
 }) {
+  // Get UI state from context
+  const {
+    projectId,
+    teamContainerRef,
+    viewMode,
+    setViewMode,
+    baseViewModeRef,
+    selectedConnection,
+    setSelectedConnection,
+    selectedMilestones,
+    setSelectedMilestones,
+    autoSelectBlocking,
+    setEditingMilestoneId,
+    setEditingMilestoneName,
+  } = useDependency();
   // Transient interaction state
   const justDraggedRef = useRef(false); // Prevents click handler from firing after drag ends
   const [ghost, setGhost] = useState(null);
@@ -93,9 +94,6 @@ export function useDependencyInteraction({
   const [taskDropTarget, setTaskDropTarget] = useState(null);
   const [moveModal, setMoveModal] = useState(null);
   const [blockedMoveHighlight, setBlockedMoveHighlight] = useState(null);
-
-  // Store the base viewMode for when no modifier keys are held
-  const baseViewModeRef = useRef(viewMode);
 
   // ________Global Event Listener___________
   // ________________________________________

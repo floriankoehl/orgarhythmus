@@ -1,7 +1,5 @@
-
-
-
-import { createContext, useContext } from "react";
+import { createContext, useContext, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
 
 export const DependencyContext = createContext(null);
 
@@ -13,10 +11,47 @@ export function useDependencyContext() {
   return ctx;
 }
 
-export function DependencyProvider({ projectId, children }) {
-  // Placeholder provider - state will be moved here in future refactoring
+export function useDependency() {
+  const ctx = useContext(DependencyContext);
+  if (!ctx) {
+    throw new Error("useDependency must be used inside DependencyProvider");
+  }
+  return ctx;
+}
+
+export function DependencyProvider({ children }) {
+  const { projectId } = useParams();
+  const teamContainerRef = useRef(null);
+
+  // UI State - centralized here
+  const [hoveredMilestone, setHoveredMilestone] = useState(null);
+  const [selectedMilestones, setSelectedMilestones] = useState(new Set());
+  const [selectedConnection, setSelectedConnection] = useState(null);
+  const [viewMode, setViewMode] = useState("inspection");
+  const baseViewModeRef = useRef("inspection");
+  const [autoSelectBlocking, setAutoSelectBlocking] = useState(true);
+  const [editingMilestoneId, setEditingMilestoneId] = useState(null);
+  const [editingMilestoneName, setEditingMilestoneName] = useState("");
+
   const value = {
     projectId,
+    teamContainerRef,
+    // UI State
+    hoveredMilestone,
+    setHoveredMilestone,
+    selectedMilestones,
+    setSelectedMilestones,
+    selectedConnection,
+    setSelectedConnection,
+    viewMode,
+    setViewMode,
+    baseViewModeRef,
+    autoSelectBlocking,
+    setAutoSelectBlocking,
+    editingMilestoneId,
+    setEditingMilestoneId,
+    editingMilestoneName,
+    setEditingMilestoneName,
   };
 
   return (
@@ -25,5 +60,3 @@ export function DependencyProvider({ projectId, children }) {
     </DependencyContext.Provider>
   );
 }
-
-

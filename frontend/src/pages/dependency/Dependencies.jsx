@@ -1,15 +1,4 @@
-import { useState, useRef, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
-import {
-  add_milestone,
-  update_start_index,
-  set_day_purpose,
-  reorder_team_tasks,
-} from '../../api/dependencies_api.js';
-import {
-  createTeamForProject,
-  createTaskForProject,
-} from '../../api/org_API.js';
+import { useState, useMemo } from 'react';
 import { 
   getTaskHeight as getTaskHeightBase, 
   getRawTeamHeight as getRawTeamHeightBase, 
@@ -21,9 +10,6 @@ import {
   isTeamVisibleBase,
   getTaskDropIndicatorY as getTaskDropIndicatorYBase,
   calculateContentHeight,
-  getConnectionPath,
-  getStraightPath,
-  lightenColor,
   isTaskVisible,
   // Constants
   DEFAULT_TASKHEIGHT_NORMAL,
@@ -36,38 +22,32 @@ import {
   TEAM_HEADER_GAP,
   DEFAULT_DAYWIDTH,
   HEADER_HEIGHT,
-  TASK_DROP_INDICATOR_HEIGHT,
-  CONNECTION_RADIUS,
-  DAY_NAME_WIDTH_THRESHOLD,
   TEAM_COLLAPSED_HEIGHT,
 } from './layoutMath';
 import { useDependencyInteraction } from './useDependencyInteraction';
 import { useDependencyData } from './useDependencyData';
 import { useDependencyUIState } from './useDependencyUIState';
-import AddIcon from '@mui/icons-material/Add';
-import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
+import { useDependencyActions } from './useDependencyActions';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
-import FilterListIcon from '@mui/icons-material/FilterList';
-import AccountTreeIcon from '@mui/icons-material/AccountTree';
-import FlagIcon from '@mui/icons-material/Flag';
-import ScheduleIcon from '@mui/icons-material/Schedule';
-import GroupAddIcon from '@mui/icons-material/GroupAdd';
-import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
-import CloseIcon from '@mui/icons-material/Close';
-import SettingsIcon from '@mui/icons-material/Settings';
 import DependencyToolbar from '../../components/dependencies/DependencyToolbar';
-import DependencyDayGrid from '../../components/dependencies/DependencyDayGrid';
-import DependencyMilestoneLayer from '../../components/dependencies/DependencyMilestoneLayer';
 import DependencyModals from '../../components/dependencies/DependencyModals';
-import { DependencyProvider } from './DependencyContext.jsx';
+import DependencyCanvas from '../../components/dependencies/DependencyCanvas';
+import { DependencyProvider, useDependency } from './DependencyContext.jsx';
 
 export default function Dependencies() {
-    
-  const { projectId } = useParams();
+  return (
+    <DependencyProvider>
+      <DependenciesContent />
+    </DependencyProvider>
+  );
+}
+
+function DependenciesContent() {
+
+  const { projectId, teamContainerRef } = useDependency();
 
   // ________Data Hook___________
   // ________________________________________
@@ -111,9 +91,6 @@ export default function Dependencies() {
     editingMilestoneName,
     setEditingMilestoneName,
   } = useDependencyUIState();
-
-  // Refs
-  const teamContainerRef = useRef(null);
 
   // Team settings dropdown
   const [openTeamSettings, setOpenTeamSettings] = useState(null);
@@ -173,10 +150,6 @@ export default function Dependencies() {
   // safeMode is derived from viewMode - inspection mode is safe
   const safeMode = viewMode === "inspection";
 
-
-  // ________DAY PURPOSE HANDLERS________
-  // ________________________________________
-
   const handleDayHeaderClick = (dayIndex) => {
     const dayData = projectDays[dayIndex] || {};
     setDayPurposeModal({
@@ -184,44 +157,6 @@ export default function Dependencies() {
       currentPurpose: dayData.purpose || ""
     });
     setNewDayPurpose(dayData.purpose || "");
-  };
-
-  const handleSaveDayPurpose = async () => {
-    if (!dayPurposeModal) return;
-    
-    try {
-      const result = await set_day_purpose(projectId, dayPurposeModal.dayIndex, newDayPurpose);
-      if (result.success) {
-        setProjectDays(prev => ({
-          ...prev,
-          [dayPurposeModal.dayIndex]: result.day
-        }));
-      }
-    } catch (err) {
-      console.error("Failed to save day purpose:", err);
-    }
-    
-    setDayPurposeModal(null);
-    setNewDayPurpose("");
-  };
-
-  const handleClearDayPurpose = async () => {
-    if (!dayPurposeModal) return;
-    
-    try {
-      const result = await set_day_purpose(projectId, dayPurposeModal.dayIndex, null);
-      if (result.success) {
-        setProjectDays(prev => ({
-          ...prev,
-          [dayPurposeModal.dayIndex]: result.day
-        }));
-      }
-    } catch (err) {
-      console.error("Failed to clear day purpose:", err);
-    }
-    
-    setDayPurposeModal(null);
-    setNewDayPurpose("");
   };
 
 
@@ -349,41 +284,30 @@ export default function Dependencies() {
     blockedMoveHighlight,
     setBlockedMoveHighlight,
   } = useDependencyInteraction({
-    projectId,
     milestones,
     teams,
     tasks,
     teamOrder,
     connections,
-    viewMode,
-    selectedConnection,
-    selectedMilestones,
-    autoSelectBlocking,
     openTeamSettings,
     showFilterDropdown,
     teamFilter,
     taskDisplaySettings,
     teamDisplaySettings,
     setMode,
-    setViewMode,
     setMilestones,
     setTeams,
     setTeamOrder,
     setConnections,
-    setSelectedMilestones,
-    setSelectedConnection,
     setDeleteConfirmModal,
     setOpenTeamSettings,
     setShowFilterDropdown,
     setTeamFilter,
     setTaskDisplaySettings,
     setTeamDisplaySettings,
-    setEditingMilestoneId,
-    setEditingMilestoneName,
     setMilestoneCreateModal,
     setIsAddingMilestone,
     setTasks,
-    teamContainerRef,
     DAYWIDTH,
     getTaskHeight,
     getTeamHeight,
@@ -392,6 +316,62 @@ export default function Dependencies() {
     getTeamYOffset,
     getTaskYOffset,
     getVisibleTasks,
+    safeMode,
+  });
+
+  // ________Actions Hook___________
+  // ________________________________________
+  const {
+    handleSaveDayPurpose,
+    handleClearDayPurpose,
+    addMilestoneLocal,
+    confirmMilestoneCreate,
+    handleConfirmMove,
+    handleConfirmDelete,
+    handleCreateTeam,
+    handleCreateTask,
+  } = useDependencyActions({
+    // Data state
+    teams,
+    taskDisplaySettings,
+    // Modal state values
+    dayPurposeModal,
+    milestoneCreateModal,
+    moveModal,
+    deleteConfirmModal,
+    // Form state values
+    newDayPurpose,
+    newTeamName,
+    newTeamColor,
+    newTaskName,
+    newTaskTeamId,
+    // Data state setters
+    setProjectDays,
+    setMilestones,
+    setTasks,
+    setTeams,
+    setReloadData,
+    // Modal state setters
+    setDayPurposeModal,
+    setMilestoneCreateModal,
+    setMoveModal,
+    setDeleteConfirmModal,
+    setIsAddingMilestone,
+    // Form state setters
+    setNewDayPurpose,
+    setNewTeamName,
+    setNewTeamColor,
+    setNewTaskName,
+    setNewTaskTeamId,
+    setShowCreateTeamModal,
+    setShowCreateTaskModal,
+    setIsCreating,
+    // Layout helpers
+    getVisibleTasks,
+    // Interaction handlers
+    handleDeleteConnection,
+    handleMilestoneDelete,
+    // Computed
     safeMode,
   });
 
@@ -521,180 +501,8 @@ export default function Dependencies() {
     });
   };
 
-  // Add milestone locally
-  const add_milestone_local = async (taskId) => {
-    if (safeMode) return;
-    try {
-      const result = await add_milestone(projectId, taskId);
-      if (result.added_milestone) {
-        setMilestones(prev => ({
-          ...prev,
-          [result.added_milestone.id]: { ...result.added_milestone, display: "default" }
-        }));
-        // Update tasks to include the new milestone
-        setTasks(prev => ({
-          ...prev,
-          [taskId]: {
-            ...prev[taskId],
-            milestones: [...(prev[taskId]?.milestones || []), result.added_milestone]
-          }
-        }));
-      }
-    } catch (err) {
-      console.error("Failed to add milestone:", err);
-    }
-  };
-
-  // Confirm milestone creation
-  const confirmMilestoneCreate = async () => {
-    if (!milestoneCreateModal) return;
-    
-    const { taskId, dayIndex } = milestoneCreateModal;
-    
-    try {
-      const result = await add_milestone(projectId, taskId);
-      if (result.added_milestone) {
-        // Update the milestone with the correct start index
-        await update_start_index(projectId, result.added_milestone.id, dayIndex);
-        
-        const newMilestone = { ...result.added_milestone, start_index: dayIndex, display: "default" };
-        
-        setMilestones(prev => ({
-          ...prev,
-          [result.added_milestone.id]: newMilestone
-        }));
-        
-        setTasks(prev => ({
-          ...prev,
-          [taskId]: {
-            ...prev[taskId],
-            milestones: [...(prev[taskId]?.milestones || []), newMilestone]
-          }
-        }));
-      }
-    } catch (err) {
-      console.error("Failed to create milestone:", err);
-    }
-    
-    setMilestoneCreateModal(null);
-    setIsAddingMilestone(false);
-  };
-
-  // Handle confirm move (cross-team task move)
-  const handleConfirmMove = async () => {
-    const { taskId, sourceTeamId, targetTeamId, insertIndex } = moveModal;
-    
-    // Remove task from source team
-    const sourceTeam = teams[sourceTeamId];
-    const newSourceTasks = sourceTeam.tasks.filter(id => id !== taskId);
-    
-    // Add task to target team at the specified index
-    const targetTeam = teams[targetTeamId];
-    const visibleTasks = getVisibleTasks(targetTeamId);
-    
-    // Calculate actual insert position
-    let actualInsertIndex = 0;
-    let visibleCount = 0;
-    for (let i = 0; i < targetTeam.tasks.length; i++) {
-      if (isTaskVisible(targetTeam.tasks[i], taskDisplaySettings)) {
-        if (visibleCount === insertIndex) {
-          actualInsertIndex = i;
-          break;
-        }
-        visibleCount++;
-      }
-      actualInsertIndex = i + 1;
-    }
-    
-    const newTargetTasks = [...targetTeam.tasks];
-    newTargetTasks.splice(actualInsertIndex, 0, taskId);
-    
-    // Update local state
-    setTeams(prev => ({
-      ...prev,
-      [sourceTeamId]: { ...prev[sourceTeamId], tasks: newSourceTasks },
-      [targetTeamId]: { ...prev[targetTeamId], tasks: newTargetTasks }
-    }));
-    
-    // Update tasks state - update the task's team reference
-    setTasks(prev => ({
-      ...prev,
-      [taskId]: { ...prev[taskId], team: targetTeamId }
-    }));
-    
-    // Save to backend
-    try {
-      await reorder_team_tasks(projectId, taskId, targetTeamId, newTargetTasks);
-    } catch (err) {
-      console.error("Failed to move task:", err);
-    }
-    
-    setMoveModal(null);
-  };
-
-  // Handle confirm delete (milestone or connection)
-  const handleConfirmDelete = async () => {
-    if (deleteConfirmModal.connectionId) {
-      // Delete connection
-      handleDeleteConnection(selectedConnection);
-      setSelectedConnection(null);
-    } else if (deleteConfirmModal.milestoneIds) {
-      // Delete multiple milestones
-      for (const mId of deleteConfirmModal.milestoneIds) {
-        await handleMilestoneDelete(mId);
-      }
-      setSelectedMilestones(new Set());
-    } else {
-      // Delete single milestone
-      await handleMilestoneDelete(deleteConfirmModal.milestoneId);
-    }
-    setDeleteConfirmModal(null);
-  };
-
-  // Handle create team
-  const handleCreateTeam = async () => {
-    if (!newTeamName.trim()) return;
-    setIsCreating(true);
-    try {
-      const result = await createTeamForProject(projectId, {
-        name: newTeamName.trim(),
-        color: newTeamColor,
-      });
-      if (result) {
-        setReloadData(true);
-        setShowCreateTeamModal(false);
-        setNewTeamName("");
-        setNewTeamColor("#facc15");
-      }
-    } catch (err) {
-      console.error("Failed to create team:", err);
-    }
-    setIsCreating(false);
-  };
-
-  // Handle create task
-  const handleCreateTask = async () => {
-    if (!newTaskName.trim() || !newTaskTeamId) return;
-    setIsCreating(true);
-    try {
-      const result = await createTaskForProject(projectId, {
-        name: newTaskName.trim(),
-        team_id: newTaskTeamId,
-      });
-      if (result) {
-        setReloadData(true);
-        setShowCreateTaskModal(false);
-        setNewTaskName("");
-        setNewTaskTeamId(null);
-      }
-    } catch (err) {
-      console.error("Failed to create task:", err);
-    }
-    setIsCreating(false);
-  };
-
   return (
-    <DependencyProvider projectId={projectId}>
+    <>
       <DependencyModals
         // Day Purpose Modal
         dayPurposeModal={dayPurposeModal}
@@ -885,601 +693,94 @@ export default function Dependencies() {
           showAllHiddenTeams={showAllHiddenTeams}
         />
 
-        {/* Scroll container - wrapper to flip scrollbar to top */}
-        <div
-          style={{ height: `${contentHeight + 16}px`, transform: 'scaleY(-1)' }}
-          className="overflow-x-auto overflow-y-hidden rounded-xl border border-slate-200 shadow-sm"
-        >
-          {/* Inner container - flip back to normal */}
-          <div
-            ref={teamContainerRef}
-            style={{
-              width: `${TEAMWIDTH + TASKWIDTH + (days || 0) * DAYWIDTH}px`,
-              height: `${contentHeight}px`,
-              transform: 'scaleY(-1)',
-            }}
-            className="relative"
-          >
-            {/* Sticky overlay for team ghost and task drop indicator */}
-            <div
-              style={{
-                position: 'sticky',
-                left: 0,
-                top: 0,
-                width: `${TEAMWIDTH + TASKWIDTH}px`,
-                height: 0,
-                zIndex: 150,
-                pointerEvents: 'none',
-              }}
-            >
-              {/* Task drop indicator line */}
-              {taskGhost && taskDropTarget && (
-                <div
-                  className="pointer-events-none absolute"
-                  style={{
-                    top: `${getTaskDropIndicatorY()}px`,
-                    left: `${TEAMWIDTH}px`,
-                    width: `${TASKWIDTH}px`,
-                    height: `${TASK_DROP_INDICATOR_HEIGHT}px`,
-                    backgroundColor: '#1d4ed8',
-                    borderRadius: '2px',
-                    zIndex: 200,
-                    boxShadow: '0 0 8px rgba(29, 78, 216, 0.6)',
-                  }}
-                />
-              )}
-
-              {/* Team Ghost */}
-              {ghost && (
-                <div
-                  className="pointer-events-none absolute"
-                  style={{
-                    top: `${ghost.y}px`,
-                    left: 0,
-                    height: `${ghost.height}px`,
-                    width: `${TEAMWIDTH + TASKWIDTH}px`,
-                    backgroundColor: `${ghost.color}`,
-                    zIndex: 100,
-                    opacity: 0.8,
-                    border: '2px dashed #374151',
-                    borderRadius: '4px',
-                  }}
-                >
-                  <div className="p-2 text-sm font-medium">{ghost.name}</div>
-                </div>
-              )}
-            </div>
-
-            {/* Header Row */}
-            <div className="flex" style={{ height: `${HEADER_HEIGHT}px`, position: 'relative', zIndex: 50 }}>
-              <div
-                className="flex border-b bg-slate-100 text-sm font-semibold text-slate-700"
-                style={{
-                  width: `${TEAMWIDTH + TASKWIDTH}px`,
-                  height: `${HEADER_HEIGHT}px`,
-                  position: 'sticky',
-                  left: 0,
-                  zIndex: 50,
-                }}
-              >
-                <div
-                  className="flex items-center justify-center border-r"
-                  style={{ width: `${TEAMWIDTH}px` }}
-                >
-                  Team
-                </div>
-                <div
-                  className="flex items-center justify-center"
-                  style={{ width: `${TASKWIDTH}px` }}
-                >
-                  Tasks
-                </div>
-              </div>
-              
-              {/* Day Headers - Enhanced */}
-              <div className="flex border-b">
-                {dayLabels.map((dayInfo, i) => {
-                  const hasPurpose = !!dayInfo.purpose;
-                  const isSunday = dayInfo.isSunday;
-                  const showDayName = DAYWIDTH >= DAY_NAME_WIDTH_THRESHOLD;
-                  
-                  return (
-                    <div
-                      key={i}
-                      onClick={() => handleDayHeaderClick(i)}
-                      className={`flex flex-col items-center justify-center text-xs border-r cursor-pointer transition-colors ${
-                        hasPurpose 
-                          ? 'bg-slate-800 text-white hover:bg-slate-700' 
-                          : isSunday 
-                            ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
-                            : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
-                      }`}
-                      style={{ 
-                        width: `${DAYWIDTH}px`,
-                        height: `${HEADER_HEIGHT}px`,
-                      }}
-                      title={hasPurpose ? `${dayInfo.purpose} - Click to edit` : 'Click to set purpose'}
-                    >
-                      {showDayName && (
-                        <span className={`text-[10px] font-medium ${hasPurpose ? 'text-slate-300' : isSunday ? 'text-purple-600' : 'text-slate-400'}`}>
-                          {dayInfo.dayNameShort}
-                        </span>
-                      )}
-                      <span className={`font-medium ${hasPurpose ? 'text-white' : ''}`}>
-                        {dayInfo.dateStr}
-                      </span>
-                      {hasPurpose && DAYWIDTH >= 50 && (
-                        <span className="text-[9px] truncate max-w-full px-1 text-slate-300">
-                          {dayInfo.purpose}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Teams List */}
-            {teamOrder.map((team_key, orderIndex) => {
-              const team = teams[team_key];
-              if (!team) return null;
-              
-              // Skip hidden teams
-              if (!isTeamVisible(team_key)) return null;
-              
-              const visibleIndex = getVisibleTeamIndex(team_key);
-              const teamHeight = getTeamHeight(team_key);
-              const rawHeight = getRawTeamHeight(team_key);
-              const visibleTasks = getVisibleTasks(team_key);
-              const isTargetTeam = taskGhost && taskDropTarget?.teamId === team_key && taskDropTarget?.teamId !== taskGhost.fromTeamId;
-              const isSettingsOpen = openTeamSettings === team_key;
-              
-              return (
-                <div key={`${team_key}_container`} style={{ position: 'relative' }}>
-                  {/* Drop Highlighter */}
-                  <div className="flex" style={{ backgroundColor: 'white' }}>
-                    <div
-                      style={{
-                        marginBottom: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
-                        marginTop: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
-                        height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT}px`,
-                        width: `${TEAMWIDTH + TASKWIDTH}px`,
-                        opacity: dropIndex === visibleIndex ? 1 : 0,
-                        position: 'sticky',
-                        left: 0,
-                        zIndex: 40,
-                        backgroundColor: dropIndex === visibleIndex ? 'black' : 'white',
-                      }}
-                      className="rounded-l-full"
-                    />
-                    <div
-                      style={{
-                        marginBottom: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
-                        marginTop: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
-                        height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT}px`,
-                        opacity: dropIndex === visibleIndex ? 1 : 0,
-                        backgroundColor: dropIndex === visibleIndex ? 'black' : 'white',
-                      }}
-                      className="rounded-r-full flex-1"
-                    />
-                  </div>
-
-                  {/* Team Color Header Line - spans full width */}
-                  <div 
-                    className="flex"
-                    style={{ 
-                      height: `${TEAM_HEADER_LINE_HEIGHT}px`,
-                      backgroundColor: team.color,
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                    }}
-                  >
-                    <div 
-                      style={{ 
-                        width: `${TEAMWIDTH + TASKWIDTH}px`,
-                        position: 'sticky',
-                        left: 0,
-                        zIndex: 41,
-                        backgroundColor: team.color,
-                      }}
-                    />
-                    <div style={{ flex: 1 }} />
-                  </div>
-                  
-                  {/* Gap after header line */}
-                  <div style={{ height: `${TEAM_HEADER_GAP}px` }} />
-
-                  {/* Team Row */}
-                  <div className="flex">
-                    {/* STICKY LEFT: Team + Tasks */}
-                    <div
-                      style={{
-                        height: teamHeight,
-                        width: `${TEAMWIDTH + TASKWIDTH}px`,
-                        backgroundColor: isTargetTeam ? '#dbeafe' : lightenColor(team.color, 0.9),
-                        opacity: ghost?.id === team_key ? 0.2 : 1,
-                        position: 'sticky',
-                        left: 0,
-                        zIndex: 40,
-                        transition: 'all 0.15s ease',
-                        boxShadow: isTargetTeam ? 'inset 0 0 0 2px #3b82f6' : '2px 0 4px rgba(0,0,0,0.05)',
-                        borderLeft: `3px solid ${team.color}`,
-                      }}
-                      className="flex border-y border-r border-slate-200 flex-shrink-0"
-                    >
-                      {/* Team Column */}
-                      <div
-                        style={{ width: isTeamCollapsed(team_key) ? `${TEAMWIDTH + TASKWIDTH}px` : `${TEAMWIDTH}px` }}
-                        className="flex flex-col"
-                      >
-                        {/* Team Name Row - Draggable + Settings */}
-                        <div className={`${isTeamCollapsed(team_key) ? '' : 'border-b border-slate-200'} h-8 px-3 flex items-center justify-between`}>
-                          <div 
-                            onMouseDown={(e) => handleTeamDrag(e, team_key, orderIndex)}
-                            className="flex-1 flex items-center gap-2 cursor-grab active:cursor-grabbing overflow-hidden"
-                          >
-                            <div 
-                              className="w-2 h-2 rounded-full flex-shrink-0" 
-                              style={{ backgroundColor: team.color }}
-                            />
-                            <span className="truncate text-sm font-semibold text-slate-700">{team.name}</span>
-                            {isTeamCollapsed(team_key) && (
-                              <span className="text-xs text-slate-400 ml-1">
-                                ({team.tasks.length} task{team.tasks.length !== 1 ? 's' : ''})
-                              </span>
-                            )}
-                          </div>
-                          
-                          {/* Expand button for collapsed teams */}
-                          {isTeamCollapsed(team_key) && (
-                            <button
-                              onClick={() => toggleTeamCollapsed(team_key)}
-                              className="flex items-center justify-center h-6 w-6 rounded hover:bg-slate-100 transition mr-1"
-                              title="Expand team"
-                            >
-                              <UnfoldMoreIcon style={{ fontSize: 16 }} className="text-slate-500" />
-                            </button>
-                          )}
-                          
-                          {/* Team Settings Button */}
-                          <div className="relative">
-                            <button
-                              id={`team-settings-btn-${team_key}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setOpenTeamSettings(isSettingsOpen ? null : team_key);
-                              }}
-                              className={`flex items-center justify-center h-6 w-6 rounded hover:bg-slate-100 transition ${isSettingsOpen ? 'bg-slate-100' : ''}`}
-                              title="Team settings"
-                            >
-                              <MoreVertIcon style={{ fontSize: 16 }} className="text-slate-500" />
-                            </button>
-                          </div>
-                        </div>
-                        
-                        {/* Empty space indicator when all tasks hidden but team shown due to min height */}
-                        {!isTeamCollapsed(team_key) && rawHeight === 0 && teamHeight > 0 && (
-                          <div className="flex-1 flex items-center justify-center">
-                            <span className="text-xs text-slate-400 italic">All tasks hidden</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Tasks Column - only show when not collapsed AND has visible tasks */}
-                      {!isTeamCollapsed(team_key) && visibleTasks.length > 0 && (
-                        <div className="flex flex-col bg-white">
-                          {team.tasks.map((task_key, taskIndex) => {
-                            if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
-                            
-                            const taskHeight = getTaskHeight(task_key, taskDisplaySettings);
-                            const isSmall = taskDisplaySettings[task_key]?.size === 'small';
-                            const visibleTaskIndex = visibleTasks.indexOf(task_key);
-                            const isLastVisible = visibleTaskIndex === visibleTasks.length - 1;
-                            
-                            return (
-                              <div
-                                className="border-l border-slate-200 flex justify-between w-full items-center hover:bg-slate-50/50 transition-colors"
-                                style={{
-                                  height: `${taskHeight}px`,
-                                  width: `${TASKWIDTH}px`,
-                                  borderBottom: isLastVisible ? "none" : "1px solid #e2e8f0",
-                                  opacity: taskGhost?.taskKey === task_key ? 0.3 : 1,
-                                }}
-                                key={`${task_key}_container`}
-                              >
-                                {/* Task Name */}
-                                <div
-                                  onMouseDown={(e) => {
-                                    if (mode === "drag") {
-                                      handleTaskDrag(e, task_key, team_key, visibleTaskIndex);
-                                    }
-                                  }}
-                                  className={`flex-1 h-full flex items-center px-2 cursor-grab active:cursor-grabbing truncate text-slate-600 ${isSmall ? 'text-xs' : 'text-sm'}`}
-                                >
-                                  {tasks[task_key]?.name}
-                                </div>
-
-                                {/* Task Controls */}
-                                <div className="flex items-center gap-0.5 pr-1.5 opacity-60 hover:opacity-100 transition-opacity">
-                                  {/* Size Toggle */}
-                                  <button
-                                    onClick={() => toggleTaskSize(task_key)}
-                                    className={`flex items-center justify-center rounded hover:bg-slate-200 transition ${isSmall ? 'h-5 w-5' : 'h-6 w-6'}`}
-                                    title={isSmall ? "Expand task" : "Collapse task"}
-                                  >
-                                    {isSmall ? (
-                                      <UnfoldMoreIcon style={{ fontSize: isSmall ? 12 : 14 }} className="text-slate-500" />
-                                    ) : (
-                                      <UnfoldLessIcon style={{ fontSize: 14 }} className="text-slate-500" />
-                                    )}
-                                  </button>
-                                  
-                                  {/* Hide Task */}
-                                  <button
-                                    onClick={() => toggleTaskVisibility(task_key)}
-                                    className={`flex items-center justify-center rounded hover:bg-slate-200 transition ${isSmall ? 'h-5 w-5' : 'h-6 w-6'}`}
-                                    title="Hide task"
-                                  >
-                                    <VisibilityOffIcon style={{ fontSize: isSmall ? 12 : 14 }} className="text-slate-500" />
-                                  </button>
-                                  
-                                  {/* Add Milestone */}
-                                  {!isSmall && (
-                                    <button 
-                                      onClick={() => add_milestone_local(task_key)}
-                                      className="h-6 w-6 flex justify-center items-center rounded hover:bg-slate-200 transition cursor-pointer"
-                                    >
-                                      <AddIcon style={{ fontSize: 14 }} className="text-slate-500" />
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    <DependencyDayGrid
-                      isCollapsed={isTeamCollapsed(team_key)}
-                      teamHeight={teamHeight}
-                      rawHeight={rawHeight}
-                      teamTasks={team.tasks}
-                      visibleTasks={visibleTasks}
-                      team_key={team_key}
-                      days={days}
-                      DAYWIDTH={DAYWIDTH}
-                      ghost={ghost}
-                      isAddingMilestone={isAddingMilestone}
-                      hoveredDayCell={hoveredDayCell}
-                      taskDisplaySettings={taskDisplaySettings}
-                      isTaskVisible={isTaskVisible}
-                      getTaskHeight={getTaskHeight}
-                      setHoveredDayCell={setHoveredDayCell}
-                      handleDayCellClick={handleDayCellClick}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* LAST DROP HIGHLIGHT */}
-            <div className="flex" style={{ position: 'relative', backgroundColor: 'white' }}>
-              <div
-                style={{
-                  marginBottom: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
-                  marginTop: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
-                  height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT}px`,
-                  width: `${TEAMWIDTH + TASKWIDTH}px`,
-                  opacity: dropIndex === visibleTeamCount ? 1 : 0,
-                  backgroundColor: dropIndex === visibleTeamCount ? 'black' : 'white',
-                  position: 'sticky',
-                  left: 0,
-                  zIndex: 40,
-                }}
-                className="rounded-l-full"
-              />
-              <div
-                style={{
-                  marginBottom: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
-                  marginTop: `${MARIGN_BETWEEN_DRAG_HIGHLIGHT}px`,
-                  height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT}px`,
-                  opacity: dropIndex === visibleTeamCount ? 1 : 0,
-                  backgroundColor: dropIndex === visibleTeamCount ? 'black' : 'white',
-                }}
-                className="rounded-r-full flex-1"
-              />
-            </div>
-
-            {/* Hidden Teams Indicator */}
-            {hiddenTeamCount > 0 && (
-              <div 
-                className="flex items-center gap-2 px-4 py-2 bg-slate-100 border-t"
-                style={{ position: 'sticky', left: 0, width: `${TEAMWIDTH + TASKWIDTH}px`, zIndex: 45 }}
-              >
-                <VisibilityOffIcon style={{ fontSize: 16 }} className="text-slate-500" />
-                <span className="text-xs text-slate-600">
-                  {hiddenTeamCount} hidden team(s)
-                </span>
-                <button
-                  onClick={() => showAllHiddenTeams()}
-                  className="text-xs text-blue-600 hover:text-blue-800 underline"
-                >
-                  Show all
-                </button>
-              </div>
-            )}
-
-            {/* SVG Layer for Connections - ABOVE day grid */}
-            <svg
-              className="absolute top-0 left-0 w-full h-full"
-              style={{ zIndex: 10, pointerEvents: 'none' }}
-            >
-              <defs>
-                <style>
-                  {`
-                    @keyframes flowAnimation {
-                      from { stroke-dashoffset: 24; }
-                      to { stroke-dashoffset: 0; }
-                    }
-                    @keyframes blockedPulse {
-                      0%, 100% { opacity: 1; stroke-width: 5; }
-                      50% { opacity: 0.5; stroke-width: 3; }
-                    }
-                  `}
-                </style>
-              </defs>
-
-              {!hideAllDependencies && connections.map((conn) => {
-                const sourcePos = getMilestoneHandlePosition(conn.source, "source");
-                const targetPos = getMilestoneHandlePosition(conn.target, "target");
-
-                if (!sourcePos || !targetPos) return null;
-
-                // Check if we should hide dependencies for collapsed tasks
-                if (hideCollapsedDependencies) {
-                  const sourceMilestone = milestones[conn.source];
-                  const targetMilestone = milestones[conn.target];
-                  if (sourceMilestone && targetMilestone) {
-                    const sourceTaskId = sourceMilestone.task;
-                    const targetTaskId = targetMilestone.task;
-                    const sourceTaskCollapsed = taskDisplaySettings[sourceTaskId]?.size === 'small';
-                    const targetTaskCollapsed = taskDisplaySettings[targetTaskId]?.size === 'small';
-                    if (sourceTaskCollapsed || targetTaskCollapsed) return null;
-                  }
-                }
-
-                const isSelected = selectedConnection?.source === conn.source && 
-                                   selectedConnection?.target === conn.target;
-                
-                // Determine if this connection is related to any selected milestone
-                const isOutgoing = selectedMilestones.size > 0 && selectedMilestones.has(conn.source);
-                const isIncoming = selectedMilestones.size > 0 && selectedMilestones.has(conn.target);
-                
-                // Check if this connection is being highlighted as blocked
-                const isBlockedHighlight = blockedMoveHighlight && 
-                  blockedMoveHighlight.connectionSource === conn.source &&
-                  blockedMoveHighlight.connectionTarget === conn.target;
-                
-                // Determine stroke color based on selection state
-                let strokeColor = "#374151"; // default gray
-                if (isBlockedHighlight) {
-                  strokeColor = "#dc2626"; // red for blocked
-                } else if (isSelected) {
-                  strokeColor = "#6366f1"; // indigo when connection is selected
-                } else if (isOutgoing) {
-                  strokeColor = "#22c55e"; // green for outgoing edges
-                } else if (isIncoming) {
-                  strokeColor = "#ef4444"; // red for incoming edges
-                }
-                
-                const isHighlighted = isSelected || isOutgoing || isIncoming || isBlockedHighlight;
-
-                return (
-                  <g key={`${conn.source}-${conn.target}`} style={{ pointerEvents: 'auto' }}>
-                    {/* Invisible wider path for easier clicking */}
-                    <path
-                      d={getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y)}
-                      stroke="transparent"
-                      strokeWidth="20"
-                      fill="none"
-                      style={{ cursor: "pointer" }}
-                      onClick={(e) => handleConnectionClick(e, conn)}
-                    />
-                    {/* Visible animated path */}
-                    <path
-                      d={getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y)}
-                      stroke={strokeColor}
-                      strokeWidth={isBlockedHighlight ? "5" : isHighlighted ? "3.5" : "2.5"}
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeDasharray="8, 4"
-                      style={{
-                        animation: isBlockedHighlight 
-                          ? "flowAnimation 3s linear infinite, blockedPulse 0.5s ease-in-out infinite"
-                          : "flowAnimation 3s linear infinite",
-                        pointerEvents: "none",
-                        filter: isHighlighted ? `drop-shadow(0 0 3px ${strokeColor}80)` : "none",
-                      }}
-                    />
-                  </g>
-                );
-              })}
-
-              {isDraggingConnection && connectionStart && (
-                <path
-                  d={getStraightPath(connectionStart.x, connectionStart.y, connectionEnd.x, connectionEnd.y)}
-                  stroke="#6366f1"
-                  strokeWidth="2"
-                  strokeDasharray="5,5"
-                  fill="none"
-                  strokeLinecap="round"
-                  opacity="0.7"
-                  style={{ pointerEvents: "none" }}
-                />
-              )}
-            </svg>
-
-            {/* Milestones Layer - ABOVE connections */}
-            <DependencyMilestoneLayer
-              teamOrder={teamOrder}
-              teams={teams}
-              tasks={tasks}
-              milestones={milestones}
-              taskDisplaySettings={taskDisplaySettings}
-              hoveredMilestone={hoveredMilestone}
-              selectedMilestones={selectedMilestones}
-              editingMilestoneId={editingMilestoneId}
-              editingMilestoneName={editingMilestoneName}
-              blockedMoveHighlight={blockedMoveHighlight}
-              viewMode={viewMode}
-              mode={mode}
-              safeMode={safeMode}
-              hideCollapsedMilestones={hideCollapsedMilestones}
-              TEAMWIDTH={TEAMWIDTH}
-              TASKWIDTH={TASKWIDTH}
-              DAYWIDTH={DAYWIDTH}
-              TEAM_DRAG_HIGHLIGHT_HEIGHT={TEAM_DRAG_HIGHLIGHT_HEIGHT}
-              MARIGN_BETWEEN_DRAG_HIGHLIGHT={MARIGN_BETWEEN_DRAG_HIGHLIGHT}
-              TEAM_HEADER_LINE_HEIGHT={TEAM_HEADER_LINE_HEIGHT}
-              TEAM_HEADER_GAP={TEAM_HEADER_GAP}
-              isTeamVisible={isTeamVisible}
-              isTeamCollapsed={isTeamCollapsed}
-              getVisibleTasks={getVisibleTasks}
-              isTaskVisible={isTaskVisible}
-              getTaskHeight={getTaskHeight}
-              getTeamYOffset={getTeamYOffset}
-              getTaskYOffset={getTaskYOffset}
-              handleMileStoneMouseDown={handleMileStoneMouseDown}
-              handleMilestoneClick={handleMilestoneClick}
-              handleMilestoneDoubleClick={handleMilestoneDoubleClick}
-              setHoveredMilestone={setHoveredMilestone}
-              setEditingMilestoneName={setEditingMilestoneName}
-              setEditingMilestoneId={setEditingMilestoneId}
-              handleMilestoneRenameSubmit={handleMilestoneRenameSubmit}
-              setDeleteConfirmModal={setDeleteConfirmModal}
-              handleMilestoneEdgeResize={handleMilestoneEdgeResize}
-              handleConnectionDragStart={handleConnectionDragStart}
-            />
-
-            {/* Task Ghost */}
-            {taskGhost && (
-              <div
-                className="absolute rounded border border-blue-400 bg-blue-100/90 shadow-lg flex items-center px-2 text-sm font-medium text-blue-900 pointer-events-none"
-                style={{
-                  height: `${taskGhost.height}px`,
-                  width: `${taskGhost.width}px`,
-                  left: `${taskGhost.x}px`,
-                  top: `${taskGhost.y}px`,
-                  zIndex: 100,
-                  transform: 'translate(-50%, -50%)',
-                }}
-              >
-                {taskGhost.name}
-              </div>
-            )}
-          </div>
-        </div>
+        <DependencyCanvas
+          // Refs
+          teamContainerRef={teamContainerRef}
+          // Data
+          teamOrder={teamOrder}
+          teams={teams}
+          tasks={tasks}
+          milestones={milestones}
+          connections={connections}
+          dayLabels={dayLabels}
+          // Layout helpers
+          isTeamVisible={isTeamVisible}
+          isTeamCollapsed={isTeamCollapsed}
+          getVisibleTeamIndex={getVisibleTeamIndex}
+          getTeamHeight={getTeamHeight}
+          getRawTeamHeight={getRawTeamHeight}
+          getVisibleTasks={getVisibleTasks}
+          getTaskHeight={getTaskHeight}
+          getTeamYOffset={getTeamYOffset}
+          getTaskYOffset={getTaskYOffset}
+          getTaskDropIndicatorY={getTaskDropIndicatorY}
+          getMilestoneHandlePosition={getMilestoneHandlePosition}
+          // Constants
+          TEAMWIDTH={TEAMWIDTH}
+          TASKWIDTH={TASKWIDTH}
+          DAYWIDTH={DAYWIDTH}
+          TEAM_DRAG_HIGHLIGHT_HEIGHT={TEAM_DRAG_HIGHLIGHT_HEIGHT}
+          MARIGN_BETWEEN_DRAG_HIGHLIGHT={MARIGN_BETWEEN_DRAG_HIGHLIGHT}
+          TEAM_HEADER_LINE_HEIGHT={TEAM_HEADER_LINE_HEIGHT}
+          TEAM_HEADER_GAP={TEAM_HEADER_GAP}
+          // Dimensions
+          days={days}
+          contentHeight={contentHeight}
+          // Display settings
+          taskDisplaySettings={taskDisplaySettings}
+          teamDisplaySettings={teamDisplaySettings}
+          hideAllDependencies={hideAllDependencies}
+          hideCollapsedDependencies={hideCollapsedDependencies}
+          hideCollapsedMilestones={hideCollapsedMilestones}
+          // UI state
+          hoveredMilestone={hoveredMilestone}
+          selectedMilestones={selectedMilestones}
+          selectedConnection={selectedConnection}
+          editingMilestoneId={editingMilestoneId}
+          editingMilestoneName={editingMilestoneName}
+          blockedMoveHighlight={blockedMoveHighlight}
+          viewMode={viewMode}
+          mode={mode}
+          safeMode={safeMode}
+          // Transient state
+          ghost={ghost}
+          dropIndex={dropIndex}
+          taskGhost={taskGhost}
+          taskDropTarget={taskDropTarget}
+          isDraggingConnection={isDraggingConnection}
+          connectionStart={connectionStart}
+          connectionEnd={connectionEnd}
+          openTeamSettings={openTeamSettings}
+          isAddingMilestone={isAddingMilestone}
+          hoveredDayCell={hoveredDayCell}
+          visibleTeamCount={visibleTeamCount}
+          hiddenTeamCount={hiddenTeamCount}
+          // Handlers
+          handleDayHeaderClick={handleDayHeaderClick}
+          handleTeamDrag={handleTeamDrag}
+          handleTaskDrag={handleTaskDrag}
+          handleConnectionClick={handleConnectionClick}
+          handleMileStoneMouseDown={handleMileStoneMouseDown}
+          handleMilestoneClick={handleMilestoneClick}
+          handleMilestoneDoubleClick={handleMilestoneDoubleClick}
+          handleMilestoneEdgeResize={handleMilestoneEdgeResize}
+          handleConnectionDragStart={handleConnectionDragStart}
+          handleMilestoneRenameSubmit={handleMilestoneRenameSubmit}
+          handleDayCellClick={handleDayCellClick}
+          toggleTaskSize={toggleTaskSize}
+          toggleTaskVisibility={toggleTaskVisibility}
+          toggleTeamCollapsed={toggleTeamCollapsed}
+          addMilestoneLocal={addMilestoneLocal}
+          showAllHiddenTeams={showAllHiddenTeams}
+          // Setters
+          setHoveredMilestone={setHoveredMilestone}
+          setEditingMilestoneName={setEditingMilestoneName}
+          setEditingMilestoneId={setEditingMilestoneId}
+          setDeleteConfirmModal={setDeleteConfirmModal}
+          setOpenTeamSettings={setOpenTeamSettings}
+          setHoveredDayCell={setHoveredDayCell}
+        />
       </div>
-    </DependencyProvider>
+    </>
   );
 }
