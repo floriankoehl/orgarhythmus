@@ -27,8 +27,8 @@ export function DependencyProvider({ children }) {
   const [hoveredMilestone, setHoveredMilestone] = useState(null);
   const [selectedMilestones, setSelectedMilestones] = useState(new Set());
   const [selectedConnection, setSelectedConnection] = useState(null);
-  const [viewMode, setViewMode] = useState("schedule");
-  const baseViewModeRef = useRef("schedule");
+  const [viewMode, setViewMode] = useState("inspection");
+  const baseViewModeRef = useRef("inspection");
   const [autoSelectBlocking, setAutoSelectBlocking] = useState(true);
   const [editingMilestoneId, setEditingMilestoneId] = useState(null);
   const [editingMilestoneName, setEditingMilestoneName] = useState("");

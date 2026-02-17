@@ -348,8 +348,7 @@ export default function DependencyToolbar({
         {/* Section 3: Mode */}
         <div className="p-3">
           <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            Mode {viewMode === "schedule" && baseViewModeRef.current !== "schedule" && <span className="text-blue-500">(Shift held)</span>}
-            {viewMode === "dependency" && baseViewModeRef.current !== "dependency" && <span className="text-purple-500">(Alt held)</span>}
+            Mode
           </h3>
           <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
             <button
@@ -363,7 +362,7 @@ export default function DependencyToolbar({
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
-              title="View only - no data changes"
+              title="View only - no data changes (V)"
             >
               <VisibilityIcon style={{ fontSize: 14 }} />
               <span>View</span>
@@ -379,7 +378,7 @@ export default function DependencyToolbar({
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
-              title="Edit milestones, schedule and resize (Shift)"
+              title="Edit milestones, schedule and resize (E)"
             >
               <ScheduleIcon style={{ fontSize: 14 }} />
               <span>Edit</span>
@@ -395,7 +394,7 @@ export default function DependencyToolbar({
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-500 hover:text-slate-700'
               }`}
-              title="Edit dependency connections (Alt)"
+              title="Edit dependency connections (D)"
             >
               <AccountTreeIcon style={{ fontSize: 14 }} />
               <span>Deps</span>

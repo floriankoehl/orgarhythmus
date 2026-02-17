@@ -100,19 +100,26 @@ export function useDependencyInteraction({
 
   useEffect(() => {
     const down = (e) => {
-      // Shift => temporarily switch to edit (schedule) mode
-      if (e.shiftKey && !e.altKey) {
-        setMode("drag")
-        if (baseViewModeRef.current !== "schedule") {
-          setViewMode("schedule");
-        }
+      // Don't handle keys when typing in an input/textarea
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+
+      // v => switch to view mode
+      if (e.key === 'v' || e.key === 'V') {
+        setViewMode("inspection");
+        baseViewModeRef.current = "inspection";
+        setMode("drag");
       }
-      // Alt => temporarily switch to dependency mode
-      else if (e.altKey && !e.shiftKey) {
-        setMode("connect")
-        if (baseViewModeRef.current !== "dependency") {
-          setViewMode("dependency");
-        }
+      // e => switch to edit mode
+      else if (e.key === 'e' || e.key === 'E') {
+        setViewMode("schedule");
+        baseViewModeRef.current = "schedule";
+        setMode("drag");
+      }
+      // d => switch to dependency mode
+      else if (e.key === 'd' || e.key === 'D') {
+        setViewMode("dependency");
+        baseViewModeRef.current = "dependency";
+        setMode("connect");
       }
       // Escape key - clear selections and close modals
       else if (e.key === "Escape") {
@@ -123,21 +130,11 @@ export function useDependencyInteraction({
       }
     }
 
-    const up = (e) => {
-      setMode("drag")
-      // Restore original mode when modifier keys are released
-      if (!e.shiftKey && !e.altKey) {
-        setViewMode(baseViewModeRef.current);
-      }
-    }
-
     window.addEventListener("keydown", down)
-    window.addEventListener("keyup", up)
     return () => {
       window.removeEventListener("keydown", down)
-      window.removeEventListener("keyup", up)
     }
-  }, [viewMode, setMode, setViewMode])
+  }, [setMode, setViewMode])
 
   // Close team settings when clicking outside
   useEffect(() => {
