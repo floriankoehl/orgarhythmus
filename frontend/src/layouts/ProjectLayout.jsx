@@ -1,6 +1,7 @@
 // orgarhythmus/org_layouts/ProjectLayout.jsx
 import { Outlet, useParams } from "react-router-dom";
 import ProjectHeader from "../components/ProjectHeader"
+import IdeaBin from "../components/ideas/IdeaBin"
 
 export default function ProjectLayout() {
   const { projectId } = useParams();
@@ -14,6 +15,9 @@ export default function ProjectLayout() {
       <main className="relative w-full flex justify-center mt-5">
         <Outlet />
       </main>
+
+      {/* Floating Idea Bin — persists across all project pages */}
+      <IdeaBin />
     </div>
   );
 }
