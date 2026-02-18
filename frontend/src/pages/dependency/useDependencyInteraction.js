@@ -83,6 +83,9 @@ export function useDependencyInteraction({
 
   // Settings
   defaultDepWeight,
+
+  // Phase row offset
+  getTeamPhaseRowHeight,
 }) {
   // ── Context ──
   const {
@@ -161,6 +164,7 @@ export function useDependencyInteraction({
     getTaskYOffset,
     getVisibleTasks,
     justDraggedRef,
+    getTeamPhaseRowHeight,
   });
 
   // ── Milestone interactions ──
@@ -224,6 +228,7 @@ export function useDependencyInteraction({
     onSuggestionOffer,
     defaultDepWeight,
     dayColumnLayout,
+    getTeamPhaseRowHeight,
   });
 
   // ── Copy/Paste logic ──

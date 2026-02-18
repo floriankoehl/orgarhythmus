@@ -23,6 +23,7 @@ import {
   DEFAULT_DAYWIDTH,
   HEADER_HEIGHT,
   TEAM_COLLAPSED_HEIGHT,
+  TEAM_PHASE_ROW_HEIGHT,
   MIN_TEAMWIDTH,
   MAX_TEAMWIDTH,
   MIN_TASKWIDTH,
@@ -179,6 +180,12 @@ function DependenciesContent() {
 
   // ── Phase edit modal ──
   const [phaseEditModal, setPhaseEditModal] = useState(null); // null | { id?, name, start_index, duration, color }
+
+  // ── Team phase row collapse state ──
+  // collapsedTeamPhaseRows: Set of team IDs whose phase rows are collapsed
+  // collapseAllTeamPhases: boolean to collapse all team phase rows at once
+  const [collapsedTeamPhaseRows, setCollapsedTeamPhaseRows] = useState(new Set());
+  const [collapseAllTeamPhases, setCollapseAllTeamPhases] = useState(false);
 
   // Column widths (resizable)
   const [teamColumnWidth, setTeamColumnWidth] = useState(DEFAULT_TEAMWIDTH_CONSTANT);
@@ -347,6 +354,33 @@ function DependenciesContent() {
     setCollapsedDays(new Set());
   }, []);
 
+  // ── Phase range collapse (collapse/uncollapse all days covered by a phase) ──
+  const collapsePhaseRange = useCallback((phase) => {
+    if (!phase) return;
+    const start = phase.start_index;
+    const end = start + (phase.duration || 1);
+    setCollapsedDays(prev => {
+      const next = new Set(prev);
+      // Check if the range is already fully collapsed → uncollapse it
+      let allCollapsed = true;
+      for (let d = start; d < end; d++) {
+        if (!prev.has(d)) { allCollapsed = false; break; }
+      }
+      if (allCollapsed) {
+        for (let d = start; d < end; d++) next.delete(d);
+      } else {
+        for (let d = start; d < end; d++) next.add(d);
+      }
+      return next;
+    });
+  }, []);
+
+  // ── Show all team phase rows ──
+  const showAllTeamPhases = useCallback(() => {
+    setCollapsedTeamPhaseRows(new Set());
+    setCollapseAllTeamPhases(false);
+  }, []);
+
   // ── Phase CRUD handlers ──
   const handleCreatePhase = useCallback(async (phaseData) => {
     try {
@@ -356,6 +390,7 @@ function DependenciesContent() {
       setPhaseEditModal(null);
     } catch (err) {
       console.error("Failed to create phase:", err);
+      alert("Failed to create phase: " + (err.message || err));
     }
   }, [projectId]);
 
@@ -367,6 +402,7 @@ function DependenciesContent() {
       setPhaseEditModal(null);
     } catch (err) {
       console.error("Failed to update phase:", err);
+      alert("Failed to update phase: " + (err.message || err));
     }
   }, [projectId]);
 
@@ -379,6 +415,139 @@ function DependenciesContent() {
       console.error("Failed to delete phase:", err);
     }
   }, [projectId]);
+
+  // ── Phase overlap detection helper ──
+  // Returns true if a phase at (startIdx, dur) would overlap any other phase in the same scope
+  const wouldPhaseOverlap = useCallback((phaseId, startIdx, dur, teamId) => {
+    for (const p of phases) {
+      if (p.id === phaseId) continue;
+      // Same scope check: both global (team==null) or both same team
+      const sameScope = (teamId == null && p.team == null) ||
+                        (teamId != null && p.team != null && String(p.team) === String(teamId));
+      if (!sameScope) continue;
+      // Overlap check: intervals [startIdx, startIdx+dur) and [p.start_index, p.start_index+p.duration)
+      if (startIdx < p.start_index + p.duration && startIdx + dur > p.start_index) {
+        return true;
+      }
+    }
+    return false;
+  }, [phases]);
+
+  // ── Phase edge resize (drag left/right edges to resize) ──
+  const handlePhaseEdgeResize = useCallback((e, phaseId, edge) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const phase = phases.find(p => p.id === phaseId);
+    if (!phase) return;
+
+    const startX = e.clientX;
+    const initialStartIndex = phase.start_index;
+    const initialDuration = phase.duration || 1;
+    const teamId = phase.team;
+
+    const onMouseMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const indexDelta = Math.round(deltaX / DAYWIDTH);
+
+      setPhases(prev => prev.map(p => {
+        if (p.id !== phaseId) return p;
+        let newStart = p.start_index;
+        let newDur = p.duration;
+        if (edge === 'right') {
+          newDur = Math.max(1, initialDuration + indexDelta);
+          newStart = initialStartIndex;
+        } else if (edge === 'left') {
+          newStart = Math.max(0, initialStartIndex + indexDelta);
+          const durationChange = initialStartIndex - newStart;
+          newDur = Math.max(1, initialDuration + durationChange);
+        }
+        // Collision check within same scope
+        if (wouldPhaseOverlap(phaseId, newStart, newDur, teamId)) return p;
+        return { ...p, start_index: newStart, duration: newDur };
+      }));
+    };
+
+    const onMouseUp = async () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+
+      setPhases(prev => {
+        const current = prev.find(p => p.id === phaseId);
+        if (current) {
+          update_phase(projectId, phaseId, {
+            start_index: current.start_index,
+            duration: current.duration,
+          }).catch(err => console.error("Failed to persist phase resize:", err));
+        }
+        return prev;
+      });
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [phases, DAYWIDTH, projectId, wouldPhaseOverlap]);
+
+  // ── Phase drag to move (mousedown on phase bar body) ──
+  const handlePhaseDrag = useCallback((e, phaseId) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const phase = phases.find(p => p.id === phaseId);
+    if (!phase) return;
+
+    const startX = e.clientX;
+    const initialStartIndex = phase.start_index;
+    const duration = phase.duration || 1;
+    const teamId = phase.team;
+    let moved = false;
+
+    const onMouseMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const indexDelta = Math.round(deltaX / DAYWIDTH);
+      if (indexDelta === 0 && !moved) return;
+      moved = true;
+
+      setPhases(prev => prev.map(p => {
+        if (p.id !== phaseId) return p;
+        const newStartIndex = Math.max(0, initialStartIndex + indexDelta);
+        // Collision check within same scope
+        if (wouldPhaseOverlap(phaseId, newStartIndex, duration, teamId)) return p;
+        return { ...p, start_index: newStartIndex };
+      }));
+    };
+
+    const onMouseUp = async () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+
+      if (!moved) return;
+
+      setPhases(prev => {
+        const current = prev.find(p => p.id === phaseId);
+        if (current) {
+          update_phase(projectId, phaseId, {
+            start_index: current.start_index,
+          }).catch(err => {
+            console.error("Failed to persist phase move:", err);
+            alert("Failed to move phase: " + (err?.message || "Unknown error"));
+          });
+        }
+        return prev;
+      });
+    };
+
+    document.body.style.cursor = 'grab';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [phases, DAYWIDTH, projectId, wouldPhaseOverlap]);
 
   // ── Refactor drag: pick up a team / task / milestone and drop on IdeaBin ──
   const handleRefactorDrag = useCallback((e, type, payload) => {
@@ -461,9 +630,30 @@ function DependenciesContent() {
 
   // Calculate team height based on visible tasks and their sizes (with minimum)
   const TEAM_MIN_HEIGHT = TASKHEIGHT_NORMAL;
-  
+
+  // Compute which teams have team-specific phases
+  const globalPhases = useMemo(() => phases.filter(p => p.team == null), [phases]);
+  const teamPhasesMap = useMemo(() => {
+    const m = {};
+    for (const p of phases) {
+      if (p.team != null) {
+        if (!m[p.team]) m[p.team] = [];
+        m[p.team].push(p);
+      }
+    }
+    return m;
+  }, [phases]);
+
+  // Compute per-team phase row height (0 if no team phases or collapsed)
+  const getTeamPhaseRowHeight = useCallback((teamId) => {
+    const teamIdNum = typeof teamId === 'string' ? parseInt(teamId, 10) : teamId;
+    if (!teamPhasesMap[teamIdNum] || teamPhasesMap[teamIdNum].length === 0) return 0;
+    if (collapseAllTeamPhases || collapsedTeamPhaseRows.has(teamIdNum)) return 0;
+    return TEAM_PHASE_ROW_HEIGHT;
+  }, [teamPhasesMap, collapseAllTeamPhases, collapsedTeamPhaseRows]);
+
   const getTeamHeight = (teamId) => 
-    getTeamHeightBase(teams[teamId], teamDisplaySettings, taskDisplaySettings, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL, TEAM_MIN_HEIGHT, TEAM_COLLAPSED_HEIGHT);
+    getTeamHeightBase(teams[teamId], teamDisplaySettings, taskDisplaySettings, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL, TEAM_MIN_HEIGHT, TEAM_COLLAPSED_HEIGHT, getTeamPhaseRowHeight(teamId));
 
   const getRawTeamHeight = (teamId) => 
     getRawTeamHeightBase(teams[teamId], taskDisplaySettings, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL);
@@ -484,13 +674,14 @@ function DependenciesContent() {
   // Calculate content height — include phase header in HEADER_HEIGHT so all Y offsets
   // (milestones, connections, drag hit-testing) account for the extra row.
   const PHASE_HEADER_HEIGHT = 26;
+  const hasGlobalPhases = globalPhases.length > 0;
   const hasPhases = phases.length > 0;
-  const effectiveHeaderHeight = HEADER_HEIGHT + (hasPhases ? PHASE_HEADER_HEIGHT : 0);
+  const effectiveHeaderHeight = HEADER_HEIGHT + (hasGlobalPhases ? PHASE_HEADER_HEIGHT : 0);
   const layoutConstants = { HEADER_HEIGHT: effectiveHeaderHeight, TEAM_DRAG_HIGHLIGHT_HEIGHT, MARIGN_BETWEEN_DRAG_HIGHLIGHT, TEAM_HEADER_LINE_HEIGHT, TEAM_HEADER_GAP };
   
   const contentHeight = useMemo(() => {
     return calculateContentHeight(teamOrder, isTeamVisible, getTeamHeight, layoutConstants);
-  }, [teamOrder, teams, taskDisplaySettings, teamDisplaySettings, TASKHEIGHT_NORMAL, TASKHEIGHT_SMALL, hasPhases]);
+  }, [teamOrder, teams, taskDisplaySettings, teamDisplaySettings, TASKHEIGHT_NORMAL, TASKHEIGHT_SMALL, hasGlobalPhases, phases, collapseAllTeamPhases, collapsedTeamPhaseRows]);
 
   // Get visible team index (accounting for hidden teams)
   const getVisibleTeamIndex = (teamId) => 
@@ -506,7 +697,7 @@ function DependenciesContent() {
 
   // Get task drop indicator Y position
   const getTaskDropIndicatorY = () => 
-    getTaskDropIndicatorYBase(taskDropTarget, getTeamYOffset, getVisibleTasks, getTaskHeight, taskDisplaySettings, layoutConstants);
+    getTaskDropIndicatorYBase(taskDropTarget, getTeamYOffset, getVisibleTasks, getTaskHeight, taskDisplaySettings, layoutConstants, getTeamPhaseRowHeight);
 
   // ________Interaction Hook___________
   // ________________________________________
@@ -593,6 +784,7 @@ function DependenciesContent() {
     defaultDepWeight: depSettings.defaultDepWeight || 'strong',
     dayColumnLayout,
     collapsedDays,
+    getTeamPhaseRowHeight,
   });
 
   // ________Actions Hook___________
@@ -1052,6 +1244,9 @@ function DependenciesContent() {
         handleUpdatePhase={handleUpdatePhase}
         handleDeletePhase={handleDeletePhase}
         days={days}
+        // Phase extra context
+        projectStartDate={projectStartDate}
+        phases={phases}
       />
 
       {/* Team Settings Dropdown - Rendered outside the transformed container */}
@@ -1106,6 +1301,34 @@ function DependenciesContent() {
                 >
                   <VisibilityIcon style={{ fontSize: 14 }} />
                   <span>Show hidden tasks</span>
+                </button>
+              )}
+
+              {/* Toggle team phase row */}
+              {!isTeamCollapsed(team_key) && teamPhasesMap[team_key]?.length > 0 && (
+                <button
+                  onClick={() => {
+                    setCollapsedTeamPhaseRows(prev => {
+                      const next = new Set(prev);
+                      if (next.has(team_key)) next.delete(team_key);
+                      else next.add(team_key);
+                      return next;
+                    });
+                    setOpenTeamSettings(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left"
+                >
+                  {collapsedTeamPhaseRows.has(team_key) ? (
+                    <>
+                      <VisibilityIcon style={{ fontSize: 14 }} />
+                      <span>Show team phases</span>
+                    </>
+                  ) : (
+                    <>
+                      <VisibilityOffIcon style={{ fontSize: 14 }} />
+                      <span>Hide team phases</span>
+                    </>
+                  )}
                 </button>
               )}
               
@@ -1228,6 +1451,9 @@ function DependenciesContent() {
           setPhaseEditModal={setPhaseEditModal}
           showPhaseColorsInGrid={showPhaseColorsInGrid}
           setShowPhaseColorsInGrid={setShowPhaseColorsInGrid}
+          // Team phase row controls
+          collapsedTeamPhaseRows={collapsedTeamPhaseRows}
+          showAllTeamPhases={showAllTeamPhases}
         />
 
         <DependencyCanvas
@@ -1340,8 +1566,16 @@ function DependenciesContent() {
           setConnectionEditModal={setConnectionEditModal}
           // Phase
           setPhaseEditModal={setPhaseEditModal}
+          handlePhaseEdgeResize={handlePhaseEdgeResize}
+          handlePhaseDrag={handlePhaseDrag}
           // Phase colors in grid
           showPhaseColorsInGrid={showPhaseColorsInGrid}
+          // Team phase rows
+          teamPhasesMap={teamPhasesMap}
+          getTeamPhaseRowHeight={getTeamPhaseRowHeight}
+          collapsedTeamPhaseRows={collapsedTeamPhaseRows}
+          setCollapsedTeamPhaseRows={setCollapsedTeamPhaseRows}
+          collapsePhaseRange={collapsePhaseRange}
         />
       </div>
 

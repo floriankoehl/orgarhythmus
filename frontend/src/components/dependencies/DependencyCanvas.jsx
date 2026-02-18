@@ -122,11 +122,21 @@ export default function DependencyCanvas({
   setConnectionEditModal,
   // Phase
   setPhaseEditModal,
+  handlePhaseEdgeResize,
+  handlePhaseDrag,
   // Phase colors in grid
   showPhaseColorsInGrid = true,
+  // Team phase rows
+  teamPhasesMap = {},
+  getTeamPhaseRowHeight,
+  collapsedTeamPhaseRows = new Set(),
+  setCollapsedTeamPhaseRows,
+  collapsePhaseRange,
 }) {
   const hasPhases = phases.length > 0;
-  const totalHeaderHeight = HEADER_HEIGHT + (hasPhases ? PHASE_HEADER_HEIGHT : 0);
+  const globalPhases = phases.filter(p => p.team == null);
+  const hasGlobalPhases = globalPhases.length > 0;
+  const totalHeaderHeight = HEADER_HEIGHT + (hasGlobalPhases ? PHASE_HEADER_HEIGHT : 0);
   const totalDaysWidth = dayColumnLayout?.totalDaysWidth ?? (days || 0) * DAYWIDTH;
   const totalWidth = TEAMWIDTH + TASKWIDTH + totalDaysWidth;
   return (
@@ -217,8 +227,8 @@ export default function DependencyCanvas({
 
           {/* Header Row */}
           <div className="flex flex-col" style={{ height: `${totalHeaderHeight}px`, position: 'relative', zIndex: 50 }}>
-            {/* Phase header row (only if phases exist) */}
-            {hasPhases && (
+            {/* Phase header row (only if GLOBAL phases exist) */}
+            {hasGlobalPhases && (
               <div className="flex" style={{ height: `${PHASE_HEADER_HEIGHT}px` }}>
                 <div
                   className="bg-slate-50 border-b border-r border-slate-200 flex items-center justify-center text-[10px] font-semibold text-slate-400"
@@ -233,7 +243,7 @@ export default function DependencyCanvas({
                   Phases
                 </div>
                 <div className="relative border-b border-slate-200" style={{ width: `${totalDaysWidth}px`, height: `${PHASE_HEADER_HEIGHT}px` }}>
-                  {phases.map((phase) => {
+                  {globalPhases.map((phase) => {
                     const phaseX = dayColumnLayout?.dayXOffset(phase.start_index) ?? (phase.start_index * DAYWIDTH);
                     const endIdx = phase.start_index + phase.duration;
                     const phaseEndX = endIdx < days
@@ -244,7 +254,7 @@ export default function DependencyCanvas({
                     return (
                       <div
                         key={phase.id}
-                        className="absolute top-0 flex items-center justify-center cursor-pointer hover:brightness-110 transition-all overflow-hidden"
+                        className="absolute top-0 flex items-center justify-center cursor-pointer hover:brightness-110 transition-all group/phase"
                         style={{
                           left: `${phaseX}px`,
                           width: `${phaseW}px`,
@@ -256,13 +266,57 @@ export default function DependencyCanvas({
                           fontWeight: 600,
                           letterSpacing: '0.02em',
                         }}
-                        title={`${phase.name} (days ${phase.start_index + 1}–${phase.start_index + phase.duration}) — double-click to edit`}
+                        title={`${phase.name}${phase.team ? ` (${teams?.[phase.team]?.name || 'Team'})` : ''} — days ${phase.start_index + 1}–${phase.start_index + phase.duration} — double-click to edit, drag to move, drag edges to resize`}
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          if (handlePhaseDrag) handlePhaseDrag(e, phase.id);
+                        }}
                         onDoubleClick={(e) => {
                           e.stopPropagation();
                           if (setPhaseEditModal) setPhaseEditModal({ ...phase, mode: 'edit' });
                         }}
                       >
-                        <span className="truncate px-1">{phase.name}</span>
+                        {/* Left resize handle */}
+                        <div
+                          className="absolute left-0 top-0 w-[6px] h-full cursor-col-resize opacity-0 group-hover/phase:opacity-100 transition-opacity z-10"
+                          style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.5), transparent)' }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            if (handlePhaseEdgeResize) handlePhaseEdgeResize(e, phase.id, 'left');
+                          }}
+                        />
+                        <span className="truncate px-2">
+                          {phase.name}
+                          {phase.team != null && <span className="opacity-60 ml-0.5 text-[8px]"> · {teams?.[phase.team]?.name || ''}</span>}
+                        </span>
+                        {/* Right resize handle */}
+                        <div
+                          className="absolute right-0 top-0 w-[6px] h-full cursor-col-resize opacity-0 group-hover/phase:opacity-100 transition-opacity z-10"
+                          style={{ background: 'linear-gradient(270deg, rgba(255,255,255,0.5), transparent)' }}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            if (handlePhaseEdgeResize) handlePhaseEdgeResize(e, phase.id, 'right');
+                          }}
+                        />
+                        {/* Collapse phase range button */}
+                        {collapsePhaseRange && (
+                          <div
+                            className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover/phase:opacity-100 transition-opacity z-20 cursor-pointer"
+                            title={`Collapse days ${phase.start_index + 1}–${phase.start_index + phase.duration}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              collapsePhaseRange(phase);
+                            }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="7 13 12 18 17 13" />
+                              <polyline points="7 6 12 11 17 6" />
+                            </svg>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -506,6 +560,16 @@ export default function DependencyCanvas({
             // Phases in grid
             phases={phases}
             showPhaseColorsInGrid={showPhaseColorsInGrid}
+            // Team phase rows
+            teamPhasesMap={teamPhasesMap}
+            getTeamPhaseRowHeight={getTeamPhaseRowHeight}
+            collapsedTeamPhaseRows={collapsedTeamPhaseRows}
+            setCollapsedTeamPhaseRows={setCollapsedTeamPhaseRows}
+            setPhaseEditModal={setPhaseEditModal}
+            handlePhaseEdgeResize={handlePhaseEdgeResize}
+            handlePhaseDrag={handlePhaseDrag}
+            totalDaysWidth={totalDaysWidth}
+            collapsePhaseRange={collapsePhaseRange}
           />
 
           {/* SVG Layer for Connections - ABOVE day grid */}
@@ -772,6 +836,8 @@ export default function DependencyCanvas({
             // Deadline
             onSetDeadline={onSetDeadline}
             days={days}
+            // Team phase row height
+            getTeamPhaseRowHeight={getTeamPhaseRowHeight}
           />
 
           {/* Marquee selection overlay */}

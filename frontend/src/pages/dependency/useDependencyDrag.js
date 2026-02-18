@@ -41,6 +41,8 @@ export function useDependencyDrag({
   getVisibleTasks,
   // Ref from orchestrator
   justDraggedRef,
+  // Phase row offset
+  getTeamPhaseRowHeight,
 }) {
   const {
     projectId,
@@ -418,7 +420,8 @@ export function useDependencyDrag({
         const taskYOff = getTaskYOffset(milestone.task, task.team);
 
         const milestoneX = TEAMWIDTH + TASKWIDTH + milestone.start_index * DAYWIDTH;
-        const milestoneY = teamYOff + dropHighlightOffset + headerOffset + taskYOff + 2;
+        const phaseRowOff = getTeamPhaseRowHeight ? getTeamPhaseRowHeight(task.team) : 0;
+        const milestoneY = teamYOff + dropHighlightOffset + headerOffset + phaseRowOff + taskYOff + 2;
         const milestoneW = DAYWIDTH * (milestone.duration || 1);
         const milestoneH = taskHeightVal - 4;
 

@@ -51,6 +51,8 @@ export default function DependencyMilestoneLayer({
   // Deadline
   onSetDeadline,
   days,
+  // Team phase row height
+  getTeamPhaseRowHeight,
 }) {
   // Helper: get pixel X offset for a day index using dayColumnLayout
   const getDayX = (dayIndex) => {
@@ -123,7 +125,8 @@ export default function DependencyMilestoneLayer({
           const taskYOffset = getTaskYOffset(task_key, team_key);
           const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
           const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
-          const taskY = teamYOffset + dropHighlightOffset + headerOffset + taskYOffset;
+          const phaseRowOffset = getTeamPhaseRowHeight ? getTeamPhaseRowHeight(team_key) : 0;
+          const taskY = teamYOffset + dropHighlightOffset + headerOffset + phaseRowOffset + taskYOffset;
 
           const barLeft = getDayX(span.start);
           const barWidth = getMilestonePixelWidth(span.start, span.end - span.start);
@@ -182,7 +185,8 @@ export default function DependencyMilestoneLayer({
           const taskYOffset = getTaskYOffset(task_key, team_key);
           const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
           const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
-          const taskY = teamYOffset + dropHighlightOffset + headerOffset + taskYOffset;
+          const phaseRowOffset = getTeamPhaseRowHeight ? getTeamPhaseRowHeight(team_key) : 0;
+          const taskY = teamYOffset + dropHighlightOffset + headerOffset + phaseRowOffset + taskYOffset;
 
           const flagLeft = getDayX(deadline) + (dayColumnLayout?.dayWidth(deadline) ?? DAYWIDTH) - 6;
 
@@ -239,7 +243,8 @@ export default function DependencyMilestoneLayer({
           const taskYOffset = getTaskYOffset(task_key, team_key);
           const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
           const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
-          const taskY = teamYOffset + dropHighlightOffset + headerOffset + taskYOffset;
+          const phaseRowOffset = getTeamPhaseRowHeight ? getTeamPhaseRowHeight(team_key) : 0;
+          const taskY = teamYOffset + dropHighlightOffset + headerOffset + phaseRowOffset + taskYOffset;
 
           return tasks[task_key]?.milestones?.map((milestone_from_task) => {
             const milestone = milestones[milestone_from_task.id];

@@ -107,6 +107,9 @@ export default function DependencyToolbar({
   // Phase colors in grid
   showPhaseColorsInGrid,
   setShowPhaseColorsInGrid,
+  // Team phase row controls
+  collapsedTeamPhaseRows,
+  showAllTeamPhases,
 }) {
   const hasSelection = selectedMilestones?.size > 0 || selectedConnection;
   
@@ -198,6 +201,21 @@ export default function DependencyToolbar({
               >
                 <VisibilityIcon style={{ fontSize: 14 }} />
                 <span>Show {hiddenTeamCount} Hidden</span>
+              </button>
+            )}
+
+            {/* Show All Team Phases (only when some are collapsed) */}
+            {collapsedTeamPhaseRows?.size > 0 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  showAllTeamPhases();
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 transition"
+                title="Show all team phase rows"
+              >
+                <VisibilityIcon style={{ fontSize: 14 }} />
+                <span>Show Team Phases</span>
               </button>
             )}
             
@@ -697,7 +715,15 @@ export default function DependencyToolbar({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                setPhaseEditModal?.({ mode: 'create', start_index: 0, duration: 7, name: '', color: '#3b82f6' });
+                // Auto-fill from selected days if any are selected
+                let startIdx = 0;
+                let dur = 7;
+                if (selectedDays?.size > 0) {
+                  const sorted = [...selectedDays].sort((a, b) => a - b);
+                  startIdx = sorted[0];
+                  dur = sorted[sorted.length - 1] - sorted[0] + 1;
+                }
+                setPhaseEditModal?.({ mode: 'create', start_index: startIdx, duration: dur, name: '', color: '#3b82f6' });
               }}
               className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
               title="Add a new phase/timeframe"

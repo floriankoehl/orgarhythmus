@@ -7,6 +7,7 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ArrowRightIcon from '@mui/icons-material/ArrowRight';
 import DependencyDayGrid from './DependencyDayGrid';
+import { TEAM_PHASE_ROW_HEIGHT } from '../../pages/dependency/layoutMath';
 import { useNavigate } from 'react-router-dom';
 import { useParams } from 'react-router-dom';
 
@@ -71,6 +72,16 @@ export default function DependencyTeamList({
   // Phases in grid
   phases = [],
   showPhaseColorsInGrid = true,
+  // Team phase rows
+  teamPhasesMap = {},
+  getTeamPhaseRowHeight,
+  collapsedTeamPhaseRows = new Set(),
+  setCollapsedTeamPhaseRows,
+  setPhaseEditModal,
+  handlePhaseEdgeResize,
+  handlePhaseDrag,
+  totalDaysWidth,
+  collapsePhaseRange,
 }) {
   const navigate = useNavigate();
   const { projectId } = useParams();
@@ -92,6 +103,9 @@ export default function DependencyTeamList({
         const isVirtual = !!team._virtual;
         const hasNoTasks = team.tasks.length === 0;
         const allTasksHidden = team.tasks.length > 0 && visibleTasks.length === 0;
+        // Phase row height for this team (part of teamHeight, rendered separately)
+        const phaseRowH = getTeamPhaseRowHeight ? getTeamPhaseRowHeight(team_key) : 0;
+        const teamRowHeight = teamHeight - phaseRowH;
 
         return (
           <div key={team_key}>
@@ -133,6 +147,129 @@ export default function DependencyTeamList({
               }}
             />
 
+            {/* Per-team Phase Row (only if team has team-specific phases and row is expanded) */}
+            {(() => {
+              const teamIdNum = typeof team_key === 'string' ? parseInt(team_key, 10) : team_key;
+              const teamPhases = teamPhasesMap[teamIdNum] || [];
+              if (teamPhases.length === 0 || phaseRowH === 0) return null;
+              return (
+                <div className="flex" style={{ height: `${TEAM_PHASE_ROW_HEIGHT}px` }}>
+                  {/* Sticky left label */}
+                  <div
+                    className="flex items-center border-r border-slate-200"
+                    style={{
+                      width: `${TEAMWIDTH + TASKWIDTH}px`,
+                      height: `${TEAM_PHASE_ROW_HEIGHT}px`,
+                      position: 'sticky',
+                      left: 0,
+                      zIndex: 30,
+                      backgroundColor: 'rgba(248,250,252,0.97)',
+                    }}
+                  >
+                    <button
+                      onClick={() => {
+                        if (!setCollapsedTeamPhaseRows) return;
+                        setCollapsedTeamPhaseRows(prev => {
+                          const next = new Set(prev);
+                          if (next.has(teamIdNum)) next.delete(teamIdNum);
+                          else next.add(teamIdNum);
+                          return next;
+                        });
+                      }}
+                      className="flex items-center gap-0.5 px-1 text-[9px] text-slate-400 hover:text-slate-600 cursor-pointer transition-colors truncate"
+                      style={{ height: '100%' }}
+                      title="Hide team phases"
+                    >
+                      <ArrowRightIcon
+                        style={{
+                          fontSize: 12,
+                          transform: 'rotate(90deg)',
+                          transition: 'transform 0.15s ease',
+                        }}
+                      />
+                      <span className="truncate">Phases</span>
+                    </button>
+                  </div>
+                  {/* Phase bars area */}
+                  <div className="relative" style={{ width: `${totalDaysWidth || 0}px`, height: `${TEAM_PHASE_ROW_HEIGHT}px` }}>
+                    {teamPhases.map((phase) => {
+                      const phaseX = dayColumnLayout?.dayXOffset(phase.start_index) ?? (phase.start_index * DAYWIDTH);
+                      const endIdx = phase.start_index + phase.duration;
+                      const phaseEndX = endIdx < days
+                        ? (dayColumnLayout?.dayXOffset(endIdx) ?? (endIdx * DAYWIDTH))
+                        : (totalDaysWidth || days * DAYWIDTH);
+                      const phaseW = phaseEndX - phaseX;
+                      if (phaseW <= 0) return null;
+                      return (
+                        <div
+                          key={phase.id}
+                          className="absolute top-0 flex items-center justify-center cursor-pointer hover:brightness-110 transition-all group/tphase"
+                          style={{
+                            left: `${phaseX}px`,
+                            width: `${phaseW}px`,
+                            height: `${TEAM_PHASE_ROW_HEIGHT}px`,
+                            backgroundColor: phase.color || '#3b82f6',
+                            color: '#fff',
+                            borderRadius: '0 0 3px 3px',
+                            fontSize: '9px',
+                            fontWeight: 600,
+                          }}
+                          title={`${phase.name} — days ${phase.start_index + 1}–${phase.start_index + phase.duration} — double-click to edit, drag to move, drag edges to resize`}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            if (handlePhaseDrag) handlePhaseDrag(e, phase.id);
+                          }}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            if (setPhaseEditModal) setPhaseEditModal({ ...phase, mode: 'edit' });
+                          }}
+                        >
+                          {/* Left resize handle */}
+                          <div
+                            className="absolute left-0 top-0 w-[5px] h-full cursor-col-resize opacity-0 group-hover/tphase:opacity-100 transition-opacity z-10"
+                            style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.5), transparent)' }}
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              if (handlePhaseEdgeResize) handlePhaseEdgeResize(e, phase.id, 'left');
+                            }}
+                          />
+                          <span className="truncate px-1">{phase.name}</span>
+                          {/* Right resize handle */}
+                          <div
+                            className="absolute right-0 top-0 w-[5px] h-full cursor-col-resize opacity-0 group-hover/tphase:opacity-100 transition-opacity z-10"
+                            style={{ background: 'linear-gradient(270deg, rgba(255,255,255,0.5), transparent)' }}
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              if (handlePhaseEdgeResize) handlePhaseEdgeResize(e, phase.id, 'right');
+                            }}
+                          />
+                          {/* Collapse phase range button */}
+                          {collapsePhaseRange && (
+                            <div
+                              className="absolute right-0.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/tphase:opacity-100 transition-opacity z-20 cursor-pointer"
+                              title={`Collapse days ${phase.start_index + 1}–${phase.start_index + phase.duration}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                collapsePhaseRange(phase);
+                              }}
+                              onMouseDown={(e) => e.stopPropagation()}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="7 13 12 18 17 13" />
+                                <polyline points="7 6 12 11 17 6" />
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Team Row */}
             <div className="flex" style={{ position: 'relative' }}>
               {/* STICKY LEFT: Team + Tasks columns */}
@@ -143,7 +280,7 @@ export default function DependencyTeamList({
                   left: 0,
                   zIndex: 30,
                   width: `${TEAMWIDTH + TASKWIDTH}px`,
-                  height: `${teamHeight}px`,
+                  height: `${teamRowHeight}px`,
                   opacity: ghost?.id === team_key ? 0.3 : 1,
                   backgroundColor: 'white',
                 }}
@@ -158,7 +295,7 @@ export default function DependencyTeamList({
                   }`}
                   style={{
                     width: `${TEAMWIDTH}px`,
-                    height: `${teamHeight}px`,
+                    height: `${teamRowHeight}px`,
                     backgroundColor: isVirtual ? '#f1f5f9' : lightenColor(teamColor, 0.92),
                     ...(isVirtual ? { borderLeft: '2px dashed #94a3b8' } : {}),
                   }}
@@ -359,7 +496,7 @@ export default function DependencyTeamList({
                     className="border-l border-slate-200 flex flex-col items-center justify-center"
                     style={{
                       width: `${TASKWIDTH}px`,
-                      height: `${teamHeight}px`,
+                      height: `${teamRowHeight}px`,
                       backgroundColor: hasNoTasks ? 'rgba(241,245,249,0.6)' : 'rgba(241,245,249,0.4)',
                       borderLeft: hasNoTasks ? '2px dashed #cbd5e1' : '1px solid #e2e8f0',
                     }}
@@ -381,7 +518,7 @@ export default function DependencyTeamList({
                     className="border-l border-r border-slate-200 flex items-center px-2"
                     style={{
                       width: `${TASKWIDTH}px`,
-                      height: `${teamHeight}px`,
+                      height: `${teamRowHeight}px`,
                       backgroundColor: 'rgba(248,250,252,0.97)',
                     }}
                   >
@@ -394,7 +531,7 @@ export default function DependencyTeamList({
 
               <DependencyDayGrid
                 isCollapsed={isTeamCollapsed(team_key)}
-                teamHeight={teamHeight}
+                teamHeight={teamRowHeight}
                 rawHeight={rawHeight}
                 teamTasks={team.tasks}
                 visibleTasks={visibleTasks}

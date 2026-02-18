@@ -65,6 +65,9 @@ export default function DependencyModals({
   handleUpdatePhase,
   handleDeletePhase,
   days,
+  // Phase extra context
+  projectStartDate,
+  phases,
 }) {
   return (
     <>
@@ -488,6 +491,10 @@ export default function DependencyModals({
         handleUpdatePhase={handleUpdatePhase}
         handleDeletePhase={handleDeletePhase}
         days={days}
+        projectStartDate={projectStartDate}
+        teamOrder={teamOrder}
+        allTeams={allTeams}
+        phases={phases}
       />
 
       {/* Connection Edit Modal */}
@@ -610,11 +617,43 @@ function ConnectionEditModal({ connectionEditModal, setConnectionEditModal, hand
 // ── Phase Create/Edit Modal ──
 const PHASE_COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#64748b', '#f97316'];
 
-function PhaseEditModal({ phaseEditModal, setPhaseEditModal, handleCreatePhase, handleUpdatePhase, handleDeletePhase, days }) {
+function PhaseEditModal({ phaseEditModal, setPhaseEditModal, handleCreatePhase, handleUpdatePhase, handleDeletePhase, days, projectStartDate, teamOrder, allTeams, phases }) {
   const [name, setName] = useState('');
   const [startIndex, setStartIndex] = useState(0);
   const [duration, setDuration] = useState(7);
   const [color, setColor] = useState('#3b82f6');
+  const [teamId, setTeamId] = useState(null); // null = all teams
+  const [overlapWarning, setOverlapWarning] = useState('');
+
+  // Helper: convert day index to date string (YYYY-MM-DD) for date inputs
+  const indexToDateStr = (idx) => {
+    if (!projectStartDate) return '';
+    const d = new Date(projectStartDate);
+    d.setDate(d.getDate() + idx);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  // Helper: convert date string to day index
+  const dateStrToIndex = (dateStr) => {
+    if (!projectStartDate || !dateStr) return 0;
+    const start = new Date(projectStartDate);
+    start.setHours(0, 0, 0, 0);
+    const target = new Date(dateStr);
+    target.setHours(0, 0, 0, 0);
+    const diffMs = target - start;
+    return Math.round(diffMs / (1000 * 60 * 60 * 24));
+  };
+
+  // Helper: format index to a display date (DD.MM)
+  const indexToDisplayDate = (idx) => {
+    if (!projectStartDate) return `Day ${idx + 1}`;
+    const d = new Date(projectStartDate);
+    d.setDate(d.getDate() + idx);
+    return `${d.getDate()}.${d.getMonth() + 1}`;
+  };
 
   useEffect(() => {
     if (phaseEditModal) {
@@ -622,8 +661,38 @@ function PhaseEditModal({ phaseEditModal, setPhaseEditModal, handleCreatePhase, 
       setStartIndex(phaseEditModal.start_index ?? 0);
       setDuration(phaseEditModal.duration ?? 7);
       setColor(phaseEditModal.color || '#3b82f6');
+      setTeamId(phaseEditModal.team ?? null);
+      setOverlapWarning('');
     }
   }, [phaseEditModal]);
+
+  // Check overlap whenever start/duration/team changes
+  useEffect(() => {
+    if (!phaseEditModal || !phases) { setOverlapWarning(''); return; }
+    const endIndex = startIndex + duration;
+    const isEdit = phaseEditModal.mode === 'edit';
+    const currentId = isEdit ? phaseEditModal.id : null;
+
+    // Filter candidates: same scope (global↔global, or same team↔same team)
+    const candidates = phases.filter(p => {
+      if (currentId && p.id === currentId) return false;
+      if (teamId === null) {
+        return p.team === null || p.team === undefined;
+      } else {
+        return p.team === teamId;
+      }
+    });
+
+    const overlapping = candidates.filter(p => {
+      return startIndex < p.start_index + p.duration && p.start_index < endIndex;
+    });
+
+    if (overlapping.length > 0) {
+      setOverlapWarning(`Overlaps with: ${overlapping.map(p => p.name).join(', ')}`);
+    } else {
+      setOverlapWarning('');
+    }
+  }, [startIndex, duration, teamId, phases, phaseEditModal]);
 
   if (!phaseEditModal) return null;
 
@@ -631,13 +700,16 @@ function PhaseEditModal({ phaseEditModal, setPhaseEditModal, handleCreatePhase, 
 
   const handleSave = () => {
     if (!name.trim()) return;
-    const data = { name: name.trim(), start_index: startIndex, duration, color };
+    const data = { name: name.trim(), start_index: startIndex, duration, color, team: teamId };
     if (isEdit) {
       handleUpdatePhase(phaseEditModal.id, data);
     } else {
       handleCreatePhase(data);
     }
   };
+
+  const startDateStr = indexToDateStr(startIndex);
+  const endDateStr = indexToDateStr(startIndex + duration - 1);
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -665,36 +737,92 @@ function PhaseEditModal({ phaseEditModal, setPhaseEditModal, handleCreatePhase, 
               className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               autoFocus
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSave();
+                if (e.key === 'Enter' && !overlapWarning) handleSave();
                 if (e.key === 'Escape') setPhaseEditModal(null);
               }}
             />
           </div>
 
+          {/* Date pickers */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Start Day</label>
-              <input
-                type="number"
-                value={startIndex + 1}
-                onChange={(e) => setStartIndex(Math.max(0, Math.min((days || 365) - 1, parseInt(e.target.value, 10) - 1 || 0)))}
-                min={1}
-                max={days || 365}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              />
+              <label className="block text-xs font-medium text-slate-600 mb-1">Start Date</label>
+              {projectStartDate ? (
+                <input
+                  type="date"
+                  value={startDateStr}
+                  onChange={(e) => {
+                    const idx = dateStrToIndex(e.target.value);
+                    const clamped = Math.max(0, Math.min((days || 365) - 1, idx));
+                    setStartIndex(clamped);
+                  }}
+                  min={indexToDateStr(0)}
+                  max={indexToDateStr((days || 365) - 1)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+              ) : (
+                <input
+                  type="number"
+                  value={startIndex + 1}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v)) setStartIndex(Math.max(0, Math.min((days || 365) - 1, v - 1)));
+                  }}
+                  min={1}
+                  max={days || 365}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+              )}
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Duration (days)</label>
-              <input
-                type="number"
-                value={duration}
-                onChange={(e) => setDuration(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                min={1}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              />
+              <label className="block text-xs font-medium text-slate-600 mb-1">End Date</label>
+              {projectStartDate ? (
+                <input
+                  type="date"
+                  value={endDateStr}
+                  onChange={(e) => {
+                    const endIdx = dateStrToIndex(e.target.value);
+                    const newDuration = endIdx - startIndex + 1;
+                    setDuration(Math.max(1, newDuration));
+                  }}
+                  min={indexToDateStr(startIndex)}
+                  max={indexToDateStr((days || 365) - 1)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+              ) : (
+                <input
+                  type="number"
+                  value={duration}
+                  onChange={(e) => setDuration(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                  min={1}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+              )}
             </div>
           </div>
 
+          {/* Team assignment */}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Assigned To</label>
+            <select
+              value={teamId ?? ''}
+              onChange={(e) => setTeamId(e.target.value ? parseInt(e.target.value, 10) : null)}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            >
+              <option value="">All Teams (global phase)</option>
+              {teamOrder && teamOrder.map((tid) => {
+                const team = allTeams?.[tid];
+                if (!team || team._virtual) return null;
+                return (
+                  <option key={tid} value={tid}>
+                    {team.name}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {/* Color picker */}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Color</label>
             <div className="flex gap-2 flex-wrap">
@@ -719,6 +847,14 @@ function PhaseEditModal({ phaseEditModal, setPhaseEditModal, handleCreatePhase, 
             </div>
           </div>
 
+          {/* Overlap warning */}
+          {overlapWarning && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 flex items-start gap-2">
+              <span className="text-amber-500 text-sm mt-0.5">&#9888;</span>
+              <span className="text-xs text-amber-800">{overlapWarning}</span>
+            </div>
+          )}
+
           {/* Preview */}
           <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
             <div className="text-[10px] text-slate-400 mb-1">Preview</div>
@@ -729,7 +865,11 @@ function PhaseEditModal({ phaseEditModal, setPhaseEditModal, handleCreatePhase, 
               {name || 'Phase Name'}
             </div>
             <div className="text-[10px] text-slate-400 mt-1">
-              Day {startIndex + 1} – Day {startIndex + duration} ({duration} day{duration !== 1 ? 's' : ''})
+              {indexToDisplayDate(startIndex)} – {indexToDisplayDate(startIndex + duration - 1)} ({duration} day{duration !== 1 ? 's' : ''})
+              {teamId !== null && allTeams?.[teamId]
+                ? ` · ${allTeams[teamId].name}`
+                : ' · All Teams'
+              }
             </div>
           </div>
         </div>
@@ -754,7 +894,7 @@ function PhaseEditModal({ phaseEditModal, setPhaseEditModal, handleCreatePhase, 
             </button>
             <button
               onClick={handleSave}
-              disabled={!name.trim()}
+              disabled={!name.trim() || !!overlapWarning}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-40"
             >
               {isEdit ? 'Save' : 'Create'}

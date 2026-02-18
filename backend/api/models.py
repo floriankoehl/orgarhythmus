@@ -253,6 +253,7 @@ class Dependency(models.Model):
 
 class Phase(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="phases")
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="phases", null=True, blank=True)  # null = all teams
     name = models.CharField(max_length=200)
     start_index = models.IntegerField(default=0)      # 0-based day index
     duration = models.IntegerField(default=1)          # number of days
@@ -268,6 +269,10 @@ class Phase(models.Model):
     @property
     def end_index(self):
         return self.start_index + self.duration - 1
+
+    def overlaps(self, other):
+        """Check if this phase overlaps with another phase's day range."""
+        return self.start_index < other.start_index + other.duration and other.start_index < self.start_index + self.duration
 
 
 # ═══════════════════════════════════════════════

@@ -15,6 +15,7 @@ export const TASK_DROP_INDICATOR_HEIGHT = 3;
 export const CONNECTION_RADIUS = 20;
 export const DAY_NAME_WIDTH_THRESHOLD = 45;
 export const TEAM_COLLAPSED_HEIGHT = 32;
+export const TEAM_PHASE_ROW_HEIGHT = 20;  // height of per-team phase bar row
 
 // Column resize limits
 export const MIN_TEAMWIDTH = 80;
@@ -81,7 +82,7 @@ export const getRawTeamHeight = (team, taskDisplaySettings, TASKHEIGHT_SMALL, TA
 // Team Height and Offset Functions
 // ==========================================
 
-export const getTeamHeightBase = (team, teamDisplaySettings, taskDisplaySettings, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL, TEAM_MIN_HEIGHT, TEAM_COLLAPSED_HEIGHT_VAL) => {
+export const getTeamHeightBase = (team, teamDisplaySettings, taskDisplaySettings, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL, TEAM_MIN_HEIGHT, TEAM_COLLAPSED_HEIGHT_VAL, teamPhaseRowHeight = 0) => {
     if (!team) return TEAM_MIN_HEIGHT;
     
     if (teamDisplaySettings[team.id]?.collapsed) {
@@ -92,7 +93,7 @@ export const getTeamHeightBase = (team, teamDisplaySettings, taskDisplaySettings
     for (const taskId of team.tasks) {
       height += getTaskHeight(taskId, taskDisplaySettings, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL);
     }
-    return Math.max(height, TEAM_MIN_HEIGHT);
+    return Math.max(height, TEAM_MIN_HEIGHT) + teamPhaseRowHeight;
 };
 
 export const getTeamYOffset = (teamId, teamOrder, isTeamVisibleFn, getTeamHeightFn, layoutConstants) => {
@@ -148,13 +149,14 @@ export const isTeamVisibleBase = (teamId, teamDisplaySettings, teams, taskDispla
 // Drop Indicator Functions
 // ==========================================
 
-export const getTaskDropIndicatorY = (taskDropTarget, getTeamYOffsetFn, getVisibleTasksFn, getTaskHeightFn, taskDisplaySettings, layoutConstants) => {
+export const getTaskDropIndicatorY = (taskDropTarget, getTeamYOffsetFn, getVisibleTasksFn, getTaskHeightFn, taskDisplaySettings, layoutConstants, getTeamPhaseRowHeightFn) => {
     if (!taskDropTarget) return 0;
     const { TEAM_DRAG_HIGHLIGHT_HEIGHT, MARIGN_BETWEEN_DRAG_HIGHLIGHT, TEAM_HEADER_LINE_HEIGHT, TEAM_HEADER_GAP } = layoutConstants;
     const { teamId, insertIndex } = taskDropTarget;
     const teamYOffset = getTeamYOffsetFn(teamId);
     const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
     const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
+    const phaseRowOffset = getTeamPhaseRowHeightFn ? getTeamPhaseRowHeightFn(teamId) : 0;
     
     const visibleTasks = getVisibleTasksFn(teamId);
     let taskOffset = 0;
@@ -162,7 +164,7 @@ export const getTaskDropIndicatorY = (taskDropTarget, getTeamYOffsetFn, getVisib
       taskOffset += getTaskHeightFn(visibleTasks[i], taskDisplaySettings);
     }
     
-    return teamYOffset + dropHighlightOffset + headerOffset + taskOffset;
+    return teamYOffset + dropHighlightOffset + headerOffset + phaseRowOffset + taskOffset;
 };
 
 // ==========================================

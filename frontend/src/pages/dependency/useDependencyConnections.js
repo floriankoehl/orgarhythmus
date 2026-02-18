@@ -48,6 +48,8 @@ export function useDependencyConnections({
   defaultDepWeight = 'strong',
   // Day column layout
   dayColumnLayout,
+  // Phase row offset
+  getTeamPhaseRowHeight,
 }) {
   const {
     projectId,
@@ -86,7 +88,8 @@ export function useDependencyConnections({
       const milestoneX = dayColumnLayout
         ? TEAMWIDTH + TASKWIDTH + dayColumnLayout.dayXOffset(milestone.start_index)
         : TEAMWIDTH + TASKWIDTH + milestone.start_index * DAYWIDTH;
-      const milestoneTopY = teamYOff + dropHighlightOffset + headerOffset + taskYOff;
+      const phaseRowOff = getTeamPhaseRowHeight ? getTeamPhaseRowHeight(task.team) : 0;
+      const milestoneTopY = teamYOff + dropHighlightOffset + headerOffset + phaseRowOff + taskYOff;
       const milestoneWidth = dayColumnLayout
         ? (() => {
             const startX = dayColumnLayout.dayXOffset(milestone.start_index);
@@ -128,9 +131,24 @@ export function useDependencyConnections({
     const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
     const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
 
-    // Use dayColumnLayout for X if available, else fall back to linear formula
+    // Use dayColumnLayout for X if available, else fall back to linear formula.
+    // During drag, milestone.x is set as a pixel offset for smooth visual feedback —
+    // honour it so SVG connections follow the dragged milestone in real time.
     let milestoneX, milestoneWidth;
-    if (dayColumnLayout) {
+    if (milestone.x !== undefined) {
+      // Dragging — use pixel position directly
+      milestoneX = TEAMWIDTH + TASKWIDTH + milestone.x;
+      if (dayColumnLayout) {
+        const startX = dayColumnLayout.dayXOffset(milestone.start_index);
+        const endIdx = milestone.start_index + (milestone.duration || 1);
+        const endX = endIdx < (dayColumnLayout.offsets?.length ?? Infinity)
+          ? dayColumnLayout.dayXOffset(endIdx)
+          : dayColumnLayout.totalDaysWidth;
+        milestoneWidth = endX - startX;
+      } else {
+        milestoneWidth = DAYWIDTH * milestone.duration;
+      }
+    } else if (dayColumnLayout) {
       milestoneX = TEAMWIDTH + TASKWIDTH + dayColumnLayout.dayXOffset(milestone.start_index);
       const endIdx = milestone.start_index + (milestone.duration || 1);
       const endX = endIdx < (dayColumnLayout.offsets?.length ?? Infinity)
@@ -138,10 +156,10 @@ export function useDependencyConnections({
         : dayColumnLayout.totalDaysWidth;
       milestoneWidth = endX - dayColumnLayout.dayXOffset(milestone.start_index);
     } else {
-      milestoneX = TEAMWIDTH + TASKWIDTH + (milestone.x ?? milestone.start_index * DAYWIDTH);
+      milestoneX = TEAMWIDTH + TASKWIDTH + milestone.start_index * DAYWIDTH;
       milestoneWidth = DAYWIDTH * milestone.duration;
     }
-    const milestoneY = teamYOff + dropHighlightOffset + headerOffset + taskYOff + taskHeightVal / 2;
+    const milestoneY = teamYOff + dropHighlightOffset + headerOffset + (getTeamPhaseRowHeight ? getTeamPhaseRowHeight(task.team) : 0) + taskYOff + taskHeightVal / 2;
 
     if (handleType === "source") {
       return { x: milestoneX + milestoneWidth, y: milestoneY };

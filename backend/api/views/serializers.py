@@ -223,7 +223,7 @@ class DaySerializer(serializers.ModelSerializer):
 class PhaseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Phase
-        fields = ["id", "project", "name", "start_index", "duration", "color", "order_index"]
+        fields = ["id", "project", "team", "name", "start_index", "duration", "color", "order_index"]
         read_only_fields = ["id", "project"]
 
 

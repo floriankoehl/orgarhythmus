@@ -28,9 +28,14 @@ export default function DependencyDayGrid({
   const totalDaysWidth = dayColumnLayout?.totalDaysWidth ?? (days || 0) * DAYWIDTH;
 
   // Build a lookup: dayIndex → phase color (first matching phase wins)
+  // Only include phases that apply to this team (global phases or phases assigned to this team)
   const phaseColorMap = {};
   if (showPhaseColorsInGrid && phases.length > 0) {
+    const teamIdNum = typeof team_key === 'string' ? parseInt(team_key, 10) : team_key;
     for (const phase of phases) {
+      // Phase applies if: no team (global) OR phase.team matches this team
+      const phaseTeam = phase.team;
+      if (phaseTeam !== null && phaseTeam !== undefined && phaseTeam !== teamIdNum) continue;
       for (let d = phase.start_index; d < phase.start_index + phase.duration; d++) {
         if (!(d in phaseColorMap)) {
           phaseColorMap[d] = phase.color || '#3b82f6';
@@ -123,9 +128,9 @@ export default function DependencyDayGrid({
                     } else if (showPurposeHighlight) {
                       cellBg = { backgroundColor: isDaySelected ? 'rgba(30, 41, 59, 0.10)' : 'rgba(30, 41, 59, 0.06)' };
                     } else if (isDaySelected) {
-                      cellBg = { backgroundColor: phaseColor ? `${phaseColor}18` : 'rgba(59, 130, 246, 0.08)' };
+                      cellBg = { backgroundColor: phaseColor ? `${phaseColor}22` : 'rgba(59, 130, 246, 0.08)' };
                     } else if (phaseColor) {
-                      cellBg = { backgroundColor: `${phaseColor}0A` }; // very subtle tint
+                      cellBg = { backgroundColor: `${phaseColor}14` }; // subtle but visible tint
                     }
                   }
                   
