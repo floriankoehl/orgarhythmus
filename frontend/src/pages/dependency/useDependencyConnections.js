@@ -1,6 +1,6 @@
 // Connection drag-to-create, click-select, delete, and milestone position helpers.
 import { useState } from 'react';
-import { playSound } from '../../assets/sound_registry';
+import { playSound, startLoopSound, stopLoopSound } from '../../assets/sound_registry';
 import {
   create_dependency,
   delete_dependency_api as delete_dependency,
@@ -209,6 +209,7 @@ export function useDependencyConnections({
     const onMouseUp = async (upEvent) => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      stopLoopSound('dragLoop');
 
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
@@ -290,6 +291,7 @@ export function useDependencyConnections({
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
+    startLoopSound('dragLoop');
   };
 
   // ────────────────────────────────────────

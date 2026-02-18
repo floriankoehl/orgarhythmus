@@ -1,5 +1,5 @@
 // Milestone drag, resize, click, selection, rename, delete, and day-cell click.
-import { playSound } from '../../assets/sound_registry';
+import { playSound, startLoopSound, stopLoopSound } from '../../assets/sound_registry';
 import {
   update_start_index,
   rename_milestone,
@@ -133,11 +133,9 @@ export function useDependencyMilestones({
     const onMouseUp = async () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      stopLoopSound('dragLoop');
 
       if (hasDragged) {
-        justDraggedRef.current = true;
-        setTimeout(() => { justDraggedRef.current = false; }, 0);
-      } else {
         // Clear visual x property
         setMilestones(prev => {
           const updated = { ...prev };
@@ -385,6 +383,7 @@ export function useDependencyMilestones({
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
+    startLoopSound('dragLoop');
   };
 
   // ────────────────────────────────────────
@@ -450,6 +449,7 @@ export function useDependencyMilestones({
     const onMouseUp = async () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      stopLoopSound('dragLoop');
 
       // Validate ALL milestones being resized using tracked delta
       const allResizeBlocking = [];
@@ -688,6 +688,7 @@ export function useDependencyMilestones({
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
+    startLoopSound('dragLoop');
   };
 
   // ────────────────────────────────────────

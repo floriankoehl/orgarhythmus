@@ -1,5 +1,6 @@
 import { createContext, useContext, useRef, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
+import { playSound } from '../../assets/sound_registry';
 
 export const DependencyContext = createContext(null);
 
@@ -63,6 +64,7 @@ export function DependencyProvider({ children }) {
       historyRef.current = historyRef.current.slice(0, -1);
       futureRef.current = [...futureRef.current, action];
       setHistoryCounter(c => c + 1);
+      playSound('undo');
     } catch (err) {
       console.error("Undo failed:", err);
     }

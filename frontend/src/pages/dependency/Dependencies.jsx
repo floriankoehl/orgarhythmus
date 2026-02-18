@@ -491,6 +491,7 @@ function DependenciesContent() {
     applyViewState(view.state);
     setActiveViewId(view.id);
     setActiveViewName(view.name);
+    playSound('viewLoad');
   }, [applyViewState]);
 
   // Save current state to active view
@@ -500,6 +501,7 @@ function DependenciesContent() {
       const state = collectViewState();
       const updated = await update_view(projectId, activeViewId, { state });
       setSavedViews(prev => prev.map(v => v.id === activeViewId ? { ...v, ...updated } : v));
+      playSound('viewSave');
     } catch (err) {
       console.error("Failed to save view:", err);
       alert("Failed to save view: " + (err.message || err));
@@ -515,6 +517,7 @@ function DependenciesContent() {
       setSavedViews(prev => [...prev, created]);
       setActiveViewId(created.id);
       setActiveViewName(created.name);
+      playSound('viewSave');
     } catch (err) {
       console.error("Failed to create view:", err);
       alert("Failed to create view: " + (err.message || err));
@@ -591,6 +594,7 @@ function DependenciesContent() {
     setSnapshotsLoading(true);
     try {
       await restore_snapshot_api(projectId, snapshotId);
+      playSound('snapshotRestore');
       // Re-fetch all data from backend after restore
       setReloadData(true);
       // Also reload views since they were restored too
@@ -643,6 +647,7 @@ function DependenciesContent() {
       const created = res.phase || res;
       setPhases(prev => [...prev, created]);
       setPhaseEditModal(null);
+      playSound('phaseCreate');
     } catch (err) {
       console.error("Failed to create phase:", err);
       alert("Failed to create phase: " + (err.message || err));
@@ -655,6 +660,7 @@ function DependenciesContent() {
       const updated = res.phase || res;
       setPhases(prev => prev.map(p => p.id === phaseId ? { ...p, ...updated } : p));
       setPhaseEditModal(null);
+      playSound('phaseUpdate');
     } catch (err) {
       console.error("Failed to update phase:", err);
       alert("Failed to update phase: " + (err.message || err));
@@ -666,6 +672,7 @@ function DependenciesContent() {
       await delete_phase(projectId, phaseId);
       setPhases(prev => prev.filter(p => p.id !== phaseId));
       setPhaseEditModal(null);
+      playSound('phaseDelete');
     } catch (err) {
       console.error("Failed to delete phase:", err);
     }
@@ -2047,7 +2054,7 @@ function DependenciesContent() {
           <span>🔧 Refactor Mode</span>
           <span className="font-normal opacity-80">— drag items to IdeaBin</span>
           <button
-            onClick={() => setRefactorMode(false)}
+            onClick={() => { setRefactorMode(false); playSound('refactorToggle'); }}
             className="ml-2 px-2 py-0.5 rounded bg-orange-700 hover:bg-orange-800 text-white text-[10px] font-semibold"
           >
             Exit

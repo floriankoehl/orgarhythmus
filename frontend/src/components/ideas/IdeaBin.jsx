@@ -166,6 +166,7 @@ export default function IdeaBin() {
     setIsOpen(false);
     setIsMaximized(false);
     setPreMaxState(null);
+    playSound('ideaClose');
   }, [windowPos, windowSize]);
 
   const toggleMaximize = useCallback(() => {

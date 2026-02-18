@@ -1,6 +1,6 @@
 // Team drag, task drag, and marquee (lasso) selection handlers.
 import { useState, useRef } from 'react';
-import { playSound } from '../../assets/sound_registry';
+import { playSound, startLoopSound, stopLoopSound } from '../../assets/sound_registry';
 import {
   safe_team_order,
   reorder_team_tasks,
@@ -147,6 +147,7 @@ export function useDependencyDrag({
     const onMouseUp = async () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      stopLoopSound('dragLoop');
 
       const visibleTeams = teamOrder.filter(tid => isTeamVisible(tid));
       const currentVisibleIndex = visibleTeams.indexOf(teamId);
@@ -192,6 +193,7 @@ export function useDependencyDrag({
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
+    startLoopSound('dragLoop');
   };
 
   // ────────────────────────────────────────
@@ -287,6 +289,7 @@ export function useDependencyDrag({
     const onMouseUp = async () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      stopLoopSound('dragLoop');
 
       const finalTaskDropTarget = taskDropTargetRef.current;
       if (finalTaskDropTarget) {
@@ -359,6 +362,7 @@ export function useDependencyDrag({
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
+    startLoopSound('dragLoop');
   };
 
   // ────────────────────────────────────────

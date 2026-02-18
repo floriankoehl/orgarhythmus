@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { playSound } from '../../assets/sound_registry';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import UnfoldLessDoubleIcon from '@mui/icons-material/UnfoldLessDouble';
@@ -288,6 +289,7 @@ export default function DependencyToolbar({
               onClick={(e) => {
                 e.stopPropagation();
                 setExpandedTaskView(!expandedTaskView);
+                playSound('settingToggle');
               }}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
                 expandedTaskView 
@@ -329,7 +331,7 @@ export default function DependencyToolbar({
                         <input
                           type="checkbox"
                           checked={hideAllDependencies}
-                          onChange={(e) => setHideAllDependencies(e.target.checked)}
+                          onChange={(e) => { setHideAllDependencies(e.target.checked); playSound('settingToggle'); }}
                           className="rounded border-slate-300"
                         />
                         <span>Hide all dependencies</span>
@@ -342,6 +344,7 @@ export default function DependencyToolbar({
                             setHideCollapsedDependencies(e.target.checked);
                             // If unchecking deps, also uncheck milestones since milestones option implies deps
                             if (!e.target.checked) setHideCollapsedMilestones(false);
+                            playSound('settingToggle');
                           }}
                           className="rounded border-slate-300"
                         />
@@ -355,6 +358,7 @@ export default function DependencyToolbar({
                             setHideCollapsedMilestones(e.target.checked);
                             // Hiding milestones implies hiding deps too
                             if (e.target.checked) setHideCollapsedDependencies(true);
+                            playSound('settingToggle');
                           }}
                           className="rounded border-slate-300"
                         />
@@ -364,7 +368,7 @@ export default function DependencyToolbar({
                         <input
                           type="checkbox"
                           checked={showEmptyTeams}
-                          onChange={(e) => setShowEmptyTeams(e.target.checked)}
+                          onChange={(e) => { setShowEmptyTeams(e.target.checked); playSound('settingToggle'); }}
                           className="rounded border-slate-300"
                         />
                         <span>Show empty teams</span>
@@ -374,7 +378,7 @@ export default function DependencyToolbar({
                           <input
                             type="checkbox"
                             checked={showPhaseColorsInGrid}
-                            onChange={(e) => setShowPhaseColorsInGrid?.(e.target.checked)}
+                            onChange={(e) => { setShowPhaseColorsInGrid?.(e.target.checked); playSound('settingToggle'); }}
                             className="rounded border-slate-300"
                           />
                           <span>Show phase colors in grid</span>
@@ -389,7 +393,7 @@ export default function DependencyToolbar({
                           <input
                             type="checkbox"
                             checked={autoSelectBlocking}
-                            onChange={(e) => setAutoSelectBlocking(e.target.checked)}
+                            onChange={(e) => { setAutoSelectBlocking(e.target.checked); playSound('settingToggle'); }}
                             className="rounded border-slate-300"
                           />
                           <span>Auto-select blocking milestones</span>
@@ -398,7 +402,7 @@ export default function DependencyToolbar({
                           <input
                             type="checkbox"
                             checked={depSettings.weakDepPrompt !== false}
-                            onChange={(e) => setDepSettings(prev => ({ ...prev, weakDepPrompt: e.target.checked }))}
+                            onChange={(e) => { setDepSettings(prev => ({ ...prev, weakDepPrompt: e.target.checked })); playSound('settingToggle'); }}
                             className="rounded border-slate-300"
                           />
                           <span>Ask before blocking weak deps</span>
@@ -493,7 +497,7 @@ export default function DependencyToolbar({
                           <input
                             type="checkbox"
                             checked={depSettings.showReasons !== false}
-                            onChange={(e) => setDepSettings(prev => ({ ...prev, showReasons: e.target.checked }))}
+                            onChange={(e) => { setDepSettings(prev => ({ ...prev, showReasons: e.target.checked })); playSound('settingToggle'); }}
                             className="rounded border-slate-300"
                           />
                           <span>Show reason labels on paths</span>
@@ -502,7 +506,7 @@ export default function DependencyToolbar({
                           <input
                             type="checkbox"
                             checked={depSettings.colorDirectionHighlight !== false}
-                            onChange={(e) => setDepSettings(prev => ({ ...prev, colorDirectionHighlight: e.target.checked }))}
+                            onChange={(e) => { setDepSettings(prev => ({ ...prev, colorDirectionHighlight: e.target.checked })); playSound('settingToggle'); }}
                             className="rounded border-slate-300"
                           />
                           <span>Color incoming/outgoing deps</span>
@@ -511,7 +515,7 @@ export default function DependencyToolbar({
                           <input
                             type="checkbox"
                             checked={!!depSettings.hideSuggestions}
-                            onChange={(e) => setDepSettings(prev => ({ ...prev, hideSuggestions: e.target.checked }))}
+                            onChange={(e) => { setDepSettings(prev => ({ ...prev, hideSuggestions: e.target.checked })); playSound('settingToggle'); }}
                             className="rounded border-slate-300"
                           />
                           <span>Hide suggestion dependencies</span>
@@ -520,7 +524,7 @@ export default function DependencyToolbar({
                           <input
                             type="checkbox"
                             checked={!!depSettings.uniformVisuals}
-                            onChange={(e) => setDepSettings(prev => ({ ...prev, uniformVisuals: e.target.checked }))}
+                            onChange={(e) => { setDepSettings(prev => ({ ...prev, uniformVisuals: e.target.checked })); playSound('settingToggle'); }}
                             className="rounded border-slate-300"
                           />
                           <span>Uniform line style (ignore weight)</span>
@@ -550,6 +554,7 @@ export default function DependencyToolbar({
                                         if (current.length === 3) return { ...prev, filterWeights: [] };
                                         return { ...prev, filterWeights: current };
                                       });
+                                      playSound('settingToggle');
                                     }}
                                     className="rounded border-slate-300"
                                   />
@@ -572,7 +577,7 @@ export default function DependencyToolbar({
                               return (
                                 <button
                                   key={opt.value}
-                                  onClick={() => setDepSettings(prev => ({ ...prev, defaultDepWeight: opt.value }))}
+                                  onClick={() => { setDepSettings(prev => ({ ...prev, defaultDepWeight: opt.value })); playSound('settingToggle'); }}
                                   className={`flex-1 px-2 py-1 text-[10px] rounded border transition ${
                                     isActive
                                       ? `${opt.color} ring-1 ring-offset-1 ring-slate-400 font-semibold`
@@ -788,6 +793,7 @@ export default function DependencyToolbar({
               onClick={(e) => {
                 e.stopPropagation();
                 setRefactorMode(!refactorMode);
+                playSound('refactorToggle');
               }}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
                 refactorMode 
@@ -913,6 +919,7 @@ export default function DependencyToolbar({
                               }
                               return updated;
                             });
+                            playSound('teamFilter');
                           }}
                           className="text-[10px] text-blue-600 hover:underline"
                         >
@@ -929,6 +936,7 @@ export default function DependencyToolbar({
                               }
                               return updated;
                             });
+                            playSound('teamFilter');
                           }}
                           className="text-[10px] text-slate-500 hover:underline"
                         >
@@ -955,6 +963,7 @@ export default function DependencyToolbar({
                                 ...prev,
                                 [teamId]: { ...prev[teamId], hidden: !prev[teamId]?.hidden }
                               }));
+                              playSound('teamFilter');
                             }}
                             className="rounded border-slate-300"
                           />
