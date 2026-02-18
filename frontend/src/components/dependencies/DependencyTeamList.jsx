@@ -136,6 +136,9 @@ export default function DependencyTeamList({
               >
                 {/* Team Name Column */}
                 <div
+                  data-dep-team-id={team_key}
+                  data-dep-team-name={team.name}
+                  data-dep-team-color={teamColor}
                   className="flex flex-col items-center justify-start border-r border-b border-slate-200 cursor-grab-visible"
                   style={{
                     width: `${TEAMWIDTH}px`,
@@ -222,6 +225,11 @@ export default function DependencyTeamList({
                       
                       return (
                         <div
+                          data-dep-task-id={task_key}
+                          data-dep-task-name={tasks[task_key]?.name}
+                          data-dep-team-id={team_key}
+                          data-dep-team-name={team.name}
+                          data-dep-team-color={teamColor}
                           className="border-l border-slate-200 flex w-full items-center hover:bg-slate-50/50 transition-colors"
                           style={{
                             height: `${taskHeight}px`,

@@ -29,7 +29,7 @@ function authFetch(url, options = {}) {
 }
 
 // ───────────────────── Confirm Modal ─────────────────────
-function ConfirmModal({ message, onConfirm, onCancel }) {
+function ConfirmModal({ message, onConfirm, onCancel, confirmLabel = "Delete", confirmColor = "bg-red-500 hover:bg-red-600" }) {
   return (
     <>
       <div className="absolute inset-0 bg-black/30 z-[50] rounded-b-lg" onClick={onCancel} />
@@ -39,8 +39,8 @@ function ConfirmModal({ message, onConfirm, onCancel }) {
           <button onClick={onCancel} className="px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-100 text-xs">
             Cancel
           </button>
-          <button onClick={onConfirm} className="px-3 py-1.5 rounded bg-red-500 text-white hover:bg-red-600 text-xs">
-            Delete
+          <button onClick={onConfirm} className={`px-3 py-1.5 rounded text-white text-xs ${confirmColor}`}>
+            {confirmLabel}
           </button>
         </div>
       </div>
@@ -119,6 +119,10 @@ export default function IdeaBin() {
 
   // ───── Archive ─────
   const [showArchive, setShowArchive] = useState(false);
+
+  // ───── List view filter ─────
+  const [listFilter, setListFilter] = useState("unassigned"); // "unassigned" | category id
+  const [showListFilterDropdown, setShowListFilterDropdown] = useState(false);
 
   // ───── Legend state ─────
   const [legendTypes, setLegendTypes] = useState({});
@@ -589,14 +593,19 @@ export default function IdeaBin() {
     document.addEventListener("mouseup", onUp);
   };
 
-  // ── Idea drag (between unassigned ↔ categories) ──
+  // ── Idea drag (between unassigned ↔ categories ↔ external Dependencies) ──
   const isPointInRect = (px, py, r) => px >= r.left && px <= r.right && py >= r.top && py <= r.bottom;
+
+  // External drag ghost state
+  const [externalGhost, setExternalGhost] = useState(null); // { idea, x, y, teamId, teamName, teamColor, taskId, taskName }
 
   const handleIdeaDrag = (e, idea, index, source) => {
     const fromIdx = index;
     let toIdx = index;
     let dropTarget = null;
     let ghost = { idea, x: e.clientX, y: e.clientY };
+    let isExternal = false;
+    let extInfo = { teamId: null, teamName: null, teamColor: null, taskId: null, taskName: null };
 
     setDragging(ghost);
     setPrevIndex(index);
@@ -612,6 +621,47 @@ export default function IdeaBin() {
     const onMove = (ev) => {
       ghost = { ...ghost, x: ev.clientX, y: ev.clientY };
       setDragging(ghost);
+
+      // Check if cursor is outside the IdeaBin window
+      const winRect = windowRef.current?.getBoundingClientRect();
+      const outsideWindow = winRect && !isPointInRect(ev.clientX, ev.clientY, winRect);
+
+      if (outsideWindow) {
+        isExternal = true;
+        // Detect Dependencies team/task elements under cursor
+        // Hide ghost temporarily to get element underneath
+        const ghostEl = document.getElementById("ideabin-external-ghost");
+        if (ghostEl) ghostEl.style.pointerEvents = "none";
+        const elUnder = document.elementFromPoint(ev.clientX, ev.clientY);
+        if (ghostEl) ghostEl.style.pointerEvents = "auto";
+
+        // Walk up to find data-dep-team-id or data-dep-task-id
+        let teamEl = elUnder?.closest?.("[data-dep-team-id]");
+        let taskEl = elUnder?.closest?.("[data-dep-task-id]");
+        extInfo = {
+          teamId: teamEl?.dataset?.depTeamId || null,
+          teamName: teamEl?.dataset?.depTeamName || null,
+          teamColor: teamEl?.dataset?.depTeamColor || null,
+          taskId: taskEl?.dataset?.depTaskId || null,
+          taskName: taskEl?.dataset?.depTaskName || null,
+        };
+
+        setExternalGhost({
+          idea,
+          x: ev.clientX,
+          y: ev.clientY,
+          ...extInfo,
+        });
+        setHoverCategory(null);
+        setHoverUnassigned(false);
+        dropTarget = null;
+        return;
+      }
+
+      // Inside IdeaBin — clear external ghost
+      isExternal = false;
+      extInfo = { teamId: null, teamName: null, teamColor: null, taskId: null, taskName: null };
+      setExternalGhost(null);
 
       let foundUnassigned = false;
       if (IdeaListRef.current) {
@@ -656,27 +706,98 @@ export default function IdeaBin() {
     };
 
     const onUp = () => {
-      const sameSrc = dropTarget && (
-        (dropTarget.type === source.type && dropTarget.type === "unassigned") ||
-        (dropTarget.type === "category" && source.type === "category" && String(dropTarget.id) === String(source.id))
-      );
-      if (sameSrc) {
-        if (source.type === "unassigned") {
-          const newOrd = [...unassignedOrder];
-          const [moved] = newOrd.splice(fromIdx, 1);
-          newOrd.splice(toIdx, 0, moved);
-          setUnassignedOrder(newOrd);
-          safe_order(newOrd, null);
-        } else if (source.type === "category") {
-          const newOrd = [...(categoryOrders[source.id] || [])];
-          const [moved] = newOrd.splice(fromIdx, 1);
-          newOrd.splice(toIdx, 0, moved);
-          setCategoryOrders(prev => ({ ...prev, [source.id]: newOrd }));
-          safe_order(newOrd, source.id);
+      setExternalGhost(null);
+
+      // External drop — onto Dependencies team or task
+      if (isExternal && extInfo.teamId) {
+        const ideaName = idea.headline || idea.title.split(/\s+/).slice(0, 6).join(" ");
+        const truncatedName = ideaName.length > 30 ? ideaName.slice(0, 27) + "..." : ideaName;
+
+        if (extInfo.taskId) {
+          // Dropped on a task row → ask: create milestone on this task?
+          setConfirmModal({
+            message: (
+              <div>
+                <p className="mb-1 text-sm font-medium">Create Milestone?</p>
+                <p className="text-xs text-gray-600">
+                  Add milestone <span className="font-semibold">"{truncatedName}"</span> to task{" "}
+                  <span className="font-semibold">"{extInfo.taskName}"</span>
+                  {extInfo.teamName && <> in <span className="font-semibold" style={{ color: extInfo.teamColor }}>{extInfo.teamName}</span></>}
+                </p>
+              </div>
+            ),
+            confirmLabel: "Create Milestone",
+            confirmColor: "bg-blue-500 hover:bg-blue-600",
+            onConfirm: async () => {
+              try {
+                await add_milestone(projectId, parseInt(extInfo.taskId), {
+                  name: truncatedName,
+                  description: idea.title,
+                });
+                await delete_idea(idea.id);
+                window.dispatchEvent(new CustomEvent("ideabin-dep-refresh"));
+              } catch (err) {
+                console.error("Failed to create milestone from idea:", err);
+              }
+              setConfirmModal(null);
+            },
+            onCancel: () => setConfirmModal(null),
+          });
+        } else {
+          // Dropped on a team → ask: create task in this team?
+          setConfirmModal({
+            message: (
+              <div>
+                <p className="mb-1 text-sm font-medium">Create Task?</p>
+                <p className="text-xs text-gray-600">
+                  Create task <span className="font-semibold">"{truncatedName}"</span> in team{" "}
+                  <span className="font-semibold" style={{ color: extInfo.teamColor }}>{extInfo.teamName}</span>
+                </p>
+              </div>
+            ),
+            confirmLabel: "Create Task",
+            confirmColor: "bg-amber-500 hover:bg-amber-600",
+            onConfirm: async () => {
+              try {
+                await createTaskForProject(projectId, {
+                  name: truncatedName,
+                  description: idea.title,
+                  team_id: parseInt(extInfo.teamId),
+                });
+                await delete_idea(idea.id);
+                window.dispatchEvent(new CustomEvent("ideabin-dep-refresh"));
+              } catch (err) {
+                console.error("Failed to create task from idea:", err);
+              }
+              setConfirmModal(null);
+            },
+            onCancel: () => setConfirmModal(null),
+          });
         }
-      } else if (dropTarget) {
-        const targetCatId = dropTarget.type === "category" ? parseInt(dropTarget.id) : null;
-        assign_idea_to_category(idea.id, targetCatId);
+      } else {
+        // Internal drop logic (within IdeaBin)
+        const sameSrc = dropTarget && (
+          (dropTarget.type === source.type && dropTarget.type === "unassigned") ||
+          (dropTarget.type === "category" && source.type === "category" && String(dropTarget.id) === String(source.id))
+        );
+        if (sameSrc) {
+          if (source.type === "unassigned") {
+            const newOrd = [...unassignedOrder];
+            const [moved] = newOrd.splice(fromIdx, 1);
+            newOrd.splice(toIdx, 0, moved);
+            setUnassignedOrder(newOrd);
+            safe_order(newOrd, null);
+          } else if (source.type === "category") {
+            const newOrd = [...(categoryOrders[source.id] || [])];
+            const [moved] = newOrd.splice(fromIdx, 1);
+            newOrd.splice(toIdx, 0, moved);
+            setCategoryOrders(prev => ({ ...prev, [source.id]: newOrd }));
+            safe_order(newOrd, source.id);
+          }
+        } else if (dropTarget) {
+          const targetCatId = dropTarget.type === "category" ? parseInt(dropTarget.id) : null;
+          assign_idea_to_category(idea.id, targetCatId);
+        }
       }
 
       setDragging(null);
@@ -824,11 +945,11 @@ export default function IdeaBin() {
     const isIdeaCollapsed = collapsedIdeas[ideaId] ?? false;
 
     const getDisplayText = () => {
-      if (idea.headline) return <span className="font-semibold">{idea.headline}</span>;
+      if (idea.headline) return <span className="font-semibold text-xs">{idea.headline}</span>;
       const words = idea.title.split(/\s+/);
       return words.length > 5
-        ? <span className="font-semibold">{words.slice(0, 5).join(" ")}...</span>
-        : <span className="font-semibold">{idea.title}</span>;
+        ? <span className="font-semibold text-[11px]">{words.slice(0, 5).join(" ")}...</span>
+        : <span className="font-semibold text-[11px]">{idea.title}</span>;
     };
 
     return (
@@ -878,8 +999,8 @@ export default function IdeaBin() {
               <div className="break-words whitespace-pre-wrap">
                 {isIdeaCollapsed ? getDisplayText() : (
                   <>
-                    {idea.headline && <div className="font-semibold mb-0.5">{idea.headline}</div>}
-                    {idea.title}
+                    {idea.headline && <div className="font-semibold text-xs mb-0.5">{idea.headline}</div>}
+                    <span className="text-[10px] text-gray-600">{idea.title}</span>
                   </>
                 )}
               </div>
@@ -1029,7 +1150,7 @@ export default function IdeaBin() {
           <div className="flex-1 flex overflow-hidden relative">
             {/* Confirm modal overlay */}
             {confirmModal && (
-              <ConfirmModal message={confirmModal.message} onConfirm={confirmModal.onConfirm} onCancel={confirmModal.onCancel} />
+              <ConfirmModal message={confirmModal.message} onConfirm={confirmModal.onConfirm} onCancel={confirmModal.onCancel} confirmLabel={confirmModal.confirmLabel} confirmColor={confirmModal.confirmColor} />
             )}
 
             {/* Transform modal overlay */}
@@ -1247,7 +1368,7 @@ export default function IdeaBin() {
                   variant="outlined"
                   size="small"
                   fullWidth
-                  sx={{ backgroundColor: "white", borderRadius: 1, marginBottom: 0.5, "& .MuiInputBase-input": { fontSize: 12, padding: "6px 10px" } }}
+                  sx={{ backgroundColor: "white", borderRadius: 1, marginBottom: 0.5, "& .MuiInputBase-input": { fontSize: 12, padding: "6px 10px", caretColor: "#1f2937", color: "#1f2937" } }}
                 />
                 <TextField
                   value={editingIdeaId ? editingIdeaTitle : ideaName}
@@ -1273,7 +1394,7 @@ export default function IdeaBin() {
                   minRows={1}
                   maxRows={3}
                   fullWidth
-                  sx={{ backgroundColor: "white", borderRadius: 1, "& .MuiInputBase-input": { fontSize: 12 } }}
+                  sx={{ backgroundColor: "white", borderRadius: 1, "& .MuiInputBase-input": { fontSize: 12, caretColor: "#1f2937", color: "#1f2937" } }}
                 />
                 <div className="flex gap-1.5 mt-1.5">
                   {editingIdeaId ? (
@@ -1307,7 +1428,7 @@ export default function IdeaBin() {
                 </div>
               </div>
 
-              {/* ── Unassigned ideas list ── */}
+              {/* ── Ideas list (switchable) ── */}
               <div
                 ref={IdeaListRef}
                 style={{
@@ -1316,20 +1437,64 @@ export default function IdeaBin() {
                 }}
                 className="flex-1 p-1.5 overflow-y-auto overflow-x-hidden"
               >
-                <h3 className="text-xs font-semibold text-gray-500 mb-1">
-                  Unassigned ({unassignedCount})
-                </h3>
-                {unassignedOrder
-                  .filter(ideaId => {
-                    if (globalTypeFilter.length === 0) return true;
-                    const idea = ideas[ideaId];
-                    if (!idea) return false;
-                    if (globalTypeFilter.includes("unassigned") && !idea.legend_type_id) return true;
-                    if (idea.legend_type_id && globalTypeFilter.includes(idea.legend_type_id)) return true;
-                    return false;
-                  })
-                  .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "unassigned" }))}
-              </div>
+                {/* List filter header */}
+                <div className="relative mb-1">
+                  <button
+                    onClick={() => setShowListFilterDropdown(p => !p)}
+                    className="flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors"
+                  >
+                    {listFilter === "unassigned"
+                      ? `Unassigned (${unassignedCount})`
+                      : `${categories[listFilter]?.name || "Category"} (${(categoryOrders[listFilter] || []).length})`
+                    }
+                    <span className="text-[9px]">▼</span>
+                  </button>
+                  {showListFilterDropdown && (
+                    <>
+                      <div className="fixed inset-0 z-[60]" onClick={() => setShowListFilterDropdown(false)} />
+                      <div className="absolute left-0 top-full mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg z-[61] min-w-[140px] max-h-[200px] overflow-y-auto py-0.5">
+                        <div
+                          onClick={() => { setListFilter("unassigned"); setShowListFilterDropdown(false); }}
+                          className={`px-2.5 py-1.5 text-[11px] cursor-pointer transition-colors ${listFilter === "unassigned" ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-50 text-gray-700"}`}
+                        >
+                          Unassigned ({unassignedCount})
+                        </div>
+                        {activeCategories.map(([catKey, catData]) => (
+                          <div
+                            key={catKey}
+                            onClick={() => { setListFilter(catKey); setShowListFilterDropdown(false); }}
+                            className={`px-2.5 py-1.5 text-[11px] cursor-pointer transition-colors ${String(listFilter) === String(catKey) ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-50 text-gray-700"}`}
+                          >
+                            {catData.name} ({(categoryOrders[catKey] || []).length})
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+                {/* Idea items for current filter */}
+                {listFilter === "unassigned"
+                  ? unassignedOrder
+                      .filter(ideaId => {
+                        if (globalTypeFilter.length === 0) return true;
+                        const idea = ideas[ideaId];
+                        if (!idea) return false;
+                        if (globalTypeFilter.includes("unassigned") && !idea.legend_type_id) return true;
+                        if (idea.legend_type_id && globalTypeFilter.includes(idea.legend_type_id)) return true;
+                        return false;
+                      })
+                      .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "unassigned" }))
+                  : (categoryOrders[listFilter] || [])
+                      .filter(ideaId => {
+                        if (globalTypeFilter.length === 0) return true;
+                        const idea = ideas[ideaId];
+                        if (!idea) return false;
+                        if (globalTypeFilter.includes("unassigned") && !idea.legend_type_id) return true;
+                        if (idea.legend_type_id && globalTypeFilter.includes(idea.legend_type_id)) return true;
+                        return false;
+                      })
+                      .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: listFilter }))
+                }              </div>
 
               {/* ── Legend panel ── */}
               <div className="bg-white border-t border-gray-200 p-2 flex-shrink-0">
@@ -1707,6 +1872,49 @@ export default function IdeaBin() {
           }}
           className="fixed w-6 h-6 rounded-full shadow-lg border-2 border-white"
         />
+      )}
+
+      {/* External drag ghost — visible when dragging an idea outside the IdeaBin window */}
+      {externalGhost && (
+        <div
+          id="ideabin-external-ghost"
+          style={{
+            position: "fixed",
+            left: externalGhost.x + 12,
+            top: externalGhost.y - 8,
+            zIndex: 99999,
+            pointerEvents: "none",
+            maxWidth: 220,
+          }}
+        >
+          <div
+            className="rounded-lg shadow-xl border-2 px-2.5 py-1.5 text-xs font-medium"
+            style={{
+              backgroundColor: externalGhost.teamId
+                ? (externalGhost.taskId ? "#dbeafe" : "#fef3c7")
+                : "#ffffff",
+              borderColor: externalGhost.teamId
+                ? (externalGhost.taskId ? "#3b82f6" : (externalGhost.teamColor || "#f59e0b"))
+                : "#d1d5db",
+              color: "#1f2937",
+            }}
+          >
+            <div className="truncate">
+              {externalGhost.idea.headline || externalGhost.idea.title.split(/\s+/).slice(0, 5).join(" ")}
+            </div>
+            {externalGhost.teamId && (
+              <div className="text-[10px] mt-0.5 opacity-80">
+                {externalGhost.taskId
+                  ? <>🏁 → <span className="font-semibold">{externalGhost.taskName}</span></>
+                  : <>📋 → <span className="font-semibold" style={{ color: externalGhost.teamColor }}>{externalGhost.teamName}</span></>
+                }
+              </div>
+            )}
+            {!externalGhost.teamId && (
+              <div className="text-[10px] mt-0.5 text-gray-400 italic">Drag onto a team or task...</div>
+            )}
+          </div>
+        </div>
       )}
     </>
   );

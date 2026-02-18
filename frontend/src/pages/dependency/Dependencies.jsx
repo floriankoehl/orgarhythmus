@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   getTaskHeight as getTaskHeightBase, 
   getRawTeamHeight as getRawTeamHeightBase, 
@@ -78,6 +78,13 @@ function DependenciesContent() {
     setTeamDisplaySettings,
     setReloadData,
   } = useDependencyData(projectId);
+
+  // Listen for IdeaBin refresh events (idea dropped → task/milestone created)
+  useEffect(() => {
+    const handleRefresh = () => setReloadData(true);
+    window.addEventListener("ideabin-dep-refresh", handleRefresh);
+    return () => window.removeEventListener("ideabin-dep-refresh", handleRefresh);
+  }, [setReloadData]);
 
   // UI state from custom hook
   const {
