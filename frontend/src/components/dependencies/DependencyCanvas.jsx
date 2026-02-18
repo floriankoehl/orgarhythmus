@@ -109,6 +109,12 @@ export default function DependencyCanvas({
       <div
         style={{ height: `${contentHeight + 16}px`, transform: 'scaleY(-1)' }}
         className="overflow-x-auto overflow-y-hidden rounded-xl border border-slate-200 shadow-sm dep-scroll"
+        onWheel={(e) => {
+          if (e.shiftKey && e.deltaY !== 0) {
+            e.preventDefault();
+            e.currentTarget.scrollLeft += e.deltaY;
+          }
+        }}
       >
         {/* Inner container - flip back to normal */}
         <div

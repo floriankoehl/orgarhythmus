@@ -285,28 +285,32 @@ export function useDependencyDrag({
     // Only left-click
     if (e.button !== 0) return;
 
-    const containerRect = teamContainerRef.current?.getBoundingClientRect();
-    if (!containerRect) return;
+    const container = teamContainerRef.current;
+    const scrollContainer = container?.parentElement;
+    if (!container || !scrollContainer) return;
 
-    const scrollLeft = teamContainerRef.current.parentElement?.scrollLeft || 0;
-    const startX = e.clientX - containerRect.left + scrollLeft;
-    const startY = e.clientY - containerRect.top;
+    // Content-space coordinates via fresh getBoundingClientRect —
+    // this naturally accounts for the current scrollLeft because the
+    // inner container shifts in the viewport as the parent scrolls.
+    const initRect = container.getBoundingClientRect();
+    const startX = e.clientX - initRect.left;
+    const startY = e.clientY - initRect.top;
 
     setMarqueeRect({ x: startX, y: startY, width: 0, height: 0 });
 
     const DRAG_THRESHOLD = 4;
     let hasDragged = false;
-    let lastMoveX = startX;
-    let lastMoveY = startY;
+    let lastClientX = e.clientX;
+    let lastClientY = e.clientY;
 
-    const onMouseMove = (moveEvent) => {
-      const sl = teamContainerRef.current?.parentElement?.scrollLeft || 0;
-      const currentX = moveEvent.clientX - containerRect.left + sl;
-      const currentY = moveEvent.clientY - containerRect.top;
+    // Always use a fresh rect so horizontal scroll during drag is handled
+    const getContentCoords = (clientX, clientY) => {
+      const rect = container.getBoundingClientRect();
+      return { x: clientX - rect.left, y: clientY - rect.top };
+    };
 
-      lastMoveX = currentX;
-      lastMoveY = currentY;
-
+    const updateMarquee = () => {
+      const { x: currentX, y: currentY } = getContentCoords(lastClientX, lastClientY);
       const dx = currentX - startX;
       const dy = currentY - startY;
 
@@ -321,20 +325,33 @@ export function useDependencyDrag({
       });
     };
 
+    const onMouseMove = (moveEvent) => {
+      lastClientX = moveEvent.clientX;
+      lastClientY = moveEvent.clientY;
+      updateMarquee();
+    };
+
+    // Update marquee when scroll happens (e.g. shift+wheel) without mouse movement
+    const onScroll = () => {
+      if (hasDragged) updateMarquee();
+    };
+
     const onMouseUp = () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      scrollContainer.removeEventListener('scroll', onScroll);
 
       if (!hasDragged) {
         setMarqueeRect(null);
         return;
       }
 
+      const { x: endX, y: endY } = getContentCoords(lastClientX, lastClientY);
       const rect = {
-        x: Math.min(startX, lastMoveX),
-        y: Math.min(startY, lastMoveY),
-        width: Math.abs(lastMoveX - startX),
-        height: Math.abs(lastMoveY - startY),
+        x: Math.min(startX, endX),
+        y: Math.min(startY, endY),
+        width: Math.abs(endX - startX),
+        height: Math.abs(endY - startY),
       };
 
       // Hit-test all visible milestones
@@ -399,6 +416,7 @@ export function useDependencyDrag({
 
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
+    scrollContainer.addEventListener('scroll', onScroll);
   };
 
   return {
