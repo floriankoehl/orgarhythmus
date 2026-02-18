@@ -209,10 +209,12 @@ export default function DependencyTeamList({
                             width: `${phaseW}px`,
                             height: `${TEAM_PHASE_ROW_HEIGHT}px`,
                             backgroundColor: phase.color || '#3b82f6',
+                            backgroundImage: 'repeating-linear-gradient(135deg, transparent, transparent 2px, rgba(255,255,255,0.18) 2px, rgba(255,255,255,0.18) 4px)',
                             color: '#fff',
                             borderRadius: '0 0 3px 3px',
                             fontSize: '9px',
                             fontWeight: 600,
+                            borderBottom: '1.5px solid rgba(0,0,0,0.15)',
                           }}
                           title={`${phase.name} — days ${phase.start_index + 1}–${phase.start_index + phase.duration} — double-click to edit, drag to move, drag edges to resize`}
                           onMouseDown={(e) => {
@@ -234,7 +236,26 @@ export default function DependencyTeamList({
                               if (handlePhaseEdgeResize) handlePhaseEdgeResize(e, phase.id, 'left');
                             }}
                           />
-                          <span className="truncate px-1">{phase.name}</span>
+                          <span className="truncate px-1 flex items-center gap-0.5">
+                            {phase.name}
+                            {/* Collapse phase range button - inline with name */}
+                            {collapsePhaseRange && (
+                              <span
+                                className="inline-flex items-center opacity-0 group-hover/tphase:opacity-100 transition-opacity cursor-pointer flex-shrink-0"
+                                title={`Collapse days ${phase.start_index + 1}–${phase.start_index + phase.duration}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  collapsePhaseRange(phase);
+                                }}
+                                onMouseDown={(e) => e.stopPropagation()}
+                              >
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="7 13 12 18 17 13" />
+                                  <polyline points="7 6 12 11 17 6" />
+                                </svg>
+                              </span>
+                            )}
+                          </span>
                           {/* Right resize handle */}
                           <div
                             className="absolute right-0 top-0 w-[5px] h-full cursor-col-resize opacity-0 group-hover/tphase:opacity-100 transition-opacity z-10"
@@ -245,23 +266,6 @@ export default function DependencyTeamList({
                               if (handlePhaseEdgeResize) handlePhaseEdgeResize(e, phase.id, 'right');
                             }}
                           />
-                          {/* Collapse phase range button */}
-                          {collapsePhaseRange && (
-                            <div
-                              className="absolute right-0.5 top-1/2 -translate-y-1/2 opacity-0 group-hover/tphase:opacity-100 transition-opacity z-20 cursor-pointer"
-                              title={`Collapse days ${phase.start_index + 1}–${phase.start_index + phase.duration}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                collapsePhaseRange(phase);
-                              }}
-                              onMouseDown={(e) => e.stopPropagation()}
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="7 13 12 18 17 13" />
-                                <polyline points="7 6 12 11 17 6" />
-                              </svg>
-                            </div>
-                          )}
                         </div>
                       );
                     })}

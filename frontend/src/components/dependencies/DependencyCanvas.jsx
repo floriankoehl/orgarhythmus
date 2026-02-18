@@ -260,11 +260,13 @@ export default function DependencyCanvas({
                           width: `${phaseW}px`,
                           height: `${PHASE_HEADER_HEIGHT}px`,
                           backgroundColor: phase.color || '#3b82f6',
+                          backgroundImage: 'repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(255,255,255,0.18) 3px, rgba(255,255,255,0.18) 6px)',
                           color: '#fff',
                           borderRadius: '0 0 4px 4px',
                           fontSize: '10px',
                           fontWeight: 600,
                           letterSpacing: '0.02em',
+                          borderBottom: '2px solid rgba(0,0,0,0.15)',
                         }}
                         title={`${phase.name}${phase.team ? ` (${teams?.[phase.team]?.name || 'Team'})` : ''} — days ${phase.start_index + 1}–${phase.start_index + phase.duration} — double-click to edit, drag to move, drag edges to resize`}
                         onMouseDown={(e) => {
@@ -286,9 +288,26 @@ export default function DependencyCanvas({
                             if (handlePhaseEdgeResize) handlePhaseEdgeResize(e, phase.id, 'left');
                           }}
                         />
-                        <span className="truncate px-2">
+                        <span className="truncate px-2 flex items-center gap-1">
                           {phase.name}
                           {phase.team != null && <span className="opacity-60 ml-0.5 text-[8px]"> · {teams?.[phase.team]?.name || ''}</span>}
+                          {/* Collapse phase range button - inline with name */}
+                          {collapsePhaseRange && (
+                            <span
+                              className="inline-flex items-center opacity-0 group-hover/phase:opacity-100 transition-opacity cursor-pointer flex-shrink-0"
+                              title={`Collapse days ${phase.start_index + 1}–${phase.start_index + phase.duration}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                collapsePhaseRange(phase);
+                              }}
+                              onMouseDown={(e) => e.stopPropagation()}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="7 13 12 18 17 13" />
+                                <polyline points="7 6 12 11 17 6" />
+                              </svg>
+                            </span>
+                          )}
                         </span>
                         {/* Right resize handle */}
                         <div
@@ -300,23 +319,6 @@ export default function DependencyCanvas({
                             if (handlePhaseEdgeResize) handlePhaseEdgeResize(e, phase.id, 'right');
                           }}
                         />
-                        {/* Collapse phase range button */}
-                        {collapsePhaseRange && (
-                          <div
-                            className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover/phase:opacity-100 transition-opacity z-20 cursor-pointer"
-                            title={`Collapse days ${phase.start_index + 1}–${phase.start_index + phase.duration}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              collapsePhaseRange(phase);
-                            }}
-                            onMouseDown={(e) => e.stopPropagation()}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="7 13 12 18 17 13" />
-                              <polyline points="7 6 12 11 17 6" />
-                            </svg>
-                          </div>
-                        )}
                       </div>
                     );
                   })}

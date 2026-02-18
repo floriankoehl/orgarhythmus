@@ -130,7 +130,10 @@ export default function DependencyDayGrid({
                     } else if (isDaySelected) {
                       cellBg = { backgroundColor: phaseColor ? `${phaseColor}22` : 'rgba(59, 130, 246, 0.08)' };
                     } else if (phaseColor) {
-                      cellBg = { backgroundColor: `${phaseColor}14` }; // subtle but visible tint
+                      cellBg = {
+                        backgroundColor: `${phaseColor}14`,
+                        backgroundImage: `repeating-linear-gradient(135deg, transparent, transparent 4px, ${phaseColor}0a 4px, ${phaseColor}0a 8px)`,
+                      };
                     }
                   }
                   

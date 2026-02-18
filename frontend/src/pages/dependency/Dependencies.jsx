@@ -381,6 +381,11 @@ function DependenciesContent() {
     setCollapseAllTeamPhases(false);
   }, []);
 
+  // ── Hide all team phase rows ──
+  const hideAllTeamPhases = useCallback(() => {
+    setCollapseAllTeamPhases(true);
+  }, []);
+
   // ── Phase CRUD handlers ──
   const handleCreatePhase = useCallback(async (phaseData) => {
     try {
@@ -1308,17 +1313,25 @@ function DependenciesContent() {
               {!isTeamCollapsed(team_key) && teamPhasesMap[team_key]?.length > 0 && (
                 <button
                   onClick={() => {
-                    setCollapsedTeamPhaseRows(prev => {
-                      const next = new Set(prev);
-                      if (next.has(team_key)) next.delete(team_key);
-                      else next.add(team_key);
-                      return next;
-                    });
+                    // If globally hidden, un-hide globally and add all OTHER teams to collapsed set
+                    if (collapseAllTeamPhases) {
+                      const allTeamIds = Object.keys(teamPhasesMap).filter(k => teamPhasesMap[k]?.length > 0).map(Number);
+                      const newSet = new Set(allTeamIds.filter(id => id !== (typeof team_key === 'string' ? parseInt(team_key, 10) : team_key)));
+                      setCollapsedTeamPhaseRows(newSet);
+                      setCollapseAllTeamPhases(false);
+                    } else {
+                      setCollapsedTeamPhaseRows(prev => {
+                        const next = new Set(prev);
+                        if (next.has(team_key)) next.delete(team_key);
+                        else next.add(team_key);
+                        return next;
+                      });
+                    }
                     setOpenTeamSettings(null);
                   }}
                   className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left"
                 >
-                  {collapsedTeamPhaseRows.has(team_key) ? (
+                  {(collapseAllTeamPhases || collapsedTeamPhaseRows.has(team_key)) ? (
                     <>
                       <VisibilityIcon style={{ fontSize: 14 }} />
                       <span>Show team phases</span>
@@ -1453,7 +1466,10 @@ function DependenciesContent() {
           setShowPhaseColorsInGrid={setShowPhaseColorsInGrid}
           // Team phase row controls
           collapsedTeamPhaseRows={collapsedTeamPhaseRows}
+          collapseAllTeamPhases={collapseAllTeamPhases}
           showAllTeamPhases={showAllTeamPhases}
+          hideAllTeamPhases={hideAllTeamPhases}
+          teamPhasesMap={teamPhasesMap}
         />
 
         <DependencyCanvas

@@ -78,6 +78,14 @@ export default function DependencyMilestoneLayer({
     }
     return false;
   };
+
+  // Helper: check if ALL days in a range are collapsed
+  const isAllDaysCollapsed = (startIndex, duration) => {
+    for (let i = startIndex; i < startIndex + duration; i++) {
+      if (!collapsedDays.has(i)) return false;
+    }
+    return true;
+  };
   // Compute task time spans for Gantt-like bars
   const getTaskTimeSpan = (taskId) => {
     const task = tasks[taskId];
@@ -117,8 +125,8 @@ export default function DependencyMilestoneLayer({
           const span = getTaskTimeSpan(task_key);
           if (!span) return null;
 
-          // Hide if any day in span is collapsed
-          if (isAnyDayCollapsed(span.start, span.end - span.start)) return null;
+          // Hide if ALL days in span are collapsed (partial visibility is fine)
+          if (isAllDaysCollapsed(span.start, span.end - span.start)) return null;
 
           const taskHeight = getTaskHeight(task_key, taskDisplaySettings);
           const teamYOffset = getTeamYOffset(team_key);
@@ -255,8 +263,8 @@ export default function DependencyMilestoneLayer({
               return null;
             }
 
-            // Hide milestones that overlap any collapsed day
-            if (isAnyDayCollapsed(milestone.start_index, milestone.duration || 1)) {
+            // Hide milestones only if ALL days are collapsed (partial visibility is fine)
+            if (isAllDaysCollapsed(milestone.start_index, milestone.duration || 1)) {
               return null;
             }
 

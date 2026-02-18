@@ -3,6 +3,7 @@ import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import UnfoldLessDoubleIcon from '@mui/icons-material/UnfoldLessDouble';
 import UnfoldMoreDoubleIcon from '@mui/icons-material/UnfoldMoreDouble';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
@@ -109,7 +110,10 @@ export default function DependencyToolbar({
   setShowPhaseColorsInGrid,
   // Team phase row controls
   collapsedTeamPhaseRows,
+  collapseAllTeamPhases,
   showAllTeamPhases,
+  hideAllTeamPhases,
+  teamPhasesMap = {},
 }) {
   const hasSelection = selectedMilestones?.size > 0 || selectedConnection;
   
@@ -205,7 +209,7 @@ export default function DependencyToolbar({
             )}
 
             {/* Show All Team Phases (only when some are collapsed) */}
-            {collapsedTeamPhaseRows?.size > 0 && (
+            {(collapsedTeamPhaseRows?.size > 0 || collapseAllTeamPhases) && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -216,6 +220,21 @@ export default function DependencyToolbar({
               >
                 <VisibilityIcon style={{ fontSize: 14 }} />
                 <span>Show Team Phases</span>
+              </button>
+            )}
+
+            {/* Hide All Team Phases (only when there are team phases and not all hidden) */}
+            {!collapseAllTeamPhases && Object.values(teamPhasesMap).some(arr => arr?.length > 0) && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  hideAllTeamPhases();
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+                title="Hide all team phase rows"
+              >
+                <VisibilityOffIcon style={{ fontSize: 14 }} />
+                <span>Hide Team Phases</span>
               </button>
             )}
             
