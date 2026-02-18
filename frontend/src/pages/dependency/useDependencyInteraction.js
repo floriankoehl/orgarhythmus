@@ -360,7 +360,9 @@ export function useDependencyInteraction({
 
         setTeamOrder(newOrder);
         try {
-          await safe_team_order(projectId, newOrder);
+          // Filter out virtual teams (like __unassigned__) before saving to backend
+          const persistOrder = newOrder.filter(tid => !teams[tid]?._virtual);
+          await safe_team_order(projectId, persistOrder);
           playSound('teamDragDrop');
         } catch (err) {
           console.error("Failed to save team order:", err);
@@ -464,13 +466,21 @@ export function useDependencyInteraction({
               [teamId]: { ...prev[teamId], tasks: fullOrder }
             }));
 
-            try {
-              await reorder_team_tasks(projectId, taskId, teamId, fullOrder);
+            // Skip API call for virtual teams (like unassigned) — local reorder only
+            if (!teams[teamId]?._virtual) {
+              try {
+                await reorder_team_tasks(projectId, taskId, teamId, fullOrder);
+                playSound('taskDragDrop');
+              } catch (err) {
+                console.error("Failed to reorder tasks:", err);
+              }
+            } else {
               playSound('taskDragDrop');
-            } catch (err) {
-              console.error("Failed to reorder tasks:", err);
             }
           }
+        } else if (teams[targetTeamId]?._virtual || teams[teamId]?._virtual) {
+          // Cross-team move involving a virtual team — not supported yet
+          // (would need special backend handling to set team=null)
         } else {
           // Cross-team move — show modal
           setMoveModal({

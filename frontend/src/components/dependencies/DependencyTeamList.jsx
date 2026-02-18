@@ -80,6 +80,7 @@ export default function DependencyTeamList({
         const visibleTasks = getVisibleTasks(team_key);
         const isCollapsed = isTeamCollapsed(team_key);
         const teamColor = team.color || '#94a3b8';
+        const isVirtual = !!team._virtual;
         const hasNoTasks = team.tasks.length === 0;
         const allTasksHidden = team.tasks.length > 0 && visibleTasks.length === 0;
 
@@ -119,6 +120,7 @@ export default function DependencyTeamList({
                 height: `${TEAM_HEADER_LINE_HEIGHT}px`,
                 marginBottom: `${TEAM_HEADER_GAP}px`,
                 backgroundColor: teamColor,
+                ...(isVirtual ? { backgroundImage: 'repeating-linear-gradient(90deg, transparent, transparent 6px, rgba(255,255,255,0.5) 6px, rgba(255,255,255,0.5) 12px)' } : {}),
               }}
             />
 
@@ -142,17 +144,20 @@ export default function DependencyTeamList({
                   data-dep-team-id={team_key}
                   data-dep-team-name={team.name}
                   data-dep-team-color={teamColor}
-                  className={`flex flex-col items-center justify-start border-r border-b border-slate-200 cursor-grab-visible ${
-                    refactorMode ? 'ring-2 ring-orange-300 ring-inset' : ''
+                  className={`flex flex-col items-center justify-start border-r border-b border-slate-200 ${isVirtual ? '' : 'cursor-grab-visible'} ${
+                    refactorMode && !isVirtual ? 'ring-2 ring-orange-300 ring-inset' : ''
                   }`}
                   style={{
                     width: `${TEAMWIDTH}px`,
                     height: `${teamHeight}px`,
-                    backgroundColor: lightenColor(teamColor, 0.92),
+                    backgroundColor: isVirtual ? '#f1f5f9' : lightenColor(teamColor, 0.92),
+                    ...(isVirtual ? { borderLeft: '2px dashed #94a3b8' } : {}),
                   }}
                   onMouseDown={(e) => {
                     // Don't initiate drag if clicking on interactive elements
                     if (e.target.closest('[data-no-drag]')) return;
+                    // Virtual teams cannot be dragged or refactored
+                    if (isVirtual) return;
                     if (refactorMode) {
                       handleRefactorDrag(e, "team", {
                         id: team_key,
@@ -187,12 +192,13 @@ export default function DependencyTeamList({
                       />
                     </button>
                     <span
-                      className="text-sm font-medium truncate flex-1"
+                      className={`text-sm font-medium truncate flex-1 ${isVirtual ? 'italic text-slate-400' : ''}`}
                       title={team.name}
                     >
                       {team.name}
                     </span>
-                    {/* Link to team detail page */}
+                    {/* Link to team detail page - not for virtual teams */}
+                    {!isVirtual && (
                     <button
                       data-no-drag
                       onClick={(e) => {
@@ -204,6 +210,8 @@ export default function DependencyTeamList({
                     >
                       <OpenInNewIcon style={{ fontSize: 12 }} className="text-slate-400 hover:text-blue-500" />
                     </button>
+                    )}
+                    {!isVirtual && (
                     <button
                       data-no-drag
                       id={`team-settings-btn-${team_key}`}
@@ -215,6 +223,7 @@ export default function DependencyTeamList({
                     >
                       <MoreVertIcon style={{ fontSize: 14 }} className="text-slate-500" />
                     </button>
+                    )}
                   </div>
                   
                   {/* All tasks hidden indicator */}

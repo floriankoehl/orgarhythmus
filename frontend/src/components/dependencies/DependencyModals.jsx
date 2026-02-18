@@ -111,7 +111,7 @@ export default function DependencyModals({
               
               {newDayPurposeTeams !== null && (
                 <div className="mt-2 ml-6 space-y-1 max-h-36 overflow-y-auto border border-slate-100 rounded-lg p-2">
-                  {teamOrder && teamOrder.length > 0 ? teamOrder.map((teamId) => {
+                  {teamOrder && teamOrder.length > 0 ? teamOrder.filter(tid => !allTeams?.[tid]?._virtual).map((teamId) => {
                     const team = allTeams?.[teamId];
                     if (!team) return null;
                     const isSelected = newDayPurposeTeams.includes(teamId);
@@ -253,7 +253,7 @@ export default function DependencyModals({
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
                   <option value="">Select a team...</option>
-                  {Object.entries(teams).map(([teamId, team]) => (
+                  {Object.entries(teams).filter(([, t]) => !t._virtual).map(([teamId, team]) => (
                     <option key={teamId} value={teamId}>
                       {team.name}
                     </option>

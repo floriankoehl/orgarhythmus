@@ -9,6 +9,7 @@ import { Lightbulb, Minus, Maximize2, Minimize2, Zap } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
+import { playSound } from "../../assets/sound_registry";
 
 // ───────────────────── Constants ─────────────────────
 const MIN_W = 290;
@@ -153,6 +154,7 @@ export default function IdeaBin() {
       y: Math.max(0, Math.min(iconPos.y - windowSize.h + 48, window.innerHeight - windowSize.h)),
     });
     setIsOpen(true);
+    playSound('ideaOpen');
     setTimeout(() => headlineInputRef.current?.focus(), 100);
   }, [iconPos, windowSize]);
 
@@ -329,6 +331,7 @@ export default function IdeaBin() {
     });
     setNewCategoryName("");
     setDisplayCategoryForm(false);
+    playSound('ideaCategoryCreate');
     fetch_categories();
   };
 
@@ -370,6 +373,7 @@ export default function IdeaBin() {
       if (res.ok) {
         setCategories(prev => { const u = { ...prev }; delete u[id]; return u; });
         setCategoryOrders(prev => { const u = { ...prev }; delete u[id]; return u; });
+        playSound('ideaCategoryDelete');
         await fetch_all_ideas();
       }
     } catch (err) { console.error("IdeaBin: delete category failed", err); }
@@ -392,6 +396,7 @@ export default function IdeaBin() {
     });
     const data = await res.json();
     setCategories(prev => ({ ...prev, [id]: { ...prev[id], archived: data.archived } }));
+    playSound('ideaCategoryArchive');
   };
 
   // ═══════════════════════════════════════════════════════
@@ -425,6 +430,7 @@ export default function IdeaBin() {
     });
     setIdeaName("");
     setIdeaHeadline("");
+    playSound('ideaCreate');
     fetch_all_ideas();
   };
 
@@ -434,6 +440,7 @@ export default function IdeaBin() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
     });
+    playSound('ideaDelete');
     fetch_all_ideas();
   };
 
@@ -742,7 +749,9 @@ export default function IdeaBin() {
       setExternalGhost(null);
 
       // External drop — onto Dependencies team, task, or day grid
-      if (isExternal && (extInfo.teamId || extInfo.dayIndex !== null)) {
+      // Skip drops on virtual (unassigned) team header - can't create tasks there
+      const isVirtualTeamDrop = extInfo.teamId && isNaN(parseInt(extInfo.teamId));
+      if (isExternal && (extInfo.teamId || extInfo.dayIndex !== null) && !isVirtualTeamDrop) {
         const ideaName = idea.headline || idea.title.split(/\s+/).slice(0, 6).join(" ");
         const truncatedName = ideaName.length > 30 ? ideaName.slice(0, 27) + "..." : ideaName;
 
@@ -772,6 +781,7 @@ export default function IdeaBin() {
                   start_index: parseInt(extInfo.dayIndex),
                 });
                 await delete_idea(idea.id);
+                playSound('ideaExternalDrop');
                 window.dispatchEvent(new CustomEvent("ideabin-dep-refresh"));
               } catch (err) {
                 console.error("Failed to create milestone from idea:", err);
@@ -802,6 +812,7 @@ export default function IdeaBin() {
                   description: idea.title,
                 });
                 await delete_idea(idea.id);
+                playSound('ideaExternalDrop');
                 window.dispatchEvent(new CustomEvent("ideabin-dep-refresh"));
               } catch (err) {
                 console.error("Failed to create milestone from idea:", err);
@@ -832,6 +843,7 @@ export default function IdeaBin() {
                   team_id: parseInt(extInfo.teamId),
                 });
                 await delete_idea(idea.id);
+                playSound('ideaExternalDrop');
                 window.dispatchEvent(new CustomEvent("ideabin-dep-refresh"));
               } catch (err) {
                 console.error("Failed to create task from idea:", err);
@@ -854,12 +866,14 @@ export default function IdeaBin() {
             newOrd.splice(toIdx, 0, moved);
             setUnassignedOrder(newOrd);
             safe_order(newOrd, null);
+            playSound('ideaDragDrop');
           } else if (source.type === "category") {
             const newOrd = [...(categoryOrders[source.id] || [])];
             const [moved] = newOrd.splice(fromIdx, 1);
             newOrd.splice(toIdx, 0, moved);
             setCategoryOrders(prev => ({ ...prev, [source.id]: newOrd }));
             safe_order(newOrd, source.id);
+            playSound('ideaDragDrop');
           }
         } else if (dropTarget) {
           const targetCatId = dropTarget.type === "category" ? parseInt(dropTarget.id) : null;
@@ -976,6 +990,7 @@ export default function IdeaBin() {
                 }),
               });
               await delete_milestone(projectId, id);
+              playSound('ideaRefactor');
               window.dispatchEvent(new CustomEvent("ideabin-dep-refresh"));
               fetch_all_ideas();
             } catch (err) {
@@ -1018,6 +1033,7 @@ export default function IdeaBin() {
                 }),
               });
               await delete_task(projectId, id);
+              playSound('ideaRefactor');
               window.dispatchEvent(new CustomEvent("ideabin-dep-refresh"));
               fetch_all_ideas();
             } catch (err) {
@@ -1055,6 +1071,7 @@ export default function IdeaBin() {
                 }),
               });
               await delete_team(projectId, id);
+              playSound('ideaRefactor');
               window.dispatchEvent(new CustomEvent("ideabin-dep-refresh"));
               fetch_all_ideas();
             } catch (err) {
@@ -1099,6 +1116,7 @@ export default function IdeaBin() {
       });
       // Optionally delete the idea after transform
       await delete_idea(transformModal.idea.id);
+      playSound('ideaTransform');
       closeTransform();
     } catch (err) {
       console.error("Transform to task failed:", err);
@@ -1115,6 +1133,7 @@ export default function IdeaBin() {
         description: transformModal.idea.title,
       });
       await delete_idea(transformModal.idea.id);
+      playSound('ideaTransform');
       closeTransform();
     } catch (err) {
       console.error("Transform to milestone failed:", err);
@@ -1563,7 +1582,7 @@ export default function IdeaBin() {
                   variant="outlined"
                   size="small"
                   fullWidth
-                  sx={{ backgroundColor: "white", borderRadius: 1, marginBottom: 0.5, "& .MuiInputBase-input": { fontSize: 12, padding: "6px 10px", caretColor: "#1f2937", color: "#1f2937" } }}
+                  sx={{ backgroundColor: "white", borderRadius: 1, marginBottom: 0.5, "& .MuiInputLabel-root": { fontSize: 11 }, "& .MuiInputLabel-shrink": { fontSize: 12 }, "& .MuiInputBase-input": { fontSize: 12, padding: "6px 10px", caretColor: "#1f2937", color: "#1f2937" } }}
                 />
                 <TextField
                   value={editingIdeaId ? editingIdeaTitle : ideaName}

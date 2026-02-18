@@ -79,6 +79,24 @@ export function useDependencyData(projectId) {
         }
       }
 
+      // ── Unassigned tasks (team_id = null) ──
+      const unassignedTaskIds = resTasks.taskOrder?.["null"] || [];
+      if (unassignedTaskIds.length > 0) {
+        const UNASSIGNED_ID = "__unassigned__";
+        teamObject[UNASSIGNED_ID] = {
+          id: UNASSIGNED_ID,
+          name: "Unassigned",
+          color: "#94a3b8",
+          tasks: unassignedTaskIds,
+          _virtual: true,   // flag so UI can treat it specially
+        };
+        newTeamOrder.push(UNASSIGNED_ID);
+        initialTeamDisplaySettings[UNASSIGNED_ID] = { hidden: false };
+        for (const taskId of unassignedTaskIds) {
+          initialTaskDisplaySettings[taskId] = { size: 'normal', hidden: false };
+        }
+      }
+
       const resMilestones = await get_all_milestones(projectId);
       const fetched_Milestones = resMilestones.milestones;
 

@@ -397,14 +397,15 @@ export default function DependencyToolbar({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (teamOrder.length > 0) {
-                  setNewTaskTeamId(teamOrder[0]);
+                const realTeams = teamOrder.filter(tid => !teams[tid]?._virtual);
+                if (realTeams.length > 0) {
+                  setNewTaskTeamId(realTeams[0]);
                 }
                 setShowCreateTaskModal(true);
               }}
               className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
-              disabled={teamOrder.length === 0}
-              title={teamOrder.length === 0 ? "Create a team first" : "Create a new task"}
+              disabled={teamOrder.filter(tid => !teams[tid]?._virtual).length === 0}
+              title={teamOrder.filter(tid => !teams[tid]?._virtual).length === 0 ? "Create a team first" : "Create a new task"}
             >
               <PlaylistAddIcon style={{ fontSize: 14 }} />
               <span>New Task</span>

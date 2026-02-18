@@ -28,6 +28,13 @@ import penDownSound from './pen_down.mp3';
 import whipSound from './whip.mp3';
 import whip2Sound from './whip_2.mp3';
 
+// -- Idea sounds --
+import ideaSound from './ideas/idea.wav';
+import idea2Sound from './ideas/idea_2.wav';
+import ideaConvertSound from './ideas/convert_idea_to_task.wav';
+import ideaCoinSound from './ideas/mixkit-space-coin-win-notification-271.wav';
+import ideaNotifSound from './ideas/mixkit-quick-positive-video-game-notification-interface-265.wav';
+
 // ==========================================
 //  SOUND MAP — edit this to reassign sounds
 // ==========================================
@@ -67,6 +74,18 @@ const SOUND_FILES = {
 
   // ── Multi-select / marquee ──
   marqueeSelect:         subtleSound,            // marquee selection completes
+
+  // ── Idea interactions ──
+  ideaCreate:            ideaSound,              // new idea created
+  ideaDelete:            rewindSound,            // idea deleted
+  ideaDragDrop:          idea2Sound,             // idea reorder / category drop
+  ideaTransform:         ideaConvertSound,       // idea transformed to task/milestone
+  ideaRefactor:          ideaCoinSound,          // dep item refactored back to idea
+  ideaCategoryCreate:    ideaNotifSound,         // category created
+  ideaCategoryArchive:   subtleSound,            // category archived/unarchived
+  ideaCategoryDelete:    rewindSound,            // category deleted
+  ideaExternalDrop:      ideaConvertSound,       // idea dropped onto Dependencies
+  ideaOpen:              subtleSound,            // IdeaBin window opened
 };
 
 // ==========================================
