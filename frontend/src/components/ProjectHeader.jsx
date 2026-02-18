@@ -78,7 +78,7 @@ export default function ProjectHeader({}) {
 
   return (
     // Fixed header at the top with blur + slight border
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-700/60 bg-slate-900/80 backdrop-blur">
+    <header data-project-header className="fixed inset-x-0 top-0 z-50 border-b border-slate-700/60 bg-slate-900/80 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2 md:py-3">
         {/* LEFT: Logo / App Title */}
         <NavLink

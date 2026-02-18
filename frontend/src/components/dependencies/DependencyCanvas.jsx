@@ -132,11 +132,14 @@ export default function DependencyCanvas({
   collapsedTeamPhaseRows = new Set(),
   setCollapsedTeamPhaseRows,
   collapsePhaseRange,
+  // Layout visibility
+  hideGlobalPhases = false,
 }) {
   const hasPhases = phases.length > 0;
   const globalPhases = phases.filter(p => p.team == null);
   const hasGlobalPhases = globalPhases.length > 0;
-  const totalHeaderHeight = HEADER_HEIGHT + (hasGlobalPhases ? PHASE_HEADER_HEIGHT : 0);
+  const showGlobalPhases = hasGlobalPhases && !hideGlobalPhases;
+  const totalHeaderHeight = HEADER_HEIGHT + (showGlobalPhases ? PHASE_HEADER_HEIGHT : 0);
   const totalDaysWidth = dayColumnLayout?.totalDaysWidth ?? (days || 0) * DAYWIDTH;
   const totalWidth = TEAMWIDTH + TASKWIDTH + totalDaysWidth;
   return (
@@ -299,8 +302,8 @@ export default function DependencyCanvas({
 
           {/* Header Row */}
           <div className="flex flex-col" style={{ height: `${totalHeaderHeight}px`, position: 'relative', zIndex: 50 }}>
-            {/* Phase header row (only if GLOBAL phases exist) */}
-            {hasGlobalPhases && (
+            {/* Phase header row (only if GLOBAL phases exist and not hidden) */}
+            {showGlobalPhases && (
               <div className="flex" style={{ height: `${PHASE_HEADER_HEIGHT}px` }}>
                 <div
                   className="bg-slate-50 border-b border-r border-slate-200 flex items-center justify-center text-[10px] font-semibold text-slate-400"

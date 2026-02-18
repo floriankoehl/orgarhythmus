@@ -89,6 +89,11 @@ export function useDependencyInteraction({
 
   // Layout constants (includes effective HEADER_HEIGHT)
   layoutConstants,
+
+  // Views (for keyboard shortcuts: V + key)
+  savedViews = [],
+  onLoadView,
+  onSaveView,
 }) {
   // ── Context ──
   const {
@@ -413,12 +418,41 @@ export function useDependencyInteraction({
   // ________Global Keyboard Listener___________
   // ________________________________________
 
+  // Ref for V-key chord: V + <key> = load view with that shortcut
+  const vKeyPendingRef = useRef(null); // holds timeout ID when V is pressed
+  const vKeyActiveRef = useRef(false); // true while waiting for the second key
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       // Skip if user is typing in an input/textarea
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
       const hasModifier = e.ctrlKey || e.metaKey;
+
+      // --- V-key chord: second key pressed while V is pending ---
+      if (vKeyActiveRef.current && !hasModifier && e.key !== 'v' && e.key !== 'V') {
+        // Cancel the pending inspection-mode switch
+        clearTimeout(vKeyPendingRef.current);
+        vKeyActiveRef.current = false;
+        vKeyPendingRef.current = null;
+
+        const pressedKey = e.key.toLowerCase();
+
+        // V + S = save active view
+        if (pressedKey === 's') {
+          e.preventDefault();
+          if (onSaveView) onSaveView();
+          return;
+        }
+
+        // Find a view whose shortcut matches
+        const matchingView = savedViews.find(v => v.state?.viewShortcutKey === pressedKey);
+        if (matchingView && onLoadView) {
+          e.preventDefault();
+          onLoadView(matchingView);
+        }
+        return;
+      }
 
       // Copy/Paste shortcuts (Ctrl+C / Ctrl+V)
       if (hasModifier && e.key === 'c') {
@@ -462,9 +496,16 @@ export function useDependencyInteraction({
         baseViewModeRef.current = "dependency";
         playSound('modeSwitch');
       } else if (!hasModifier && (e.key === "v" || e.key === "V")) {
-        setViewMode("inspection");
-        baseViewModeRef.current = "inspection";
-        playSound('modeSwitch');
+        // Start V-key chord: wait briefly for a second key (V+S save, V+<key> load view)
+        vKeyActiveRef.current = true;
+        vKeyPendingRef.current = setTimeout(() => {
+          // No second key pressed — switch to inspection mode
+          vKeyActiveRef.current = false;
+          vKeyPendingRef.current = null;
+          setViewMode("inspection");
+          baseViewModeRef.current = "inspection";
+          playSound('modeSwitch');
+        }, 350);
       }
     };
     const handleKeyUp = (e) => {
@@ -475,8 +516,10 @@ export function useDependencyInteraction({
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("keyup", handleKeyUp);
+      // Cleanup pending V-key timer on unmount
+      if (vKeyPendingRef.current) clearTimeout(vKeyPendingRef.current);
     };
-  }, [setMode, setViewMode, handleCopy, handlePaste, undo, redo]);
+  }, [setMode, setViewMode, handleCopy, handlePaste, undo, redo, savedViews, onLoadView, onSaveView]);
 
   // Close team settings when clicking outside
   useEffect(() => {

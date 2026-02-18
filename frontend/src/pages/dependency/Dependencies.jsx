@@ -29,6 +29,12 @@ import {
   MIN_TASKWIDTH,
   MAX_TASKWIDTH,
 } from './layoutMath';
+import {
+  DEFAULT_DEP_SETTINGS,
+  getDefaultViewState,
+  DEFAULT_HIDE_GLOBAL_PHASES,
+  DEFAULT_TOOLBAR_COLLAPSED,
+} from './viewDefaults';
 import { useDependencyInteraction } from './useDependencyInteraction';
 import { useDependencyData } from './useDependencyData';
 import { useDependencyUIState } from './useDependencyUIState';
@@ -38,6 +44,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
+import VerticalAlignTopIcon from '@mui/icons-material/VerticalAlignTop';
 import DependencyToolbar from '../../components/dependencies/DependencyToolbar';
 import DependencyModals from '../../components/dependencies/DependencyModals';
 import DependencyCanvas from '../../components/dependencies/DependencyCanvas';
@@ -152,17 +159,8 @@ function DependenciesContent() {
   // Phase color in grid (tint day cells within phases)
   const [showPhaseColorsInGrid, setShowPhaseColorsInGrid] = useState(true);
 
-  // Dependency display settings
-  const DEFAULT_DEP_SETTINGS = {
-    showReasons: true,          // show reason text on paths
-    hideSuggestions: false,      // hide suggestion-weight dependencies
-    uniformVisuals: false,       // all deps same thickness (no weight differentiation)
-    filterWeights: [],           // empty = show all; otherwise array of 'strong'|'weak'|'suggestion'
-    defaultDepWeight: 'strong',  // default weight when creating new dependencies
-    weakDepPrompt: true,         // show prompt on weak dep conflict (false = auto-block)
-    colorDirectionHighlight: true, // color incoming (red) and outgoing (green) deps on milestone select
-  };
-  const [depSettings, setDepSettings] = useState(DEFAULT_DEP_SETTINGS);
+  // Dependency display settings (defaults from viewDefaults.js)
+  const [depSettings, setDepSettings] = useState({ ...DEFAULT_DEP_SETTINGS });
 
   // Connection edit modal (for editing weight/reason of a selected connection)
   const [connectionEditModal, setConnectionEditModal] = useState(null); // { source, target, weight, reason }
@@ -193,6 +191,50 @@ function DependenciesContent() {
   // Column widths (resizable)
   const [teamColumnWidth, setTeamColumnWidth] = useState(DEFAULT_TEAMWIDTH_CONSTANT);
   const [taskColumnWidth, setTaskColumnWidth] = useState(DEFAULT_TASKWIDTH_CONSTANT);
+
+  // ── Layout visibility (collapsible sections) ──
+  const [hideGlobalPhases, setHideGlobalPhases] = useState(DEFAULT_HIDE_GLOBAL_PHASES);
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(DEFAULT_TOOLBAR_COLLAPSED);
+  const [headerCollapsed, setHeaderCollapsed] = useState(false);
+
+  // ── Header collapse DOM effect (hides both ProjectHeader + OrgaLayout header) ──
+  useEffect(() => {
+    const projectHeaderEl = document.querySelector('[data-project-header]');
+    const orgaHeaderEl = document.querySelector('[data-orga-header]');
+    const projectMainEl = projectHeaderEl?.closest('.min-h-screen')?.querySelector('main');
+    const orgaMainEl = document.querySelector('[data-orga-main]');
+    if (projectHeaderEl) {
+      projectHeaderEl.style.transition = 'transform 0.3s ease';
+      projectHeaderEl.style.transform = headerCollapsed ? 'translateY(-100%)' : '';
+    }
+    if (orgaHeaderEl) {
+      orgaHeaderEl.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
+      orgaHeaderEl.style.transform = headerCollapsed ? 'translateY(-100%)' : '';
+      orgaHeaderEl.style.opacity = headerCollapsed ? '0' : '';
+      orgaHeaderEl.style.pointerEvents = headerCollapsed ? 'none' : '';
+    }
+    if (orgaMainEl) {
+      orgaMainEl.style.transition = 'margin-top 0.3s ease';
+      orgaMainEl.style.marginTop = headerCollapsed ? '0' : '';
+    }
+    if (projectMainEl) {
+      projectMainEl.style.transition = 'margin-top 0.3s ease';
+      projectMainEl.style.marginTop = headerCollapsed ? '0' : '';
+    }
+    return () => {
+      if (projectHeaderEl) { projectHeaderEl.style.transform = ''; projectHeaderEl.style.transition = ''; }
+      if (orgaHeaderEl) { orgaHeaderEl.style.transform = ''; orgaHeaderEl.style.transition = ''; orgaHeaderEl.style.opacity = ''; orgaHeaderEl.style.pointerEvents = ''; }
+      if (orgaMainEl) { orgaMainEl.style.marginTop = ''; orgaMainEl.style.transition = ''; }
+      if (projectMainEl) { projectMainEl.style.marginTop = ''; projectMainEl.style.transition = ''; }
+    };
+  }, [headerCollapsed]);
+
+  // ── Popup close signal (incremented on canvas click to close toolbar dropdowns) ──
+  const [popupCloseSignal, setPopupCloseSignal] = useState(0);
+
+  // ── View transition animation ──
+  const [viewTransition, setViewTransition] = useState(null); // 'out' | 'in-start' | 'in' | null
+  const viewTransitionRef = useRef(null);
 
   // ── Views (saveable frontend state snapshots) ──
   const [savedViews, setSavedViews] = useState([]);
@@ -436,6 +478,8 @@ function DependenciesContent() {
     autoSelectBlocking,
     warningDuration,
     refactorMode,
+    hideGlobalPhases,
+    toolbarCollapsed,
   }), [
     taskDisplaySettings, teamDisplaySettings, viewMode, mode,
     collapsedDays, selectedDays, depSettings, showPhaseColorsInGrid,
@@ -444,6 +488,7 @@ function DependenciesContent() {
     customTaskHeightNormal, customTaskHeightSmall, collapsedTeamPhaseRows,
     collapseAllTeamPhases, teamColumnWidth, taskColumnWidth,
     autoSelectBlocking, warningDuration, refactorMode,
+    hideGlobalPhases, toolbarCollapsed, headerCollapsed,
   ]);
 
   // Apply a saved view state, restoring all settings.
@@ -451,6 +496,7 @@ function DependenciesContent() {
   // older saved views still work correctly after new settings are introduced.
   const applyViewState = useCallback((state) => {
     if (!state) return;
+    const d = getDefaultViewState();
     // Per-item display settings: merge with current so new teams/tasks keep their defaults
     if (state.taskDisplaySettings) {
       setTaskDisplaySettings(prev => ({ ...prev, ...state.taskDisplaySettings }));
@@ -459,35 +505,39 @@ function DependenciesContent() {
       setTeamDisplaySettings(prev => ({ ...prev, ...state.teamDisplaySettings }));
     }
     // View & interaction modes
-    const vm = state.viewMode ?? 'inspection';
+    const vm = state.viewMode ?? d.viewMode;
     setViewMode(vm);
     baseViewModeRef.current = vm;
-    setMode(state.mode ?? 'drag');
+    setMode(state.mode ?? d.mode);
     // Day states
-    setCollapsedDays(new Set(state.collapsedDays ?? []));
-    setSelectedDays(new Set(state.selectedDays ?? []));
+    setCollapsedDays(new Set(state.collapsedDays ?? d.collapsedDays));
+    setSelectedDays(new Set(state.selectedDays ?? d.selectedDays));
     // Dependency display — merge with defaults so new keys always have values
-    setDepSettings({ ...DEFAULT_DEP_SETTINGS, ...(state.depSettings ?? {}) });
+    setDepSettings({ ...d.depSettings, ...(state.depSettings ?? {}) });
     // Boolean / scalar toggles
-    setShowPhaseColorsInGrid(state.showPhaseColorsInGrid ?? true);
-    setExpandedTaskView(state.expandedTaskView ?? false);
-    setHideAllDependencies(state.hideAllDependencies ?? false);
-    setHideCollapsedDependencies(state.hideCollapsedDependencies ?? false);
-    setHideCollapsedMilestones(state.hideCollapsedMilestones ?? false);
-    setShowEmptyTeams(state.showEmptyTeams ?? true);
+    setShowPhaseColorsInGrid(state.showPhaseColorsInGrid ?? d.showPhaseColorsInGrid);
+    setExpandedTaskView(state.expandedTaskView ?? d.expandedTaskView);
+    setHideAllDependencies(state.hideAllDependencies ?? d.hideAllDependencies);
+    setHideCollapsedDependencies(state.hideCollapsedDependencies ?? d.hideCollapsedDependencies);
+    setHideCollapsedMilestones(state.hideCollapsedMilestones ?? d.hideCollapsedMilestones);
+    setShowEmptyTeams(state.showEmptyTeams ?? d.showEmptyTeams);
     // Dimensions
-    setCustomDayWidth(state.customDayWidth ?? DEFAULT_DAYWIDTH);
-    setCustomTaskHeightNormal(state.customTaskHeightNormal ?? DEFAULT_TASKHEIGHT_NORMAL);
-    setCustomTaskHeightSmall(state.customTaskHeightSmall ?? DEFAULT_TASKHEIGHT_SMALL);
-    setTeamColumnWidth(state.teamColumnWidth ?? DEFAULT_TEAMWIDTH_CONSTANT);
-    setTaskColumnWidth(state.taskColumnWidth ?? DEFAULT_TASKWIDTH_CONSTANT);
+    setCustomDayWidth(state.customDayWidth ?? d.customDayWidth);
+    setCustomTaskHeightNormal(state.customTaskHeightNormal ?? d.customTaskHeightNormal);
+    setCustomTaskHeightSmall(state.customTaskHeightSmall ?? d.customTaskHeightSmall);
+    setTeamColumnWidth(state.teamColumnWidth ?? d.teamColumnWidth);
+    setTaskColumnWidth(state.taskColumnWidth ?? d.taskColumnWidth);
     // Team phase rows
-    setCollapsedTeamPhaseRows(new Set(state.collapsedTeamPhaseRows ?? []));
-    setCollapseAllTeamPhases(state.collapseAllTeamPhases ?? false);
+    setCollapsedTeamPhaseRows(new Set(state.collapsedTeamPhaseRows ?? d.collapsedTeamPhaseRows));
+    setCollapseAllTeamPhases(state.collapseAllTeamPhases ?? d.collapseAllTeamPhases);
     // Advanced toggles
-    setAutoSelectBlocking(state.autoSelectBlocking ?? true);
-    setWarningDuration(state.warningDuration ?? 2000);
-    setRefactorMode(state.refactorMode ?? false);
+    setAutoSelectBlocking(state.autoSelectBlocking ?? d.autoSelectBlocking);
+    setWarningDuration(state.warningDuration ?? d.warningDuration);
+    setRefactorMode(state.refactorMode ?? d.refactorMode);
+    // Layout visibility
+    setHideGlobalPhases(state.hideGlobalPhases ?? d.hideGlobalPhases);
+    setToolbarCollapsed(state.toolbarCollapsed ?? d.toolbarCollapsed);
+    setHeaderCollapsed(state.headerCollapsed ?? false);
   }, []);
 
   // Fetch saved views on mount & auto-load default view
@@ -510,18 +560,31 @@ function DependenciesContent() {
 
   // Load a view (switch to it)
   const handleLoadView = useCallback((view) => {
-    if (!view) {
-      // Reset to defaults — apply an empty state object so every setting reverts
-      applyViewState({});
-      setActiveViewId(null);
-      setActiveViewName("Default");
+    // Trigger slide-out animation, then apply state and slide in
+    setViewTransition('out');
+    if (viewTransitionRef.current) clearTimeout(viewTransitionRef.current);
+    viewTransitionRef.current = setTimeout(() => {
+      if (!view) {
+        applyViewState(getDefaultViewState());
+        setActiveViewId(null);
+        setActiveViewName("Default");
+      } else {
+        applyViewState(view.state);
+        setActiveViewId(view.id);
+        setActiveViewName(view.name);
+      }
+      // Position off-screen right (no transition), then animate in
+      setViewTransition('in-start');
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setViewTransition('in');
+          viewTransitionRef.current = setTimeout(() => {
+            setViewTransition(null);
+          }, 280);
+        });
+      });
       playSound('viewLoad');
-      return;
-    }
-    applyViewState(view.state);
-    setActiveViewId(view.id);
-    setActiveViewName(view.name);
-    playSound('viewLoad');
+    }, 220);
   }, [applyViewState]);
 
   // Save current state to active view
@@ -592,6 +655,20 @@ function DependenciesContent() {
       alert("Failed to set default view: " + (err.message || err));
     }
   }, [projectId]);
+
+  // Update the shortcut key for a view (stored in the view's state.viewShortcutKey)
+  const handleUpdateViewShortcut = useCallback(async (viewId, key) => {
+    const view = savedViews.find(v => v.id === viewId);
+    if (!view) return;
+    try {
+      const newState = { ...(view.state || {}), viewShortcutKey: key || null };
+      const updated = await update_view(projectId, viewId, { state: newState });
+      setSavedViews(prev => prev.map(v => v.id === viewId ? { ...v, ...updated } : v));
+      playSound('uiClick');
+    } catch (err) {
+      console.error("Failed to update view shortcut:", err);
+    }
+  }, [projectId, savedViews]);
 
   // ═══════════════ End Views ═══════════════
 
@@ -975,12 +1052,12 @@ function DependenciesContent() {
   const PHASE_HEADER_HEIGHT = 26;
   const hasGlobalPhases = globalPhases.length > 0;
   const hasPhases = phases.length > 0;
-  const effectiveHeaderHeight = HEADER_HEIGHT + (hasGlobalPhases ? PHASE_HEADER_HEIGHT : 0);
+  const effectiveHeaderHeight = HEADER_HEIGHT + (hasGlobalPhases && !hideGlobalPhases ? PHASE_HEADER_HEIGHT : 0);
   const layoutConstants = { HEADER_HEIGHT: effectiveHeaderHeight, TEAM_DRAG_HIGHLIGHT_HEIGHT, MARIGN_BETWEEN_DRAG_HIGHLIGHT, TEAM_HEADER_LINE_HEIGHT, TEAM_HEADER_GAP };
   
   const contentHeight = useMemo(() => {
     return calculateContentHeight(teamOrder, isTeamVisible, getTeamHeight, layoutConstants);
-  }, [teamOrder, teams, taskDisplaySettings, teamDisplaySettings, TASKHEIGHT_NORMAL, TASKHEIGHT_SMALL, hasGlobalPhases, phases, collapseAllTeamPhases, collapsedTeamPhaseRows]);
+  }, [teamOrder, teams, taskDisplaySettings, teamDisplaySettings, TASKHEIGHT_NORMAL, TASKHEIGHT_SMALL, hasGlobalPhases, hideGlobalPhases, phases, collapseAllTeamPhases, collapsedTeamPhaseRows]);
 
   // Get visible team index (accounting for hidden teams)
   const getVisibleTeamIndex = (teamId) => 
@@ -1085,6 +1162,9 @@ function DependenciesContent() {
     collapsedDays,
     getTeamPhaseRowHeight,
     layoutConstants,
+    savedViews,
+    onLoadView: handleLoadView,
+    onSaveView: handleSaveView,
   });
 
   // ________Actions Hook___________
@@ -1819,17 +1899,62 @@ function DependenciesContent() {
       {/* Page wrapper */}
       <div 
         className="p-10 w-full min-w-0 select-none"
-        style={{ backgroundColor: '#f8f9fb' }}
+        style={{
+          backgroundColor: '#f8f9fb',
+          ...(viewTransition === 'out' ? {
+            transition: 'transform 0.2s ease-in, opacity 0.2s ease-in',
+            transform: 'translateX(-50px)',
+            opacity: 0,
+          } : viewTransition === 'in-start' ? {
+            // Positioned off-screen right, no transition yet
+            transform: 'translateX(50px)',
+            opacity: 0,
+          } : viewTransition === 'in' ? {
+            transition: 'transform 0.25s ease-out, opacity 0.25s ease-out',
+            transform: 'translateX(0)',
+            opacity: 1,
+          } : {}),
+        }}
         onClick={() => {
           if (justDraggedRef.current) return;
           setSelectedConnections([]);
           setOpenTeamSettings(null);
           setShowSettingsDropdown(false);
+          setShowFilterDropdown(false);
           setSelectedMilestones(new Set());
           setIsAddingMilestone(false);
+          setPopupCloseSignal(c => c + 1);
         }}
       >
-        {/* Control Board Toolbar */}
+        {/* Tab buttons sitting above toolbar */}
+        <div className="mb-4">
+          <div className="flex items-end gap-0.5 ml-1">
+            <button
+              onClick={(e) => { e.stopPropagation(); setToolbarCollapsed(!toolbarCollapsed); playSound('uiClick'); }}
+              className="px-3 py-1 flex items-center gap-1 rounded-t-md bg-white border border-b-0 border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50 text-xs transition"
+              title={toolbarCollapsed ? 'Show toolbar' : 'Hide toolbar'}
+            >
+              {toolbarCollapsed ? <UnfoldMoreIcon style={{ fontSize: 14 }} /> : <UnfoldLessIcon style={{ fontSize: 14 }} />}
+              <span className="text-[10px]">{toolbarCollapsed ? 'Show' : 'Hide'}</span>
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); setHeaderCollapsed(!headerCollapsed); playSound('uiClick'); }}
+              className={`px-3 py-1 flex items-center gap-1 rounded-t-md border border-b-0 text-xs transition ${
+                headerCollapsed
+                  ? 'bg-slate-700 border-slate-600 text-white hover:bg-slate-600'
+                  : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+              }`}
+              title={headerCollapsed ? 'Show header' : 'Hide header'}
+            >
+              <VerticalAlignTopIcon style={{ fontSize: 14 }} />
+              <span className="text-[10px]">Header</span>
+            </button>
+            {toolbarCollapsed && (
+              <span className="ml-2 text-[11px] text-slate-400 pb-0.5">{activeViewName}</span>
+            )}
+          </div>
+
+          {!toolbarCollapsed && (
         <DependencyToolbar
           // Data
           teamOrder={teamOrder}
@@ -1929,6 +2054,7 @@ function DependenciesContent() {
           onRenameView={handleRenameView}
           onDeleteView={handleDeleteView}
           onSetDefaultView={handleSetDefaultView}
+          onUpdateViewShortcut={handleUpdateViewShortcut}
           // Snapshots
           snapshots={snapshots}
           snapshotsLoading={snapshotsLoading}
@@ -1936,7 +2062,14 @@ function DependenciesContent() {
           onRestoreSnapshot={handleRestoreSnapshot}
           onDeleteSnapshot={handleDeleteSnapshot}
           onRenameSnapshot={handleRenameSnapshot}
+          // Layout visibility
+          hideGlobalPhases={hideGlobalPhases}
+          setHideGlobalPhases={setHideGlobalPhases}
+          // Popup close signal
+          popupCloseSignal={popupCloseSignal}
         />
+          )}
+        </div>
 
         <DependencyCanvas
           // Refs
@@ -2058,6 +2191,8 @@ function DependenciesContent() {
           collapsedTeamPhaseRows={collapsedTeamPhaseRows}
           setCollapsedTeamPhaseRows={setCollapsedTeamPhaseRows}
           collapsePhaseRange={collapsePhaseRange}
+          // Layout visibility
+          hideGlobalPhases={hideGlobalPhases}
         />
       </div>
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { playSound } from '../../assets/sound_registry';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
@@ -135,6 +135,7 @@ export default function DependencyToolbar({
   onRenameView,
   onDeleteView,
   onSetDefaultView,
+  onUpdateViewShortcut,
   // Snapshots
   snapshots = [],
   snapshotsLoading,
@@ -142,6 +143,11 @@ export default function DependencyToolbar({
   onRestoreSnapshot,
   onDeleteSnapshot,
   onRenameSnapshot,
+  // Layout visibility
+  hideGlobalPhases,
+  setHideGlobalPhases,
+  // Popup close signal
+  popupCloseSignal = 0,
 }) {
   const hasSelection = selectedMilestones?.size > 0 || selectedConnections?.length > 0;
 
@@ -152,6 +158,15 @@ export default function DependencyToolbar({
   const [renamingViewId, setRenamingViewId] = useState(null);
   const [renameText, setRenameText] = useState("");
   const [confirmDeleteViewId, setConfirmDeleteViewId] = useState(null);
+  const [editingShortcutViewId, setEditingShortcutViewId] = useState(null);
+
+  // Close all local dropdowns when canvas is clicked
+  useEffect(() => {
+    if (popupCloseSignal > 0) {
+      setShowViewDropdown(false);
+      setShowSnapshotDropdown(false);
+    }
+  }, [popupCloseSignal]);
 
   // ── Snapshot UI state ──
   const [showSnapshotDropdown, setShowSnapshotDropdown] = useState(false);
@@ -183,652 +198,181 @@ export default function DependencyToolbar({
   };
 
   return (
-    <div className="mb-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex divide-x divide-slate-200">
-        
-        {/* Section 1: Settings */}
-        <div className="p-3 flex-1 min-w-0">
-          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            Settings
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                // Collapse all visible teams
-                teamOrder.forEach(tid => {
-                  if (isTeamVisible(tid)) setTeamTasksSmall(tid);
-                });
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
-            >
-              <UnfoldLessIcon style={{ fontSize: 14 }} />
-              <span>Collapse All</span>
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                // Expand all visible teams
-                teamOrder.forEach(tid => {
-                  if (isTeamVisible(tid)) setTeamTasksNormal(tid);
-                });
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
-            >
-              <UnfoldMoreIcon style={{ fontSize: 14 }} />
-              <span>Expand All</span>
-            </button>
-            {/* Collapse/Expand all teams (fold/unfold team rows) */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                collapseAllTeams();
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
-              title="Collapse all teams (hide task rows)"
-            >
-              <UnfoldLessDoubleIcon style={{ fontSize: 14 }} />
-              <span>Fold Teams</span>
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                expandAllTeams();
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
-              title="Expand all teams (show task rows)"
-            >
-              <UnfoldMoreDoubleIcon style={{ fontSize: 14 }} />
-              <span>Unfold Teams</span>
-            </button>
-            {hiddenTeamCount > 0 && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  showAllHiddenTeams();
-                }}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition"
-              >
-                <VisibilityIcon style={{ fontSize: 14 }} />
-                <span>Show {hiddenTeamCount} Hidden</span>
-              </button>
-            )}
 
-            {/* Show All Team Phases (only when some are collapsed) */}
-            {(collapsedTeamPhaseRows?.size > 0 || collapseAllTeamPhases) && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  showAllTeamPhases();
-                }}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 transition"
-                title="Show all team phase rows"
-              >
-                <VisibilityIcon style={{ fontSize: 14 }} />
-                <span>Show Team Phases</span>
-              </button>
-            )}
-
-            {/* Hide All Team Phases (only when there are team phases and not all hidden) */}
-            {!collapseAllTeamPhases && Object.values(teamPhasesMap).some(arr => arr?.length > 0) && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  hideAllTeamPhases();
-                }}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
-                title="Hide all team phase rows"
-              >
-                <VisibilityOffIcon style={{ fontSize: 14 }} />
-                <span>Hide Team Phases</span>
-              </button>
-            )}
-            
-            {/* Expanded Task View (Gantt) Toggle */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setExpandedTaskView(!expandedTaskView);
-                playSound('settingToggle');
-              }}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
-                expandedTaskView 
-                  ? 'border-indigo-400 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-300' 
-                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-              title={expandedTaskView ? "Hide task time spans" : "Show task time spans (Gantt-like)"}
-            >
-              <ViewTimelineIcon style={{ fontSize: 14 }} />
-              <span>Timeline</span>
-            </button>
-
-            {/* Settings Dropdown */}
-            <div className="relative">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowSettingsDropdown(!showSettingsDropdown);
-                }}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
-                  showSettingsDropdown 
-                    ? 'border-blue-400 bg-blue-50 text-blue-700' 
-                    : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <SettingsIcon style={{ fontSize: 14 }} />
-                <span>Advanced</span>
-              </button>
-              
-              {showSettingsDropdown && (
-                <div 
-                  className="absolute top-full left-0 mt-1 w-72 rounded-lg border border-slate-200 bg-white shadow-xl z-50"
-                  onClick={(e) => e.stopPropagation()}
+        {/* ─── COL 1: Mode (2×2 grid) ─── */}
+        <div className="p-2.5 flex-shrink-0">
+          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Mode</h3>
+          <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-100 rounded-lg" style={{ width: 170 }}>
+            {[
+              { key: 'inspection', icon: <VisibilityIcon style={{ fontSize: 15 }} />, label: 'View',    shortcut: 'V' },
+              { key: 'schedule',   icon: <ScheduleIcon style={{ fontSize: 15 }} />,   label: 'Edit',    shortcut: 'E' },
+              { key: 'dependency', icon: <AccountTreeIcon style={{ fontSize: 15 }} />, label: 'Deps',    shortcut: 'D' },
+              { key: 'refactor',   icon: <BuildIcon style={{ fontSize: 15 }} />,       label: 'Refact.', isRefactor: true },
+            ].map(m => {
+              const isActive = m.isRefactor ? refactorMode : viewMode === m.key;
+              return (
+                <button
+                  key={m.key}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (m.isRefactor) { setRefactorMode(!refactorMode); playSound('refactorToggle'); }
+                    else { setViewMode(m.key); baseViewModeRef.current = m.key; playSound('modeSwitch'); }
+                  }}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md transition ${
+                    isActive
+                      ? m.isRefactor
+                        ? 'bg-orange-50 text-orange-700 ring-1 ring-orange-300 shadow-sm'
+                        : 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                  title={m.isRefactor ? (refactorMode ? 'Exit refactor' : 'Refactor mode') : `${m.label} mode (${m.shortcut})`}
                 >
-                  <div className="p-3 space-y-3">
-                    <div className="space-y-2">
-                      <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Visibility</h4>
-                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={hideAllDependencies}
-                          onChange={(e) => { setHideAllDependencies(e.target.checked); playSound('settingToggle'); }}
-                          className="rounded border-slate-300"
-                        />
-                        <span>Hide all dependencies</span>
-                      </label>
-                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={hideCollapsedDependencies}
-                          onChange={(e) => {
-                            setHideCollapsedDependencies(e.target.checked);
-                            // If unchecking deps, also uncheck milestones since milestones option implies deps
-                            if (!e.target.checked) setHideCollapsedMilestones(false);
-                            playSound('settingToggle');
-                          }}
-                          className="rounded border-slate-300"
-                        />
-                        <span>Hide deps for collapsed tasks</span>
-                      </label>
-                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={hideCollapsedMilestones}
-                          onChange={(e) => {
-                            setHideCollapsedMilestones(e.target.checked);
-                            // Hiding milestones implies hiding deps too
-                            if (e.target.checked) setHideCollapsedDependencies(true);
-                            playSound('settingToggle');
-                          }}
-                          className="rounded border-slate-300"
-                        />
-                        <span>Hide deps &amp; milestones for collapsed tasks</span>
-                      </label>
-                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={showEmptyTeams}
-                          onChange={(e) => { setShowEmptyTeams(e.target.checked); playSound('settingToggle'); }}
-                          className="rounded border-slate-300"
-                        />
-                        <span>Show empty teams</span>
-                      </label>
-                      {phases.length > 0 && (
-                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={showPhaseColorsInGrid}
-                            onChange={(e) => { setShowPhaseColorsInGrid?.(e.target.checked); playSound('settingToggle'); }}
-                            className="rounded border-slate-300"
-                          />
-                          <span>Show phase colors in grid</span>
-                        </label>
-                      )}
-                    </div>
-
-                    <div className="border-t border-slate-100 pt-3">
-                      <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Warning Behavior</h4>
-                      <div className="space-y-2">
-                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={autoSelectBlocking}
-                            onChange={(e) => { setAutoSelectBlocking(e.target.checked); playSound('settingToggle'); }}
-                            className="rounded border-slate-300"
-                          />
-                          <span>Auto-select blocking milestones</span>
-                        </label>
-                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={depSettings.weakDepPrompt !== false}
-                            onChange={(e) => { setDepSettings(prev => ({ ...prev, weakDepPrompt: e.target.checked })); playSound('settingToggle'); }}
-                            className="rounded border-slate-300"
-                          />
-                          <span>Ask before blocking weak deps</span>
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-600 w-24">Warn time:</span>
-                          <input
-                            type="range"
-                            min="100"
-                            max="5000"
-                            step="100"
-                            value={warningDuration}
-                            onChange={(e) => setWarningDuration(Number(e.target.value))}
-                            className="flex-1"
-                          />
-                          <span className="text-xs text-slate-500 w-10">{(warningDuration / 1000).toFixed(1)}s</span>
-                          <button
-                            onClick={() => setWarningDuration(2000)}
-                            className="text-[10px] text-blue-600 hover:underline"
-                          >
-                            Reset
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="border-t border-slate-100 pt-3">
-                      <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Dimensions</h4>
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-600 w-24">Day Width:</span>
-                          <input
-                            type="range"
-                            min="20"
-                            max="100"
-                            value={customDayWidth}
-                            onChange={(e) => setCustomDayWidth(Number(e.target.value))}
-                            className="flex-1"
-                          />
-                          <span className="text-xs text-slate-500 w-8">{customDayWidth}</span>
-                          <button
-                            onClick={() => setCustomDayWidth(DEFAULT_DAYWIDTH)}
-                            className="text-[10px] text-blue-600 hover:underline"
-                          >
-                            Reset
-                          </button>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-600 w-24">Task Height:</span>
-                          <input
-                            type="range"
-                            min="24"
-                            max="80"
-                            value={customTaskHeightNormal}
-                            onChange={(e) => setCustomTaskHeightNormal(Number(e.target.value))}
-                            className="flex-1"
-                          />
-                          <span className="text-xs text-slate-500 w-8">{customTaskHeightNormal}</span>
-                          <button
-                            onClick={() => setCustomTaskHeightNormal(DEFAULT_TASKHEIGHT_NORMAL)}
-                            className="text-[10px] text-blue-600 hover:underline"
-                          >
-                            Reset
-                          </button>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-600 w-24">Collapsed:</span>
-                          <input
-                            type="range"
-                            min="16"
-                            max="40"
-                            value={customTaskHeightSmall}
-                            onChange={(e) => setCustomTaskHeightSmall(Number(e.target.value))}
-                            className="flex-1"
-                          />
-                          <span className="text-xs text-slate-500 w-8">{customTaskHeightSmall}</span>
-                          <button
-                            onClick={() => setCustomTaskHeightSmall(DEFAULT_TASKHEIGHT_SMALL)}
-                            className="text-[10px] text-blue-600 hover:underline"
-                          >
-                            Reset
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Dependency Display */}
-                    <div className="border-t border-slate-100 pt-3">
-                      <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Dependencies</h4>
-                      <div className="space-y-2">
-                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={depSettings.showReasons !== false}
-                            onChange={(e) => { setDepSettings(prev => ({ ...prev, showReasons: e.target.checked })); playSound('settingToggle'); }}
-                            className="rounded border-slate-300"
-                          />
-                          <span>Show reason labels on paths</span>
-                        </label>
-                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={depSettings.colorDirectionHighlight !== false}
-                            onChange={(e) => { setDepSettings(prev => ({ ...prev, colorDirectionHighlight: e.target.checked })); playSound('settingToggle'); }}
-                            className="rounded border-slate-300"
-                          />
-                          <span>Color incoming/outgoing deps</span>
-                        </label>
-                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!!depSettings.hideSuggestions}
-                            onChange={(e) => { setDepSettings(prev => ({ ...prev, hideSuggestions: e.target.checked })); playSound('settingToggle'); }}
-                            className="rounded border-slate-300"
-                          />
-                          <span>Hide suggestion dependencies</span>
-                        </label>
-                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!!depSettings.uniformVisuals}
-                            onChange={(e) => { setDepSettings(prev => ({ ...prev, uniformVisuals: e.target.checked })); playSound('settingToggle'); }}
-                            className="rounded border-slate-300"
-                          />
-                          <span>Uniform line style (ignore weight)</span>
-                        </label>
-                        <div className="mt-1">
-                          <span className="text-[10px] text-slate-500 block mb-1">Show weight types:</span>
-                          <div className="flex gap-3">
-                            {['strong', 'weak', 'suggestion'].map(w => {
-                              const active = !depSettings.filterWeights || depSettings.filterWeights.length === 0 || depSettings.filterWeights.includes(w);
-                              return (
-                                <label key={w} className="flex items-center gap-1 text-[11px] text-slate-600 cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={active}
-                                    onChange={(e) => {
-                                      setDepSettings(prev => {
-                                        const current = prev.filterWeights && prev.filterWeights.length > 0
-                                          ? [...prev.filterWeights]
-                                          : ['strong', 'weak', 'suggestion'];
-                                        if (e.target.checked) {
-                                          if (!current.includes(w)) current.push(w);
-                                        } else {
-                                          const idx = current.indexOf(w);
-                                          if (idx > -1) current.splice(idx, 1);
-                                        }
-                                        // If all checked, clear filter
-                                        if (current.length === 3) return { ...prev, filterWeights: [] };
-                                        return { ...prev, filterWeights: current };
-                                      });
-                                      playSound('settingToggle');
-                                    }}
-                                    className="rounded border-slate-300"
-                                  />
-                                  <span className="capitalize">{w}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        {/* Default weight for new dependencies */}
-                        <div className="mt-2">
-                          <span className="text-[10px] text-slate-500 block mb-1">Default weight for new connections:</span>
-                          <div className="flex gap-1">
-                            {[
-                              { value: 'strong', label: 'Strong', color: 'bg-red-100 text-red-800 border-red-300' },
-                              { value: 'weak', label: 'Weak', color: 'bg-amber-100 text-amber-800 border-amber-300' },
-                              { value: 'suggestion', label: 'Suggestion', color: 'bg-blue-100 text-blue-800 border-blue-300' },
-                            ].map(opt => {
-                              const isActive = (depSettings.defaultDepWeight || 'strong') === opt.value;
-                              return (
-                                <button
-                                  key={opt.value}
-                                  onClick={() => { setDepSettings(prev => ({ ...prev, defaultDepWeight: opt.value })); playSound('settingToggle'); }}
-                                  className={`flex-1 px-2 py-1 text-[10px] rounded border transition ${
-                                    isActive
-                                      ? `${opt.color} ring-1 ring-offset-1 ring-slate-400 font-semibold`
-                                      : 'border-slate-200 text-slate-500 hover:bg-slate-50'
-                                  }`}
-                                >
-                                  {opt.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        {/* Edit selected connection(s) */}
-                        {selectedConnections?.length === 1 && (
-                          <button
-                            onClick={() => {
-                              const sc = selectedConnections[0];
-                              const conn = connections?.find(c => c.source === sc.source && c.target === sc.target);
-                              if (conn) {
-                                setConnectionEditModal({
-                                  source: conn.source,
-                                  target: conn.target,
-                                  weight: conn.weight || 'strong',
-                                  reason: conn.reason || '',
-                                });
-                              }
-                            }}
-                            className="w-full mt-1 px-2 py-1.5 text-xs rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition"
-                          >
-                            Edit Selected Dependency
-                          </button>
-                        )}
-                        {selectedConnections?.length > 1 && (
-                          <div className="mt-2 space-y-1.5 border-t border-slate-100 pt-2">
-                            <p className="text-[10px] text-slate-500 font-medium">{selectedConnections.length} dependencies selected</p>
-                            <div className="flex gap-1">
-                              {['strong', 'weak', 'suggestion'].map(w => (
-                                <button
-                                  key={w}
-                                  onClick={() => {
-                                    if (onBulkUpdateConnections) onBulkUpdateConnections(selectedConnections, { weight: w });
-                                  }}
-                                  className="flex-1 px-1.5 py-1 text-[10px] rounded border border-slate-200 text-slate-600 hover:bg-slate-50 capitalize transition"
-                                >
-                                  {w}
-                                </button>
-                              ))}
-                            </div>
-                            {/* Bulk reason edit */}
-                            <form
-                              className="flex gap-1"
-                              onSubmit={(e) => {
-                                e.preventDefault();
-                                const val = e.target.elements.bulkReason.value;
-                                if (onBulkUpdateConnections) onBulkUpdateConnections(selectedConnections, { reason: val || null });
-                              }}
-                            >
-                              <input
-                                name="bulkReason"
-                                type="text"
-                                placeholder="Set reason for all…"
-                                className="flex-1 text-[10px] border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:border-indigo-400"
-                              />
-                              <button
-                                type="submit"
-                                className="px-1.5 py-1 text-[10px] rounded border border-indigo-300 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition"
-                              >
-                                Apply
-                              </button>
-                            </form>
-                            <button
-                              onClick={() => onDeleteSelected && onDeleteSelected()}
-                              className="w-full px-2 py-1 text-[10px] rounded border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition"
-                            >
-                              Delete All Selected
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+                  {m.icon}
+                  <span>{m.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Section 2: Mode */}
-        <div className="p-3 flex-1 min-w-0">
-          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            Mode
-          </h3>
-          <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
+        {/* ─── COL 2: Create (no delete) ─── */}
+        <div className="p-2.5 flex-shrink-0">
+          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Create</h3>
+          <div className="grid grid-cols-2 gap-1" style={{ width: 130 }}>
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setViewMode("inspection");
-                baseViewModeRef.current = "inspection";
-                playSound('modeSwitch');
-              }}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
-                viewMode === "inspection"
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-              title="View only - no data changes (V)"
-            >
-              <VisibilityIcon style={{ fontSize: 14 }} />
-              <span>View</span>
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setViewMode("schedule");
-                baseViewModeRef.current = "schedule";
-                playSound('modeSwitch');
-              }}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
-                viewMode === "schedule"
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-              title="Edit milestones, schedule and resize (E)"
-            >
-              <ScheduleIcon style={{ fontSize: 14 }} />
-              <span>Edit</span>
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setViewMode("dependency");
-                baseViewModeRef.current = "dependency";
-                playSound('modeSwitch');
-              }}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
-                viewMode === "dependency"
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-              title="Edit dependency connections (D)"
-            >
-              <AccountTreeIcon style={{ fontSize: 14 }} />
-              <span>Deps</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Section 3: Create & Delete */}
-        <div className="p-3 flex-1 min-w-0">
-          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            Actions
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowCreateTeamModal(true);
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+              onClick={(e) => { e.stopPropagation(); setShowCreateTeamModal(true); }}
+              className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+              title="New team"
             >
               <GroupAddIcon style={{ fontSize: 14 }} />
-              <span>New Team</span>
+              <span>Team</span>
             </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                const realTeams = teamOrder.filter(tid => !teams[tid]?._virtual);
-                if (realTeams.length > 0) {
-                  setNewTaskTeamId(realTeams[0]);
-                }
-                setShowCreateTaskModal(true);
+                const firstReal = teamOrder.find(tid => !teams[tid]?._virtual);
+                if (firstReal) { setNewTaskTeamId(firstReal); setShowCreateTaskModal(true); }
               }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
               disabled={teamOrder.filter(tid => !teams[tid]?._virtual).length === 0}
-              title={teamOrder.filter(tid => !teams[tid]?._virtual).length === 0 ? "Create a team first" : "Create a new task"}
+              className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition disabled:opacity-40"
+              title="New task"
             >
               <PlaylistAddIcon style={{ fontSize: 14 }} />
-              <span>New Task</span>
+              <span>Task</span>
             </button>
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsAddingMilestone(!isAddingMilestone);
-              }}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
-                isAddingMilestone 
-                  ? 'border-blue-400 bg-blue-50 text-blue-700' 
-                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+              onClick={(e) => { e.stopPropagation(); setIsAddingMilestone(!isAddingMilestone); }}
+              className={`flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border transition ${
+                isAddingMilestone ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
               }`}
-              title={isAddingMilestone ? "Click on a task row to place milestone" : "Add a new milestone"}
+              title={isAddingMilestone ? "Click task row to place" : "Add milestone"}
             >
               <FlagIcon style={{ fontSize: 14 }} />
-              <span>Add Milestone</span>
+              <span>Mile.</span>
             </button>
-            
-            {/* Delete Button - compact, always rendered for stable layout */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (hasSelection) onDeleteSelected();
+                if (setPhaseEditModal) setPhaseEditModal({ mode: 'create', start_index: 0, duration: 7, name: '', color: '#3b82f6', team: null });
               }}
-              disabled={!hasSelection}
-              className={`flex items-center gap-1 px-2 py-1.5 text-xs rounded-lg border transition whitespace-nowrap ${
-                hasSelection
-                  ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
-                  : 'border-slate-200 text-slate-300 cursor-not-allowed'
-              }`}
-              title={getDeleteTooltip()}
+              className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+              title="Add a new phase"
             >
-              <DeleteIcon style={{ fontSize: 14 }} />
-              {hasSelection && <span>{getDeleteLabel()}</span>}
+              <ViewTimelineIcon style={{ fontSize: 14 }} />
+              <span>Phase</span>
             </button>
+          </div>
+          {isAddingMilestone && (
+            <p className="text-[10px] text-blue-600 mt-1 leading-tight" style={{ width: 130 }}>Click a day cell to place.</p>
+          )}
+        </div>
 
-            {/* Refactor Mode Toggle */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setRefactorMode(!refactorMode);
-                playSound('refactorToggle');
-              }}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
-                refactorMode 
-                  ? 'border-orange-400 bg-orange-50 text-orange-700 ring-1 ring-orange-300' 
-                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-              title={refactorMode ? "Exit refactor mode" : "Enter refactor mode – drag items back to IdeaBin"}
-            >
-              <BuildIcon style={{ fontSize: 14 }} />
-              <span>Refactor</span>
-            </button>
+        {/* ─── COL 3: Delete (narrow) ─── */}
+        <div className="p-2.5 flex-shrink-0 flex flex-col justify-center" style={{ width: 70 }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); if (hasSelection) onDeleteSelected(); }}
+            disabled={!hasSelection}
+            className={`w-full flex flex-col items-center justify-center gap-0.5 px-1 py-2.5 text-xs font-medium rounded-md border transition ${
+              hasSelection
+                ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
+                : 'border-slate-200 text-slate-300 cursor-not-allowed'
+            }`}
+            title={getDeleteTooltip()}
+          >
+            <DeleteIcon style={{ fontSize: 18 }} />
+            <span className="text-[10px]">{hasSelection ? getDeleteLabel() : 'Delete'}</span>
+          </button>
+        </div>
 
-            {/* Day Selection / Collapse Controls */}
+        {/* ─── COL 3.5: Selected (contextual) ─── */}
+        <div className="p-2.5 flex-shrink-0" style={{ minWidth: 70 }}>
+          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Selected</h3>
+          <div className="flex flex-wrap gap-1 items-start">
+            {/* Show hidden teams */}
+            {hiddenTeamCount > 0 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); showAllHiddenTeams(); }}
+                className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition"
+              >
+                <VisibilityIcon style={{ fontSize: 14 }} />
+                <span>{hiddenTeamCount} Hidden</span>
+              </button>
+            )}
+
+            {/* Team phases visibility */}
+            {(collapsedTeamPhaseRows?.size > 0 || collapseAllTeamPhases) && (
+              <button
+                onClick={(e) => { e.stopPropagation(); showAllTeamPhases(); }}
+                className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 transition"
+                title="Show team phase rows"
+              >
+                <VisibilityIcon style={{ fontSize: 14 }} />
+                <span>T-Phases</span>
+              </button>
+            )}
+            {!collapseAllTeamPhases && Object.values(teamPhasesMap).some(arr => arr?.length > 0) && (
+              <button
+                onClick={(e) => { e.stopPropagation(); hideAllTeamPhases(); }}
+                className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 transition"
+                title="Hide team phase rows"
+              >
+                <VisibilityOffIcon style={{ fontSize: 14 }} />
+                <span>T-Phases</span>
+              </button>
+            )}
+
+            {/* Global phases visibility */}
+            {phases.some(p => p.team == null) && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setHideGlobalPhases(!hideGlobalPhases); playSound('settingToggle'); }}
+                className={`flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border transition ${
+                  hideGlobalPhases
+                    ? 'border-amber-400 bg-amber-50 text-amber-700 ring-1 ring-amber-300'
+                    : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+                title={hideGlobalPhases ? "Show global phases row" : "Hide global phases row"}
+              >
+                {hideGlobalPhases ? <VisibilityOffIcon style={{ fontSize: 14 }} /> : <VisibilityIcon style={{ fontSize: 14 }} />}
+                <span>Phases</span>
+              </button>
+            )}
+
+            {/* Day collapse/expand */}
             {selectedDays?.size > 0 && (
               <>
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    collapseSelectedDays?.();
-                  }}
-                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+                  onClick={(e) => { e.stopPropagation(); collapseSelectedDays(); }}
+                  className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
                   title={`Collapse ${selectedDays.size} selected day(s)`}
                 >
                   <UnfoldLessIcon style={{ fontSize: 14 }} />
-                  <span>Collapse {selectedDays.size} day{selectedDays.size > 1 ? 's' : ''}</span>
+                  <span>{selectedDays.size}d</span>
                 </button>
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    clearDaySelection?.();
-                  }}
-                  className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 transition"
+                  onClick={(e) => { e.stopPropagation(); clearDaySelection(); }}
+                  className="px-1.5 py-1.5 text-xs rounded-md border border-slate-200 text-slate-400 hover:bg-slate-50 transition"
                   title="Clear day selection"
                 >
                   ✕
@@ -837,56 +381,24 @@ export default function DependencyToolbar({
             )}
             {collapsedDays?.size > 0 && (
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  uncollapseAll?.();
-                }}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition"
-                title={`Expand all ${collapsedDays.size} collapsed day(s)`}
+                onClick={(e) => { e.stopPropagation(); uncollapseAll(); }}
+                className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition"
+                title={`Expand ${collapsedDays.size} collapsed day(s)`}
               >
                 <UnfoldMoreIcon style={{ fontSize: 14 }} />
-                <span>Expand All ({collapsedDays.size})</span>
+                <span>{collapsedDays.size}d</span>
               </button>
             )}
-
-            {/* Add Phase */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                // Auto-fill from selected days if any are selected
-                let startIdx = 0;
-                let dur = 7;
-                if (selectedDays?.size > 0) {
-                  const sorted = [...selectedDays].sort((a, b) => a - b);
-                  startIdx = sorted[0];
-                  dur = sorted[sorted.length - 1] - sorted[0] + 1;
-                }
-                setPhaseEditModal?.({ mode: 'create', start_index: startIdx, duration: dur, name: '', color: '#3b82f6' });
-              }}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
-              title="Add a new phase/timeframe"
-            >
-              <ViewTimelineIcon style={{ fontSize: 14 }} />
-              <span>+ Phase</span>
-            </button>
           </div>
-          {isAddingMilestone && (
-            <p className="text-xs text-blue-600 mt-2">Click on a day cell in any task row to create a milestone there.</p>
-          )}
         </div>
 
-        {/* Section 4: Filter */}
-        <div className="p-3 flex-shrink-0" style={{ minWidth: '130px' }}>
-          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            Filter
-          </h3>
+        {/* ─── COL 4: Filter ─── */}}
+        <div className="p-2.5 flex-shrink-0" style={{ width: 90 }}>
+          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Filter</h3>
           <div className="relative">
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowFilterDropdown(!showFilterDropdown);
-              }}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
+              onClick={(e) => { e.stopPropagation(); setShowFilterDropdown(!showFilterDropdown); }}
+              className={`w-full flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded-md border transition ${
                 filteredTeamCount > 0
                   ? 'border-blue-400 bg-blue-50 text-blue-700'
                   : showFilterDropdown
@@ -894,13 +406,8 @@ export default function DependencyToolbar({
                     : 'border-slate-200 text-slate-600 hover:bg-slate-50'
               }`}
             >
-              <FilterListIcon style={{ fontSize: 14 }} />
-              <span>
-                {filteredTeamCount > 0 
-                  ? `${filteredTeamCount} team${filteredTeamCount > 1 ? 's' : ''} hidden`
-                  : 'Filter Teams'
-                }
-              </span>
+              <FilterListIcon style={{ fontSize: 15 }} />
+              <span>{filteredTeamCount > 0 ? filteredTeamCount : 'Teams'}</span>
             </button>
             
             {showFilterDropdown && (
@@ -915,66 +422,42 @@ export default function DependencyToolbar({
                       {!noTeamsHidden && (
                         <button
                           onClick={() => {
-                            setTeamDisplaySettings(prev => {
-                              const updated = { ...prev };
-                              for (const tid of teamOrder) {
-                                updated[tid] = { ...updated[tid], hidden: false };
-                              }
-                              return updated;
-                            });
+                            const updates = {};
+                            teamOrder.forEach(tid => { updates[tid] = { ...(teamDisplaySettings[tid] || {}), hidden: false }; });
+                            setTeamDisplaySettings(prev => ({ ...prev, ...updates }));
                             playSound('teamFilter');
                           }}
                           className="text-[10px] text-blue-600 hover:underline"
-                        >
-                          Select all
-                        </button>
+                        >All</button>
                       )}
                       {!allTeamsHidden && (
                         <button
                           onClick={() => {
-                            setTeamDisplaySettings(prev => {
-                              const updated = { ...prev };
-                              for (const tid of teamOrder) {
-                                updated[tid] = { ...updated[tid], hidden: true };
-                              }
-                              return updated;
-                            });
+                            const updates = {};
+                            teamOrder.forEach(tid => { updates[tid] = { ...(teamDisplaySettings[tid] || {}), hidden: true }; });
+                            setTeamDisplaySettings(prev => ({ ...prev, ...updates }));
                             playSound('teamFilter');
                           }}
                           className="text-[10px] text-slate-500 hover:underline"
-                        >
-                          Clear all
-                        </button>
+                        >None</button>
                       )}
                     </div>
                   </div>
                   <div className="space-y-1 max-h-48 overflow-y-auto">
                     {teamOrder.map((teamId) => {
                       const team = teams[teamId];
-                      if (!team) return null;
-                      const isVisible = !teamDisplaySettings[teamId]?.hidden;
+                      if (!team || team._virtual) return null;
+                      const isHidden = teamDisplaySettings[teamId]?.hidden;
                       return (
-                        <label
-                          key={teamId}
-                          className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer"
-                        >
+                        <label key={teamId} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-slate-50 cursor-pointer">
                           <input
                             type="checkbox"
-                            checked={isVisible}
-                            onChange={() => {
-                              setTeamDisplaySettings(prev => ({
-                                ...prev,
-                                [teamId]: { ...prev[teamId], hidden: !prev[teamId]?.hidden }
-                              }));
-                              playSound('teamFilter');
-                            }}
+                            checked={!isHidden}
+                            onChange={() => { setTeamDisplaySettings(prev => ({ ...prev, [teamId]: { ...(prev[teamId] || {}), hidden: !isHidden } })); playSound('teamFilter'); }}
                             className="rounded border-slate-300"
                           />
-                          <div 
-                            className="w-2 h-2 rounded-full"
-                            style={{ backgroundColor: team.color }}
-                          />
-                          <span className="text-xs text-slate-700 truncate">{team.name}</span>
+                          <span className="text-xs text-slate-700 truncate flex-1">{team.name}</span>
+                          <span className="text-[10px] text-slate-400">{team.tasks?.length || 0}</span>
                         </label>
                       );
                     })}
@@ -985,168 +468,387 @@ export default function DependencyToolbar({
           </div>
         </div>
 
-        {/* Section 5: Views */}
-        <div className="p-3 flex-shrink-0" style={{ minWidth: '180px' }}>
-          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            Views
-          </h3>
-          <div className="relative">
-            {/* View selector + save button row */}
-            <div className="flex items-center gap-1">
+        {/* ─── COL 5: Display (flex area) ─── */}
+        <div className="p-2.5 flex-1 min-w-0">
+          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Display</h3>
+          <div className="flex gap-2 items-start">
+            {/* Left sub-column: Tasks + Teams stacked vertically */}
+            <div className="flex flex-col gap-1 flex-shrink-0">
+              {/* Task rows: collapse / expand */}
+              <div className="flex items-center gap-0.5 rounded-md border border-slate-200 overflow-hidden">
+                <span className="text-[10px] text-slate-400 font-medium px-1.5 bg-slate-50 self-stretch flex items-center">Tasks</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); teamOrder.forEach(tid => { if (isTeamVisible(tid)) setTeamTasksSmall(tid); }); }}
+                  className="flex items-center gap-0.5 px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-50 transition"
+                  title="Collapse all task rows to small size"
+                >
+                  <UnfoldLessIcon style={{ fontSize: 14 }} />
+                  <span>Collapse</span>
+                </button>
+                <div className="w-px h-5 bg-slate-200" />
+                <button
+                  onClick={(e) => { e.stopPropagation(); teamOrder.forEach(tid => { if (isTeamVisible(tid)) setTeamTasksNormal(tid); }); }}
+                  className="flex items-center gap-0.5 px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-50 transition"
+                  title="Expand all task rows to normal size"
+                >
+                  <UnfoldMoreIcon style={{ fontSize: 14 }} />
+                  <span>Expand</span>
+                </button>
+              </div>
+
+              {/* Team rows: fold / unfold */}
+              <div className="flex items-center gap-0.5 rounded-md border border-slate-200 overflow-hidden">
+                <span className="text-[10px] text-slate-400 font-medium px-1.5 bg-slate-50 self-stretch flex items-center">Teams</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); collapseAllTeams(); }}
+                  className="flex items-center gap-0.5 px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-50 transition"
+                  title="Fold all teams — hide their task rows"
+                >
+                  <UnfoldLessDoubleIcon style={{ fontSize: 14 }} />
+                  <span>Fold</span>
+                </button>
+                <div className="w-px h-5 bg-slate-200" />
+                <button
+                  onClick={(e) => { e.stopPropagation(); expandAllTeams(); }}
+                  className="flex items-center gap-0.5 px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-50 transition"
+                  title="Unfold all teams — show their task rows"
+                >
+                  <UnfoldMoreDoubleIcon style={{ fontSize: 14 }} />
+                  <span>Unfold</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Middle: 2×2 visibility grid */}
+            <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+              {/* 2×2 grid: Timeline, Hide Deps, Coll. Deps, Coll. All */}
+              <div className="grid grid-cols-2 gap-1" style={{ maxWidth: 240 }}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setExpandedTaskView(!expandedTaskView); playSound('settingToggle'); }}
+                  className={`flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border transition ${
+                    expandedTaskView
+                      ? 'border-indigo-400 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-300'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                  title={expandedTaskView ? "Hide task time spans" : "Show task time spans"}
+                >
+                  <ViewTimelineIcon style={{ fontSize: 14 }} />
+                  <span>Timeline</span>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setHideAllDependencies(!hideAllDependencies); playSound('settingToggle'); }}
+                  className={`flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border transition ${
+                    hideAllDependencies
+                      ? 'border-red-400 bg-red-50 text-red-700 ring-1 ring-red-300'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                  title={hideAllDependencies ? "Show all dependencies" : "Hide all dependency lines"}
+                >
+                  <AccountTreeIcon style={{ fontSize: 14 }} />
+                  <span>{hideAllDependencies ? 'Deps Hidden' : 'Hide Deps'}</span>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setHideCollapsedDependencies(!hideCollapsedDependencies); if (!hideCollapsedDependencies) setHideCollapsedMilestones(false); playSound('settingToggle'); }}
+                  className={`flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border transition ${
+                    hideCollapsedDependencies
+                      ? 'border-orange-400 bg-orange-50 text-orange-700 ring-1 ring-orange-300'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                  title={hideCollapsedDependencies ? "Show deps for collapsed tasks" : "Hide deps for collapsed tasks"}
+                >
+                  <VisibilityOffIcon style={{ fontSize: 14 }} />
+                  <span>Coll. Deps</span>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setHideCollapsedMilestones(!hideCollapsedMilestones); if (!hideCollapsedMilestones) setHideCollapsedDependencies(false); playSound('settingToggle'); }}
+                  className={`flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border transition ${
+                    hideCollapsedMilestones
+                      ? 'border-orange-400 bg-orange-50 text-orange-700 ring-1 ring-orange-300'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                  title={hideCollapsedMilestones ? "Show deps & milestones for collapsed" : "Hide deps & milestones for collapsed tasks"}
+                >
+                  <VisibilityOffIcon style={{ fontSize: 14 }} />
+                  <span>Coll. All</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Right: Advanced button (tall, like Delete) */}
+            <div className="relative flex-shrink-0 self-stretch flex">
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowViewDropdown(!showViewDropdown);
-                }}
-                className={`flex-1 flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition justify-between min-w-0 ${
-                  showViewDropdown
-                    ? 'border-teal-400 bg-teal-50 text-teal-700'
+                onClick={(e) => { e.stopPropagation(); setShowSettingsDropdown(!showSettingsDropdown); }}
+                className={`flex flex-col items-center justify-center gap-0.5 px-4 text-xs font-medium rounded-md border transition ${
+                  showSettingsDropdown
+                    ? 'border-blue-400 bg-blue-50 text-blue-700'
                     : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                 }`}
               >
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <ViewListIcon style={{ fontSize: 14 }} />
-                  <span className="truncate">{activeViewName || "Default"}</span>
-                </div>
-                <span className="text-[10px] opacity-60">{savedViews.length > 0 ? `${savedViews.length}` : ''}</span>
+                <SettingsIcon style={{ fontSize: 18 }} />
+                <span>Advanced</span>
               </button>
-              {/* Save button — always visible, disabled when on default */}
+              
+              {showSettingsDropdown && (
+                <div 
+                  className="absolute top-full left-0 mt-1 w-72 rounded-lg border border-slate-200 bg-white shadow-xl z-50"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="p-3 space-y-3">
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Visibility</h4>
+                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                        <input type="checkbox" checked={showEmptyTeams} onChange={(e) => { setShowEmptyTeams(e.target.checked); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                        <span>Show empty teams</span>
+                      </label>
+                      {phases.length > 0 && (
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input type="checkbox" checked={showPhaseColorsInGrid} onChange={(e) => { setShowPhaseColorsInGrid(e.target.checked); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                          <span>Show phase colors in grid</span>
+                        </label>
+                      )}
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-3">
+                      <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Warning Behavior</h4>
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input type="checkbox" checked={autoSelectBlocking} onChange={(e) => { setAutoSelectBlocking(e.target.checked); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                          <span>Auto-select blocking milestones</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input type="checkbox" checked={depSettings.weakDepPrompt !== false} onChange={(e) => { setDepSettings(prev => ({ ...prev, weakDepPrompt: e.target.checked })); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                          <span>Ask before blocking weak deps</span>
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-600 w-24">Warn time:</span>
+                          <input type="range" min="100" max="5000" step="100" value={warningDuration} onChange={(e) => setWarningDuration(Number(e.target.value))} className="flex-1" />
+                          <span className="text-xs text-slate-500 w-10">{(warningDuration / 1000).toFixed(1)}s</span>
+                          <button onClick={() => setWarningDuration(2000)} className="text-[10px] text-blue-600 hover:underline">Reset</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-3">
+                      <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Dependencies</h4>
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input type="checkbox" checked={depSettings.showReasons !== false} onChange={(e) => { setDepSettings(prev => ({ ...prev, showReasons: e.target.checked })); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                          <span>Show reason labels on paths</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input type="checkbox" checked={depSettings.colorDirectionHighlight !== false} onChange={(e) => { setDepSettings(prev => ({ ...prev, colorDirectionHighlight: e.target.checked })); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                          <span>Color incoming/outgoing deps</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input type="checkbox" checked={!!depSettings.hideSuggestions} onChange={(e) => { setDepSettings(prev => ({ ...prev, hideSuggestions: e.target.checked })); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                          <span>Hide suggestion dependencies</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input type="checkbox" checked={!!depSettings.uniformVisuals} onChange={(e) => { setDepSettings(prev => ({ ...prev, uniformVisuals: e.target.checked })); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                          <span>Uniform line style (ignore weight)</span>
+                        </label>
+                        <div className="mt-1">
+                          <span className="text-[10px] text-slate-500 block mb-1">Show weight types:</span>
+                          <div className="flex gap-3">
+                            {['strong', 'weak', 'suggestion'].map(w => {
+                              const isFiltered = depSettings.filterWeights?.length > 0;
+                              const isActive = !isFiltered || depSettings.filterWeights?.includes(w);
+                              return (
+                                <label key={w} className="flex items-center gap-1.5 text-[11px] cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={isActive}
+                                    onChange={(e) => {
+                                      setDepSettings(prev => {
+                                        let current = prev.filterWeights?.length > 0 ? [...prev.filterWeights] : ['strong', 'weak', 'suggestion'];
+                                        if (e.target.checked) { if (!current.includes(w)) current.push(w); }
+                                        else { current = current.filter(x => x !== w); }
+                                        if (current.length >= 3) return { ...prev, filterWeights: [] };
+                                        return { ...prev, filterWeights: current };
+                                      });
+                                      playSound('settingToggle');
+                                    }}
+                                    className="rounded border-slate-300"
+                                  />
+                                  <span className={`capitalize ${w === 'strong' ? 'text-red-600' : w === 'weak' ? 'text-amber-600' : 'text-blue-600'}`}>{w}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div className="mt-2">
+                          <span className="text-[10px] text-slate-500 block mb-1">Default weight for new connections:</span>
+                          <div className="flex gap-1">
+                            {[
+                              { value: 'strong', label: 'Strong', color: 'bg-red-100 text-red-800 border-red-300' },
+                              { value: 'weak', label: 'Weak', color: 'bg-amber-100 text-amber-800 border-amber-300' },
+                              { value: 'suggestion', label: 'Suggestion', color: 'bg-blue-100 text-blue-800 border-blue-300' },
+                            ].map(opt => (
+                              <button
+                                key={opt.value}
+                                onClick={() => { setDepSettings(prev => ({ ...prev, defaultDepWeight: opt.value })); playSound('settingToggle'); }}
+                                className={`flex-1 px-2 py-1 text-[10px] rounded-md border font-medium transition ${
+                                  depSettings.defaultDepWeight === opt.value ? `${opt.color} ring-1 ring-offset-1` : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {selectedConnections?.length === 1 && (
+                          <button
+                            onClick={() => {
+                              const conn = selectedConnections[0];
+                              const fullConn = connections?.find(c => c.source === conn.source && c.target === conn.target) || conn;
+                              setConnectionEditModal({ source: fullConn.source, target: fullConn.target, weight: fullConn.weight || 'strong', reason: fullConn.reason || '' });
+                            }}
+                            className="w-full mt-1 px-2 py-1.5 text-xs rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition"
+                          >
+                            Edit Selected Dependency
+                          </button>
+                        )}
+                        {selectedConnections?.length > 1 && (
+                          <div className="mt-2 space-y-1.5 border-t border-slate-100 pt-2">
+                            <p className="text-[10px] text-slate-500 font-medium">{selectedConnections.length} dependencies selected</p>
+                            <div className="flex gap-1">
+                              {['strong', 'weak', 'suggestion'].map(w => (
+                                <button key={w} onClick={() => { if (onBulkUpdateConnections) onBulkUpdateConnections({ weight: w }); }} className="flex-1 px-1.5 py-1 text-[10px] rounded border border-slate-200 text-slate-600 hover:bg-slate-50 capitalize transition">{w}</button>
+                              ))}
+                            </div>
+                            <form className="flex gap-1" onSubmit={(e) => { e.preventDefault(); const reason = e.target.bulkReason?.value?.trim(); if (reason !== undefined && onBulkUpdateConnections) onBulkUpdateConnections({ reason }); }}>
+                              <input name="bulkReason" type="text" placeholder="Set reason for all…" className="flex-1 text-[10px] border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:border-indigo-400" />
+                              <button type="submit" className="px-1.5 py-1 text-[10px] rounded border border-indigo-300 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition">Apply</button>
+                            </form>
+                            <button onClick={() => onDeleteSelected && onDeleteSelected()} className="w-full px-2 py-1 text-[10px] rounded border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition">Delete All Selected</button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ─── COL 6: Sizing ─── */}
+        <div className="p-2.5 flex-shrink-0" style={{ width: 210 }}>
+          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Sizing</h3>
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-slate-500 w-12 flex-shrink-0">Day W</span>
+              <input type="range" min="20" max="100" value={customDayWidth} onChange={(e) => setCustomDayWidth(Number(e.target.value))} className="flex-1 h-1" style={{ minWidth: 60 }} />
+              <span className="text-[11px] text-slate-500 w-6 text-right tabular-nums">{customDayWidth}</span>
+              <button onClick={() => setCustomDayWidth(DEFAULT_DAYWIDTH)} className="w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-blue-600 hover:bg-slate-100 flex-shrink-0 transition" title="Reset">
+                <RestoreIcon style={{ fontSize: 12 }} />
+              </button>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-slate-500 w-12 flex-shrink-0">Task H</span>
+              <input type="range" min="24" max="80" value={customTaskHeightNormal} onChange={(e) => setCustomTaskHeightNormal(Number(e.target.value))} className="flex-1 h-1" style={{ minWidth: 60 }} />
+              <span className="text-[11px] text-slate-500 w-6 text-right tabular-nums">{customTaskHeightNormal}</span>
+              <button onClick={() => setCustomTaskHeightNormal(DEFAULT_TASKHEIGHT_NORMAL)} className="w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-blue-600 hover:bg-slate-100 flex-shrink-0 transition" title="Reset">
+                <RestoreIcon style={{ fontSize: 12 }} />
+              </button>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-slate-500 w-12 flex-shrink-0">Coll. H</span>
+              <input type="range" min="16" max="40" value={customTaskHeightSmall} onChange={(e) => setCustomTaskHeightSmall(Number(e.target.value))} className="flex-1 h-1" style={{ minWidth: 60 }} />
+              <span className="text-[11px] text-slate-500 w-6 text-right tabular-nums">{customTaskHeightSmall}</span>
+              <button onClick={() => setCustomTaskHeightSmall(DEFAULT_TASKHEIGHT_SMALL)} className="w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-blue-600 hover:bg-slate-100 flex-shrink-0 transition" title="Reset">
+                <RestoreIcon style={{ fontSize: 12 }} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ─── COL 7: Views + Snapshots ─── */}
+        <div className="p-2.5 flex-shrink-0" style={{ width: 175 }}>
+          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Views</h3>
+          <div className="relative">
+            <div className="flex items-center gap-1">
               <button
-                onClick={() => { if (activeViewId) onSaveView(); }}
-                disabled={!activeViewId}
-                className={`flex items-center justify-center p-1.5 rounded-lg border transition ${
-                  activeViewId
-                    ? 'border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100 cursor-pointer'
-                    : 'border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed'
+                onClick={(e) => { e.stopPropagation(); setShowViewDropdown(!showViewDropdown); }}
+                className={`flex-1 flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border transition min-w-0 ${
+                  showViewDropdown ? 'border-teal-400 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                 }`}
-                title={activeViewId ? `Save "${activeViewName}"` : 'Select a saved view to save'}
+              >
+                <ViewListIcon style={{ fontSize: 14 }} />
+                <span className="truncate flex-1 text-left">{activeViewName || "Default"}</span>
+                {savedViews.length > 0 && <span className="text-[9px] opacity-50">{savedViews.length}</span>}
+              </button>
+              <button
+                onClick={() => { onSaveView(); }}
+                disabled={!activeViewId}
+                className={`p-1 rounded-md border transition ${
+                  activeViewId ? 'border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100' : 'border-slate-200 text-slate-300 cursor-not-allowed'
+                }`}
+                title={activeViewId ? `Save "${activeViewName}" (V+S)` : 'Select a view to save'}
               >
                 <SaveIcon style={{ fontSize: 14 }} />
               </button>
             </div>
 
             {showViewDropdown && (
-              <div
-                className="absolute top-full right-0 mt-1 w-72 rounded-lg border border-slate-200 bg-white shadow-xl z-50"
-                onClick={(e) => e.stopPropagation()}
-              >
+              <div className="absolute top-full right-0 mt-1 w-72 rounded-lg border border-slate-200 bg-white shadow-xl z-50" onClick={(e) => e.stopPropagation()}>
                 <div className="p-3 space-y-2">
-                  {/* Default (built-in) view */}
                   <button
-                    onClick={() => {
-                      onLoadView(null);
-                      setShowViewDropdown(false);
-                    }}
-                    className={`w-full text-left px-2 py-1.5 rounded text-xs transition ${
-                      !activeViewId
-                        ? 'bg-teal-50 text-teal-700 font-semibold'
-                        : 'text-slate-600 hover:bg-slate-50'
-                    }`}
+                    onClick={() => { onLoadView(null); setShowViewDropdown(false); }}
+                    className={`w-full text-left px-2 py-1.5 rounded text-xs transition ${!activeViewId ? 'bg-teal-50 text-teal-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}
                   >
-                    Default
-                    <span className="ml-1 text-[10px] text-slate-400">(built-in)</span>
+                    Default <span className="ml-1 text-[10px] text-slate-400">(built-in)</span>
                   </button>
 
-                  {/* Saved views */}
                   {savedViews.length > 0 && (
                     <div className="border-t border-slate-100 pt-2 space-y-1">
                       {savedViews.map(view => (
-                        <div key={view.id} className={`flex items-center gap-1 rounded px-2 py-1.5 transition ${
-                          activeViewId === view.id ? 'bg-teal-50' : 'hover:bg-slate-50'
-                        }`}>
-                          {/* Rename mode */}
+                        <div key={view.id} className={`flex items-center gap-1 rounded px-2 py-1.5 transition ${activeViewId === view.id ? 'bg-teal-50' : 'hover:bg-slate-50'}`}>
                           {renamingViewId === view.id ? (
-                            <form
-                              className="flex-1 flex items-center gap-1"
-                              onSubmit={(e) => {
-                                e.preventDefault();
-                                if (renameText.trim()) {
-                                  onRenameView(view.id, renameText);
-                                  setRenamingViewId(null);
-                                }
-                              }}
-                            >
-                              <input
-                                type="text"
-                                value={renameText}
-                                onChange={(e) => setRenameText(e.target.value)}
-                                autoFocus
-                                className="flex-1 text-xs border border-slate-300 rounded px-1.5 py-0.5 focus:outline-none focus:border-teal-400"
-                                onBlur={() => setRenamingViewId(null)}
-                                onKeyDown={(e) => { if (e.key === 'Escape') setRenamingViewId(null); }}
-                              />
+                            <form className="flex-1 flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); if (renameText.trim()) { onRenameView(view.id, renameText); setRenamingViewId(null); } }}>
+                              <input type="text" value={renameText} onChange={(e) => setRenameText(e.target.value)} autoFocus className="flex-1 text-xs border border-slate-300 rounded px-1.5 py-0.5 focus:outline-none focus:border-teal-400" onBlur={() => setRenamingViewId(null)} onKeyDown={(e) => { if (e.key === 'Escape') setRenamingViewId(null); }} />
                             </form>
                           ) : (
                             <>
-                              {/* Default star toggle */}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onSetDefaultView(view.is_default ? null : view.id);
-                                }}
-                                className={`p-0.5 rounded transition ${
-                                  view.is_default
-                                    ? 'text-amber-500 hover:text-amber-600'
-                                    : 'text-slate-300 hover:text-amber-400'
-                                }`}
-                                title={view.is_default ? 'Remove as default' : 'Set as default'}
-                              >
-                                {view.is_default
-                                  ? <StarIcon style={{ fontSize: 13 }} />
-                                  : <StarBorderIcon style={{ fontSize: 13 }} />
-                                }
+                              <button onClick={(e) => { e.stopPropagation(); onSetDefaultView(view.is_default ? null : view.id); }} className={`p-0.5 rounded transition ${view.is_default ? 'text-amber-500 hover:text-amber-600' : 'text-slate-300 hover:text-amber-400'}`} title={view.is_default ? 'Remove as default' : 'Set as default'}>
+                                {view.is_default ? <StarIcon style={{ fontSize: 13 }} /> : <StarBorderIcon style={{ fontSize: 13 }} />}
                               </button>
-                              {/* View name - click to load */}
-                              <button
-                                onClick={() => {
-                                  onLoadView(view);
-                                  setShowViewDropdown(false);
-                                }}
-                                className={`flex-1 text-left text-xs truncate ${
-                                  activeViewId === view.id ? 'text-teal-700 font-semibold' : 'text-slate-600'
-                                }`}
-                              >
+                              <button onClick={() => { onLoadView(view); setShowViewDropdown(false); }} className={`flex-1 text-left text-xs truncate ${activeViewId === view.id ? 'text-teal-700 font-semibold' : 'text-slate-600'}`}>
                                 {view.name}
                                 {view.is_default && <span className="ml-1 text-[10px] text-amber-500">(default)</span>}
                               </button>
-                              {/* Edit (rename) */}
-                              <button
-                                onClick={() => {
-                                  setRenamingViewId(view.id);
-                                  setRenameText(view.name);
-                                }}
-                                className="p-0.5 text-slate-400 hover:text-slate-600 rounded"
-                                title="Rename view"
-                              >
-                                <EditIcon style={{ fontSize: 12 }} />
-                              </button>
-                              {/* Delete */}
+                              {editingShortcutViewId === view.id ? (
+                                <input type="text" maxLength={1} autoFocus placeholder="key" className="w-8 text-center text-[10px] font-mono border border-teal-300 rounded px-0.5 py-0 focus:outline-none focus:border-teal-500"
+                                  onKeyDown={(e) => {
+                                    e.stopPropagation();
+                                    if (e.key === 'Escape') { setEditingShortcutViewId(null); return; }
+                                    if (e.key === 'Backspace' || e.key === 'Delete') { onUpdateViewShortcut(view.id, null); setEditingShortcutViewId(null); return; }
+                                    if (e.key.length === 1 && /^[a-z0-9]$/i.test(e.key)) {
+                                      const k = e.key.toLowerCase();
+                                      if (['e', 'd', 'v', 's'].includes(k)) return;
+                                      onUpdateViewShortcut(view.id, k);
+                                      setEditingShortcutViewId(null);
+                                    }
+                                  }}
+                                  onBlur={() => setEditingShortcutViewId(null)}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              ) : (
+                                <button onClick={(e) => { e.stopPropagation(); setEditingShortcutViewId(view.id); }}
+                                  className={`px-1 py-0 text-[9px] font-mono rounded border transition ${view.state?.viewShortcutKey ? 'border-teal-300 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-400 hover:border-slate-300'}`}
+                                  title={view.state?.viewShortcutKey ? `Shortcut: V + ${view.state.viewShortcutKey.toUpperCase()}` : 'Set shortcut (V + key)'}
+                                >
+                                  {view.state?.viewShortcutKey ? `V+${view.state.viewShortcutKey.toUpperCase()}` : '⌨'}
+                                </button>
+                              )}
+                              <button onClick={() => { setRenamingViewId(view.id); setRenameText(view.name); }} className="p-0.5 text-slate-400 hover:text-slate-600 rounded" title="Rename"><EditIcon style={{ fontSize: 12 }} /></button>
                               {confirmDeleteViewId === view.id ? (
                                 <div className="flex items-center gap-1">
-                                  <button
-                                    onClick={() => {
-                                      onDeleteView(view.id);
-                                      setConfirmDeleteViewId(null);
-                                    }}
-                                    className="text-[10px] text-red-600 hover:text-red-700 font-semibold"
-                                  >
-                                    Yes
-                                  </button>
-                                  <button
-                                    onClick={() => setConfirmDeleteViewId(null)}
-                                    className="text-[10px] text-slate-400 hover:text-slate-600"
-                                  >
-                                    No
-                                  </button>
+                                  <button onClick={() => { onDeleteView(view.id); setConfirmDeleteViewId(null); }} className="text-[10px] text-red-600 hover:text-red-700 font-semibold">Yes</button>
+                                  <button onClick={() => setConfirmDeleteViewId(null)} className="text-[10px] text-slate-400 hover:text-slate-600">No</button>
                                 </div>
                               ) : (
-                                <button
-                                  onClick={() => setConfirmDeleteViewId(view.id)}
-                                  className="p-0.5 text-slate-400 hover:text-red-500 rounded"
-                                  title="Delete view"
-                                >
-                                  <DeleteIcon style={{ fontSize: 12 }} />
-                                </button>
+                                <button onClick={() => setConfirmDeleteViewId(view.id)} className="p-0.5 text-slate-400 hover:text-red-500 rounded" title="Delete"><DeleteIcon style={{ fontSize: 12 }} /></button>
                               )}
                             </>
                           )}
@@ -1155,118 +857,49 @@ export default function DependencyToolbar({
                     </div>
                   )}
 
-                  {/* Create new view */}
                   {isCreatingView ? (
-                    <form
-                      className="flex items-center gap-1 mt-1"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        if (newViewName.trim()) {
-                          onCreateView(newViewName);
-                          setNewViewName("");
-                          setIsCreatingView(false);
-                          setShowViewDropdown(false);
-                        }
-                      }}
-                    >
-                      <input
-                        type="text"
-                        value={newViewName}
-                        onChange={(e) => setNewViewName(e.target.value)}
-                        placeholder="View name…"
-                        autoFocus
-                        className="flex-1 text-xs border border-slate-300 rounded px-2 py-1 focus:outline-none focus:border-teal-400"
-                        onKeyDown={(e) => { if (e.key === 'Escape') { setIsCreatingView(false); setNewViewName(""); } }}
-                      />
-                      <button
-                        type="submit"
-                        disabled={!newViewName.trim()}
-                        className="px-2 py-1 text-xs rounded bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-40 transition"
-                      >
-                        Create
-                      </button>
+                    <form className="flex items-center gap-1 mt-1" onSubmit={(e) => { e.preventDefault(); if (newViewName.trim()) { onCreateView(newViewName); setNewViewName(""); setIsCreatingView(false); setShowViewDropdown(false); } }}>
+                      <input type="text" value={newViewName} onChange={(e) => setNewViewName(e.target.value)} placeholder="View name…" autoFocus className="flex-1 text-xs border border-slate-300 rounded px-2 py-1 focus:outline-none focus:border-teal-400" onKeyDown={(e) => { if (e.key === 'Escape') { setIsCreatingView(false); setNewViewName(""); } }} />
+                      <button type="submit" disabled={!newViewName.trim()} className="px-2 py-1 text-xs rounded bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-40 transition">Create</button>
                     </form>
                   ) : (
-                    <button
-                      onClick={() => setIsCreatingView(true)}
-                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs rounded-lg border border-dashed border-slate-300 text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition mt-1"
-                    >
-                      <AddIcon style={{ fontSize: 13 }} />
-                      <span>New View</span>
+                    <button onClick={() => setIsCreatingView(true)} className="w-full flex items-center justify-center gap-1 px-2 py-1 text-xs rounded-lg border border-dashed border-slate-300 text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition mt-1">
+                      <AddIcon style={{ fontSize: 13 }} /><span>New View</span>
                     </button>
                   )}
                 </div>
               </div>
             )}
           </div>
-        </div>
 
-        {/* Section 6: Snapshots */}
-        <div className="p-3 flex-shrink-0" style={{ minWidth: '180px' }}>
-          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
-            Snapshots
-          </h3>
-          <div className="relative">
-            <div className="flex items-center gap-1">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowSnapshotDropdown(!showSnapshotDropdown);
-                }}
-                className={`flex-1 flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition justify-between min-w-0 ${
-                  showSnapshotDropdown
-                    ? 'border-amber-400 bg-amber-50 text-amber-700'
-                    : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <CameraAltIcon style={{ fontSize: 14 }} />
-                  <span className="truncate">Snapshots</span>
-                </div>
-                <span className="text-[10px] opacity-60">{snapshots.length > 0 ? `${snapshots.length}` : ''}</span>
-              </button>
-            </div>
+          {/* Snapshots (stacked below views) */}
+          <div className="relative mt-1.5">
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowSnapshotDropdown(!showSnapshotDropdown); }}
+              className={`w-full flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border transition ${
+                showSnapshotDropdown ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <CameraAltIcon style={{ fontSize: 14 }} />
+              <span className="flex-1 text-left truncate">Snapshots</span>
+              {snapshots.length > 0 && <span className="text-[9px] opacity-50">{snapshots.length}</span>}
+            </button>
 
             {showSnapshotDropdown && (
-              <div
-                className="absolute top-full right-0 mt-1 w-80 rounded-lg border border-slate-200 bg-white shadow-xl z-50"
-                onClick={(e) => e.stopPropagation()}
-              >
+              <div className="absolute top-full right-0 mt-1 w-80 rounded-lg border border-slate-200 bg-white shadow-xl z-50" onClick={(e) => e.stopPropagation()}>
                 <div className="p-3 space-y-2">
-                  {/* Info text */}
-                  <p className="text-[10px] text-slate-400 leading-tight">
-                    Save the entire project state (teams, tasks, milestones, dependencies, days, phases, views). Restore to revert all data.
-                  </p>
+                  <p className="text-[10px] text-slate-400 leading-tight">Full project state backup. Restore to revert all data.</p>
 
-                  {/* Existing snapshots */}
                   {snapshots.length > 0 && (
                     <div className="border-t border-slate-100 pt-2 space-y-1 max-h-64 overflow-y-auto">
                       {snapshots.map(snap => (
                         <div key={snap.id} className="rounded px-2 py-1.5 hover:bg-slate-50 transition group">
                           {renamingSnapshotId === snap.id ? (
-                            <form
-                              className="flex items-center gap-1"
-                              onSubmit={(e) => {
-                                e.preventDefault();
-                                if (renameSnapshotText.trim()) {
-                                  onRenameSnapshot(snap.id, renameSnapshotText);
-                                  setRenamingSnapshotId(null);
-                                }
-                              }}
-                            >
-                              <input
-                                type="text"
-                                value={renameSnapshotText}
-                                onChange={(e) => setRenameSnapshotText(e.target.value)}
-                                autoFocus
-                                className="flex-1 text-xs border border-slate-300 rounded px-1.5 py-0.5 focus:outline-none focus:border-amber-400"
-                                onBlur={() => setRenamingSnapshotId(null)}
-                                onKeyDown={(e) => { if (e.key === 'Escape') setRenamingSnapshotId(null); }}
-                              />
+                            <form className="flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); if (renameSnapshotText.trim()) { onRenameSnapshot(snap.id, renameSnapshotText); setRenamingSnapshotId(null); } }}>
+                              <input type="text" value={renameSnapshotText} onChange={(e) => setRenameSnapshotText(e.target.value)} autoFocus className="flex-1 text-xs border border-slate-300 rounded px-1.5 py-0.5 focus:outline-none focus:border-amber-400" onBlur={() => setRenamingSnapshotId(null)} onKeyDown={(e) => { if (e.key === 'Escape') setRenamingSnapshotId(null); }} />
                             </form>
                           ) : (
                             <div className="flex items-center gap-1">
-                              {/* Snapshot name & date */}
                               <div className="flex-1 min-w-0">
                                 <div className="text-xs text-slate-700 font-medium truncate">{snap.name}</div>
                                 <div className="text-[10px] text-slate-400">
@@ -1275,77 +908,23 @@ export default function DependencyToolbar({
                                   {new Date(snap.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                                 </div>
                               </div>
-
-                              {/* Restore */}
                               {confirmRestoreId === snap.id ? (
                                 <div className="flex items-center gap-1 flex-shrink-0">
                                   <span className="text-[10px] text-amber-600 font-semibold">Restore?</span>
-                                  <button
-                                    onClick={() => {
-                                      onRestoreSnapshot(snap.id);
-                                      setConfirmRestoreId(null);
-                                      setShowSnapshotDropdown(false);
-                                    }}
-                                    className="text-[10px] text-amber-700 hover:text-amber-800 font-bold"
-                                  >
-                                    Yes
-                                  </button>
-                                  <button
-                                    onClick={() => setConfirmRestoreId(null)}
-                                    className="text-[10px] text-slate-400 hover:text-slate-600"
-                                  >
-                                    No
-                                  </button>
+                                  <button onClick={() => { onRestoreSnapshot(snap.id); setConfirmRestoreId(null); setShowSnapshotDropdown(false); }} className="text-[10px] text-amber-700 hover:text-amber-800 font-bold">Yes</button>
+                                  <button onClick={() => setConfirmRestoreId(null)} className="text-[10px] text-slate-400 hover:text-slate-600">No</button>
                                 </div>
                               ) : (
-                                <button
-                                  onClick={() => setConfirmRestoreId(snap.id)}
-                                  className="p-0.5 text-slate-400 hover:text-amber-600 rounded opacity-0 group-hover:opacity-100 transition"
-                                  title="Restore this snapshot"
-                                >
-                                  <RestoreIcon style={{ fontSize: 13 }} />
-                                </button>
+                                <button onClick={() => setConfirmRestoreId(snap.id)} className="p-0.5 text-slate-400 hover:text-amber-600 rounded opacity-0 group-hover:opacity-100 transition" title="Restore"><RestoreIcon style={{ fontSize: 13 }} /></button>
                               )}
-
-                              {/* Rename */}
-                              <button
-                                onClick={() => {
-                                  setRenamingSnapshotId(snap.id);
-                                  setRenameSnapshotText(snap.name);
-                                }}
-                                className="p-0.5 text-slate-400 hover:text-slate-600 rounded opacity-0 group-hover:opacity-100 transition"
-                                title="Rename snapshot"
-                              >
-                                <EditIcon style={{ fontSize: 12 }} />
-                              </button>
-
-                              {/* Delete */}
+                              <button onClick={() => { setRenamingSnapshotId(snap.id); setRenameSnapshotText(snap.name); }} className="p-0.5 text-slate-400 hover:text-slate-600 rounded opacity-0 group-hover:opacity-100 transition" title="Rename"><EditIcon style={{ fontSize: 12 }} /></button>
                               {confirmDeleteSnapshotId === snap.id ? (
                                 <div className="flex items-center gap-1 flex-shrink-0">
-                                  <button
-                                    onClick={() => {
-                                      onDeleteSnapshot(snap.id);
-                                      setConfirmDeleteSnapshotId(null);
-                                    }}
-                                    className="text-[10px] text-red-600 hover:text-red-700 font-semibold"
-                                  >
-                                    Yes
-                                  </button>
-                                  <button
-                                    onClick={() => setConfirmDeleteSnapshotId(null)}
-                                    className="text-[10px] text-slate-400 hover:text-slate-600"
-                                  >
-                                    No
-                                  </button>
+                                  <button onClick={() => { onDeleteSnapshot(snap.id); setConfirmDeleteSnapshotId(null); }} className="text-[10px] text-red-600 hover:text-red-700 font-semibold">Yes</button>
+                                  <button onClick={() => setConfirmDeleteSnapshotId(null)} className="text-[10px] text-slate-400 hover:text-slate-600">No</button>
                                 </div>
                               ) : (
-                                <button
-                                  onClick={() => setConfirmDeleteSnapshotId(snap.id)}
-                                  className="p-0.5 text-slate-400 hover:text-red-500 rounded opacity-0 group-hover:opacity-100 transition"
-                                  title="Delete snapshot"
-                                >
-                                  <DeleteIcon style={{ fontSize: 12 }} />
-                                </button>
+                                <button onClick={() => setConfirmDeleteSnapshotId(snap.id)} className="p-0.5 text-slate-400 hover:text-red-500 rounded opacity-0 group-hover:opacity-100 transition" title="Delete"><DeleteIcon style={{ fontSize: 12 }} /></button>
                               )}
                             </div>
                           )}
@@ -1354,61 +933,18 @@ export default function DependencyToolbar({
                     </div>
                   )}
 
-                  {/* Create new snapshot */}
                   {isCreatingSnapshot ? (
-                    <form
-                      className="space-y-1.5 mt-1"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        if (newSnapshotName.trim()) {
-                          onCreateSnapshot(newSnapshotName, newSnapshotDesc);
-                          setNewSnapshotName("");
-                          setNewSnapshotDesc("");
-                          setIsCreatingSnapshot(false);
-                        }
-                      }}
-                    >
-                      <input
-                        type="text"
-                        value={newSnapshotName}
-                        onChange={(e) => setNewSnapshotName(e.target.value)}
-                        placeholder="Snapshot name…"
-                        autoFocus
-                        className="w-full text-xs border border-slate-300 rounded px-2 py-1 focus:outline-none focus:border-amber-400"
-                        onKeyDown={(e) => { if (e.key === 'Escape') { setIsCreatingSnapshot(false); setNewSnapshotName(""); setNewSnapshotDesc(""); } }}
-                      />
-                      <input
-                        type="text"
-                        value={newSnapshotDesc}
-                        onChange={(e) => setNewSnapshotDesc(e.target.value)}
-                        placeholder="Description (optional)…"
-                        className="w-full text-xs border border-slate-300 rounded px-2 py-1 focus:outline-none focus:border-amber-400"
-                      />
+                    <form className="space-y-1.5 mt-1" onSubmit={(e) => { e.preventDefault(); if (newSnapshotName.trim()) { onCreateSnapshot(newSnapshotName.trim(), newSnapshotDesc.trim()); setNewSnapshotName(""); setNewSnapshotDesc(""); setIsCreatingSnapshot(false); setShowSnapshotDropdown(false); } }}>
+                      <input type="text" value={newSnapshotName} onChange={(e) => setNewSnapshotName(e.target.value)} placeholder="Snapshot name…" autoFocus className="w-full text-xs border border-slate-300 rounded px-2 py-1 focus:outline-none focus:border-amber-400" onKeyDown={(e) => { if (e.key === 'Escape') { setIsCreatingSnapshot(false); setNewSnapshotName(""); setNewSnapshotDesc(""); } }} />
+                      <input type="text" value={newSnapshotDesc} onChange={(e) => setNewSnapshotDesc(e.target.value)} placeholder="Description (optional)…" className="w-full text-xs border border-slate-300 rounded px-2 py-1 focus:outline-none focus:border-amber-400" />
                       <div className="flex items-center gap-1">
-                        <button
-                          type="submit"
-                          disabled={!newSnapshotName.trim() || snapshotsLoading}
-                          className="px-2 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 transition"
-                        >
-                          {snapshotsLoading ? 'Saving…' : 'Save Snapshot'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setIsCreatingSnapshot(false); setNewSnapshotName(""); setNewSnapshotDesc(""); }}
-                          className="px-2 py-1 text-xs rounded text-slate-500 hover:text-slate-700 transition"
-                        >
-                          Cancel
-                        </button>
+                        <button type="submit" disabled={!newSnapshotName.trim() || snapshotsLoading} className="px-2 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 transition">{snapshotsLoading ? 'Saving…' : 'Save'}</button>
+                        <button type="button" onClick={() => { setIsCreatingSnapshot(false); setNewSnapshotName(""); setNewSnapshotDesc(""); }} className="px-2 py-1 text-xs rounded text-slate-500 hover:text-slate-700 transition">Cancel</button>
                       </div>
                     </form>
                   ) : (
-                    <button
-                      onClick={() => setIsCreatingSnapshot(true)}
-                      disabled={snapshotsLoading}
-                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs rounded-lg border border-dashed border-slate-300 text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition mt-1 disabled:opacity-40"
-                    >
-                      <CameraAltIcon style={{ fontSize: 13 }} />
-                      <span>{snapshotsLoading ? 'Creating…' : 'New Snapshot'}</span>
+                    <button onClick={() => setIsCreatingSnapshot(true)} disabled={snapshotsLoading} className="w-full flex items-center justify-center gap-1 px-2 py-1 text-xs rounded-lg border border-dashed border-slate-300 text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition mt-1 disabled:opacity-40">
+                      <CameraAltIcon style={{ fontSize: 13 }} /><span>{snapshotsLoading ? 'Creating…' : 'New Snapshot'}</span>
                     </button>
                   )}
                 </div>
