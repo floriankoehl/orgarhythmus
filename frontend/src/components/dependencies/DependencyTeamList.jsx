@@ -62,6 +62,8 @@ export default function DependencyTeamList({
   // Refactor mode
   refactorMode,
   handleRefactorDrag,
+  // Deadline
+  onSetDeadline,
 }) {
   const navigate = useNavigate();
   const { projectId } = useParams();
@@ -402,6 +404,7 @@ export default function DependencyTeamList({
                 setHoveredDayCell={setHoveredDayCell}
                 handleDayCellClick={handleDayCellClick}
                 tasks={tasks}
+                onSetDeadline={onSetDeadline}
               />
             </div>
           </div>

@@ -209,3 +209,60 @@ export function validateMultiMilestoneMove(milestones, connections, milestoneIds
   }
   return { valid: true };
 }
+
+/**
+ * Check if a milestone move/resize would violate the task's hard deadline.
+ * Returns { valid: true } or { valid: false, taskId, deadline, endIndex }
+ *
+ * @param {Object} milestones - All milestones keyed by id
+ * @param {Object} tasks - All tasks keyed by id
+ * @param {string|number} milestoneId - The milestone being moved/resized
+ * @param {number} newStartIndex - The proposed start index
+ * @param {number} newDuration - The proposed duration
+ */
+export function checkDeadlineViolation(milestones, tasks, milestoneId, newStartIndex, newDuration) {
+  const milestone = milestones[milestoneId];
+  if (!milestone) return { valid: true };
+
+  const taskId = milestone.task;
+  const task = tasks[taskId];
+  if (!task) return { valid: true };
+
+  const deadline = task.hard_deadline;
+  if (deadline === null || deadline === undefined) return { valid: true };
+
+  const newEnd = newStartIndex + newDuration - 1;
+  if (newEnd > deadline) {
+    return { valid: false, taskId, deadline, endIndex: newEnd };
+  }
+  return { valid: true };
+}
+
+/**
+ * Check deadline violations for multiple milestones being moved by the same delta.
+ *
+ * @param {Object} milestones - All milestones keyed by id
+ * @param {Object} tasks - All tasks keyed by id
+ * @param {Array} milestoneIds - IDs of milestones being moved together
+ * @param {number} deltaIndex - The number of day-columns to shift
+ */
+export function checkMultiDeadlineViolation(milestones, tasks, milestoneIds, deltaIndex) {
+  const violations = [];
+
+  for (const milestoneId of milestoneIds) {
+    const milestone = milestones[milestoneId];
+    if (!milestone) continue;
+
+    const newStart = milestone.start_index + deltaIndex;
+    const newDuration = milestone.duration || 1;
+    const result = checkDeadlineViolation(milestones, tasks, milestoneId, newStart, newDuration);
+    if (!result.valid) {
+      violations.push({ milestoneId, ...result });
+    }
+  }
+
+  if (violations.length > 0) {
+    return { valid: false, violations };
+  }
+  return { valid: true };
+}

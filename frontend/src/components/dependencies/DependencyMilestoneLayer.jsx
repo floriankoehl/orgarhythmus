@@ -1,5 +1,7 @@
 import CloseIcon from '@mui/icons-material/Close';
 import EditIcon from '@mui/icons-material/Edit';
+import FlagIcon from '@mui/icons-material/Flag';
+import { lightenColor } from '../../pages/dependency/layoutMath';
 
 export default function DependencyMilestoneLayer({
   teamOrder,
@@ -41,12 +43,152 @@ export default function DependencyMilestoneLayer({
   // Refactor mode
   refactorMode,
   handleRefactorDrag,
+  // Expanded task view (Gantt)
+  expandedTaskView,
+  // Deadline
+  onSetDeadline,
+  days,
 }) {
+  // Compute task time spans for Gantt-like bars
+  const getTaskTimeSpan = (taskId) => {
+    const task = tasks[taskId];
+    if (!task || !task.milestones || task.milestones.length === 0) return null;
+    let minStart = Infinity;
+    let maxEnd = -Infinity;
+    for (const mRef of task.milestones) {
+      const m = milestones[mRef.id];
+      if (!m) continue;
+      minStart = Math.min(minStart, m.start_index);
+      maxEnd = Math.max(maxEnd, m.start_index + (m.duration || 1));
+    }
+    if (minStart === Infinity) return null;
+    return { start: minStart, end: maxEnd };
+  };
+
   return (
     <div
       className="absolute top-0 left-0 w-full h-full"
       style={{ zIndex: 20, pointerEvents: 'none' }}
     >
+      {/* Expanded task view: Gantt-like time span bars behind milestones */}
+      {expandedTaskView && teamOrder.map((team_key) => {
+        if (!isTeamVisible(team_key)) return null;
+        if (isTeamCollapsed(team_key)) return null;
+        
+        const team = teams[team_key];
+        if (!team) return null;
+
+        const visibleTasks = getVisibleTasks(team_key);
+        const teamColor = team.color || '#94a3b8';
+
+        return visibleTasks.map((task_key) => {
+          if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
+          if (hideCollapsedMilestones && taskDisplaySettings[task_key]?.size === 'small') return null;
+
+          const span = getTaskTimeSpan(task_key);
+          if (!span) return null;
+
+          const taskHeight = getTaskHeight(task_key, taskDisplaySettings);
+          const teamYOffset = getTeamYOffset(team_key);
+          const taskYOffset = getTaskYOffset(task_key, team_key);
+          const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+          const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
+          const taskY = teamYOffset + dropHighlightOffset + headerOffset + taskYOffset;
+
+          const barLeft = TEAMWIDTH + TASKWIDTH + span.start * DAYWIDTH;
+          const barWidth = (span.end - span.start) * DAYWIDTH;
+
+          return (
+            <div
+              key={`gantt-${task_key}`}
+              className="absolute rounded"
+              style={{
+                left: `${barLeft}px`,
+                top: `${taskY + 2}px`,
+                width: `${barWidth}px`,
+                height: `${taskHeight - 4}px`,
+                backgroundColor: lightenColor(teamColor, 0.82),
+                border: `1px solid ${lightenColor(teamColor, 0.65)}`,
+                zIndex: 15,
+                pointerEvents: 'none',
+              }}
+            >
+              {/* Task name label on the bar (only when wide enough) */}
+              {barWidth > 60 && (
+                <div className="flex items-center h-full px-2 overflow-hidden">
+                  <span className="truncate text-[10px] font-medium" style={{ color: teamColor, opacity: 0.7 }}>
+                    {tasks[task_key]?.name}
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        });
+      })}
+
+      {/* Deadline flag markers for tasks with hard_deadline */}
+      {teamOrder.map((team_key) => {
+        if (!isTeamVisible(team_key)) return null;
+        if (isTeamCollapsed(team_key)) return null;
+        
+        const team = teams[team_key];
+        if (!team) return null;
+
+        const visibleTasks = getVisibleTasks(team_key);
+
+        return visibleTasks.map((task_key) => {
+          if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
+          
+          const task = tasks[task_key];
+          if (!task) return null;
+          const deadline = task.hard_deadline;
+          if (deadline === null || deadline === undefined) return null;
+
+          const taskHeight = getTaskHeight(task_key, taskDisplaySettings);
+          const teamYOffset = getTeamYOffset(team_key);
+          const taskYOffset = getTaskYOffset(task_key, team_key);
+          const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+          const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
+          const taskY = teamYOffset + dropHighlightOffset + headerOffset + taskYOffset;
+
+          const flagLeft = TEAMWIDTH + TASKWIDTH + (deadline + 1) * DAYWIDTH - 6;
+
+          return (
+            <div
+              key={`deadline-${task_key}`}
+              className="absolute flex flex-col items-center group"
+              style={{
+                left: `${flagLeft}px`,
+                top: `${taskY}px`,
+                height: `${taskHeight}px`,
+                zIndex: 18,
+                pointerEvents: 'auto',
+                cursor: 'pointer',
+              }}
+              title={`Hard deadline: day ${deadline + 1} — click to remove`}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onSetDeadline) onSetDeadline(task_key, null);
+              }}
+            >
+              <FlagIcon
+                style={{ fontSize: 14, color: '#ef4444', marginTop: 1 }}
+                className="drop-shadow-sm group-hover:scale-110 transition-transform"
+              />
+              <div
+                style={{
+                  width: '2px',
+                  flex: 1,
+                  backgroundColor: '#ef4444',
+                  opacity: 0.5,
+                  marginTop: '-2px',
+                }}
+              />
+            </div>
+          );
+        });
+      })}
+
       {teamOrder.map((team_key) => {
         if (!isTeamVisible(team_key)) return null;
         if (isTeamCollapsed(team_key)) return null;

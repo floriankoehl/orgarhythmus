@@ -58,6 +58,7 @@ from .tasks import (
     user_tasks,
     fetch_project_tasks,
     reorder_team_tasks,
+    set_task_deadline,
 )
 
 from .milestones import (

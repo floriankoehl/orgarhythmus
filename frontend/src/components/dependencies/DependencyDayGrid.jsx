@@ -17,6 +17,7 @@ export default function DependencyDayGrid({
   setHoveredDayCell,
   handleDayCellClick,
   tasks,
+  onSetDeadline,
 }) {
   return (
     <>
@@ -32,6 +33,7 @@ export default function DependencyDayGrid({
             const taskHeight = getTaskHeight(task_key, taskDisplaySettings);
             const visibleTaskIndex = visibleTasks.indexOf(task_key);
             const isLastVisible = visibleTaskIndex === visibleTasks.length - 1;
+            const taskDeadline = tasks?.[task_key]?.hard_deadline;
             
             return (
               <div
@@ -55,6 +57,9 @@ export default function DependencyDayGrid({
                     purposeTeams === null || purposeTeams === undefined || 
                     (Array.isArray(purposeTeams) && purposeTeams.includes(team_key))
                   );
+                  // Hard deadline: mark days after the deadline
+                  const isPastDeadline = taskDeadline !== null && taskDeadline !== undefined && i > taskDeadline;
+                  const isDeadlineDay = taskDeadline !== null && taskDeadline !== undefined && i === taskDeadline;
                   
                   return (
                     <div
@@ -72,7 +77,9 @@ export default function DependencyDayGrid({
                         width: `${DAYWIDTH}px`,
                         opacity: ghost?.id === team_key ? 0.2 : 1,
                         pointerEvents: isAddingMilestone ? 'auto' : 'auto',
-                        ...(!isHovered && showPurposeHighlight ? { backgroundColor: 'rgba(30, 41, 59, 0.06)' } : {}),
+                        ...(!isHovered && showPurposeHighlight && !isPastDeadline ? { backgroundColor: 'rgba(30, 41, 59, 0.06)' } : {}),
+                        ...(isPastDeadline ? { backgroundColor: 'rgba(15, 23, 42, 0.12)', backgroundImage: 'repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(15,23,42,0.04) 3px, rgba(15,23,42,0.04) 6px)' } : {}),
+                        ...(isDeadlineDay ? { borderRight: '2.5px solid #ef4444' } : {}),
                       }}
                       key={i}
                     onMouseEnter={() => isAddingMilestone && setHoveredDayCell({ taskId: task_key, dayIndex: i })}
@@ -81,6 +88,20 @@ export default function DependencyDayGrid({
                       if (isAddingMilestone) {
                         e.stopPropagation();
                         handleDayCellClick(task_key, i);
+                      }
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (onSetDeadline) {
+                        // Right-click to set deadline at this day for this task
+                        const currentDeadline = tasks?.[task_key]?.hard_deadline;
+                        if (currentDeadline === i) {
+                          // Clicking on current deadline clears it
+                          onSetDeadline(task_key, null);
+                        } else {
+                          onSetDeadline(task_key, i);
+                        }
                       }
                     }}
                   />

@@ -34,6 +34,9 @@ export function DependencyProvider({ children }) {
   const [editingMilestoneId, setEditingMilestoneId] = useState(null);
   const [editingMilestoneName, setEditingMilestoneName] = useState("");
 
+  // Clipboard for copy/paste milestones
+  const [clipboard, setClipboard] = useState(null); // { milestones: [...], connections: [...] }
+
   const value = {
     projectId,
     teamContainerRef,
@@ -55,6 +58,8 @@ export function DependencyProvider({ children }) {
     setEditingMilestoneId,
     editingMilestoneName,
     setEditingMilestoneName,
+    clipboard,
+    setClipboard,
   };
 
   return (

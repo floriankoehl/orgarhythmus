@@ -208,6 +208,23 @@ export async function reorder_team_tasks(projectId, taskId, targetTeamId, order)
 }
 
 
+// Task deadlines
+
+export async function set_task_deadline(projectId, taskId, hardDeadline) {
+    const res = await authFetch(`/api/projects/${projectId}/tasks/${taskId}/set_deadline/`, {
+        method: "PATCH",
+        body: JSON.stringify({
+            hard_deadline: hardDeadline  // integer day index or null to clear
+        })
+    });
+    if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Failed to set deadline');
+    }
+    return await res.json();
+}
+
+
 // Days
 
 export async function get_project_days(projectId) {

@@ -12,6 +12,8 @@ import {
   checkMultiMilestoneOverlap,
   validateMilestoneMove,
   validateMultiMilestoneMove,
+  checkDeadlineViolation,
+  checkMultiDeadlineViolation,
 } from './depValidation';
 
 /**
@@ -165,7 +167,10 @@ export function useDependencyMilestones({
       // Also validate overlap constraints
       const overlapValidation = checkMultiMilestoneOverlap(milestones, tasks, milestonesToMove, currentDeltaIndex);
 
-      if (!validation.valid || !overlapValidation.valid) {
+      // Also validate hard deadline constraints
+      const deadlineValidation = checkMultiDeadlineViolation(milestones, tasks, milestonesToMove, currentDeltaIndex);
+
+      if (!validation.valid || !overlapValidation.valid || !deadlineValidation.valid) {
         // Combine all blocking milestones
         const allBlocking = [
           ...(validation.allBlocking || []),
@@ -183,8 +188,11 @@ export function useDependencyMilestones({
         // Show warning with reason
         const hasDepBlocking = (validation.allBlocking || []).length > 0;
         const hasOverlapBlocking = (overlapValidation.allBlocking || []).length > 0;
+        const hasDeadlineBlocking = !deadlineValidation.valid;
 
-        if (hasDepBlocking && hasOverlapBlocking) {
+        if (hasDeadlineBlocking) {
+          addWarning("Move blocked: exceeds hard deadline", "A milestone would be placed past its task's hard deadline.");
+        } else if (hasDepBlocking && hasOverlapBlocking) {
           addWarning("Move blocked: dependency constraint & milestone overlap", "Milestones cannot overlap within a task, and dependencies must be respected.");
         } else if (hasOverlapBlocking) {
           addWarning("Move blocked: milestones would overlap", "Milestones within the same task cannot occupy the same days.");
@@ -317,6 +325,7 @@ export function useDependencyMilestones({
       const allResizeBlocking = [];
       let hasOverlapViolation = false;
       let hasDepViolation = false;
+      let hasDeadlineViolation = false;
 
       for (const mId of milestonesToResize) {
         const initial = initialStates[mId];
@@ -368,9 +377,15 @@ export function useDependencyMilestones({
           }
           hasOverlapViolation = true;
         }
+
+        // Check hard deadline constraints
+        const deadlineResult = checkDeadlineViolation(milestones, tasks, mId, currentStartIndex, currentDuration);
+        if (!deadlineResult.valid) {
+          hasDeadlineViolation = true;
+        }
       }
 
-      if (allResizeBlocking.length > 0) {
+      if (allResizeBlocking.length > 0 || hasDeadlineViolation) {
         // Revert all milestones to original
         setMilestones(prev => {
           const updated = { ...prev };
@@ -384,7 +399,9 @@ export function useDependencyMilestones({
         });
 
         // Show warning with reason
-        if (hasDepViolation && hasOverlapViolation) {
+        if (hasDeadlineViolation) {
+          addWarning("Resize blocked: exceeds hard deadline", "A milestone would extend past its task's hard deadline.");
+        } else if (hasDepViolation && hasOverlapViolation) {
           addWarning("Resize blocked: dependency & overlap conflict", "Milestones cannot overlap within a task, and dependencies must be respected.");
         } else if (hasOverlapViolation) {
           addWarning("Resize blocked: milestones would overlap", "Milestones within the same task cannot occupy the same days.");

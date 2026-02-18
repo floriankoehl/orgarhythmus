@@ -159,6 +159,8 @@ class Task(models.Model):
     )
     assigned_members = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="assigned_tasks", blank=True)
 
+    hard_deadline = models.IntegerField(blank=True, null=True)  # day index deadline (0-based)
+
     team_index = models.IntegerField(default=0)
     order_index = models.IntegerField(default=0)
 

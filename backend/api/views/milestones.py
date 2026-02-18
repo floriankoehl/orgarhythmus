@@ -94,9 +94,18 @@ def update_start_index(request, project_id):
         return Response({"detail": "milestone_id and index are required"}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        milestone = Milestone.objects.get(id=milestone_id, project=project)
+        milestone = Milestone.objects.select_related('task').get(id=milestone_id, project=project)
     except Milestone.DoesNotExist:
         return Response({"detail": "Milestone not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    # Hard deadline check
+    if milestone.task and milestone.task.hard_deadline is not None:
+        new_end = new_index + (milestone.duration or 1) - 1
+        if new_end > milestone.task.hard_deadline:
+            return Response(
+                {"detail": "Move blocked: milestone would exceed task hard deadline"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     milestone.start_index = new_index
     milestone.save()
@@ -153,7 +162,7 @@ def change_duration(request, project_id):
         return Response({"detail": "id and change are required"}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        milestone = Milestone.objects.get(id=milestone_id, project=project)
+        milestone = Milestone.objects.select_related('task').get(id=milestone_id, project=project)
     except Milestone.DoesNotExist:
         return Response({"detail": "Milestone not found"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -161,6 +170,15 @@ def change_duration(request, project_id):
 
     if duration < 1: 
         duration = 1
+
+    # Hard deadline check
+    if milestone.task and milestone.task.hard_deadline is not None:
+        new_end = milestone.start_index + duration - 1
+        if new_end > milestone.task.hard_deadline:
+            return Response(
+                {"detail": "Resize blocked: milestone would exceed task hard deadline"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     data = {
         "duration": duration

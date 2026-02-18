@@ -1,5 +1,7 @@
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
+import UnfoldLessDoubleIcon from '@mui/icons-material/UnfoldLessDouble';
+import UnfoldMoreDoubleIcon from '@mui/icons-material/UnfoldMoreDouble';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import SettingsIcon from '@mui/icons-material/Settings';
 import ScheduleIcon from '@mui/icons-material/Schedule';
@@ -10,6 +12,7 @@ import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import DeleteIcon from '@mui/icons-material/Delete';
 import BuildIcon from '@mui/icons-material/Build';
+import ViewTimelineIcon from '@mui/icons-material/ViewTimeline';
 
 import {
   DEFAULT_TASKHEIGHT_NORMAL,
@@ -79,6 +82,12 @@ export default function DependencyToolbar({
   // Refactor mode
   refactorMode,
   setRefactorMode,
+  // Expanded task view (Gantt)
+  expandedTaskView,
+  setExpandedTaskView,
+  // Collapse/expand all teams
+  collapseAllTeams,
+  expandAllTeams,
 }) {
   const hasSelection = selectedMilestones?.size > 0 || selectedConnection;
   
@@ -137,6 +146,29 @@ export default function DependencyToolbar({
               <UnfoldMoreIcon style={{ fontSize: 14 }} />
               <span>Expand All</span>
             </button>
+            {/* Collapse/Expand all teams (fold/unfold team rows) */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                collapseAllTeams();
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+              title="Collapse all teams (hide task rows)"
+            >
+              <UnfoldLessDoubleIcon style={{ fontSize: 14 }} />
+              <span>Fold Teams</span>
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                expandAllTeams();
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+              title="Expand all teams (show task rows)"
+            >
+              <UnfoldMoreDoubleIcon style={{ fontSize: 14 }} />
+              <span>Unfold Teams</span>
+            </button>
             {hiddenTeamCount > 0 && (
               <button
                 onClick={(e) => {
@@ -150,6 +182,23 @@ export default function DependencyToolbar({
               </button>
             )}
             
+            {/* Expanded Task View (Gantt) Toggle */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpandedTaskView(!expandedTaskView);
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
+                expandedTaskView 
+                  ? 'border-indigo-400 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-300' 
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+              title={expandedTaskView ? "Hide task time spans" : "Show task time spans (Gantt-like)"}
+            >
+              <ViewTimelineIcon style={{ fontSize: 14 }} />
+              <span>Timeline</span>
+            </button>
+
             {/* Settings Dropdown */}
             <div className="relative">
               <button

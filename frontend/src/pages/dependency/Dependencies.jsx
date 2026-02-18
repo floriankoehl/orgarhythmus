@@ -32,6 +32,7 @@ import { useDependencyInteraction } from './useDependencyInteraction';
 import { useDependencyData } from './useDependencyData';
 import { useDependencyUIState } from './useDependencyUIState';
 import { useDependencyActions } from './useDependencyActions';
+import { set_task_deadline } from '../../api/dependencies_api';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
@@ -141,6 +142,9 @@ function DependenciesContent() {
   const [hideAllDependencies, setHideAllDependencies] = useState(false);
   const [showEmptyTeams, setShowEmptyTeams] = useState(true);
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
+
+  // Expanded task view (Gantt-like: show task time span across milestones)
+  const [expandedTaskView, setExpandedTaskView] = useState(false);
 
   // Day purpose modal
   const [dayPurposeModal, setDayPurposeModal] = useState(null); // { dayIndex, currentPurpose, currentPurposeTeams }
@@ -601,6 +605,61 @@ function DependenciesContent() {
     return teamDisplaySettings[teamId]?.collapsed ?? false;
   };
 
+  // Set or clear a task's hard deadline
+  const handleSetDeadline = useCallback(async (taskId, deadlineDayIndex) => {
+    try {
+      await set_task_deadline(projectId, taskId, deadlineDayIndex);
+      // Update local tasks state
+      setTasks(prev => ({
+        ...prev,
+        [taskId]: {
+          ...prev[taskId],
+          hard_deadline: deadlineDayIndex,
+        }
+      }));
+      playSound('milestoneMove');
+    } catch (err) {
+      console.error("Failed to set deadline:", err);
+    }
+  }, [projectId, setTasks]);
+
+  // Collapse all teams
+  const collapseAllTeams = useCallback(() => {
+    setTeamDisplaySettings(prev => {
+      const updated = { ...prev };
+      for (const teamId of teamOrder) {
+        updated[teamId] = { ...updated[teamId], collapsed: true };
+      }
+      return updated;
+    });
+    playSound('collapse');
+  }, [teamOrder, setTeamDisplaySettings]);
+
+  // Expand all teams
+  const expandAllTeams = useCallback(() => {
+    setTeamDisplaySettings(prev => {
+      const updated = { ...prev };
+      for (const teamId of teamOrder) {
+        updated[teamId] = { ...updated[teamId], collapsed: false };
+      }
+      return updated;
+    });
+    // Also un-hide all tasks in all teams
+    setTaskDisplaySettings(prev => {
+      const updated = { ...prev };
+      for (const teamId of teamOrder) {
+        const team = teams[teamId];
+        if (team) {
+          for (const taskId of team.tasks) {
+            updated[taskId] = { ...updated[taskId], hidden: false };
+          }
+        }
+      }
+      return updated;
+    });
+    playSound('collapse');
+  }, [teamOrder, teams, setTeamDisplaySettings, setTaskDisplaySettings]);
+
   // Show all tasks in a team
   const showAllTeamTasks = (teamId) => {
     const team = teams[teamId];
@@ -836,6 +895,12 @@ function DependenciesContent() {
           // Refactor mode
           refactorMode={refactorMode}
           setRefactorMode={setRefactorMode}
+          // Expanded task view (Gantt)
+          expandedTaskView={expandedTaskView}
+          setExpandedTaskView={setExpandedTaskView}
+          // Collapse/expand all teams
+          collapseAllTeams={collapseAllTeams}
+          expandAllTeams={expandAllTeams}
         />
 
         <DependencyCanvas
@@ -930,6 +995,10 @@ function DependenciesContent() {
           // Refactor mode
           refactorMode={refactorMode}
           handleRefactorDrag={handleRefactorDrag}
+          // Expanded task view (Gantt)
+          expandedTaskView={expandedTaskView}
+          // Deadline
+          onSetDeadline={handleSetDeadline}
         />
       </div>
 

@@ -102,6 +102,10 @@ export default function DependencyCanvas({
   // Refactor mode
   refactorMode,
   handleRefactorDrag,
+  // Expanded task view (Gantt)
+  expandedTaskView,
+  // Deadline
+  onSetDeadline,
 }) {
   return (
     <>
@@ -122,11 +126,12 @@ export default function DependencyCanvas({
           onMouseDown={(e) => {
             // Only trigger marquee in the day-grid area and not on milestones
             if (e.target.closest('[data-milestone]')) return;
-            const containerRect = teamContainerRef.current?.getBoundingClientRect();
-            if (!containerRect) return;
-            const scrollLeft = teamContainerRef.current.parentElement?.scrollLeft || 0;
-            const clickX = e.clientX - containerRect.left + scrollLeft;
-            if (clickX > TEAMWIDTH + TASKWIDTH) {
+            // Use scroll container's viewport rect so sticky columns are respected
+            const scrollContainer = teamContainerRef.current?.parentElement;
+            if (!scrollContainer) return;
+            const scrollContainerRect = scrollContainer.getBoundingClientRect();
+            const clickXInViewport = e.clientX - scrollContainerRect.left;
+            if (clickXInViewport > TEAMWIDTH + TASKWIDTH) {
               handleMarqueeStart?.(e);
             }
           }}
@@ -342,6 +347,8 @@ export default function DependencyCanvas({
             // Refactor mode
             refactorMode={refactorMode}
             handleRefactorDrag={handleRefactorDrag}
+            // Deadline
+            onSetDeadline={onSetDeadline}
           />
 
           {/* SVG Layer for Connections - ABOVE day grid */}
@@ -502,6 +509,11 @@ export default function DependencyCanvas({
             // Refactor mode
             refactorMode={refactorMode}
             handleRefactorDrag={handleRefactorDrag}
+            // Expanded task view (Gantt)
+            expandedTaskView={expandedTaskView}
+            // Deadline
+            onSetDeadline={onSetDeadline}
+            days={days}
           />
 
           {/* Marquee selection overlay */}

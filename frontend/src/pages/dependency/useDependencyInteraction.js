@@ -2,7 +2,7 @@
 // Composes focused sub-hooks and adds global effects (keyboard, click-outside, auto-visibility).
 // The external API (params + return shape) is unchanged — Dependencies.jsx needs zero edits.
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import { playSound } from '../../assets/sound_registry';
 import { useDependency } from './DependencyContext.jsx';
 
@@ -11,6 +11,14 @@ import { useDependencyWarnings } from './useDependencyWarnings';
 import { useDependencyDrag } from './useDependencyDrag';
 import { useDependencyMilestones } from './useDependencyMilestones';
 import { useDependencyConnections } from './useDependencyConnections';
+
+// API for copy/paste
+import {
+  add_milestone,
+  update_start_index,
+  change_duration,
+  create_dependency,
+} from '../../api/dependencies_api.js';
 
 // Pure validation re-exports (kept in return for backward compat)
 import {
@@ -68,6 +76,7 @@ export function useDependencyInteraction({
 }) {
   // ── Context ──
   const {
+    projectId,
     viewMode,
     setViewMode,
     baseViewModeRef,
@@ -78,6 +87,8 @@ export function useDependencyInteraction({
     autoSelectBlocking,
     setEditingMilestoneId,
     setEditingMilestoneName,
+    clipboard,
+    setClipboard,
   } = useDependency();
 
   // Shared ref — used by milestone click + drag hooks to prevent click-after-drag
@@ -192,6 +203,122 @@ export function useDependencyInteraction({
     setBlockedMoveHighlight,
   });
 
+  // ── Copy/Paste logic ──
+  const handleCopy = useCallback(() => {
+    if (selectedMilestones.size === 0) return;
+
+    const copiedMilestones = [];
+    for (const mId of selectedMilestones) {
+      const m = milestones[mId];
+      if (!m) continue;
+      copiedMilestones.push({
+        originalId: mId,
+        task: m.task,
+        name: m.name,
+        description: m.description || "",
+        start_index: m.start_index,
+        duration: m.duration || 1,
+        color: m.color || null,
+      });
+    }
+
+    // Collect inter-connections (dependencies between selected milestones)
+    const selectedSet = selectedMilestones;
+    const copiedConnections = connections.filter(
+      c => selectedSet.has(c.source) && selectedSet.has(c.target)
+    ).map(c => ({ source: c.source, target: c.target }));
+
+    setClipboard({ milestones: copiedMilestones, connections: copiedConnections });
+    addWarning(
+      `Copied ${copiedMilestones.length} milestone${copiedMilestones.length > 1 ? 's' : ''}${copiedConnections.length > 0 ? ` + ${copiedConnections.length} dep${copiedConnections.length > 1 ? 's' : ''}` : ''}`,
+      "Press Ctrl+V to paste"
+    );
+    playSound('uiClick');
+  }, [selectedMilestones, milestones, connections, setClipboard, addWarning]);
+
+  const handlePaste = useCallback(async () => {
+    if (!clipboard || clipboard.milestones.length === 0) return;
+
+    const copiedMilestones = clipboard.milestones;
+
+    // Calculate offset: shift right so pasted milestones don't overlap with originals
+    let minStart = Infinity;
+    let maxEnd = -Infinity;
+    for (const m of copiedMilestones) {
+      minStart = Math.min(minStart, m.start_index);
+      maxEnd = Math.max(maxEnd, m.start_index + m.duration);
+    }
+    const offset = maxEnd - minStart + 1;
+
+    // Map old milestone IDs to new milestone IDs (for recreating connections)
+    const idMap = {};
+    const newMilestoneIds = [];
+
+    for (const m of copiedMilestones) {
+      const newStartIndex = m.start_index + offset;
+      try {
+        const result = await add_milestone(projectId, m.task, {
+          name: `${m.name} (copy)`,
+          description: m.description,
+          start_index: newStartIndex,
+        });
+        if (result.added_milestone) {
+          const newId = result.added_milestone.id;
+          idMap[m.originalId] = newId;
+          newMilestoneIds.push(newId);
+
+          // Set duration if > 1
+          if (m.duration > 1) {
+            await change_duration(projectId, newId, m.duration - 1);
+          }
+
+          // Update local state
+          const newMilestone = {
+            ...result.added_milestone,
+            start_index: newStartIndex,
+            duration: m.duration,
+            display: "default",
+            color: m.color,
+          };
+          setMilestones(prev => ({ ...prev, [newId]: newMilestone }));
+          setTasks(prev => ({
+            ...prev,
+            [m.task]: {
+              ...prev[m.task],
+              milestones: [...(prev[m.task]?.milestones || []), newMilestone],
+            },
+          }));
+        }
+      } catch (err) {
+        console.error("Failed to paste milestone:", err);
+      }
+    }
+
+    // Recreate inter-connections between pasted milestones
+    for (const conn of clipboard.connections) {
+      const newSource = idMap[conn.source];
+      const newTarget = idMap[conn.target];
+      if (newSource && newTarget) {
+        try {
+          await create_dependency(projectId, newSource, newTarget);
+          setConnections(prev => [...prev, { source: newSource, target: newTarget }]);
+        } catch (err) {
+          console.error("Failed to paste dependency:", err);
+        }
+      }
+    }
+
+    // Select the newly pasted milestones
+    setSelectedMilestones(new Set(newMilestoneIds));
+    setSelectedConnection(null);
+
+    addWarning(
+      `Pasted ${newMilestoneIds.length} milestone${newMilestoneIds.length > 1 ? 's' : ''}`,
+      null
+    );
+    playSound('milestoneCreate');
+  }, [clipboard, projectId, milestones, setMilestones, setTasks, setConnections, setSelectedMilestones, setSelectedConnection, addWarning]);
+
   // ________Global Keyboard Listener___________
   // ________________________________________
 
@@ -199,6 +326,20 @@ export function useDependencyInteraction({
     const handleKeyDown = (e) => {
       // Skip if user is typing in an input/textarea
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      const hasModifier = e.ctrlKey || e.metaKey;
+
+      // Copy/Paste shortcuts (Ctrl+C / Ctrl+V)
+      if (hasModifier && e.key === 'c') {
+        e.preventDefault();
+        handleCopy();
+        return;
+      }
+      if (hasModifier && e.key === 'v') {
+        e.preventDefault();
+        handlePaste();
+        return;
+      }
 
       if (e.key === "Delete") {
         // Delete handled by actions hook
@@ -209,15 +350,15 @@ export function useDependencyInteraction({
         setEditingMilestoneName("");
         setIsAddingMilestone(false);
         playSound('milestoneDeselect');
-      } else if (e.key === "e" || e.key === "E") {
+      } else if (!hasModifier && (e.key === "e" || e.key === "E")) {
         setViewMode("schedule");
         baseViewModeRef.current = "schedule";
         playSound('modeSwitch');
-      } else if (e.key === "d" || e.key === "D") {
+      } else if (!hasModifier && (e.key === "d" || e.key === "D")) {
         setViewMode("dependency");
         baseViewModeRef.current = "dependency";
         playSound('modeSwitch');
-      } else if (e.key === "v" || e.key === "V") {
+      } else if (!hasModifier && (e.key === "v" || e.key === "V")) {
         setViewMode("inspection");
         baseViewModeRef.current = "inspection";
         playSound('modeSwitch');
@@ -232,7 +373,7 @@ export function useDependencyInteraction({
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("keyup", handleKeyUp);
     };
-  }, [setMode, setViewMode]);
+  }, [setMode, setViewMode, handleCopy, handlePaste]);
 
   // Close team settings when clicking outside
   useEffect(() => {

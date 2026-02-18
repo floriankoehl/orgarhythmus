@@ -43,6 +43,7 @@ urlpatterns = [
     path("projects/<int:project_id>/tasks/<int:task_id>/detail/", views.task_detail_view, name="task_detail_view"),  # ADD THIS
     path('projects/<int:project_id>/tasks/<int:task_id>/delete/', views.delete_task_by_id),
     path("projects/<int:project_id>/tasks/<int:task_id>/assign/", views.assign_task_member, name="assign_task_member"),
+    path("projects/<int:project_id>/tasks/<int:task_id>/set_deadline/", views.set_task_deadline, name="set_task_deadline"),
     
     #Notifications
     path("notifications/", views.user_notifications, name="user_notifications"),  # Get all notifications
@@ -98,6 +99,7 @@ urlpatterns = [
     # Tasks
     path("projects/<int:project_id>/fetch_project_tasks/", views.fetch_project_tasks),
     path("projects/<int:project_id>/reorder_team_tasks/", views.reorder_team_tasks),
+    path("projects/<int:project_id>/tasks/<int:task_id>/set_deadline/", views.set_task_deadline),
     
     # Milestones
     path("projects/<int:project_id>/get_all_milestones/", views.get_all_milestones),

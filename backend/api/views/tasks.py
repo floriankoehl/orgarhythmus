@@ -6,7 +6,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..models import Project, Team, Task, Notification
+from ..models import Project, Team, Task, Milestone, Notification
 from .serializers import (
     TaskSerializer_TeamView, 
     TaskExpandedSerializer,
@@ -449,6 +449,64 @@ def reorder_team_tasks(request, project_id):
         "changed_team": changed_team,
         "task_id": task_id,
         "target_team_id": target_team_id,
+    })
+
+
+# set_task_deadline
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def set_task_deadline(request, project_id, task_id):
+    """
+    Set or clear a hard deadline on a task.
+    Body: { "hard_deadline": <day_index | null> }
+    """
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        task = Task.objects.get(pk=task_id, project=project)
+    except Task.DoesNotExist:
+        return Response({"detail": "Task not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    hard_deadline = request.data.get("hard_deadline")
+
+    # Allow null to clear deadline
+    if hard_deadline is not None:
+        try:
+            hard_deadline = int(hard_deadline)
+        except (ValueError, TypeError):
+            return Response({"detail": "hard_deadline must be an integer or null"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if hard_deadline < 0:
+            return Response({"detail": "hard_deadline cannot be negative"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate that no milestone of this task extends beyond the deadline
+        violating = Milestone.objects.filter(task=task).filter(
+            start_index__gte=0
+        ).extra(
+            where=["start_index + duration - 1 > %s"],
+            params=[hard_deadline],
+        )
+        if violating.exists():
+            names = [m.name for m in violating[:5]]
+            return Response(
+                {"detail": f"Cannot set deadline: milestones exceed it ({', '.join(names)})",
+                 "violating_milestones": [m.id for m in violating]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    task.hard_deadline = hard_deadline
+    task.save(update_fields=["hard_deadline"])
+
+    return Response({
+        "success": True,
+        "task_id": task.id,
+        "hard_deadline": task.hard_deadline
     })
 
 
