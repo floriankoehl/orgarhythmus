@@ -16,6 +16,7 @@ export default function DependencyDayGrid({
   getTaskHeight,
   setHoveredDayCell,
   handleDayCellClick,
+  tasks,
 }) {
   return (
     <>
@@ -57,6 +58,10 @@ export default function DependencyDayGrid({
                   
                   return (
                     <div
+                      data-dep-day-index={i}
+                      data-dep-day-task-id={task_key}
+                      data-dep-day-task-name={tasks?.[task_key]?.name || ''}
+                      data-dep-day-team-id={team_key}
                       className={`border-r border-slate-100 transition-colors ${
                         isAddingMilestone ? 'cursor-pointer hover:bg-blue-50' : ''
                       } ${isHovered ? 'bg-blue-100' : ''}`}
@@ -64,7 +69,7 @@ export default function DependencyDayGrid({
                         height: `${taskHeight}px`,
                         width: `${DAYWIDTH}px`,
                         opacity: ghost?.id === team_key ? 0.2 : 1,
-                        pointerEvents: isAddingMilestone ? 'auto' : 'none',
+                        pointerEvents: isAddingMilestone ? 'auto' : 'auto',
                         ...(!isHovered && showPurposeHighlight ? { backgroundColor: 'rgba(30, 41, 59, 0.06)' } : {}),
                       }}
                       key={i}

@@ -38,6 +38,9 @@ export default function DependencyMilestoneLayer({
   handleMilestoneRenameSubmit,
   handleMilestoneEdgeResize,
   handleConnectionDragStart,
+  // Refactor mode
+  refactorMode,
+  handleRefactorDrag,
 }) {
   return (
     <div
@@ -87,6 +90,17 @@ export default function DependencyMilestoneLayer({
                 data-milestone
                 onMouseDown={(e) => {
                   e.stopPropagation();
+                  if (refactorMode) {
+                    handleRefactorDrag(e, "milestone", {
+                      id: milestone.id,
+                      name: milestone.name,
+                      description: milestone.description || "",
+                      color: milestoneColor,
+                      taskId: task_key,
+                      taskName: tasks[task_key]?.name || "",
+                    });
+                    return;
+                  }
                   if (!isEditing) {
                     handleMileStoneMouseDown(e, milestone_from_task.id);
                   }
@@ -99,11 +113,13 @@ export default function DependencyMilestoneLayer({
                 onMouseEnter={() => setHoveredMilestone(milestone.id)}
                 onMouseLeave={() => setHoveredMilestone(null)}
                 className={`absolute rounded cursor-pointer ${
-                  isBlockedHighlight 
-                    ? 'ring-2 ring-red-500 ring-offset-1 shadow-lg animate-pulse'
-                    : isSelected 
-                      ? 'ring-2 ring-blue-500 ring-offset-1 shadow-lg' 
-                      : 'hover:brightness-95'
+                  refactorMode
+                    ? 'ring-2 ring-orange-400 ring-offset-1'
+                    : isBlockedHighlight 
+                      ? 'ring-2 ring-red-500 ring-offset-1 shadow-lg animate-pulse'
+                      : isSelected 
+                        ? 'ring-2 ring-blue-500 ring-offset-1 shadow-lg' 
+                        : 'hover:brightness-95'
                 }`}
                 style={{
                   left: `${TEAMWIDTH + TASKWIDTH + (milestone.x ?? milestone.start_index * DAYWIDTH)}px`,

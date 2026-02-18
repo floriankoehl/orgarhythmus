@@ -56,7 +56,7 @@ def add_milestone(request, project_id):
 
     name = request.data.get("name") or f"{task.name}_0"
     description = request.data.get("description") or ""
-    start_index = 0
+    start_index = request.data.get("start_index", 0)
     duration = 1
     milestone = Milestone.objects.create(
         project=project,

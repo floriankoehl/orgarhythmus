@@ -99,6 +99,9 @@ export default function DependencyCanvas({
   setHoveredDayCell,
   marqueeRect,
   handleMarqueeStart,
+  // Refactor mode
+  refactorMode,
+  handleRefactorDrag,
 }) {
   return (
     <>
@@ -330,6 +333,9 @@ export default function DependencyCanvas({
             handleDayCellClick={handleDayCellClick}
             showAllHiddenTeams={showAllHiddenTeams}
             toggleTeamVisibility={toggleTeamVisibility}
+            // Refactor mode
+            refactorMode={refactorMode}
+            handleRefactorDrag={handleRefactorDrag}
           />
 
           {/* SVG Layer for Connections - ABOVE day grid */}
@@ -487,6 +493,9 @@ export default function DependencyCanvas({
             handleMilestoneRenameSubmit={handleMilestoneRenameSubmit}
             handleMilestoneEdgeResize={handleMilestoneEdgeResize}
             handleConnectionDragStart={handleConnectionDragStart}
+            // Refactor mode
+            refactorMode={refactorMode}
+            handleRefactorDrag={handleRefactorDrag}
           />
 
           {/* Marquee selection overlay */}

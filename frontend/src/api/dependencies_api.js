@@ -54,13 +54,14 @@ export async function get_all_milestones(projectId){
 }
 
 
-export async function add_milestone(projectId, task_id, { name, description } = {}) {
+export async function add_milestone(projectId, task_id, { name, description, start_index } = {}) {
     const res = await authFetch(`/api/projects/${projectId}/add_milestone/`, {
         method: "POST",
         body: JSON.stringify({
             task_id: task_id,
             ...(name ? { name } : {}),
             ...(description ? { description } : {}),
+            ...(start_index !== undefined ? { start_index } : {}),
         })
     })
     if (!res.ok) throw new Error('Failed to add milestone');
@@ -255,4 +256,31 @@ export async function sync_project_days(projectId) {
     })
     if (!res.ok) throw new Error('Failed to sync days');
     return await res.json()
+}
+
+
+// ── Refactor mode: delete task / delete team ──
+
+export async function delete_task(projectId, taskId) {
+    const res = await authFetch(`/api/projects/${projectId}/tasks/${taskId}/delete/`, {
+        method: "DELETE",
+    });
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Delete task failed (${res.status}): ${text}`);
+    }
+    if (res.status === 204) return null;
+    return await res.json();
+}
+
+export async function delete_team(projectId, teamId) {
+    const res = await authFetch(`/api/projects/${projectId}/teams/${teamId}/`, {
+        method: "DELETE",
+    });
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Delete team failed (${res.status}): ${text}`);
+    }
+    if (res.status === 204) return null;
+    return await res.json();
 }

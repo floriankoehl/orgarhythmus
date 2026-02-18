@@ -59,6 +59,9 @@ export default function DependencyTeamList({
   handleDayCellClick,
   showAllHiddenTeams,
   toggleTeamVisibility,
+  // Refactor mode
+  refactorMode,
+  handleRefactorDrag,
 }) {
   const navigate = useNavigate();
   const { projectId } = useParams();
@@ -139,7 +142,9 @@ export default function DependencyTeamList({
                   data-dep-team-id={team_key}
                   data-dep-team-name={team.name}
                   data-dep-team-color={teamColor}
-                  className="flex flex-col items-center justify-start border-r border-b border-slate-200 cursor-grab-visible"
+                  className={`flex flex-col items-center justify-start border-r border-b border-slate-200 cursor-grab-visible ${
+                    refactorMode ? 'ring-2 ring-orange-300 ring-inset' : ''
+                  }`}
                   style={{
                     width: `${TEAMWIDTH}px`,
                     height: `${teamHeight}px`,
@@ -148,6 +153,15 @@ export default function DependencyTeamList({
                   onMouseDown={(e) => {
                     // Don't initiate drag if clicking on interactive elements
                     if (e.target.closest('[data-no-drag]')) return;
+                    if (refactorMode) {
+                      handleRefactorDrag(e, "team", {
+                        id: team_key,
+                        name: team.name,
+                        color: teamColor,
+                        taskIds: team.tasks || [],
+                      });
+                      return;
+                    }
                     handleTeamDrag(e, team_key, visibleIndex);
                   }}
                 >
@@ -242,6 +256,18 @@ export default function DependencyTeamList({
                           {/* Drag Handle */}
                           <div
                             onMouseDown={(e) => {
+                              if (refactorMode) {
+                                handleRefactorDrag(e, "task", {
+                                  id: task_key,
+                                  name: tasks[task_key]?.name,
+                                  description: tasks[task_key]?.description || "",
+                                  milestones: tasks[task_key]?.milestones || [],
+                                  teamId: team_key,
+                                  teamName: team.name,
+                                  teamColor: teamColor,
+                                });
+                                return;
+                              }
                               if (mode === "drag") {
                                 handleTaskDrag(e, task_key, team_key, visibleTaskIndex);
                               }
@@ -366,6 +392,7 @@ export default function DependencyTeamList({
                 getTaskHeight={getTaskHeight}
                 setHoveredDayCell={setHoveredDayCell}
                 handleDayCellClick={handleDayCellClick}
+                tasks={tasks}
               />
             </div>
           </div>

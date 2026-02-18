@@ -8,7 +8,7 @@ import UnarchiveIcon from "@mui/icons-material/Unarchive";
 import { Lightbulb, Minus, Maximize2, Minimize2, Zap } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
-import { add_milestone, fetch_project_tasks } from "../../api/dependencies_api";
+import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
 
 // ───────────────────── Constants ─────────────────────
 const MIN_W = 290;
@@ -605,7 +605,7 @@ export default function IdeaBin() {
     let dropTarget = null;
     let ghost = { idea, x: e.clientX, y: e.clientY };
     let isExternal = false;
-    let extInfo = { teamId: null, teamName: null, teamColor: null, taskId: null, taskName: null };
+    let extInfo = { teamId: null, teamName: null, teamColor: null, taskId: null, taskName: null, dayIndex: null };
 
     setDragging(ghost);
     setPrevIndex(index);
@@ -635,15 +635,17 @@ export default function IdeaBin() {
         const elUnder = document.elementFromPoint(ev.clientX, ev.clientY);
         if (ghostEl) ghostEl.style.pointerEvents = "auto";
 
-        // Walk up to find data-dep-team-id or data-dep-task-id
+        // Walk up to find data-dep-team-id, data-dep-task-id, or data-dep-day-index
         let teamEl = elUnder?.closest?.("[data-dep-team-id]");
         let taskEl = elUnder?.closest?.("[data-dep-task-id]");
+        let dayEl = elUnder?.closest?.("[data-dep-day-index]");
         extInfo = {
-          teamId: teamEl?.dataset?.depTeamId || null,
+          teamId: teamEl?.dataset?.depTeamId || dayEl?.dataset?.depDayTeamId || null,
           teamName: teamEl?.dataset?.depTeamName || null,
           teamColor: teamEl?.dataset?.depTeamColor || null,
-          taskId: taskEl?.dataset?.depTaskId || null,
-          taskName: taskEl?.dataset?.depTaskName || null,
+          taskId: taskEl?.dataset?.depTaskId || dayEl?.dataset?.depDayTaskId || null,
+          taskName: taskEl?.dataset?.depTaskName || dayEl?.dataset?.depDayTaskName || null,
+          dayIndex: dayEl?.dataset?.depDayIndex ?? null,
         };
 
         setExternalGhost({
@@ -660,7 +662,7 @@ export default function IdeaBin() {
 
       // Inside IdeaBin — clear external ghost
       isExternal = false;
-      extInfo = { teamId: null, teamName: null, teamColor: null, taskId: null, taskName: null };
+      extInfo = { teamId: null, teamName: null, teamColor: null, taskId: null, taskName: null, dayIndex: null };
       setExternalGhost(null);
 
       let foundUnassigned = false;
@@ -708,12 +710,44 @@ export default function IdeaBin() {
     const onUp = () => {
       setExternalGhost(null);
 
-      // External drop — onto Dependencies team or task
-      if (isExternal && extInfo.teamId) {
+      // External drop — onto Dependencies team, task, or day grid
+      if (isExternal && (extInfo.teamId || extInfo.dayIndex !== null)) {
         const ideaName = idea.headline || idea.title.split(/\s+/).slice(0, 6).join(" ");
         const truncatedName = ideaName.length > 30 ? ideaName.slice(0, 27) + "..." : ideaName;
 
-        if (extInfo.taskId) {
+        if (extInfo.dayIndex !== null && extInfo.taskId) {
+          // Dropped on a day grid cell → create milestone at this day position
+          const dayNum = parseInt(extInfo.dayIndex) + 1;
+          setConfirmModal({
+            message: (
+              <div>
+                <p className="mb-1 text-sm font-medium">Create Milestone?</p>
+                <p className="text-xs text-gray-600">
+                  Place milestone <span className="font-semibold">"{truncatedName}"</span>{" "}
+                  on <span className="font-semibold">Day {dayNum}</span>{" "}
+                  of task <span className="font-semibold">"{extInfo.taskName || "task"}"</span>
+                </p>
+              </div>
+            ),
+            confirmLabel: "Create Milestone",
+            confirmColor: "bg-blue-500 hover:bg-blue-600",
+            onConfirm: async () => {
+              try {
+                await add_milestone(projectId, parseInt(extInfo.taskId), {
+                  name: truncatedName,
+                  description: idea.title,
+                  start_index: parseInt(extInfo.dayIndex),
+                });
+                await delete_idea(idea.id);
+                window.dispatchEvent(new CustomEvent("ideabin-dep-refresh"));
+              } catch (err) {
+                console.error("Failed to create milestone from idea:", err);
+              }
+              setConfirmModal(null);
+            },
+            onCancel: () => setConfirmModal(null),
+          });
+        } else if (extInfo.taskId) {
           // Dropped on a task row → ask: create milestone on this task?
           setConfirmModal({
             message: (
@@ -875,6 +909,133 @@ export default function IdeaBin() {
       }).catch(() => {});
     }
   }, [transformModal, projectId]);
+
+  // ── Listen for dep-refactor-drop events (Dependencies → IdeaBin reverse transform) ──
+  useEffect(() => {
+    const handleRefactorDrop = (e) => {
+      const { type, id, name, description, color, taskIds, milestones: milestonesPayload, taskId, taskName } = e.detail || {};
+      if (!type || !id) return;
+
+      if (type === "milestone") {
+        const mName = name || "Milestone";
+        const mDesc = description || "";
+        setConfirmModal({
+          message: (
+            <div>
+              <p className="mb-1 text-sm font-medium">🏁 Refactor Milestone → Idea?</p>
+              <p className="text-xs text-gray-600">
+                Convert milestone <span className="font-semibold">"{mName}"</span> into an idea.
+                The milestone will be <span className="text-red-600 font-semibold">deleted</span> from the dependency view.
+              </p>
+            </div>
+          ),
+          confirmLabel: "Convert to Idea",
+          confirmColor: "bg-orange-500 hover:bg-orange-600",
+          onConfirm: async () => {
+            try {
+              await authFetch(`${API}/create_idea/`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  idea_name: mName,
+                  description: mDesc,
+                  headline: mName,
+                }),
+              });
+              await delete_milestone(projectId, id);
+              window.dispatchEvent(new CustomEvent("ideabin-dep-refresh"));
+              fetch_all_ideas();
+            } catch (err) {
+              console.error("Refactor milestone failed:", err);
+            }
+            setConfirmModal(null);
+          },
+          onCancel: () => setConfirmModal(null),
+        });
+      } else if (type === "task") {
+        const tName = name || "Task";
+        const tDesc = description || "";
+        const mList = milestonesPayload || [];
+        let ideaDesc = tDesc;
+        if (mList.length > 0) {
+          const msText = mList.map(m => `${m.name || "Milestone"}${m.description ? ": " + m.description : ""}`).join("\n\n");
+          ideaDesc = ideaDesc ? `${ideaDesc}\n\nMilestones:\n${msText}` : `Milestones:\n${msText}`;
+        }
+        setConfirmModal({
+          message: (
+            <div>
+              <p className="mb-1 text-sm font-medium">📋 Refactor Task → Idea?</p>
+              <p className="text-xs text-gray-600">
+                Convert task <span className="font-semibold">"{tName}"</span> into an idea.
+                The task and its <span className="font-semibold">{mList.length} milestone{mList.length !== 1 ? "s" : ""}</span> will be <span className="text-red-600 font-semibold">deleted</span>.
+              </p>
+            </div>
+          ),
+          confirmLabel: "Convert to Idea",
+          confirmColor: "bg-orange-500 hover:bg-orange-600",
+          onConfirm: async () => {
+            try {
+              await authFetch(`${API}/create_idea/`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  idea_name: tName,
+                  description: ideaDesc,
+                  headline: tName,
+                }),
+              });
+              await delete_task(projectId, id);
+              window.dispatchEvent(new CustomEvent("ideabin-dep-refresh"));
+              fetch_all_ideas();
+            } catch (err) {
+              console.error("Refactor task failed:", err);
+            }
+            setConfirmModal(null);
+          },
+          onCancel: () => setConfirmModal(null),
+        });
+      } else if (type === "team") {
+        const teamName = name || "Team";
+        const tIds = taskIds || [];
+        setConfirmModal({
+          message: (
+            <div>
+              <p className="mb-1 text-sm font-medium">🏢 Refactor Team → Idea?</p>
+              <p className="text-xs text-gray-600">
+                Convert team <span className="font-semibold" style={{ color: color || "#94a3b8" }}>"{teamName}"</span> into an idea.
+                The team will be <span className="text-red-600 font-semibold">deleted</span>.
+                {tIds.length > 0 && <> Its <span className="font-semibold">{tIds.length} task{tIds.length !== 1 ? "s" : ""}</span> will become unassigned.</>}
+              </p>
+            </div>
+          ),
+          confirmLabel: "Convert to Idea",
+          confirmColor: "bg-orange-500 hover:bg-orange-600",
+          onConfirm: async () => {
+            try {
+              await authFetch(`${API}/create_idea/`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  idea_name: teamName,
+                  description: tIds.length > 0 ? `Team with ${tIds.length} task(s)` : "",
+                  headline: teamName,
+                }),
+              });
+              await delete_team(projectId, id);
+              window.dispatchEvent(new CustomEvent("ideabin-dep-refresh"));
+              fetch_all_ideas();
+            } catch (err) {
+              console.error("Refactor team failed:", err);
+            }
+            setConfirmModal(null);
+          },
+          onCancel: () => setConfirmModal(null),
+        });
+      }
+    };
+    window.addEventListener("dep-refactor-drop", handleRefactorDrop);
+    return () => window.removeEventListener("dep-refactor-drop", handleRefactorDrop);
+  }, [projectId, API]);
 
   // ── Transform handlers ──
   const openTransform = (idea) => {
@@ -1092,6 +1253,7 @@ export default function IdeaBin() {
       {isOpen && (
         <div
           ref={windowRef}
+          data-ideabin-window
           style={{
             position: "fixed",
             left: windowPos.x,
@@ -1459,12 +1621,13 @@ export default function IdeaBin() {
                         >
                           Unassigned ({unassignedCount})
                         </div>
-                        {activeCategories.map(([catKey, catData]) => (
+                        {Object.entries(categories).map(([catKey, catData]) => (
                           <div
                             key={catKey}
                             onClick={() => { setListFilter(catKey); setShowListFilterDropdown(false); }}
-                            className={`px-2.5 py-1.5 text-[11px] cursor-pointer transition-colors ${String(listFilter) === String(catKey) ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-50 text-gray-700"}`}
+                            className={`px-2.5 py-1.5 text-[11px] cursor-pointer transition-colors flex items-center gap-1.5 ${String(listFilter) === String(catKey) ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-50 text-gray-700"}`}
                           >
+                            {catData.archived && <span className="text-[9px] text-gray-400">📦</span>}
                             {catData.name} ({(categoryOrders[catKey] || []).length})
                           </div>
                         ))}
@@ -1890,27 +2053,34 @@ export default function IdeaBin() {
           <div
             className="rounded-lg shadow-xl border-2 px-2.5 py-1.5 text-xs font-medium"
             style={{
-              backgroundColor: externalGhost.teamId
-                ? (externalGhost.taskId ? "#dbeafe" : "#fef3c7")
-                : "#ffffff",
-              borderColor: externalGhost.teamId
-                ? (externalGhost.taskId ? "#3b82f6" : (externalGhost.teamColor || "#f59e0b"))
-                : "#d1d5db",
+              backgroundColor: externalGhost.dayIndex !== null && externalGhost.dayIndex !== undefined
+                ? "#ede9fe"
+                : externalGhost.teamId
+                  ? (externalGhost.taskId ? "#dbeafe" : "#fef3c7")
+                  : "#ffffff",
+              borderColor: externalGhost.dayIndex !== null && externalGhost.dayIndex !== undefined
+                ? "#7c3aed"
+                : externalGhost.teamId
+                  ? (externalGhost.taskId ? "#3b82f6" : (externalGhost.teamColor || "#f59e0b"))
+                  : "#d1d5db",
               color: "#1f2937",
             }}
           >
             <div className="truncate">
               {externalGhost.idea.headline || externalGhost.idea.title.split(/\s+/).slice(0, 5).join(" ")}
             </div>
-            {externalGhost.teamId && (
+            {externalGhost.dayIndex !== null && externalGhost.dayIndex !== undefined && externalGhost.taskId ? (
+              <div className="text-[10px] mt-0.5 opacity-80">
+                🏁 Day {parseInt(externalGhost.dayIndex) + 1}
+              </div>
+            ) : externalGhost.teamId ? (
               <div className="text-[10px] mt-0.5 opacity-80">
                 {externalGhost.taskId
                   ? <>🏁 → <span className="font-semibold">{externalGhost.taskName}</span></>
                   : <>📋 → <span className="font-semibold" style={{ color: externalGhost.teamColor }}>{externalGhost.teamName}</span></>
                 }
               </div>
-            )}
-            {!externalGhost.teamId && (
+            ) : (
               <div className="text-[10px] mt-0.5 text-gray-400 italic">Drag onto a team or task...</div>
             )}
           </div>

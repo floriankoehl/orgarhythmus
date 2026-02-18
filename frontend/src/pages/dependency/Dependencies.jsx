@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { 
   getTaskHeight as getTaskHeightBase, 
   getRawTeamHeight as getRawTeamHeightBase, 
@@ -197,6 +197,11 @@ function DependenciesContent() {
   // safeMode is derived from viewMode - inspection mode is safe
   const safeMode = viewMode === "inspection";
 
+  // ── Refactor mode: drag teams/tasks/milestones → IdeaBin ──
+  const [refactorMode, setRefactorMode] = useState(false);
+  const [refactorGhost, setRefactorGhost] = useState(null); // { type, id, name, color, x, y, overIdeaBin }
+  const refactorDragging = useRef(false);
+
   const handleDayHeaderClick = (dayIndex) => {
     const dayData = projectDays[dayIndex] || {};
     setDayPurposeModal({
@@ -207,6 +212,45 @@ function DependenciesContent() {
     setNewDayPurpose(dayData.purpose || "");
     setNewDayPurposeTeams(dayData.purpose_teams || null);
   };
+
+  // ── Refactor drag: pick up a team / task / milestone and drop on IdeaBin ──
+  const handleRefactorDrag = useCallback((e, type, payload) => {
+    if (!refactorMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    refactorDragging.current = true;
+
+    let ghost = { type, ...payload, x: e.clientX, y: e.clientY, overIdeaBin: false };
+    setRefactorGhost(ghost);
+
+    const onMove = (ev) => {
+      const ideaBinEl = document.querySelector("[data-ideabin-window]");
+      let overIdeaBin = false;
+      if (ideaBinEl) {
+        const r = ideaBinEl.getBoundingClientRect();
+        overIdeaBin = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+      }
+      ghost = { ...ghost, x: ev.clientX, y: ev.clientY, overIdeaBin };
+      setRefactorGhost(ghost);
+    };
+
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      refactorDragging.current = false;
+
+      if (ghost.overIdeaBin) {
+        // Dispatch event so IdeaBin can handle the drop
+        window.dispatchEvent(new CustomEvent("dep-refactor-drop", {
+          detail: { type, ...payload },
+        }));
+      }
+      setRefactorGhost(null);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [refactorMode]);
 
 
   // ... (keep all other existing functions like getTeamHeight, handleTeamDrag, etc.)
@@ -789,6 +833,9 @@ function DependenciesContent() {
           selectedConnection={selectedConnection}
           // Delete handler
           onDeleteSelected={handleDeleteSelected}
+          // Refactor mode
+          refactorMode={refactorMode}
+          setRefactorMode={setRefactorMode}
         />
 
         <DependencyCanvas
@@ -880,8 +927,56 @@ function DependenciesContent() {
           setHoveredDayCell={setHoveredDayCell}
           marqueeRect={marqueeRect}
           handleMarqueeStart={handleMarqueeStart}
+          // Refactor mode
+          refactorMode={refactorMode}
+          handleRefactorDrag={handleRefactorDrag}
         />
       </div>
+
+      {/* Refactor mode: floating ghost card follows cursor */}
+      {refactorGhost && (
+        <div
+          id="refactor-ghost"
+          style={{
+            position: "fixed",
+            left: refactorGhost.x + 14,
+            top: refactorGhost.y - 10,
+            zIndex: 99999,
+            pointerEvents: "none",
+            transition: "background-color 0.15s, border-color 0.15s",
+          }}
+          className={`px-3 py-2 rounded-lg shadow-lg border-2 text-xs font-semibold max-w-[200px] truncate ${
+            refactorGhost.overIdeaBin
+              ? "bg-yellow-100 border-yellow-500 text-yellow-800"
+              : "bg-white border-slate-300 text-slate-700"
+          }`}
+        >
+          {refactorGhost.overIdeaBin ? "💡 " : ""}
+          {refactorGhost.type === "team" && `🏢 ${refactorGhost.name}`}
+          {refactorGhost.type === "task" && `📋 ${refactorGhost.name}`}
+          {refactorGhost.type === "milestone" && `🏁 ${refactorGhost.name}`}
+          {refactorGhost.overIdeaBin && (
+            <div className="text-[10px] font-normal text-yellow-600 mt-0.5">Drop to create idea</div>
+          )}
+        </div>
+      )}
+
+      {/* Refactor mode active: pulsing banner */}
+      {refactorMode && (
+        <div
+          style={{ position: "fixed", bottom: 16, left: "50%", transform: "translateX(-50%)", zIndex: 99998 }}
+          className="px-4 py-2 rounded-full bg-orange-500 text-white text-xs font-bold shadow-lg animate-pulse flex items-center gap-2"
+        >
+          <span>🔧 Refactor Mode</span>
+          <span className="font-normal opacity-80">— drag items to IdeaBin</span>
+          <button
+            onClick={() => setRefactorMode(false)}
+            className="ml-2 px-2 py-0.5 rounded bg-orange-700 hover:bg-orange-800 text-white text-[10px] font-semibold"
+          >
+            Exit
+          </button>
+        </div>
+      )}
     </>
   );
 }

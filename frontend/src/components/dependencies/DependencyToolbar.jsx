@@ -9,6 +9,7 @@ import FilterListIcon from '@mui/icons-material/FilterList';
 import GroupAddIcon from '@mui/icons-material/GroupAdd';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import DeleteIcon from '@mui/icons-material/Delete';
+import BuildIcon from '@mui/icons-material/Build';
 
 import {
   DEFAULT_TASKHEIGHT_NORMAL,
@@ -75,6 +76,9 @@ export default function DependencyToolbar({
   selectedConnection,
   // Delete handler
   onDeleteSelected,
+  // Refactor mode
+  refactorMode,
+  setRefactorMode,
 }) {
   const hasSelection = selectedMilestones?.size > 0 || selectedConnection;
   
@@ -437,6 +441,23 @@ export default function DependencyToolbar({
             >
               <DeleteIcon style={{ fontSize: 14 }} />
               {hasSelection && <span>{getDeleteLabel()}</span>}
+            </button>
+
+            {/* Refactor Mode Toggle */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setRefactorMode(!refactorMode);
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition ${
+                refactorMode 
+                  ? 'border-orange-400 bg-orange-50 text-orange-700 ring-1 ring-orange-300' 
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+              title={refactorMode ? "Exit refactor mode" : "Enter refactor mode – drag items back to IdeaBin"}
+            >
+              <BuildIcon style={{ fontSize: 14 }} />
+              <span>Refactor</span>
             </button>
           </div>
           {isAddingMilestone && (
