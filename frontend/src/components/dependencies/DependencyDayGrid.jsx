@@ -62,7 +62,9 @@ export default function DependencyDayGrid({
                       data-dep-day-task-id={task_key}
                       data-dep-day-task-name={tasks?.[task_key]?.name || ''}
                       data-dep-day-team-id={team_key}
-                      className={`border-r border-slate-100 transition-colors ${
+                      data-dep-day-label={dayInfo?.dateStr || ''}
+                      data-dep-day-weekday={dayInfo?.dayNameShort || ''}
+                      className={`dep-day-cell border-r border-slate-100 transition-colors ${
                         isAddingMilestone ? 'cursor-pointer hover:bg-blue-50' : ''
                       } ${isHovered ? 'bg-blue-100' : ''}`}
                       style={{

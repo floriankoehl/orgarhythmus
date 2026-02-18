@@ -605,7 +605,8 @@ export default function IdeaBin() {
     let dropTarget = null;
     let ghost = { idea, x: e.clientX, y: e.clientY };
     let isExternal = false;
-    let extInfo = { teamId: null, teamName: null, teamColor: null, taskId: null, taskName: null, dayIndex: null };
+    let extInfo = { teamId: null, teamName: null, teamColor: null, taskId: null, taskName: null, dayIndex: null, dayLabel: null, dayWeekday: null };
+    let lastHighlightedCell = null;
 
     setDragging(ghost);
     setPrevIndex(index);
@@ -646,13 +647,32 @@ export default function IdeaBin() {
           taskId: taskEl?.dataset?.depTaskId || dayEl?.dataset?.depDayTaskId || null,
           taskName: taskEl?.dataset?.depTaskName || dayEl?.dataset?.depDayTaskName || null,
           dayIndex: dayEl?.dataset?.depDayIndex ?? null,
+          dayLabel: dayEl?.dataset?.depDayLabel || null,
+          dayWeekday: dayEl?.dataset?.depDayWeekday || null,
         };
+
+        // Highlight the hovered day cell
+        if (lastHighlightedCell && lastHighlightedCell !== dayEl) {
+          lastHighlightedCell.style.backgroundColor = '';
+          lastHighlightedCell.style.outline = '';
+        }
+        if (dayEl) {
+          dayEl.style.backgroundColor = '#ddd6fe';
+          dayEl.style.outline = '2px solid #7c3aed';
+          lastHighlightedCell = dayEl;
+        } else if (lastHighlightedCell) {
+          lastHighlightedCell.style.backgroundColor = '';
+          lastHighlightedCell.style.outline = '';
+          lastHighlightedCell = null;
+        }
 
         setExternalGhost({
           idea,
           x: ev.clientX,
           y: ev.clientY,
           ...extInfo,
+          dayLabel: extInfo.dayLabel,
+          dayWeekday: extInfo.dayWeekday,
         });
         setHoverCategory(null);
         setHoverUnassigned(false);
@@ -662,8 +682,13 @@ export default function IdeaBin() {
 
       // Inside IdeaBin — clear external ghost
       isExternal = false;
-      extInfo = { teamId: null, teamName: null, teamColor: null, taskId: null, taskName: null, dayIndex: null };
+      extInfo = { teamId: null, teamName: null, teamColor: null, taskId: null, taskName: null, dayIndex: null, dayLabel: null, dayWeekday: null };
       setExternalGhost(null);
+      if (lastHighlightedCell) {
+        lastHighlightedCell.style.backgroundColor = '';
+        lastHighlightedCell.style.outline = '';
+        lastHighlightedCell = null;
+      }
 
       let foundUnassigned = false;
       if (IdeaListRef.current) {
@@ -708,6 +733,12 @@ export default function IdeaBin() {
     };
 
     const onUp = () => {
+      // Clear any highlighted day cell
+      if (lastHighlightedCell) {
+        lastHighlightedCell.style.backgroundColor = '';
+        lastHighlightedCell.style.outline = '';
+        lastHighlightedCell = null;
+      }
       setExternalGhost(null);
 
       // External drop — onto Dependencies team, task, or day grid
@@ -717,14 +748,16 @@ export default function IdeaBin() {
 
         if (extInfo.dayIndex !== null && extInfo.taskId) {
           // Dropped on a day grid cell → create milestone at this day position
-          const dayNum = parseInt(extInfo.dayIndex) + 1;
+          const dayDateStr = extInfo.dayLabel
+            ? `${extInfo.dayWeekday || ''} ${extInfo.dayLabel}`.trim()
+            : `Day ${parseInt(extInfo.dayIndex) + 1}`;
           setConfirmModal({
             message: (
               <div>
                 <p className="mb-1 text-sm font-medium">Create Milestone?</p>
                 <p className="text-xs text-gray-600">
                   Place milestone <span className="font-semibold">"{truncatedName}"</span>{" "}
-                  on <span className="font-semibold">Day {dayNum}</span>{" "}
+                  on <span className="font-semibold">{dayDateStr}</span>{" "}
                   of task <span className="font-semibold">"{extInfo.taskName || "task"}"</span>
                 </p>
               </div>
@@ -2010,7 +2043,7 @@ export default function IdeaBin() {
       )}
 
       {/* ── Drag ghosts (fixed, above everything) ── */}
-      {dragging && (
+      {dragging && !externalGhost && (
         <div
           style={{
             top: dragging.y, left: dragging.x,
@@ -2071,7 +2104,7 @@ export default function IdeaBin() {
             </div>
             {externalGhost.dayIndex !== null && externalGhost.dayIndex !== undefined && externalGhost.taskId ? (
               <div className="text-[10px] mt-0.5 opacity-80">
-                🏁 Day {parseInt(externalGhost.dayIndex) + 1}
+                🏁 {externalGhost.dayLabel ? `${externalGhost.dayWeekday || ''} ${externalGhost.dayLabel}`.trim() : `Day ${parseInt(externalGhost.dayIndex) + 1}`}
               </div>
             ) : externalGhost.teamId ? (
               <div className="text-[10px] mt-0.5 opacity-80">
