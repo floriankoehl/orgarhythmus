@@ -80,7 +80,7 @@ const SOUND_FILES = {
   ideaDelete:            rewindSound,            // idea deleted
   ideaDragDrop:          idea2Sound,             // idea reorder / category drop
   ideaTransform:         ideaConvertSound,       // idea transformed to task/milestone
-  ideaRefactor:          ideaCoinSound,          // dep item refactored back to idea
+  ideaRefactor:          ideaConvertSound,          // dep item refactored back to idea
   ideaCategoryCreate:    ideaNotifSound,         // category created
   ideaCategoryArchive:   subtleSound,            // category archived/unarchived
   ideaCategoryDelete:    rewindSound,            // category deleted
