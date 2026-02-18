@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import UnfoldLessDoubleIcon from '@mui/icons-material/UnfoldLessDouble';
@@ -14,6 +15,10 @@ import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
 import DeleteIcon from '@mui/icons-material/Delete';
 import BuildIcon from '@mui/icons-material/Build';
 import ViewTimelineIcon from '@mui/icons-material/ViewTimeline';
+import SaveIcon from '@mui/icons-material/Save';
+import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
+import ViewListIcon from '@mui/icons-material/ViewList';
 
 import {
   DEFAULT_TASKHEIGHT_NORMAL,
@@ -114,8 +119,25 @@ export default function DependencyToolbar({
   showAllTeamPhases,
   hideAllTeamPhases,
   teamPhasesMap = {},
+  // Views
+  savedViews = [],
+  activeViewId,
+  activeViewName,
+  onLoadView,
+  onSaveView,
+  onCreateView,
+  onRenameView,
+  onDeleteView,
 }) {
   const hasSelection = selectedMilestones?.size > 0 || selectedConnection;
+
+  // ── View UI state ──
+  const [showViewDropdown, setShowViewDropdown] = useState(false);
+  const [newViewName, setNewViewName] = useState("");
+  const [isCreatingView, setIsCreatingView] = useState(false);
+  const [renamingViewId, setRenamingViewId] = useState(null);
+  const [renameText, setRenameText] = useState("");
+  const [confirmDeleteViewId, setConfirmDeleteViewId] = useState(null);
   
   // Compute how many teams are hidden via teamDisplaySettings
   const filteredTeamCount = teamOrder.filter(tid => teamDisplaySettings[tid]?.hidden).length;
@@ -348,6 +370,15 @@ export default function DependencyToolbar({
                             className="rounded border-slate-300"
                           />
                           <span>Auto-select blocking milestones</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={depSettings.weakDepPrompt !== false}
+                            onChange={(e) => setDepSettings(prev => ({ ...prev, weakDepPrompt: e.target.checked }))}
+                            className="rounded border-slate-300"
+                          />
+                          <span>Ask before blocking weak deps</span>
                         </label>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-slate-600 w-24">Warn time:</span>
@@ -857,6 +888,201 @@ export default function DependencyToolbar({
                       );
                     })}
                   </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Section 5: Views */}
+        <div className="p-3 flex-shrink-0" style={{ minWidth: '180px' }}>
+          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+            Views
+          </h3>
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowViewDropdown(!showViewDropdown);
+              }}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition w-full justify-between ${
+                showViewDropdown
+                  ? 'border-teal-400 bg-teal-50 text-teal-700'
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <div className="flex items-center gap-1.5 min-w-0">
+                <ViewListIcon style={{ fontSize: 14 }} />
+                <span className="truncate">{activeViewName || "Default"}</span>
+              </div>
+              <span className="text-[10px] opacity-60">{savedViews.length > 0 ? `${savedViews.length}` : ''}</span>
+            </button>
+
+            {showViewDropdown && (
+              <div
+                className="absolute top-full right-0 mt-1 w-72 rounded-lg border border-slate-200 bg-white shadow-xl z-50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="p-3 space-y-2">
+                  {/* Default view */}
+                  <button
+                    onClick={() => {
+                      onLoadView(null);
+                      setShowViewDropdown(false);
+                    }}
+                    className={`w-full text-left px-2 py-1.5 rounded text-xs transition ${
+                      !activeViewId
+                        ? 'bg-teal-50 text-teal-700 font-semibold'
+                        : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    Default
+                    <span className="ml-1 text-[10px] text-slate-400">(unsaved)</span>
+                  </button>
+
+                  {/* Saved views */}
+                  {savedViews.length > 0 && (
+                    <div className="border-t border-slate-100 pt-2 space-y-1">
+                      {savedViews.map(view => (
+                        <div key={view.id} className={`flex items-center gap-1 rounded px-2 py-1.5 transition ${
+                          activeViewId === view.id ? 'bg-teal-50' : 'hover:bg-slate-50'
+                        }`}>
+                          {/* Rename mode */}
+                          {renamingViewId === view.id ? (
+                            <form
+                              className="flex-1 flex items-center gap-1"
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                if (renameText.trim()) {
+                                  onRenameView(view.id, renameText);
+                                  setRenamingViewId(null);
+                                }
+                              }}
+                            >
+                              <input
+                                type="text"
+                                value={renameText}
+                                onChange={(e) => setRenameText(e.target.value)}
+                                autoFocus
+                                className="flex-1 text-xs border border-slate-300 rounded px-1.5 py-0.5 focus:outline-none focus:border-teal-400"
+                                onBlur={() => setRenamingViewId(null)}
+                                onKeyDown={(e) => { if (e.key === 'Escape') setRenamingViewId(null); }}
+                              />
+                            </form>
+                          ) : (
+                            <>
+                              {/* View name - click to load */}
+                              <button
+                                onClick={() => {
+                                  onLoadView(view);
+                                  setShowViewDropdown(false);
+                                }}
+                                className={`flex-1 text-left text-xs truncate ${
+                                  activeViewId === view.id ? 'text-teal-700 font-semibold' : 'text-slate-600'
+                                }`}
+                              >
+                                {view.name}
+                              </button>
+                              {/* Edit (rename) */}
+                              <button
+                                onClick={() => {
+                                  setRenamingViewId(view.id);
+                                  setRenameText(view.name);
+                                }}
+                                className="p-0.5 text-slate-400 hover:text-slate-600 rounded"
+                                title="Rename view"
+                              >
+                                <EditIcon style={{ fontSize: 12 }} />
+                              </button>
+                              {/* Delete */}
+                              {confirmDeleteViewId === view.id ? (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => {
+                                      onDeleteView(view.id);
+                                      setConfirmDeleteViewId(null);
+                                    }}
+                                    className="text-[10px] text-red-600 hover:text-red-700 font-semibold"
+                                  >
+                                    Yes
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmDeleteViewId(null)}
+                                    className="text-[10px] text-slate-400 hover:text-slate-600"
+                                  >
+                                    No
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setConfirmDeleteViewId(view.id)}
+                                  className="p-0.5 text-slate-400 hover:text-red-500 rounded"
+                                  title="Delete view"
+                                >
+                                  <DeleteIcon style={{ fontSize: 12 }} />
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Save current view (only when on a saved view) */}
+                  {activeViewId && (
+                    <button
+                      onClick={() => {
+                        onSaveView();
+                        setShowViewDropdown(false);
+                      }}
+                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs rounded-lg border border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100 transition mt-1"
+                    >
+                      <SaveIcon style={{ fontSize: 13 }} />
+                      <span>Save "{activeViewName}"</span>
+                    </button>
+                  )}
+
+                  {/* Create new view */}
+                  {isCreatingView ? (
+                    <form
+                      className="flex items-center gap-1 mt-1"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (newViewName.trim()) {
+                          onCreateView(newViewName);
+                          setNewViewName("");
+                          setIsCreatingView(false);
+                          setShowViewDropdown(false);
+                        }
+                      }}
+                    >
+                      <input
+                        type="text"
+                        value={newViewName}
+                        onChange={(e) => setNewViewName(e.target.value)}
+                        placeholder="View name…"
+                        autoFocus
+                        className="flex-1 text-xs border border-slate-300 rounded px-2 py-1 focus:outline-none focus:border-teal-400"
+                        onKeyDown={(e) => { if (e.key === 'Escape') { setIsCreatingView(false); setNewViewName(""); } }}
+                      />
+                      <button
+                        type="submit"
+                        disabled={!newViewName.trim()}
+                        className="px-2 py-1 text-xs rounded bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-40 transition"
+                      >
+                        Create
+                      </button>
+                    </form>
+                  ) : (
+                    <button
+                      onClick={() => setIsCreatingView(true)}
+                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs rounded-lg border border-dashed border-slate-300 text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition mt-1"
+                    >
+                      <AddIcon style={{ fontSize: 13 }} />
+                      <span>New View</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}

@@ -13,6 +13,7 @@ from ..models import (
     LegendType,
     Day,
     Phase,
+    DependencyView,
 )
 
 
@@ -225,6 +226,21 @@ class PhaseSerializer(serializers.ModelSerializer):
         model = Phase
         fields = ["id", "project", "team", "name", "start_index", "duration", "color", "order_index"]
         read_only_fields = ["id", "project"]
+
+
+# DependencyViewSerializer
+class DependencyViewSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DependencyView
+        fields = ["id", "project", "name", "state", "created_by", "created_by_name", "created_at", "updated_at"]
+        read_only_fields = ["id", "project", "created_by", "created_at", "updated_at"]
+
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return obj.created_by.username
+        return None
 
 
 # _____________________________ END OF NEW ADDING ______________________________

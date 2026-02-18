@@ -33,7 +33,7 @@ import { useDependencyInteraction } from './useDependencyInteraction';
 import { useDependencyData } from './useDependencyData';
 import { useDependencyUIState } from './useDependencyUIState';
 import { useDependencyActions } from './useDependencyActions';
-import { set_task_deadline, update_start_index, update_dependency, create_dependency, delete_dependency_api, create_phase, update_phase, delete_phase } from '../../api/dependencies_api';
+import { set_task_deadline, update_start_index, update_dependency, create_dependency, delete_dependency_api, create_phase, update_phase, delete_phase, get_all_views, create_view, update_view, delete_view } from '../../api/dependencies_api';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
@@ -159,6 +159,7 @@ function DependenciesContent() {
     uniformVisuals: false,       // all deps same thickness (no weight differentiation)
     filterWeights: [],           // empty = show all; otherwise array of 'strong'|'weak'|'suggestion'
     defaultDepWeight: 'strong',  // default weight when creating new dependencies
+    weakDepPrompt: true,         // show prompt on weak dep conflict (false = auto-block)
   });
 
   // Connection edit modal (for editing weight/reason of a selected connection)
@@ -190,6 +191,11 @@ function DependenciesContent() {
   // Column widths (resizable)
   const [teamColumnWidth, setTeamColumnWidth] = useState(DEFAULT_TEAMWIDTH_CONSTANT);
   const [taskColumnWidth, setTaskColumnWidth] = useState(DEFAULT_TASKWIDTH_CONSTANT);
+
+  // ── Views (saveable frontend state snapshots) ──
+  const [savedViews, setSavedViews] = useState([]);
+  const [activeViewId, setActiveViewId] = useState(null); // null = Default view
+  const [activeViewName, setActiveViewName] = useState("Default");
 
   // Dynamic constants based on settings
   const DAYWIDTH = customDayWidth;
@@ -385,6 +391,150 @@ function DependenciesContent() {
   const hideAllTeamPhases = useCallback(() => {
     setCollapseAllTeamPhases(true);
   }, []);
+
+  // ═══════════════ Views (saveable state snapshots) ═══════════════
+
+  // Collect all saveable frontend state into a JSON-serializable object
+  const collectViewState = useCallback(() => ({
+    taskDisplaySettings,
+    teamDisplaySettings,
+    viewMode,
+    mode,
+    collapsedDays: [...collapsedDays],
+    selectedDays: [...selectedDays],
+    depSettings,
+    showPhaseColorsInGrid,
+    expandedTaskView,
+    hideAllDependencies,
+    hideCollapsedDependencies,
+    hideCollapsedMilestones,
+    showEmptyTeams,
+    customDayWidth,
+    customTaskHeightNormal,
+    customTaskHeightSmall,
+    collapsedTeamPhaseRows: [...collapsedTeamPhaseRows],
+    collapseAllTeamPhases,
+    teamColumnWidth,
+    taskColumnWidth,
+    autoSelectBlocking,
+    warningDuration,
+    refactorMode,
+  }), [
+    taskDisplaySettings, teamDisplaySettings, viewMode, mode,
+    collapsedDays, selectedDays, depSettings, showPhaseColorsInGrid,
+    expandedTaskView, hideAllDependencies, hideCollapsedDependencies,
+    hideCollapsedMilestones, showEmptyTeams, customDayWidth,
+    customTaskHeightNormal, customTaskHeightSmall, collapsedTeamPhaseRows,
+    collapseAllTeamPhases, teamColumnWidth, taskColumnWidth,
+    autoSelectBlocking, warningDuration, refactorMode,
+  ]);
+
+  // Apply a saved view state, restoring all settings
+  const applyViewState = useCallback((state) => {
+    if (!state) return;
+    if (state.taskDisplaySettings !== undefined) setTaskDisplaySettings(state.taskDisplaySettings);
+    if (state.teamDisplaySettings !== undefined) setTeamDisplaySettings(state.teamDisplaySettings);
+    if (state.viewMode !== undefined) { setViewMode(state.viewMode); baseViewModeRef.current = state.viewMode; }
+    if (state.mode !== undefined) setMode(state.mode);
+    if (state.collapsedDays !== undefined) setCollapsedDays(new Set(state.collapsedDays));
+    if (state.selectedDays !== undefined) setSelectedDays(new Set(state.selectedDays));
+    if (state.depSettings !== undefined) setDepSettings(state.depSettings);
+    if (state.showPhaseColorsInGrid !== undefined) setShowPhaseColorsInGrid(state.showPhaseColorsInGrid);
+    if (state.expandedTaskView !== undefined) setExpandedTaskView(state.expandedTaskView);
+    if (state.hideAllDependencies !== undefined) setHideAllDependencies(state.hideAllDependencies);
+    if (state.hideCollapsedDependencies !== undefined) setHideCollapsedDependencies(state.hideCollapsedDependencies);
+    if (state.hideCollapsedMilestones !== undefined) setHideCollapsedMilestones(state.hideCollapsedMilestones);
+    if (state.showEmptyTeams !== undefined) setShowEmptyTeams(state.showEmptyTeams);
+    if (state.customDayWidth !== undefined) setCustomDayWidth(state.customDayWidth);
+    if (state.customTaskHeightNormal !== undefined) setCustomTaskHeightNormal(state.customTaskHeightNormal);
+    if (state.customTaskHeightSmall !== undefined) setCustomTaskHeightSmall(state.customTaskHeightSmall);
+    if (state.collapsedTeamPhaseRows !== undefined) setCollapsedTeamPhaseRows(new Set(state.collapsedTeamPhaseRows));
+    if (state.collapseAllTeamPhases !== undefined) setCollapseAllTeamPhases(state.collapseAllTeamPhases);
+    if (state.teamColumnWidth !== undefined) setTeamColumnWidth(state.teamColumnWidth);
+    if (state.taskColumnWidth !== undefined) setTaskColumnWidth(state.taskColumnWidth);
+    if (state.autoSelectBlocking !== undefined) setAutoSelectBlocking(state.autoSelectBlocking);
+    if (state.warningDuration !== undefined) setWarningDuration(state.warningDuration);
+    if (state.refactorMode !== undefined) setRefactorMode(state.refactorMode);
+  }, []);
+
+  // Fetch saved views on mount
+  useEffect(() => {
+    if (!projectId) return;
+    get_all_views(projectId)
+      .then(data => setSavedViews(data || []))
+      .catch(err => console.error("Failed to load views:", err));
+  }, [projectId]);
+
+  // Load a view (switch to it)
+  const handleLoadView = useCallback((view) => {
+    if (!view) {
+      // Reset to default
+      setActiveViewId(null);
+      setActiveViewName("Default");
+      return;
+    }
+    applyViewState(view.state);
+    setActiveViewId(view.id);
+    setActiveViewName(view.name);
+  }, [applyViewState]);
+
+  // Save current state to active view
+  const handleSaveView = useCallback(async () => {
+    if (!activeViewId) return; // can't save the default view
+    try {
+      const state = collectViewState();
+      const updated = await update_view(projectId, activeViewId, { state });
+      setSavedViews(prev => prev.map(v => v.id === activeViewId ? { ...v, ...updated } : v));
+    } catch (err) {
+      console.error("Failed to save view:", err);
+      alert("Failed to save view: " + (err.message || err));
+    }
+  }, [projectId, activeViewId, collectViewState]);
+
+  // Create a new view from current state
+  const handleCreateView = useCallback(async (name) => {
+    if (!name?.trim()) return;
+    try {
+      const state = collectViewState();
+      const created = await create_view(projectId, { name: name.trim(), state });
+      setSavedViews(prev => [...prev, created]);
+      setActiveViewId(created.id);
+      setActiveViewName(created.name);
+    } catch (err) {
+      console.error("Failed to create view:", err);
+      alert("Failed to create view: " + (err.message || err));
+    }
+  }, [projectId, collectViewState]);
+
+  // Rename a view
+  const handleRenameView = useCallback(async (viewId, newName) => {
+    if (!newName?.trim()) return;
+    try {
+      const updated = await update_view(projectId, viewId, { name: newName.trim() });
+      setSavedViews(prev => prev.map(v => v.id === viewId ? { ...v, ...updated } : v));
+      if (viewId === activeViewId) setActiveViewName(newName.trim());
+    } catch (err) {
+      console.error("Failed to rename view:", err);
+      alert("Failed to rename view: " + (err.message || err));
+    }
+  }, [projectId, activeViewId]);
+
+  // Delete a view
+  const handleDeleteView = useCallback(async (viewId) => {
+    try {
+      await delete_view(projectId, viewId);
+      setSavedViews(prev => prev.filter(v => v.id !== viewId));
+      if (viewId === activeViewId) {
+        setActiveViewId(null);
+        setActiveViewName("Default");
+      }
+    } catch (err) {
+      console.error("Failed to delete view:", err);
+      alert("Failed to delete view: " + (err.message || err));
+    }
+  }, [projectId, activeViewId]);
+
+  // ═══════════════ End Views ═══════════════
 
   // ── Phase CRUD handlers ──
   const handleCreatePhase = useCallback(async (phaseData) => {
@@ -947,6 +1097,24 @@ function DependenciesContent() {
     });
   }, [handleUpdateConnection, setMilestones, setConnections, projectId, pushAction]);
 
+  // Auto-block weak dep conflicts when the prompt setting is disabled
+  useEffect(() => {
+    if (weakDepModal && !depSettings.weakDepPrompt) {
+      // Auto-block: just close modal and auto-select blocking milestones
+      if (autoSelectBlocking) {
+        const blockIds = weakDepModal.blockingMilestoneIds || [];
+        const moveIds = weakDepModal.milestonesToMove || [];
+        setSelectedMilestones(prev => {
+          const newSet = new Set(prev);
+          for (const mId of moveIds) newSet.add(mId);
+          for (const bId of blockIds) newSet.add(bId);
+          return newSet;
+        });
+      }
+      setWeakDepModal(null);
+    }
+  }, [weakDepModal, depSettings.weakDepPrompt, autoSelectBlocking, setSelectedMilestones, setWeakDepModal]);
+
   // Toggle task size
   const toggleTaskSize = (taskId) => {
     setTaskDisplaySettings(prev => ({
@@ -1233,7 +1401,20 @@ function DependenciesContent() {
         weakDepModal={weakDepModal}
         setWeakDepModal={setWeakDepModal}
         handleWeakDepConvert={handleWeakDepConvert}
-        handleWeakDepBlock={() => setWeakDepModal(null)}
+        handleWeakDepBlock={(modalData) => {
+          // Auto-select blocking milestones (same as strong dep behavior)
+          if (autoSelectBlocking && modalData) {
+            const blockIds = modalData.blockingMilestoneIds || [];
+            const moveIds = modalData.milestonesToMove || [];
+            setSelectedMilestones(prev => {
+              const newSet = new Set(prev);
+              for (const mId of moveIds) newSet.add(mId);
+              for (const bId of blockIds) newSet.add(bId);
+              return newSet;
+            });
+          }
+          setWeakDepModal(null);
+        }}
         // Connection edit modal
         connectionEditModal={connectionEditModal}
         setConnectionEditModal={setConnectionEditModal}
@@ -1470,6 +1651,15 @@ function DependenciesContent() {
           showAllTeamPhases={showAllTeamPhases}
           hideAllTeamPhases={hideAllTeamPhases}
           teamPhasesMap={teamPhasesMap}
+          // Views
+          savedViews={savedViews}
+          activeViewId={activeViewId}
+          activeViewName={activeViewName}
+          onLoadView={handleLoadView}
+          onSaveView={handleSaveView}
+          onCreateView={handleCreateView}
+          onRenameView={handleRenameView}
+          onDeleteView={handleDeleteView}
         />
 
         <DependencyCanvas

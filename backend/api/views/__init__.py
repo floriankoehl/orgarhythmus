@@ -92,6 +92,13 @@ from .phases import (
     delete_phase,
 )
 
+from .dependency_views import (
+    get_all_views,
+    create_view,
+    update_view,
+    delete_view,
+)
+
 from .ideas import (
     create_idea,
     delete_idea,

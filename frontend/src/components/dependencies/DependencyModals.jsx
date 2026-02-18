@@ -431,7 +431,7 @@ export default function DependencyModals({
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => {
-                  if (handleWeakDepBlock) handleWeakDepBlock();
+                  if (handleWeakDepBlock) handleWeakDepBlock(weakDepModal);
                   setWeakDepModal(null);
                 }}
                 className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"

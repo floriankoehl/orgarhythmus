@@ -357,3 +357,49 @@ export async function delete_phase(projectId, phaseId) {
     if (!res.ok) throw new Error('Failed to delete phase');
     return await res.json();
 }
+
+
+// ════════════════════════════════════════════
+// Dependency Views (saved frontend state)
+// ════════════════════════════════════════════
+
+export async function get_all_views(projectId) {
+    const res = await authFetch(`/api/projects/${projectId}/views/`);
+    if (!res.ok) throw new Error('Failed to fetch views');
+    const data = await res.json();
+    return data.views || data;
+}
+
+export async function create_view(projectId, { name, state }) {
+    const res = await authFetch(`/api/projects/${projectId}/views/create/`, {
+        method: "POST",
+        body: JSON.stringify({ name, state }),
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to create view');
+    }
+    const data = await res.json();
+    return data.view || data;
+}
+
+export async function update_view(projectId, viewId, updates) {
+    const res = await authFetch(`/api/projects/${projectId}/views/${viewId}/`, {
+        method: "PATCH",
+        body: JSON.stringify(updates),
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to update view');
+    }
+    const data = await res.json();
+    return data.view || data;
+}
+
+export async function delete_view(projectId, viewId) {
+    const res = await authFetch(`/api/projects/${projectId}/views/${viewId}/delete/`, {
+        method: "DELETE",
+    });
+    if (!res.ok) throw new Error('Failed to delete view');
+    return await res.json();
+}

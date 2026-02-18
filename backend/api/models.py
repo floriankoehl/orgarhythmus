@@ -356,6 +356,31 @@ class LegendType(models.Model):
 
 
 # ═══════════════════════════════════════════════
+#  DEPENDENCY VIEW (saved frontend state)
+# ═══════════════════════════════════════════════
+
+class DependencyView(models.Model):
+    """
+    A named, saveable representation of the frontend dependency-page state.
+    Each project can have multiple views; all members can access them.
+    The 'state' JSON blob stores every frontend-only display preference.
+    """
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="dependency_views")
+    name = models.CharField(max_length=200)
+    state = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_views")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        unique_together = [("project", "name")]
+
+    def __str__(self):
+        return f"{self.name} ({self.project.name})"
+
+
+# ═══════════════════════════════════════════════
 #  IDEA
 # ═══════════════════════════════════════════════
 

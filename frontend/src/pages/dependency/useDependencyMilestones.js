@@ -313,6 +313,7 @@ export function useDependencyMilestones({
           if (onWeakDepConflict) {
             onWeakDepConflict({
               weakConnections: weakBlocking.map(b => b.blockingConnection),
+              blockingMilestoneIds: weakBlocking.map(b => b.blockingMilestoneId),
               milestonesToMove,
               initialPositions,
               currentDeltaIndex,

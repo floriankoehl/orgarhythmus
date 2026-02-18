@@ -104,7 +104,8 @@ export default function DependencyTeamList({
         const hasNoTasks = team.tasks.length === 0;
         const allTasksHidden = team.tasks.length > 0 && visibleTasks.length === 0;
         // Phase row height for this team (part of teamHeight, rendered separately)
-        const phaseRowH = getTeamPhaseRowHeight ? getTeamPhaseRowHeight(team_key) : 0;
+        // When collapsed, the phase row is hidden and teamHeight doesn't include it
+        const phaseRowH = isCollapsed ? 0 : (getTeamPhaseRowHeight ? getTeamPhaseRowHeight(team_key) : 0);
         const teamRowHeight = teamHeight - phaseRowH;
 
         return (
@@ -147,8 +148,9 @@ export default function DependencyTeamList({
               }}
             />
 
-            {/* Per-team Phase Row (only if team has team-specific phases and row is expanded) */}
+            {/* Per-team Phase Row (only if team has team-specific phases, row is expanded, and team is NOT collapsed) */}
             {(() => {
+              if (isCollapsed) return null;
               const teamIdNum = typeof team_key === 'string' ? parseInt(team_key, 10) : team_key;
               const teamPhases = teamPhasesMap[teamIdNum] || [];
               if (teamPhases.length === 0 || phaseRowH === 0) return null;

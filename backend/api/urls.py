@@ -127,6 +127,12 @@ urlpatterns = [
     path("projects/<int:project_id>/phases/create/", views.create_phase),
     path("projects/<int:project_id>/phases/<int:phase_id>/", views.update_phase),
     path("projects/<int:project_id>/phases/<int:phase_id>/delete/", views.delete_phase),
+
+    # Dependency Views (saved frontend state)
+    path("projects/<int:project_id>/views/", views.get_all_views),
+    path("projects/<int:project_id>/views/create/", views.create_view),
+    path("projects/<int:project_id>/views/<int:view_id>/", views.update_view),
+    path("projects/<int:project_id>/views/<int:view_id>/delete/", views.delete_view),
     # _____________________________ END OF NEW ADDING ______________________________
 ]
 
