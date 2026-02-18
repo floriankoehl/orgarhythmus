@@ -98,8 +98,8 @@ export function useDependencyInteraction({
     baseViewModeRef,
     selectedMilestones,
     setSelectedMilestones,
-    selectedConnection,
-    setSelectedConnection,
+    selectedConnections,
+    setSelectedConnections,
     autoSelectBlocking,
     setEditingMilestoneId,
     setEditingMilestoneName,
@@ -344,7 +344,7 @@ export function useDependencyInteraction({
 
     // Select the newly pasted milestones
     setSelectedMilestones(new Set(newMilestoneIds));
-    setSelectedConnection(null);
+    setSelectedConnections([]);
 
     addWarning(
       `Pasted ${newMilestoneIds.length} milestone${newMilestoneIds.length > 1 ? 's' : ''}`,
@@ -408,7 +408,7 @@ export function useDependencyInteraction({
         }
       },
     });
-  }, [clipboard, projectId, milestones, setMilestones, setTasks, setConnections, setSelectedMilestones, setSelectedConnection, addWarning, pushAction]);
+  }, [clipboard, projectId, milestones, setMilestones, setTasks, setConnections, setSelectedMilestones, setSelectedConnections, addWarning, pushAction]);
 
   // ________Global Keyboard Listener___________
   // ________________________________________
@@ -448,7 +448,7 @@ export function useDependencyInteraction({
         // Delete handled by actions hook
       } else if (e.key === "Escape") {
         setSelectedMilestones(new Set());
-        setSelectedConnection(null);
+        setSelectedConnections([]);
         setEditingMilestoneId(null);
         setEditingMilestoneName("");
         setIsAddingMilestone(false);

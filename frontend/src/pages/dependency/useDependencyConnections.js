@@ -56,8 +56,8 @@ export function useDependencyConnections({
     teamContainerRef,
     selectedMilestones,
     setSelectedMilestones,
-    selectedConnection,
-    setSelectedConnection,
+    selectedConnections,
+    setSelectedConnections,
     warningDuration,
     pushAction,
   } = useDependency();
@@ -298,12 +298,31 @@ export function useDependencyConnections({
     e.stopPropagation();
     setSelectedMilestones(new Set());
 
-    if (selectedConnection?.source === connection.source && selectedConnection?.target === connection.target) {
-      setSelectedConnection(null);
-      playSound('milestoneDeselect');
+    if (e.ctrlKey || e.metaKey) {
+      // Multi-select: toggle this connection
+      setSelectedConnections(prev => {
+        const exists = prev.some(c => c.source === connection.source && c.target === connection.target);
+        if (exists) {
+          const result = prev.filter(c => !(c.source === connection.source && c.target === connection.target));
+          if (result.length === 0) playSound('milestoneDeselect');
+          return result;
+        } else {
+          playSound('connectionSelect');
+          return [...prev, connection];
+        }
+      });
     } else {
-      setSelectedConnection(connection);
-      playSound('connectionSelect');
+      // Single select: toggle or replace
+      const isSame = selectedConnections.length === 1 &&
+                     selectedConnections[0].source === connection.source &&
+                     selectedConnections[0].target === connection.target;
+      if (isSame) {
+        setSelectedConnections([]);
+        playSound('milestoneDeselect');
+      } else {
+        setSelectedConnections([connection]);
+        playSound('connectionSelect');
+      }
     }
   };
 
@@ -316,7 +335,7 @@ export function useDependencyConnections({
     try {
       await delete_dependency(projectId, connection.source, connection.target);
       setConnections(prev => prev.filter(c => !(c.source === connection.source && c.target === connection.target)));
-      setSelectedConnection(null);
+      setSelectedConnections([]);
       playSound('connectionDelete');
 
       pushAction({

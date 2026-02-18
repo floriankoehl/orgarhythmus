@@ -29,7 +29,7 @@ export function DependencyProvider({ children }) {
   // UI State - centralized here
   const [hoveredMilestone, setHoveredMilestone] = useState(null);
   const [selectedMilestones, setSelectedMilestones] = useState(new Set());
-  const [selectedConnection, setSelectedConnection] = useState(null);
+  const [selectedConnections, setSelectedConnections] = useState([]);
   const [viewMode, setViewMode] = useState("inspection");
   const baseViewModeRef = useRef("inspection");
   const [autoSelectBlocking, setAutoSelectBlocking] = useState(true);
@@ -95,8 +95,8 @@ export function DependencyProvider({ children }) {
     setHoveredMilestone,
     selectedMilestones,
     setSelectedMilestones,
-    selectedConnection,
-    setSelectedConnection,
+    selectedConnections,
+    setSelectedConnections,
     viewMode,
     setViewMode,
     baseViewModeRef,

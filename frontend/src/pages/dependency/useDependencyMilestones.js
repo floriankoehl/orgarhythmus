@@ -55,8 +55,8 @@ export function useDependencyMilestones({
     viewMode,
     selectedMilestones,
     setSelectedMilestones,
-    selectedConnection,
-    setSelectedConnection,
+    selectedConnections,
+    setSelectedConnections,
     autoSelectBlocking,
     setEditingMilestoneId,
     setEditingMilestoneName,
@@ -457,11 +457,11 @@ export function useDependencyMilestones({
       let hasDepViolation = false;
       let hasDeadlineViolation = false;
 
+      // Pre-compute resized positions for ALL milestones so co-selected checks use new values
+      const resizedPositions = {};
       for (const mId of milestonesToResize) {
         const initial = initialStates[mId];
         if (!initial) continue;
-
-        // Compute current values from initial + delta
         let currentStartIndex, currentDuration;
         if (edge === "right") {
           currentStartIndex = initial.startIndex;
@@ -471,27 +471,43 @@ export function useDependencyMilestones({
           const durationChange = initial.startIndex - currentStartIndex;
           currentDuration = Math.max(1, initial.duration + durationChange);
         }
+        resizedPositions[mId] = { startIndex: currentStartIndex, duration: currentDuration };
+      }
 
+      for (const mId of milestonesToResize) {
+        const rp = resizedPositions[mId];
+        if (!rp) continue;
+        const { startIndex: currentStartIndex, duration: currentDuration } = rp;
         const newEndIndex = currentStartIndex + currentDuration - 1;
 
-        // Check dependency constraints
+        // Check dependency constraints (outgoing)
         const outgoingConnections = connections.filter(c => c.source === mId);
         for (const conn of outgoingConnections) {
           const targetMilestone = milestones[conn.target];
           if (!targetMilestone) continue;
-          if (milestonesToResize.includes(conn.target)) continue;
-          if (newEndIndex >= targetMilestone.start_index) {
+          // For co-selected targets, use their resized start_index instead
+          const targetStart = resizedPositions[conn.target]
+            ? resizedPositions[conn.target].startIndex
+            : targetMilestone.start_index;
+          if (newEndIndex >= targetStart) {
             allResizeBlocking.push({ blockingMilestoneId: conn.target, blockingConnection: conn, weight: conn.weight || 'strong' });
             hasDepViolation = true;
           }
         }
 
+        // Check dependency constraints (incoming)
         const incomingConnections = connections.filter(c => c.target === mId);
         for (const conn of incomingConnections) {
           const sourceMilestone = milestones[conn.source];
           if (!sourceMilestone) continue;
-          if (milestonesToResize.includes(conn.source)) continue;
-          const sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
+          // For co-selected sources, use their resized end index instead
+          let sourceEndIndex;
+          if (resizedPositions[conn.source]) {
+            const sp = resizedPositions[conn.source];
+            sourceEndIndex = sp.startIndex + sp.duration - 1;
+          } else {
+            sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
+          }
           if (sourceEndIndex >= currentStartIndex) {
             allResizeBlocking.push({ blockingMilestoneId: conn.source, blockingConnection: conn, weight: conn.weight || 'strong' });
             hasDepViolation = true;
@@ -519,18 +535,13 @@ export function useDependencyMilestones({
         // Categorize dep blocking by weight
         const depBlocking = allResizeBlocking.filter(b => b.blockingConnection);
         const strongResizeBlocking = depBlocking.filter(b => (b.weight || 'strong') === 'strong');
+        const weakResizeBlocking = depBlocking.filter(b => b.weight === 'weak');
         const suggestionResizeBlocking = depBlocking.filter(b => b.weight === 'suggestion');
-        const hasHardResizeBlock = hasOverlapViolation || hasDeadlineViolation || strongResizeBlocking.length > 0 || depBlocking.filter(b => b.weight === 'weak').length > 0;
 
-        // For resize, treat weak same as strong (simpler UX — no modal for resize)
-        if (!hasHardResizeBlock && suggestionResizeBlocking.length > 0) {
-          // Only suggestion blocking — allow resize but warn
-          addWarning("Suggestion dependency violated", "This resize violates a suggestion dependency, but it is allowed.");
-          for (const { blockingMilestoneId, blockingConnection } of suggestionResizeBlocking) {
-            showBlockingFeedback(blockingMilestoneId, blockingConnection);
-          }
-          // Fall through to save
-        } else {
+        // Hard blocks: overlap, deadline, or strong deps
+        const hasHardResizeBlock = hasOverlapViolation || hasDeadlineViolation || strongResizeBlocking.length > 0;
+
+        if (hasHardResizeBlock) {
           // Revert all milestones to original
           setMilestones(prev => {
             const updated = { ...prev };
@@ -551,7 +562,7 @@ export function useDependencyMilestones({
           } else if (hasOverlapViolation) {
             addWarning("Resize blocked: milestones would overlap", "Milestones within the same task cannot occupy the same days.");
           } else {
-            addWarning("Resize blocked: dependency constraint", "A connected milestone prevents this resize.");
+            addWarning("Resize blocked: dependency constraint", "A strong dependency prevents this resize.");
           }
 
           // Show feedback for all blocking milestones
@@ -571,6 +582,47 @@ export function useDependencyMilestones({
             });
           }
           return;
+        }
+
+        // Only weak and/or suggestion blocking — no hard block
+        if (weakResizeBlocking.length > 0) {
+          // Freeze: revert visually first
+          setMilestones(prev => {
+            const updated = { ...prev };
+            for (const mId of milestonesToResize) {
+              const initial = initialStates[mId];
+              if (initial) {
+                updated[mId] = { ...updated[mId], start_index: initial.startIndex, duration: initial.duration };
+              }
+            }
+            return updated;
+          });
+
+          // Show weak dep confirmation modal via callback
+          if (onWeakDepConflict) {
+            onWeakDepConflict({
+              type: 'resize',
+              weakConnections: weakResizeBlocking.map(b => b.blockingConnection),
+              blockingMilestoneIds: weakResizeBlocking.map(b => b.blockingMilestoneId),
+              milestonesToResize,
+              initialStates,
+              edge,
+              currentIndexDelta: currentIndexDelta,
+              suggestionBlocking: suggestionResizeBlocking.map(b => b.blockingConnection),
+            });
+          } else {
+            addWarning("Resize blocked: weak dependency conflict", "A weak dependency prevents this resize. Cannot resolve automatically.");
+          }
+          return;
+        }
+
+        // Only suggestion blocking — allow resize but warn
+        if (suggestionResizeBlocking.length > 0) {
+          addWarning("Suggestion dependency violated", "This resize violates a suggestion dependency, but it is allowed.");
+          for (const { blockingMilestoneId, blockingConnection } of suggestionResizeBlocking) {
+            showBlockingFeedback(blockingMilestoneId, blockingConnection);
+          }
+          // Fall through to save
         }
       }
 
@@ -648,7 +700,7 @@ export function useDependencyMilestones({
       return;
     }
 
-    setSelectedConnection(null);
+    setSelectedConnections([]);
 
     const wasSelected = selectedMilestones.has(milestoneId);
 

@@ -54,7 +54,7 @@ export function useDependencyDrag({
     teamContainerRef,
     selectedMilestones,
     setSelectedMilestones,
-    setSelectedConnection,
+    setSelectedConnections,
     pushAction,
   } = useDependency();
 
@@ -494,7 +494,7 @@ export function useDependencyDrag({
         } else {
           setSelectedMilestones(newSelection);
         }
-        setSelectedConnection(null);
+        setSelectedConnections([]);
         playSound('marqueeSelect');
         // Prevent the page-wrapper onClick from clearing selection
         justDraggedRef.current = true;

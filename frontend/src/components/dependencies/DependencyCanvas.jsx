@@ -63,7 +63,7 @@ export default function DependencyCanvas({
   // UI state
   hoveredMilestone,
   selectedMilestones,
-  selectedConnection,
+  selectedConnections,
   editingMilestoneId,
   editingMilestoneName,
   blockedMoveHighlight,
@@ -224,7 +224,7 @@ export default function DependencyCanvas({
                   height: `${ghost.height}px`,
                   width: `${totalWidth}px`,
                   zIndex: 100,
-                  opacity: 0.85,
+                  opacity: 0.8,
                   border: '2px dashed #1e293b',
                   borderRadius: '4px',
                   boxShadow: '0 4px 16px rgba(0,0,0,0.25), 0 0 0 1px rgba(0,0,0,0.1)',
@@ -264,32 +264,33 @@ export default function DependencyCanvas({
                 </div>
                 {/* Milestone indicators in day grid */}
                 {(ghost.milestones || []).map(m => {
-                  const col = dayColumnLayout?.columns?.[m.start_index];
-                  if (!col) return null;
+                  const mStartX = dayColumnLayout?.dayXOffset?.(m.start_index);
+                  if (mStartX === undefined) return null;
                   const dur = m.duration || 1;
                   let mW = 0;
                   for (let d = 0; d < dur; d++) {
-                    const c = dayColumnLayout?.columns?.[m.start_index + d];
-                    if (c) mW += c.width;
+                    mW += dayColumnLayout?.dayWidth?.(m.start_index + d) ?? DAYWIDTH;
                   }
                   if (!mW) mW = DAYWIDTH;
-                  const mX = TEAMWIDTH + TASKWIDTH + col.x;
+                  const mX = TEAMWIDTH + TASKWIDTH + mStartX;
                   const th = getTaskHeight(m.task, taskDisplaySettings);
                   const mY = phaseRowH + (taskYMap[m.task] ?? 0);
                   return (
                     <div
                       key={m.id}
-                      className="absolute rounded-sm"
+                      className="absolute rounded-sm flex items-center overflow-hidden"
                       style={{
                         left: `${mX}px`,
-                        top: `${mY + 4}px`,
+                        top: `${mY + 2}px`,
                         width: `${mW}px`,
-                        height: `${th - 8}px`,
+                        height: `${th - 4}px`,
                         backgroundColor: ghost.color,
-                        border: '1px solid rgba(0,0,0,0.25)',
+                        border: '1px solid rgba(0,0,0,0.3)',
                         opacity: 0.7,
                       }}
-                    />
+                    >
+                      <span className="truncate text-[10px] px-1 text-white/90 font-medium" style={{ textShadow: '0 0 2px rgba(0,0,0,0.4)' }}>{m.name}</span>
+                    </div>
                   );
                 })}
               </div>
@@ -724,12 +725,11 @@ export default function DependencyCanvas({
                 }
               }
 
-              const isSelected = selectedConnection?.source === conn.source && 
-                                 selectedConnection?.target === conn.target;
+              const isSelected = selectedConnections?.some(sc => sc.source === conn.source && sc.target === conn.target);
               
               // Determine if this connection is related to any selected milestone
-              const isOutgoing = selectedMilestones.size > 0 && selectedMilestones.has(conn.source);
-              const isIncoming = selectedMilestones.size > 0 && selectedMilestones.has(conn.target);
+              const isOutgoing = depSettings.colorDirectionHighlight !== false && selectedMilestones.size > 0 && selectedMilestones.has(conn.source);
+              const isIncoming = depSettings.colorDirectionHighlight !== false && selectedMilestones.size > 0 && selectedMilestones.has(conn.target);
               
               // Check if this connection is being highlighted as blocked
               const isBlockedHighlight = blockedMoveHighlight && 
@@ -826,7 +826,9 @@ export default function DependencyCanvas({
                     style={{
                       animation: isBlockedHighlight 
                         ? "flowAnimation 3s linear infinite, blockedPulse 0.5s ease-in-out infinite"
-                        : "flowAnimation 3s linear infinite",
+                        : weight === 'suggestion'
+                          ? "none"
+                          : "flowAnimation 3s linear infinite",
                       pointerEvents: "none",
                       filter: isHighlighted ? `drop-shadow(0 0 3px ${strokeColor}80)` : "none",
                     }}
@@ -963,7 +965,7 @@ export default function DependencyCanvas({
                   zIndex: 100,
                   border: '2px solid rgba(59,130,246,0.7)',
                   borderRadius: '4px',
-                  backgroundColor: 'rgba(219,234,254,0.85)',
+                  backgroundColor: 'rgba(219,234,254,0.8)',
                   boxShadow: '0 4px 16px rgba(0,0,0,0.25), 0 0 0 1px rgba(59,130,246,0.3)',
                   overflow: 'hidden',
                 }}
@@ -974,29 +976,30 @@ export default function DependencyCanvas({
                 </div>
                 {/* Milestone indicators */}
                 {(taskGhost.milestones || []).map(m => {
-                  const col = dayColumnLayout?.columns?.[m.start_index];
-                  if (!col) return null;
+                  const mStartX = dayColumnLayout?.dayXOffset?.(m.start_index);
+                  if (mStartX === undefined) return null;
                   const dur = m.duration || 1;
                   let mW = 0;
                   for (let d = 0; d < dur; d++) {
-                    const c = dayColumnLayout?.columns?.[m.start_index + d];
-                    if (c) mW += c.width;
+                    mW += dayColumnLayout?.dayWidth?.(m.start_index + d) ?? DAYWIDTH;
                   }
                   if (!mW) mW = DAYWIDTH;
-                  const mX = TASKWIDTH + col.x;
+                  const mX = TASKWIDTH + mStartX;
                   return (
                     <div
                       key={m.id}
-                      className="absolute rounded-sm"
+                      className="absolute rounded-sm flex items-center overflow-hidden"
                       style={{
                         left: `${mX}px`,
-                        top: '4px',
+                        top: '2px',
                         width: `${mW}px`,
-                        height: `${taskGhost.height - 8}px`,
+                        height: `${taskGhost.height - 4}px`,
                         backgroundColor: 'rgba(59,130,246,0.4)',
-                        border: '1px solid rgba(59,130,246,0.5)',
+                        border: '1px solid rgba(59,130,246,0.6)',
                       }}
-                    />
+                    >
+                      <span className="truncate text-[10px] px-1 text-blue-900/80 font-medium">{m.name}</span>
+                    </div>
                   );
                 })}
               </div>

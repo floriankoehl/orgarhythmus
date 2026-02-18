@@ -33,7 +33,7 @@ import { useDependencyInteraction } from './useDependencyInteraction';
 import { useDependencyData } from './useDependencyData';
 import { useDependencyUIState } from './useDependencyUIState';
 import { useDependencyActions } from './useDependencyActions';
-import { set_task_deadline, update_start_index, update_dependency, create_dependency, delete_dependency_api, create_phase, update_phase, delete_phase, get_all_views, create_view, update_view, delete_view, set_default_view } from '../../api/dependencies_api';
+import { set_task_deadline, update_start_index, change_duration, update_dependency, create_dependency, delete_dependency_api, create_phase, update_phase, delete_phase, get_all_views, create_view, update_view, delete_view, set_default_view } from '../../api/dependencies_api';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
@@ -96,8 +96,8 @@ function DependenciesContent() {
     setHoveredMilestone,
     selectedMilestones,
     setSelectedMilestones,
-    selectedConnection,
-    setSelectedConnection,
+    selectedConnections,
+    setSelectedConnections,
     viewMode,
     setViewMode,
     baseViewModeRef,
@@ -160,6 +160,7 @@ function DependenciesContent() {
     filterWeights: [],           // empty = show all; otherwise array of 'strong'|'weak'|'suggestion'
     defaultDepWeight: 'strong',  // default weight when creating new dependencies
     weakDepPrompt: true,         // show prompt on weak dep conflict (false = auto-block)
+    colorDirectionHighlight: true, // color incoming (red) and outgoing (green) deps on milestone select
   });
 
   // Connection edit modal (for editing weight/reason of a selected connection)
@@ -1047,17 +1048,10 @@ function DependenciesContent() {
     }
   }, [suggestionOfferModal, projectId, setConnections, pushAction]);
 
-  // Handle weak dependency conflict: convert weak deps to suggestions, then allow the move
+  // Handle weak dependency conflict: convert weak deps to suggestions, then allow the move/resize
   const handleWeakDepConvert = useCallback(async (conflictData) => {
     if (!conflictData) return;
-    const { weakConnections, milestonesToMove, initialPositions, currentDeltaIndex } = conflictData;
-
-    // Capture old positions and weights for undo
-    const beforePositions = {};
-    for (const mId of milestonesToMove) {
-      const initial = initialPositions[mId];
-      if (initial) beforePositions[mId] = initial.startIndex;
-    }
+    const { weakConnections } = conflictData;
     const convertedConnWeights = weakConnections.map(c => ({ ...c, oldWeight: c.weight || 'weak' }));
 
     // Convert each weak connection to suggestion
@@ -1065,77 +1059,185 @@ function DependenciesContent() {
       await handleUpdateConnection(conn, { weight: 'suggestion' }, { skipHistory: true });
     }
 
-    // Now apply the move
-    const afterPositions = {};
-    for (const mId of milestonesToMove) {
-      const initial = initialPositions[mId];
-      if (!initial) continue;
-      const newStart = initial.startIndex + currentDeltaIndex;
-      afterPositions[mId] = newStart;
-      setMilestones(prev => {
-        const { x, ...rest } = prev[mId];
-        return { ...prev, [mId]: { ...rest, start_index: newStart } };
-      });
-      try {
-        await update_start_index(projectId, mId, newStart);
-      } catch (err) {
-        console.error("Failed to update start index after weak dep conversion:", err);
-      }
-    }
+    if (conflictData.type === 'resize') {
+      // ──── Resize path ────
+      const { milestonesToResize, initialStates, edge, currentIndexDelta } = conflictData;
 
-    pushAction({
-      description: 'Weak dep convert + move',
-      undo: async () => {
-        // Restore positions
-        for (const mId of milestonesToMove) {
-          const oldStart = beforePositions[mId];
-          if (oldStart === undefined) continue;
-          await update_start_index(projectId, mId, oldStart);
-          setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], start_index: oldStart } }));
+      const resizeBefore = {};
+      const resizeAfter = {};
+
+      for (const mId of milestonesToResize) {
+        const initial = initialStates[mId];
+        if (!initial) continue;
+
+        let newStart, newDuration;
+        if (edge === "right") {
+          newStart = initial.startIndex;
+          newDuration = Math.max(1, initial.duration + currentIndexDelta);
+        } else {
+          newStart = Math.max(0, initial.startIndex + currentIndexDelta);
+          const durationChange = initial.startIndex - newStart;
+          newDuration = Math.max(1, initial.duration + durationChange);
         }
-        // Restore connection weights
-        for (const c of convertedConnWeights) {
-          await update_dependency(projectId, c.source, c.target, { weight: c.oldWeight });
-          setConnections(prev => prev.map(conn =>
-            conn.source === c.source && conn.target === c.target ? { ...conn, weight: c.oldWeight } : conn
-          ));
+
+        resizeBefore[mId] = { startIndex: initial.startIndex, duration: initial.duration };
+        resizeAfter[mId] = { startIndex: newStart, duration: newDuration };
+
+        setMilestones(prev => ({
+          ...prev,
+          [mId]: { ...prev[mId], start_index: newStart, duration: newDuration },
+        }));
+
+        const durationChange = newDuration - initial.duration;
+        if (durationChange !== 0) {
+          try { await change_duration(projectId, mId, durationChange); } catch (err) { console.error("Failed to change duration:", err); }
+        }
+        if (edge === "left" && newStart !== initial.startIndex) {
+          try { await update_start_index(projectId, mId, newStart); } catch (err) { console.error("Failed to update start index:", err); }
+        }
+      }
+
+      pushAction({
+        description: 'Weak dep convert + resize',
+        undo: async () => {
+          for (const mId of milestonesToResize) {
+            const before = resizeBefore[mId];
+            const after = resizeAfter[mId];
+            if (!before || !after) continue;
+            const durationDelta = before.duration - after.duration;
+            if (durationDelta !== 0) await change_duration(projectId, mId, durationDelta);
+            if (before.startIndex !== after.startIndex) await update_start_index(projectId, mId, before.startIndex);
+            setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], start_index: before.startIndex, duration: before.duration } }));
+          }
+          for (const c of convertedConnWeights) {
+            await update_dependency(projectId, c.source, c.target, { weight: c.oldWeight });
+            setConnections(prev => prev.map(conn => conn.source === c.source && conn.target === c.target ? { ...conn, weight: c.oldWeight } : conn));
+          }
+        },
+        redo: async () => {
+          for (const c of convertedConnWeights) {
+            await update_dependency(projectId, c.source, c.target, { weight: 'suggestion' });
+            setConnections(prev => prev.map(conn => conn.source === c.source && conn.target === c.target ? { ...conn, weight: 'suggestion' } : conn));
+          }
+          for (const mId of milestonesToResize) {
+            const before = resizeBefore[mId];
+            const after = resizeAfter[mId];
+            if (!before || !after) continue;
+            const durationDelta = after.duration - before.duration;
+            if (durationDelta !== 0) await change_duration(projectId, mId, durationDelta);
+            if (before.startIndex !== after.startIndex) await update_start_index(projectId, mId, after.startIndex);
+            setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], start_index: after.startIndex, duration: after.duration } }));
+          }
+        },
+      });
+    } else {
+      // ──── Move path (original) ────
+      const { milestonesToMove, initialPositions, currentDeltaIndex } = conflictData;
+
+      const beforePositions = {};
+      for (const mId of milestonesToMove) {
+        const initial = initialPositions[mId];
+        if (initial) beforePositions[mId] = initial.startIndex;
+      }
+
+      const afterPositions = {};
+      for (const mId of milestonesToMove) {
+        const initial = initialPositions[mId];
+        if (!initial) continue;
+        const newStart = initial.startIndex + currentDeltaIndex;
+        afterPositions[mId] = newStart;
+        setMilestones(prev => {
+          const { x, ...rest } = prev[mId];
+          return { ...prev, [mId]: { ...rest, start_index: newStart } };
+        });
+        try {
+          await update_start_index(projectId, mId, newStart);
+        } catch (err) {
+          console.error("Failed to update start index after weak dep conversion:", err);
+        }
+      }
+
+      pushAction({
+        description: 'Weak dep convert + move',
+        undo: async () => {
+          for (const mId of milestonesToMove) {
+            const oldStart = beforePositions[mId];
+            if (oldStart === undefined) continue;
+            await update_start_index(projectId, mId, oldStart);
+            setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], start_index: oldStart } }));
+          }
+          for (const c of convertedConnWeights) {
+            await update_dependency(projectId, c.source, c.target, { weight: c.oldWeight });
+            setConnections(prev => prev.map(conn => conn.source === c.source && conn.target === c.target ? { ...conn, weight: c.oldWeight } : conn));
+          }
+        },
+        redo: async () => {
+          for (const c of convertedConnWeights) {
+            await update_dependency(projectId, c.source, c.target, { weight: 'suggestion' });
+            setConnections(prev => prev.map(conn => conn.source === c.source && conn.target === c.target ? { ...conn, weight: 'suggestion' } : conn));
+          }
+          for (const mId of milestonesToMove) {
+            const newStart = afterPositions[mId];
+            if (newStart === undefined) continue;
+            await update_start_index(projectId, mId, newStart);
+            setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], start_index: newStart } }));
+          }
+        },
+      });
+    }
+  }, [handleUpdateConnection, setMilestones, setConnections, projectId, pushAction]);
+
+  // Bulk update multiple connections (weight/reason change)
+  const handleBulkUpdateConnections = async (conns, updates) => {
+    if (!conns || conns.length === 0) return;
+    const oldValues = conns.map(c => ({ source: c.source, target: c.target, weight: c.weight, reason: c.reason }));
+    for (const conn of conns) {
+      await handleUpdateConnection(conn, updates, { skipHistory: true });
+    }
+    pushAction({
+      description: `Bulk update ${conns.length} dependencies`,
+      undo: async () => {
+        for (const old of oldValues) {
+          await handleUpdateConnection(old, { weight: old.weight, reason: old.reason }, { skipHistory: true });
         }
       },
       redo: async () => {
-        // Re-convert and re-move
-        for (const c of convertedConnWeights) {
-          await update_dependency(projectId, c.source, c.target, { weight: 'suggestion' });
-          setConnections(prev => prev.map(conn =>
-            conn.source === c.source && conn.target === c.target ? { ...conn, weight: 'suggestion' } : conn
-          ));
-        }
-        for (const mId of milestonesToMove) {
-          const newStart = afterPositions[mId];
-          if (newStart === undefined) continue;
-          await update_start_index(projectId, mId, newStart);
-          setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], start_index: newStart } }));
+        for (const conn of conns) {
+          await handleUpdateConnection(conn, updates, { skipHistory: true });
         }
       },
     });
-  }, [handleUpdateConnection, setMilestones, setConnections, projectId, pushAction]);
+  };
 
   // Auto-block weak dep conflicts when the prompt setting is disabled
   useEffect(() => {
     if (weakDepModal && !depSettings.weakDepPrompt) {
-      // Auto-block: just close modal and auto-select blocking milestones
+      const modalData = weakDepModal;
+      // Auto-block: close modal first
+      setWeakDepModal(null);
+
+      // Auto-select blocking milestones
       if (autoSelectBlocking) {
-        const blockIds = weakDepModal.blockingMilestoneIds || [];
-        const moveIds = weakDepModal.milestonesToMove || [];
+        const blockIds = modalData.blockingMilestoneIds || [];
+        const moveOrResizeIds = modalData.milestonesToMove || modalData.milestonesToResize || [];
         setSelectedMilestones(prev => {
           const newSet = new Set(prev);
-          for (const mId of moveIds) newSet.add(mId);
+          for (const mId of moveOrResizeIds) newSet.add(mId);
           for (const bId of blockIds) newSet.add(bId);
           return newSet;
         });
       }
-      setWeakDepModal(null);
+
+      // Show blocking feedback (reveal hidden/collapsed items + red blink)
+      const blockIds = modalData.blockingMilestoneIds || [];
+      const weakConns = modalData.weakConnections || [];
+      setTimeout(() => {
+        for (let i = 0; i < blockIds.length; i++) {
+          showBlockingFeedback(blockIds[i], weakConns[i]);
+        }
+      }, 50);
     }
-  }, [weakDepModal, depSettings.weakDepPrompt, autoSelectBlocking, setSelectedMilestones, setWeakDepModal]);
+  }, [weakDepModal, depSettings.weakDepPrompt, autoSelectBlocking, setSelectedMilestones, setWeakDepModal, showBlockingFeedback]);
 
   // Toggle task size
   const toggleTaskSize = (taskId) => {
@@ -1424,18 +1526,31 @@ function DependenciesContent() {
         setWeakDepModal={setWeakDepModal}
         handleWeakDepConvert={handleWeakDepConvert}
         handleWeakDepBlock={(modalData) => {
+          // Close modal first so visual feedback is visible
+          setWeakDepModal(null);
+
           // Auto-select blocking milestones (same as strong dep behavior)
           if (autoSelectBlocking && modalData) {
             const blockIds = modalData.blockingMilestoneIds || [];
-            const moveIds = modalData.milestonesToMove || [];
+            const moveOrResizeIds = modalData.milestonesToMove || modalData.milestonesToResize || [];
             setSelectedMilestones(prev => {
               const newSet = new Set(prev);
-              for (const mId of moveIds) newSet.add(mId);
+              for (const mId of moveOrResizeIds) newSet.add(mId);
               for (const bId of blockIds) newSet.add(bId);
               return newSet;
             });
           }
-          setWeakDepModal(null);
+
+          // Show blocking feedback after modal closes (delay so modal is visually gone)
+          if (modalData) {
+            const blockIds = modalData.blockingMilestoneIds || [];
+            const weakConns = modalData.weakConnections || [];
+            setTimeout(() => {
+              for (let i = 0; i < blockIds.length; i++) {
+                showBlockingFeedback(blockIds[i], weakConns[i]);
+              }
+            }, 50);
+          }
         }}
         // Connection edit modal
         connectionEditModal={connectionEditModal}
@@ -1577,7 +1692,7 @@ function DependenciesContent() {
         style={{ backgroundColor: '#f8f9fb' }}
         onClick={() => {
           if (justDraggedRef.current) return;
-          setSelectedConnection(null);
+          setSelectedConnections([]);
           setOpenTeamSettings(null);
           setShowSettingsDropdown(false);
           setSelectedMilestones(new Set());
@@ -1637,9 +1752,10 @@ function DependenciesContent() {
           showAllHiddenTeams={showAllHiddenTeams}
           // Selection state for delete
           selectedMilestones={selectedMilestones}
-          selectedConnection={selectedConnection}
-          // Delete handler
+          selectedConnections={selectedConnections}
+
           onDeleteSelected={handleDeleteSelected}
+          onBulkUpdateConnections={handleBulkUpdateConnections}
           // Refactor mode
           refactorMode={refactorMode}
           setRefactorMode={setRefactorMode}
@@ -1736,7 +1852,7 @@ function DependenciesContent() {
           // UI state
           hoveredMilestone={hoveredMilestone}
           selectedMilestones={selectedMilestones}
-          selectedConnection={selectedConnection}
+          selectedConnections={selectedConnections}
           editingMilestoneId={editingMilestoneId}
           editingMilestoneName={editingMilestoneName}
           blockedMoveHighlight={blockedMoveHighlight}

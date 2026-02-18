@@ -74,8 +74,8 @@ export function useDependencyActions({
   // Get shared state from context
   const {
     projectId,
-    selectedConnection,
-    setSelectedConnection,
+    selectedConnections,
+    setSelectedConnections,
     selectedMilestones,
     setSelectedMilestones,
     pushAction,
@@ -377,12 +377,12 @@ export function useDependencyActions({
 
   // Handle delete for selected items (called from toolbar) - shows modal first
   const handleDeleteSelected = () => {
-    if (selectedConnection) {
+    if (selectedConnections.length > 0) {
       // Show confirmation modal for dependency deletion
       setDeleteConfirmModal({
         connectionId: true,
         connectionName: `Dependency`,
-        connection: selectedConnection,
+        connections: [...selectedConnections],
       });
     } else if (selectedMilestones.size > 0) {
       // Show confirmation modal for milestone deletion
@@ -404,11 +404,13 @@ export function useDependencyActions({
   // Handle confirm delete (from modal)
   const handleConfirmDelete = async () => {
     if (deleteConfirmModal?.connectionId) {
-      // Delete connection
+      // Delete connection(s)
       try {
-        const connection = deleteConfirmModal.connection || selectedConnection;
-        await handleDeleteConnection(connection);
-        setSelectedConnection(null);
+        const conns = deleteConfirmModal.connections || selectedConnections;
+        for (const connection of conns) {
+          await handleDeleteConnection(connection);
+        }
+        setSelectedConnections([]);
       } catch (err) {
         console.error("Failed to delete dependency:", err);
       }

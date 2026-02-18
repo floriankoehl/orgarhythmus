@@ -382,6 +382,30 @@ class DependencyView(models.Model):
 
 
 # ═══════════════════════════════════════════════
+#  PROJECT SNAPSHOT (full project state backup)
+# ═══════════════════════════════════════════════
+
+class ProjectSnapshot(models.Model):
+    """
+    A complete snapshot of all project data at a point in time.
+    Stores teams, tasks, milestones, dependencies, days, phases, and views
+    as a single JSON blob so the entire state can be restored.
+    """
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="snapshots")
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default="")
+    data = models.JSONField(default=dict)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_snapshots")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Snapshot: {self.name} ({self.project.name})"
+
+
+# ═══════════════════════════════════════════════
 #  IDEA
 # ═══════════════════════════════════════════════
 

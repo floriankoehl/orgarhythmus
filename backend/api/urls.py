@@ -134,6 +134,14 @@ urlpatterns = [
     path("projects/<int:project_id>/views/<int:view_id>/", views.update_view),
     path("projects/<int:project_id>/views/<int:view_id>/delete/", views.delete_view),
     path("projects/<int:project_id>/views/set-default/", views.set_default_view),
+
+    # Project Snapshots
+    path("projects/<int:project_id>/snapshots/", views.list_snapshots),
+    path("projects/<int:project_id>/snapshots/create/", views.create_snapshot),
+    path("projects/<int:project_id>/snapshots/<int:snapshot_id>/", views.get_snapshot),
+    path("projects/<int:project_id>/snapshots/<int:snapshot_id>/restore/", views.restore_snapshot),
+    path("projects/<int:project_id>/snapshots/<int:snapshot_id>/delete/", views.delete_snapshot),
+    path("projects/<int:project_id>/snapshots/<int:snapshot_id>/rename/", views.rename_snapshot),
     # _____________________________ END OF NEW ADDING ______________________________
 ]
 

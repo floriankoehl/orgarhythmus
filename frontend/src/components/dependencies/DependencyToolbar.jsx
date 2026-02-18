@@ -84,9 +84,10 @@ export default function DependencyToolbar({
   showAllHiddenTeams,
   // Selection state for delete
   selectedMilestones,
-  selectedConnection,
+  selectedConnections,
   // Delete handler
   onDeleteSelected,
+  onBulkUpdateConnections,
   // Refactor mode
   refactorMode,
   setRefactorMode,
@@ -132,7 +133,7 @@ export default function DependencyToolbar({
   onDeleteView,
   onSetDefaultView,
 }) {
-  const hasSelection = selectedMilestones?.size > 0 || selectedConnection;
+  const hasSelection = selectedMilestones?.size > 0 || selectedConnections?.length > 0;
 
   // ── View UI state ──
   const [showViewDropdown, setShowViewDropdown] = useState(false);
@@ -148,14 +149,14 @@ export default function DependencyToolbar({
   const noTeamsHidden = filteredTeamCount === 0;
   
   const getDeleteLabel = () => {
-    if (selectedConnection) return 'Dep';
+    if (selectedConnections?.length > 0) return selectedConnections.length > 1 ? `${selectedConnections.length} Deps` : 'Dep';
     if (selectedMilestones?.size > 1) return `${selectedMilestones.size}`;
     if (selectedMilestones?.size === 1) return '1';
     return '';
   };
 
   const getDeleteTooltip = () => {
-    if (selectedConnection) return 'Delete selected dependency';
+    if (selectedConnections?.length > 0) return `Delete ${selectedConnections.length} selected dependenc${selectedConnections.length > 1 ? 'ies' : 'y'}`;
     if (selectedMilestones?.size > 1) return `Delete ${selectedMilestones.size} milestones`;
     if (selectedMilestones?.size === 1) return 'Delete selected milestone';
     return 'Select milestones or connections to delete';
@@ -481,6 +482,15 @@ export default function DependencyToolbar({
                         <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                           <input
                             type="checkbox"
+                            checked={depSettings.colorDirectionHighlight !== false}
+                            onChange={(e) => setDepSettings(prev => ({ ...prev, colorDirectionHighlight: e.target.checked }))}
+                            className="rounded border-slate-300"
+                          />
+                          <span>Color incoming/outgoing deps</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
                             checked={!!depSettings.hideSuggestions}
                             onChange={(e) => setDepSettings(prev => ({ ...prev, hideSuggestions: e.target.checked }))}
                             className="rounded border-slate-300"
@@ -556,11 +566,12 @@ export default function DependencyToolbar({
                             })}
                           </div>
                         </div>
-                        {/* Edit selected connection */}
-                        {selectedConnection && (
+                        {/* Edit selected connection(s) */}
+                        {selectedConnections?.length === 1 && (
                           <button
                             onClick={() => {
-                              const conn = connections?.find(c => c.source === selectedConnection.source && c.target === selectedConnection.target);
+                              const sc = selectedConnections[0];
+                              const conn = connections?.find(c => c.source === sc.source && c.target === sc.target);
                               if (conn) {
                                 setConnectionEditModal({
                                   source: conn.source,
@@ -574,6 +585,30 @@ export default function DependencyToolbar({
                           >
                             Edit Selected Dependency
                           </button>
+                        )}
+                        {selectedConnections?.length > 1 && (
+                          <div className="mt-2 space-y-1.5 border-t border-slate-100 pt-2">
+                            <p className="text-[10px] text-slate-500 font-medium">{selectedConnections.length} dependencies selected</p>
+                            <div className="flex gap-1">
+                              {['strong', 'weak', 'suggestion'].map(w => (
+                                <button
+                                  key={w}
+                                  onClick={() => {
+                                    if (onBulkUpdateConnections) onBulkUpdateConnections(selectedConnections, { weight: w });
+                                  }}
+                                  className="flex-1 px-1.5 py-1 text-[10px] rounded border border-slate-200 text-slate-600 hover:bg-slate-50 capitalize transition"
+                                >
+                                  {w}
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              onClick={() => onDeleteSelected && onDeleteSelected()}
+                              className="w-full px-2 py-1 text-[10px] rounded border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition"
+                            >
+                              Delete All Selected
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>

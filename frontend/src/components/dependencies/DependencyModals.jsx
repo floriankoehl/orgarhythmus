@@ -371,13 +371,13 @@ export default function DependencyModals({
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">
-              Delete {deleteConfirmModal.connectionId ? 'Connection' : deleteConfirmModal.milestoneIds ? 'Milestones' : 'Milestone'}?
+              Delete {deleteConfirmModal.connectionId ? (deleteConfirmModal.connections?.length > 1 ? 'Connections' : 'Connection') : deleteConfirmModal.milestoneIds ? 'Milestones' : 'Milestone'}?
             </h2>
             <p className="text-sm text-slate-600 mb-4">
               Are you sure you want to delete{" "}
               <span className="font-medium text-slate-800">
                 {deleteConfirmModal.connectionId
-                  ? deleteConfirmModal.connectionName
+                  ? (deleteConfirmModal.connections?.length > 1 ? `${deleteConfirmModal.connections.length} dependencies` : deleteConfirmModal.connectionName)
                   : deleteConfirmModal.milestoneIds 
                     ? `${deleteConfirmModal.milestoneIds.length} milestones`
                     : `"${deleteConfirmModal.milestoneName}"`
@@ -418,10 +418,10 @@ export default function DependencyModals({
               </button>
             </div>
             <p className="text-sm text-slate-600 mb-2">
-              This move violates <strong>{weakDepModal.weakConnections?.length || 0}</strong> weak dependency connection{(weakDepModal.weakConnections?.length || 0) > 1 ? 's' : ''}.
+              This {weakDepModal.type === 'resize' ? 'resize' : 'move'} violates <strong>{weakDepModal.weakConnections?.length || 0}</strong> weak dependency connection{(weakDepModal.weakConnections?.length || 0) > 1 ? 's' : ''}.
             </p>
             <p className="text-sm text-slate-600 mb-4">
-              You can either <strong>convert them to suggestions</strong> (allows the move and downgrades the dependency) or <strong>block the move</strong>.
+              You can either <strong>convert them to suggestions</strong> (allows the {weakDepModal.type === 'resize' ? 'resize' : 'move'} and downgrades the dependency) or <strong>block the {weakDepModal.type === 'resize' ? 'resize' : 'move'}</strong>.
             </p>
             {weakDepModal.suggestionBlocking?.length > 0 && (
               <p className="text-xs text-slate-500 mb-4">
@@ -432,11 +432,11 @@ export default function DependencyModals({
               <button
                 onClick={() => {
                   if (handleWeakDepBlock) handleWeakDepBlock(weakDepModal);
-                  setWeakDepModal(null);
+                  else setWeakDepModal(null);
                 }}
                 className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
-                Block Move
+                Block {weakDepModal.type === 'resize' ? 'Resize' : 'Move'}
               </button>
               <button
                 onClick={() => {
