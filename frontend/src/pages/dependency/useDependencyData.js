@@ -131,7 +131,7 @@ export function useDependencyData(projectId) {
         const resDeps = await get_all_dependencies(projectId);
         const fetched_deps = resDeps.dependencies;
         if (Array.isArray(fetched_deps)) {
-          setConnections(fetched_deps.map(d => ({ source: d.source, target: d.target })));
+          setConnections(fetched_deps.map(d => ({ source: d.source, target: d.target, weight: d.weight || 'strong', reason: d.reason || null })));
         }
       } catch (err) {
         console.error("Failed to load dependencies:", err);

@@ -4,6 +4,7 @@ import { playSound } from '../../assets/sound_registry';
 import {
   create_dependency,
   delete_dependency_api as delete_dependency,
+  update_dependency,
 } from '../../api/dependencies_api.js';
 import { isTaskVisible } from './layoutMath';
 import {
@@ -205,7 +206,7 @@ export function useDependencyConnections({
             } else {
               try {
                 await create_dependency(projectId, sourceId, targetId);
-                setConnections(prev => [...prev, { source: sourceId, target: targetId }]);
+                setConnections(prev => [...prev, { source: sourceId, target: targetId, weight: 'strong', reason: null }]);
                 playSound('connectionCreate');
               } catch (err) {
                 console.error("Failed to create dependency:", err);
@@ -255,6 +256,23 @@ export function useDependencyConnections({
     }
   };
 
+  // ────────────────────────────────────────
+  // Update connection weight / reason
+  // ────────────────────────────────────────
+  const handleUpdateConnection = async (connection, updates) => {
+    try {
+      await update_dependency(projectId, connection.source, connection.target, updates);
+      setConnections(prev => prev.map(c => {
+        if (c.source === connection.source && c.target === connection.target) {
+          return { ...c, ...updates };
+        }
+        return c;
+      }));
+    } catch (err) {
+      console.error("Failed to update dependency:", err);
+    }
+  };
+
   return {
     // Connection drag state
     isDraggingConnection,
@@ -267,6 +285,7 @@ export function useDependencyConnections({
     handleConnectionDragStart,
     handleConnectionClick,
     handleDeleteConnection,
+    handleUpdateConnection,
     // Position helpers
     findMilestoneAtPosition,
     getMilestoneHandlePosition,

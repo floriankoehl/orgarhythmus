@@ -106,6 +106,9 @@ export default function DependencyCanvas({
   expandedTaskView,
   // Deadline
   onSetDeadline,
+  // Dependency display settings
+  depSettings = {},
+  setConnectionEditModal,
 }) {
   return (
     <>
@@ -372,6 +375,14 @@ export default function DependencyCanvas({
             </defs>
 
             {!hideAllDependencies && connections.map((conn) => {
+              const weight = conn.weight || 'strong';
+
+              // Filter by weight visibility settings
+              if (depSettings.hideSuggestions && weight === 'suggestion') return null;
+              if (depSettings.filterWeights && depSettings.filterWeights.length > 0) {
+                if (!depSettings.filterWeights.includes(weight)) return null;
+              }
+
               const sourcePos = getMilestoneHandlePosition(conn.source, "source");
               const targetPos = getMilestoneHandlePosition(conn.target, "target");
 
@@ -423,25 +434,79 @@ export default function DependencyCanvas({
               
               const isHighlighted = isSelected || isOutgoing || isIncoming || isBlockedHighlight;
 
+              // Weight-based visual styling
+              const useUniform = depSettings.uniformVisuals;
+              let baseStrokeWidth, dashArray, opacity;
+              if (useUniform) {
+                baseStrokeWidth = 2.5;
+                dashArray = "8, 4";
+                opacity = 1;
+              } else {
+                switch (weight) {
+                  case 'strong':
+                    baseStrokeWidth = 3.5;
+                    dashArray = "8, 4";
+                    opacity = 1;
+                    break;
+                  case 'weak':
+                    baseStrokeWidth = 2;
+                    dashArray = "6, 6";
+                    opacity = 0.85;
+                    break;
+                  case 'suggestion':
+                    baseStrokeWidth = 1.5;
+                    dashArray = "3, 6";
+                    opacity = 0.55;
+                    break;
+                  default:
+                    baseStrokeWidth = 2.5;
+                    dashArray = "8, 4";
+                    opacity = 1;
+                }
+              }
+
+              const strokeWidth = isBlockedHighlight ? "5" : isHighlighted ? String(baseStrokeWidth + 1) : String(baseStrokeWidth);
+              const pathId = `dep-path-${conn.source}-${conn.target}`;
+              const pathD = getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y);
+
+              // Reason label text
+              const showReasons = depSettings.showReasons !== false;
+              const reasonText = conn.reason || (showReasons ? "is necessary for" : null);
+
               return (
-                <g key={`${conn.source}-${conn.target}`} style={{ pointerEvents: 'auto' }}>
+                <g key={`${conn.source}-${conn.target}`} style={{ pointerEvents: 'auto', opacity }}>
+                  {/* Define the path for textPath reference */}
+                  <defs>
+                    <path id={pathId} d={pathD} />
+                  </defs>
                   {/* Invisible wider path for easier clicking */}
                   <path
-                    d={getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y)}
+                    d={pathD}
                     stroke="transparent"
                     strokeWidth="20"
                     fill="none"
                     style={{ cursor: "pointer" }}
                     onClick={(e) => handleConnectionClick(e, conn)}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      if (setConnectionEditModal) {
+                        setConnectionEditModal({
+                          source: conn.source,
+                          target: conn.target,
+                          weight: conn.weight || 'strong',
+                          reason: conn.reason || '',
+                        });
+                      }
+                    }}
                   />
                   {/* Visible animated path */}
                   <path
-                    d={getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y)}
+                    d={pathD}
                     stroke={strokeColor}
-                    strokeWidth={isBlockedHighlight ? "5" : isHighlighted ? "3.5" : "2.5"}
+                    strokeWidth={strokeWidth}
                     fill="none"
                     strokeLinecap="round"
-                    strokeDasharray="8, 4"
+                    strokeDasharray={dashArray}
                     style={{
                       animation: isBlockedHighlight 
                         ? "flowAnimation 3s linear infinite, blockedPulse 0.5s ease-in-out infinite"
@@ -450,6 +515,35 @@ export default function DependencyCanvas({
                       filter: isHighlighted ? `drop-shadow(0 0 3px ${strokeColor}80)` : "none",
                     }}
                   />
+                  {/* Reason text along path */}
+                  {showReasons && reasonText && (
+                    <text
+                      style={{ pointerEvents: 'none', userSelect: 'none' }}
+                      fill={isHighlighted ? strokeColor : "#64748b"}
+                      fontSize="10"
+                      fontWeight={weight === 'strong' ? '600' : '400'}
+                      dy="-6"
+                    >
+                      <textPath href={`#${pathId}`} startOffset="50%" textAnchor="middle">
+                        {reasonText}
+                      </textPath>
+                    </text>
+                  )}
+                  {/* Weight badge on hover/selected */}
+                  {(isSelected || isHighlighted) && !useUniform && (
+                    <text
+                      style={{ pointerEvents: 'none', userSelect: 'none' }}
+                      fill={strokeColor}
+                      fontSize="9"
+                      fontWeight="700"
+                      dy="14"
+                      opacity="0.7"
+                    >
+                      <textPath href={`#${pathId}`} startOffset="50%" textAnchor="middle">
+                        {weight.toUpperCase()}
+                      </textPath>
+                    </text>
+                  )}
                 </g>
               );
             })}

@@ -74,6 +74,7 @@ from .dependencies import (
     get_all_dependencies,
     create_dependency,
     delete_dependency,
+    update_dependency,
 )
 
 from .days import (

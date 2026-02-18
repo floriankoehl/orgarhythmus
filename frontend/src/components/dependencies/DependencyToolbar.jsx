@@ -88,6 +88,13 @@ export default function DependencyToolbar({
   // Collapse/expand all teams
   collapseAllTeams,
   expandAllTeams,
+  // Dependency display settings
+  depSettings = {},
+  setDepSettings,
+  // Connection editing
+  connections,
+  handleUpdateConnection,
+  setConnectionEditModal,
 }) {
   const hasSelection = selectedMilestones?.size > 0 || selectedConnection;
   
@@ -361,6 +368,93 @@ export default function DependencyToolbar({
                             Reset
                           </button>
                         </div>
+                      </div>
+                    </div>
+
+                    {/* Dependency Display */}
+                    <div className="border-t border-slate-100 pt-3">
+                      <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Dependencies</h4>
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={depSettings.showReasons !== false}
+                            onChange={(e) => setDepSettings(prev => ({ ...prev, showReasons: e.target.checked }))}
+                            className="rounded border-slate-300"
+                          />
+                          <span>Show reason labels on paths</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!depSettings.hideSuggestions}
+                            onChange={(e) => setDepSettings(prev => ({ ...prev, hideSuggestions: e.target.checked }))}
+                            className="rounded border-slate-300"
+                          />
+                          <span>Hide suggestion dependencies</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!depSettings.uniformVisuals}
+                            onChange={(e) => setDepSettings(prev => ({ ...prev, uniformVisuals: e.target.checked }))}
+                            className="rounded border-slate-300"
+                          />
+                          <span>Uniform line style (ignore weight)</span>
+                        </label>
+                        <div className="mt-1">
+                          <span className="text-[10px] text-slate-500 block mb-1">Show weight types:</span>
+                          <div className="flex gap-3">
+                            {['strong', 'weak', 'suggestion'].map(w => {
+                              const active = !depSettings.filterWeights || depSettings.filterWeights.length === 0 || depSettings.filterWeights.includes(w);
+                              return (
+                                <label key={w} className="flex items-center gap-1 text-[11px] text-slate-600 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={active}
+                                    onChange={(e) => {
+                                      setDepSettings(prev => {
+                                        const current = prev.filterWeights && prev.filterWeights.length > 0
+                                          ? [...prev.filterWeights]
+                                          : ['strong', 'weak', 'suggestion'];
+                                        if (e.target.checked) {
+                                          if (!current.includes(w)) current.push(w);
+                                        } else {
+                                          const idx = current.indexOf(w);
+                                          if (idx > -1) current.splice(idx, 1);
+                                        }
+                                        // If all checked, clear filter
+                                        if (current.length === 3) return { ...prev, filterWeights: [] };
+                                        return { ...prev, filterWeights: current };
+                                      });
+                                    }}
+                                    className="rounded border-slate-300"
+                                  />
+                                  <span className="capitalize">{w}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        {/* Edit selected connection */}
+                        {selectedConnection && (
+                          <button
+                            onClick={() => {
+                              const conn = connections?.find(c => c.source === selectedConnection.source && c.target === selectedConnection.target);
+                              if (conn) {
+                                setConnectionEditModal({
+                                  source: conn.source,
+                                  target: conn.target,
+                                  weight: conn.weight || 'strong',
+                                  reason: conn.reason || '',
+                                });
+                              }
+                            }}
+                            className="w-full mt-1 px-2 py-1.5 text-xs rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition"
+                          >
+                            Edit Selected Dependency
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

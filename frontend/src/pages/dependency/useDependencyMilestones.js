@@ -40,6 +40,8 @@ export function useDependencyMilestones({
   // Warning/feedback  (from useDependencyWarnings)
   addWarning,
   showBlockingFeedback,
+  // Weak dependency confirmation callback
+  onWeakDepConflict,
 }) {
   const {
     projectId,
@@ -172,10 +174,9 @@ export function useDependencyMilestones({
 
       if (!validation.valid || !overlapValidation.valid || !deadlineValidation.valid) {
         // Combine all blocking milestones
-        const allBlocking = [
-          ...(validation.allBlocking || []),
-          ...(overlapValidation.allBlocking || []),
-        ];
+        const depBlocking = validation.allBlocking || [];
+        const overlapBlocking = overlapValidation.allBlocking || [];
+        const allBlocking = [...depBlocking, ...overlapBlocking];
 
         // Deduplicate
         const seen = new Set();
@@ -185,51 +186,95 @@ export function useDependencyMilestones({
           return true;
         });
 
-        // Show warning with reason
-        const hasDepBlocking = (validation.allBlocking || []).length > 0;
-        const hasOverlapBlocking = (overlapValidation.allBlocking || []).length > 0;
+        const hasOverlapBlocking = overlapBlocking.length > 0;
         const hasDeadlineBlocking = !deadlineValidation.valid;
 
-        if (hasDeadlineBlocking) {
-          addWarning("Move blocked: exceeds hard deadline", "A milestone would be placed past its task's hard deadline.");
-        } else if (hasDepBlocking && hasOverlapBlocking) {
-          addWarning("Move blocked: dependency constraint & milestone overlap", "Milestones cannot overlap within a task, and dependencies must be respected.");
-        } else if (hasOverlapBlocking) {
-          addWarning("Move blocked: milestones would overlap", "Milestones within the same task cannot occupy the same days.");
-        } else {
-          addWarning("Move blocked: dependency constraint", "A connected milestone prevents this move.");
-        }
+        // Categorize dependency blocking by weight
+        const strongBlocking = depBlocking.filter(b => (b.weight || 'strong') === 'strong');
+        const weakBlocking = depBlocking.filter(b => b.weight === 'weak');
+        const suggestionBlocking = depBlocking.filter(b => b.weight === 'suggestion');
 
-        for (const { blockingMilestoneId, blockingConnection } of uniqueBlocking) {
-          showBlockingFeedback(blockingMilestoneId, blockingConnection);
-        }
+        // Hard blocks: overlap, deadline, or strong deps
+        const hasHardBlock = hasOverlapBlocking || hasDeadlineBlocking || strongBlocking.length > 0;
 
-        if (autoSelectBlocking && uniqueBlocking.length > 0) {
-          setSelectedMilestones(prev => {
-            const newSet = new Set(prev);
-            for (const mId of milestonesToMove) {
-              newSet.add(mId);
-            }
-            for (const { blockingMilestoneId } of uniqueBlocking) {
-              newSet.add(blockingMilestoneId);
-            }
-            return newSet;
-          });
-        }
-
-        // Revert all milestones to their original positions
-        setMilestones(prev => {
-          const updated = { ...prev };
-          for (const mId of milestonesToMove) {
-            const initial = initialPositions[mId];
-            if (initial) {
-              const { x, ...rest } = updated[mId];
-              updated[mId] = { ...rest, start_index: initial.startIndex };
-            }
+        if (hasHardBlock) {
+          // Show warning with reason (original behavior)
+          if (hasDeadlineBlocking) {
+            addWarning("Move blocked: exceeds hard deadline", "A milestone would be placed past its task's hard deadline.");
+          } else if (strongBlocking.length > 0 && hasOverlapBlocking) {
+            addWarning("Move blocked: dependency constraint & milestone overlap", "Milestones cannot overlap within a task, and dependencies must be respected.");
+          } else if (hasOverlapBlocking) {
+            addWarning("Move blocked: milestones would overlap", "Milestones within the same task cannot occupy the same days.");
+          } else {
+            addWarning("Move blocked: strong dependency constraint", "A strong dependency prevents this move.");
           }
-          return updated;
-        });
-        return;
+
+          for (const { blockingMilestoneId, blockingConnection } of uniqueBlocking) {
+            showBlockingFeedback(blockingMilestoneId, blockingConnection);
+          }
+
+          if (autoSelectBlocking && uniqueBlocking.length > 0) {
+            setSelectedMilestones(prev => {
+              const newSet = new Set(prev);
+              for (const mId of milestonesToMove) newSet.add(mId);
+              for (const { blockingMilestoneId } of uniqueBlocking) newSet.add(blockingMilestoneId);
+              return newSet;
+            });
+          }
+
+          // Revert all milestones
+          setMilestones(prev => {
+            const updated = { ...prev };
+            for (const mId of milestonesToMove) {
+              const initial = initialPositions[mId];
+              if (initial) {
+                const { x, ...rest } = updated[mId];
+                updated[mId] = { ...rest, start_index: initial.startIndex };
+              }
+            }
+            return updated;
+          });
+          return;
+        }
+
+        // Only weak and/or suggestion blocking — no hard block
+        if (weakBlocking.length > 0) {
+          // Freeze: revert visually first
+          setMilestones(prev => {
+            const updated = { ...prev };
+            for (const mId of milestonesToMove) {
+              const initial = initialPositions[mId];
+              if (initial) {
+                const { x, ...rest } = updated[mId];
+                updated[mId] = { ...rest, start_index: initial.startIndex };
+              }
+            }
+            return updated;
+          });
+
+          // Show weak dep confirmation modal via callback
+          if (onWeakDepConflict) {
+            onWeakDepConflict({
+              weakConnections: weakBlocking.map(b => b.blockingConnection),
+              milestonesToMove,
+              initialPositions,
+              currentDeltaIndex,
+              suggestionBlocking: suggestionBlocking.map(b => b.blockingConnection),
+            });
+          } else {
+            addWarning("Move blocked: weak dependency conflict", "A weak dependency prevents this move. Cannot resolve automatically.");
+          }
+          return;
+        }
+
+        // Only suggestion blocking — allow the move but warn
+        if (suggestionBlocking.length > 0) {
+          addWarning("Suggestion dependency violated", "This move violates a suggestion dependency, but it is allowed.");
+          for (const { blockingMilestoneId, blockingConnection } of suggestionBlocking) {
+            showBlockingFeedback(blockingMilestoneId, blockingConnection);
+          }
+          // Fall through to allow the move
+        }
       }
 
       // Validation passed — save for all milestones
@@ -351,7 +396,7 @@ export function useDependencyMilestones({
           if (!targetMilestone) continue;
           if (milestonesToResize.includes(conn.target)) continue;
           if (newEndIndex >= targetMilestone.start_index) {
-            allResizeBlocking.push({ blockingMilestoneId: conn.target, blockingConnection: conn });
+            allResizeBlocking.push({ blockingMilestoneId: conn.target, blockingConnection: conn, weight: conn.weight || 'strong' });
             hasDepViolation = true;
           }
         }
@@ -363,7 +408,7 @@ export function useDependencyMilestones({
           if (milestonesToResize.includes(conn.source)) continue;
           const sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
           if (sourceEndIndex >= currentStartIndex) {
-            allResizeBlocking.push({ blockingMilestoneId: conn.source, blockingConnection: conn });
+            allResizeBlocking.push({ blockingMilestoneId: conn.source, blockingConnection: conn, weight: conn.weight || 'strong' });
             hasDepViolation = true;
           }
         }
@@ -386,46 +431,62 @@ export function useDependencyMilestones({
       }
 
       if (allResizeBlocking.length > 0 || hasDeadlineViolation) {
-        // Revert all milestones to original
-        setMilestones(prev => {
-          const updated = { ...prev };
-          for (const mId of milestonesToResize) {
-            const initial = initialStates[mId];
-            if (initial) {
-              updated[mId] = { ...updated[mId], start_index: initial.startIndex, duration: initial.duration };
-            }
+        // Categorize dep blocking by weight
+        const depBlocking = allResizeBlocking.filter(b => b.blockingConnection);
+        const strongResizeBlocking = depBlocking.filter(b => (b.weight || 'strong') === 'strong');
+        const suggestionResizeBlocking = depBlocking.filter(b => b.weight === 'suggestion');
+        const hasHardResizeBlock = hasOverlapViolation || hasDeadlineViolation || strongResizeBlocking.length > 0 || depBlocking.filter(b => b.weight === 'weak').length > 0;
+
+        // For resize, treat weak same as strong (simpler UX — no modal for resize)
+        if (!hasHardResizeBlock && suggestionResizeBlocking.length > 0) {
+          // Only suggestion blocking — allow resize but warn
+          addWarning("Suggestion dependency violated", "This resize violates a suggestion dependency, but it is allowed.");
+          for (const { blockingMilestoneId, blockingConnection } of suggestionResizeBlocking) {
+            showBlockingFeedback(blockingMilestoneId, blockingConnection);
           }
-          return updated;
-        });
-
-        // Show warning with reason
-        if (hasDeadlineViolation) {
-          addWarning("Resize blocked: exceeds hard deadline", "A milestone would extend past its task's hard deadline.");
-        } else if (hasDepViolation && hasOverlapViolation) {
-          addWarning("Resize blocked: dependency & overlap conflict", "Milestones cannot overlap within a task, and dependencies must be respected.");
-        } else if (hasOverlapViolation) {
-          addWarning("Resize blocked: milestones would overlap", "Milestones within the same task cannot occupy the same days.");
+          // Fall through to save
         } else {
-          addWarning("Resize blocked: dependency constraint", "A connected milestone prevents this resize.");
-        }
-
-        // Show feedback for all blocking milestones
-        for (const { blockingMilestoneId, blockingConnection } of allResizeBlocking) {
-          showBlockingFeedback(blockingMilestoneId, blockingConnection);
-        }
-        if (autoSelectBlocking) {
-          setSelectedMilestones(prev => {
-            const newSet = new Set(prev);
+          // Revert all milestones to original
+          setMilestones(prev => {
+            const updated = { ...prev };
             for (const mId of milestonesToResize) {
-              newSet.add(mId);
+              const initial = initialStates[mId];
+              if (initial) {
+                updated[mId] = { ...updated[mId], start_index: initial.startIndex, duration: initial.duration };
+              }
             }
-            for (const { blockingMilestoneId } of allResizeBlocking) {
-              newSet.add(blockingMilestoneId);
-            }
-            return newSet;
+            return updated;
           });
+
+          // Show warning with reason
+          if (hasDeadlineViolation) {
+            addWarning("Resize blocked: exceeds hard deadline", "A milestone would extend past its task's hard deadline.");
+          } else if (hasDepViolation && hasOverlapViolation) {
+            addWarning("Resize blocked: dependency & overlap conflict", "Milestones cannot overlap within a task, and dependencies must be respected.");
+          } else if (hasOverlapViolation) {
+            addWarning("Resize blocked: milestones would overlap", "Milestones within the same task cannot occupy the same days.");
+          } else {
+            addWarning("Resize blocked: dependency constraint", "A connected milestone prevents this resize.");
+          }
+
+          // Show feedback for all blocking milestones
+          for (const { blockingMilestoneId, blockingConnection } of allResizeBlocking) {
+            showBlockingFeedback(blockingMilestoneId, blockingConnection);
+          }
+          if (autoSelectBlocking) {
+            setSelectedMilestones(prev => {
+              const newSet = new Set(prev);
+              for (const mId of milestonesToResize) {
+                newSet.add(mId);
+              }
+              for (const { blockingMilestoneId } of allResizeBlocking) {
+                newSet.add(blockingMilestoneId);
+              }
+              return newSet;
+            });
+          }
+          return;
         }
-        return;
       }
 
       // Validation passed — save changes for all milestones

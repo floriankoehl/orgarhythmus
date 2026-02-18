@@ -1,4 +1,5 @@
 import CloseIcon from '@mui/icons-material/Close';
+import { useState, useEffect } from 'react';
 
 export default function DependencyModals({
   // Day Purpose Modal
@@ -44,6 +45,15 @@ export default function DependencyModals({
   deleteConfirmModal,
   setDeleteConfirmModal,
   handleConfirmDelete,
+  // Weak dep conflict modal
+  weakDepModal,
+  setWeakDepModal,
+  handleWeakDepConvert,
+  handleWeakDepBlock,
+  // Connection edit modal
+  connectionEditModal,
+  setConnectionEditModal,
+  handleUpdateConnection,
 }) {
   return (
     <>
@@ -377,6 +387,169 @@ export default function DependencyModals({
           </div>
         </div>
       )}
+
+      {/* Weak Dependency Conflict Modal */}
+      {weakDepModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-amber-900">
+                Weak Dependency Conflict
+              </h2>
+              <button
+                onClick={() => setWeakDepModal(null)}
+                className="p-1 rounded hover:bg-slate-100"
+              >
+                <CloseIcon fontSize="small" />
+              </button>
+            </div>
+            <p className="text-sm text-slate-600 mb-2">
+              This move violates <strong>{weakDepModal.weakConnections?.length || 0}</strong> weak dependency connection{(weakDepModal.weakConnections?.length || 0) > 1 ? 's' : ''}.
+            </p>
+            <p className="text-sm text-slate-600 mb-4">
+              You can either <strong>convert them to suggestions</strong> (allows the move and downgrades the dependency) or <strong>block the move</strong>.
+            </p>
+            {weakDepModal.suggestionBlocking?.length > 0 && (
+              <p className="text-xs text-slate-500 mb-4">
+                Additionally, {weakDepModal.suggestionBlocking.length} suggestion dependency connection{weakDepModal.suggestionBlocking.length > 1 ? 's' : ''} will be violated (allowed).
+              </p>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  if (handleWeakDepBlock) handleWeakDepBlock();
+                  setWeakDepModal(null);
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Block Move
+              </button>
+              <button
+                onClick={() => {
+                  if (handleWeakDepConvert) handleWeakDepConvert(weakDepModal);
+                  setWeakDepModal(null);
+                }}
+                className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-700"
+              >
+                Convert to Suggestions
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Connection Edit Modal */}
+      <ConnectionEditModal
+        connectionEditModal={connectionEditModal}
+        setConnectionEditModal={setConnectionEditModal}
+        handleUpdateConnection={handleUpdateConnection}
+      />
     </>
+  );
+}
+
+function ConnectionEditModal({ connectionEditModal, setConnectionEditModal, handleUpdateConnection }) {
+  const [editWeight, setEditWeight] = useState('strong');
+  const [editReason, setEditReason] = useState('');
+
+  // Sync local state when modal opens/changes
+  useEffect(() => {
+    if (connectionEditModal) {
+      setEditWeight(connectionEditModal.weight || 'strong');
+      setEditReason(connectionEditModal.reason || '');
+    }
+  }, [connectionEditModal]);
+
+  if (!connectionEditModal) return null;
+
+  const handleSave = () => {
+    if (handleUpdateConnection) {
+      handleUpdateConnection(
+        { source: connectionEditModal.source, target: connectionEditModal.target },
+        { weight: editWeight, reason: editReason || null }
+      );
+    }
+    setConnectionEditModal(null);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Edit Dependency
+          </h2>
+          <button
+            onClick={() => setConnectionEditModal(null)}
+            className="p-1 rounded hover:bg-slate-100"
+          >
+            <CloseIcon fontSize="small" />
+          </button>
+        </div>
+
+        {/* Weight selector */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-slate-700 mb-2">Weight</label>
+          <div className="flex gap-2">
+            {[
+              { value: 'strong', label: 'Strong', color: 'bg-red-100 text-red-800 border-red-300', desc: 'Blocks moves' },
+              { value: 'weak', label: 'Weak', color: 'bg-amber-100 text-amber-800 border-amber-300', desc: 'Asks to convert' },
+              { value: 'suggestion', label: 'Suggestion', color: 'bg-blue-100 text-blue-800 border-blue-300', desc: 'Warns only' },
+            ].map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setEditWeight(opt.value)}
+                className={`flex-1 px-3 py-2 text-xs rounded-lg border transition ${
+                  editWeight === opt.value
+                    ? `${opt.color} ring-2 ring-offset-1 ring-slate-400`
+                    : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <div className="font-semibold">{opt.label}</div>
+                <div className="text-[10px] mt-0.5 opacity-75">{opt.desc}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Reason text */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-slate-700 mb-2">
+            Reason <span className="text-slate-400 font-normal">(shown on path)</span>
+          </label>
+          <input
+            type="text"
+            value={editReason}
+            onChange={(e) => setEditReason(e.target.value)}
+            placeholder="is necessary for"
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
+          />
+          {editReason && (
+            <button
+              onClick={() => setEditReason('')}
+              className="text-[10px] text-red-500 hover:underline mt-1"
+            >
+              Clear reason
+            </button>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={() => setConnectionEditModal(null)}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

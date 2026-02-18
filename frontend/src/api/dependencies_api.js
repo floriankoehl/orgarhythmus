@@ -158,15 +158,34 @@ export async function get_all_dependencies(projectId){
     return answer
 }
 
-export async function create_dependency(projectId, sourceId, targetId){
+export async function create_dependency(projectId, sourceId, targetId, { weight, reason } = {}){
+    const body = {
+        source: sourceId,
+        target: targetId,
+    };
+    if (weight) body.weight = weight;
+    if (reason !== undefined) body.reason = reason;
+
     const res = await authFetch(`/api/projects/${projectId}/create_dependency/`, {
         method: "POST",
-        body: JSON.stringify({
-            source: sourceId,
-            target: targetId
-        })
+        body: JSON.stringify(body)
     })
     if (!res.ok) throw new Error('Failed to create dependency');
+    const answer = await res.json()
+    return answer
+}
+
+export async function update_dependency(projectId, sourceId, targetId, updates = {}){
+    const body = {
+        source: sourceId,
+        target: targetId,
+        ...updates,
+    };
+    const res = await authFetch(`/api/projects/${projectId}/update_dependency/`, {
+        method: "PATCH",
+        body: JSON.stringify(body)
+    })
+    if (!res.ok) throw new Error('Failed to update dependency');
     const answer = await res.json()
     return answer
 }

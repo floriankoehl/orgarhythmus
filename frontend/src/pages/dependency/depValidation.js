@@ -108,7 +108,7 @@ export function validateMilestoneMove(milestones, connections, milestoneId, newS
     const sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
 
     if (sourceEndIndex >= newStartIndex) {
-      allBlocking.push({ blockingMilestoneId: conn.source, blockingConnection: conn });
+      allBlocking.push({ blockingMilestoneId: conn.source, blockingConnection: conn, weight: conn.weight || 'strong' });
     }
   }
 
@@ -120,7 +120,7 @@ export function validateMilestoneMove(milestones, connections, milestoneId, newS
     if (!targetMilestone) continue;
 
     if (newEndIndex >= targetMilestone.start_index) {
-      allBlocking.push({ blockingMilestoneId: conn.target, blockingConnection: conn });
+      allBlocking.push({ blockingMilestoneId: conn.target, blockingConnection: conn, weight: conn.weight || 'strong' });
     }
   }
 
@@ -174,7 +174,7 @@ export function validateMultiMilestoneMove(milestones, connections, milestoneIds
       const sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
 
       if (sourceEndIndex >= newStartIndex) {
-        allBlocking.push({ blockingMilestoneId: conn.source, blockingConnection: conn });
+        allBlocking.push({ blockingMilestoneId: conn.source, blockingConnection: conn, weight: conn.weight || 'strong' });
       }
     }
 
@@ -188,7 +188,7 @@ export function validateMultiMilestoneMove(milestones, connections, milestoneIds
       if (!targetMilestone) continue;
 
       if (newEndIndex >= targetMilestone.start_index) {
-        allBlocking.push({ blockingMilestoneId: conn.target, blockingConnection: conn });
+        allBlocking.push({ blockingMilestoneId: conn.target, blockingConnection: conn, weight: conn.weight || 'strong' });
       }
     }
   }

@@ -233,10 +233,18 @@ class Milestone(models.Model):
 # ═══════════════════════════════════════════════
 
 class Dependency(models.Model):
+    WEIGHT_CHOICES = [
+        ('strong', 'Strong'),
+        ('weak', 'Weak'),
+        ('suggestion', 'Suggestion'),
+    ]
+
     source = models.ForeignKey(Milestone, on_delete=models.CASCADE, 
                                related_name="outgoing_dependencies")
     target = models.ForeignKey(Milestone, on_delete=models.CASCADE,
                                related_name="incoming_dependencies")
+    weight = models.CharField(max_length=20, choices=WEIGHT_CHOICES, default='strong')
+    reason = models.TextField(blank=True, null=True)
 
 
 # ═══════════════════════════════════════════════

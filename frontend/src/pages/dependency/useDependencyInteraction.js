@@ -2,7 +2,7 @@
 // Composes focused sub-hooks and adds global effects (keyboard, click-outside, auto-visibility).
 // The external API (params + return shape) is unchanged — Dependencies.jsx needs zero edits.
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { playSound } from '../../assets/sound_registry';
 import { useDependency } from './DependencyContext.jsx';
 
@@ -94,6 +94,9 @@ export function useDependencyInteraction({
   // Shared ref — used by milestone click + drag hooks to prevent click-after-drag
   const justDraggedRef = useRef(false);
 
+  // ── Weak dependency conflict modal state ──
+  const [weakDepModal, setWeakDepModal] = useState(null);
+
   // ── Warning system ──
   const {
     warningMessages,
@@ -169,6 +172,7 @@ export function useDependencyInteraction({
     justDraggedRef,
     addWarning,
     showBlockingFeedback,
+    onWeakDepConflict: setWeakDepModal,
   });
 
   // ── Connection interactions ──
@@ -182,6 +186,7 @@ export function useDependencyInteraction({
     handleConnectionDragStart,
     handleConnectionClick,
     handleDeleteConnection,
+    handleUpdateConnection,
     findMilestoneAtPosition,
     getMilestoneHandlePosition,
   } = useDependencyConnections({
@@ -495,6 +500,7 @@ export function useDependencyInteraction({
     // Connection handlers
     handleConnectionDragStart,
     handleDeleteConnection,
+    handleUpdateConnection,
 
     // Validation functions
     validateMilestoneMove,
@@ -509,5 +515,9 @@ export function useDependencyInteraction({
     // Feedback
     showBlockingFeedback,
     addWarning,
+
+    // Weak dependency conflict modal
+    weakDepModal,
+    setWeakDepModal,
   };
 }

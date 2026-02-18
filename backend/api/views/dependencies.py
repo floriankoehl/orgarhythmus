@@ -71,6 +71,20 @@ def create_dependency(request, project_id):
         )
 
     dependency, created = Dependency.objects.get_or_create(source=source, target=target)
+
+    # Apply optional weight and reason
+    weight = request.data.get("weight")
+    reason = request.data.get("reason")
+    updated = False
+    if weight and weight in dict(Dependency.WEIGHT_CHOICES):
+        dependency.weight = weight
+        updated = True
+    if reason is not None:
+        dependency.reason = reason if reason != "" else None
+        updated = True
+    if updated:
+        dependency.save()
+
     serialized = DependencySerializer_Deps(dependency)
     return Response(
         {"dependency": serialized.data, "created": created}, 
@@ -110,3 +124,50 @@ def delete_dependency(request, project_id):
 
     dependency.delete()
     return Response({"deleted": True}, status=status.HTTP_200_OK)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def update_dependency(request, project_id):
+    """
+    Update a dependency's weight and/or reason.
+    Body: { "source": <id>, "target": <id>, "weight"?: str, "reason"?: str|null }
+    """
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    source_id = request.data.get("source")
+    target_id = request.data.get("target")
+
+    if not source_id or not target_id:
+        return Response({"detail": "source and target are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        dependency = Dependency.objects.get(
+            source_id=source_id,
+            target_id=target_id,
+            source__project=project,
+        )
+    except Dependency.DoesNotExist:
+        return Response({"detail": "Dependency not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    weight = request.data.get("weight")
+    reason = request.data.get("reason")
+
+    if weight is not None:
+        if weight not in dict(Dependency.WEIGHT_CHOICES):
+            return Response({"detail": f"Invalid weight: {weight}"}, status=status.HTTP_400_BAD_REQUEST)
+        dependency.weight = weight
+
+    if "reason" in request.data:
+        dependency.reason = reason if reason else None
+
+    dependency.save()
+
+    serialized = DependencySerializer_Deps(dependency)
+    return Response({"dependency": serialized.data}, status=status.HTTP_200_OK)

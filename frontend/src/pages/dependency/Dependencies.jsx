@@ -146,6 +146,18 @@ function DependenciesContent() {
   // Expanded task view (Gantt-like: show task time span across milestones)
   const [expandedTaskView, setExpandedTaskView] = useState(false);
 
+  // Dependency display settings
+  const [depSettings, setDepSettings] = useState({
+    showReasons: true,          // show reason text on paths
+    hideSuggestions: false,      // hide suggestion-weight dependencies
+    uniformVisuals: false,       // all deps same thickness (no weight differentiation)
+    filterWeights: [],           // empty = show all; otherwise array of 'strong'|'weak'|'suggestion'
+  });
+
+  // Connection edit modal (for editing weight/reason of a selected connection)
+  const [connectionEditModal, setConnectionEditModal] = useState(null); // { source, target, weight, reason }
+
+
   // Day purpose modal
   const [dayPurposeModal, setDayPurposeModal] = useState(null); // { dayIndex, currentPurpose, currentPurposeTeams }
   const [newDayPurpose, setNewDayPurpose] = useState("");
@@ -356,6 +368,7 @@ function DependenciesContent() {
     handleDayCellClick,
     handleConnectionDragStart,
     handleDeleteConnection,
+    handleUpdateConnection,
     validateMilestoneMove,
     validateMultiMilestoneMove,
     findMilestoneAtPosition,
@@ -385,6 +398,8 @@ function DependenciesContent() {
     setBlockedMoveHighlight,
     marqueeRect,
     handleMarqueeStart,
+    weakDepModal,
+    setWeakDepModal,
   } = useDependencyInteraction({
     milestones,
     teams,
@@ -479,6 +494,34 @@ function DependenciesContent() {
     // Computed
     safeMode,
   });
+
+  // Handle weak dependency conflict: convert weak deps to suggestions, then allow the move
+  const handleWeakDepConvert = useCallback(async (conflictData) => {
+    if (!conflictData) return;
+    const { weakConnections, milestonesToMove, initialPositions, currentDeltaIndex } = conflictData;
+
+    // Convert each weak connection to suggestion
+    for (const conn of weakConnections) {
+      await handleUpdateConnection(conn, { weight: 'suggestion' });
+    }
+
+    // Now apply the move
+    for (const mId of milestonesToMove) {
+      const initial = initialPositions[mId];
+      if (!initial) continue;
+      const newStart = initial.startIndex + currentDeltaIndex;
+      setMilestones(prev => {
+        const { x, ...rest } = prev[mId];
+        return { ...prev, [mId]: { ...rest, start_index: newStart } };
+      });
+      try {
+        const { update_start_index } = await import('../../api/dependencies_api.js');
+        await update_start_index(projectId, mId, newStart);
+      } catch (err) {
+        console.error("Failed to update start index after weak dep conversion:", err);
+      }
+    }
+  }, [handleUpdateConnection, setMilestones, projectId]);
 
   // Toggle task size
   const toggleTaskSize = (taskId) => {
@@ -743,6 +786,15 @@ function DependenciesContent() {
         deleteConfirmModal={deleteConfirmModal}
         setDeleteConfirmModal={setDeleteConfirmModal}
         handleConfirmDelete={handleConfirmDelete}
+        // Weak dep conflict modal
+        weakDepModal={weakDepModal}
+        setWeakDepModal={setWeakDepModal}
+        handleWeakDepConvert={handleWeakDepConvert}
+        handleWeakDepBlock={() => setWeakDepModal(null)}
+        // Connection edit modal
+        connectionEditModal={connectionEditModal}
+        setConnectionEditModal={setConnectionEditModal}
+        handleUpdateConnection={handleUpdateConnection}
       />
 
       {/* Team Settings Dropdown - Rendered outside the transformed container */}
@@ -901,6 +953,13 @@ function DependenciesContent() {
           // Collapse/expand all teams
           collapseAllTeams={collapseAllTeams}
           expandAllTeams={expandAllTeams}
+          // Dependency display settings
+          depSettings={depSettings}
+          setDepSettings={setDepSettings}
+          // Connection edit
+          connections={connections}
+          handleUpdateConnection={handleUpdateConnection}
+          setConnectionEditModal={setConnectionEditModal}
         />
 
         <DependencyCanvas
@@ -999,6 +1058,9 @@ function DependenciesContent() {
           expandedTaskView={expandedTaskView}
           // Deadline
           onSetDeadline={handleSetDeadline}
+          // Dependency display settings
+          depSettings={depSettings}
+          setConnectionEditModal={setConnectionEditModal}
         />
       </div>
 
