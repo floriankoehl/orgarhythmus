@@ -18,6 +18,8 @@ import {
   update_start_index,
   change_duration,
   create_dependency,
+  delete_milestone,
+  delete_dependency_api as delete_dependency,
 } from '../../api/dependencies_api.js';
 
 // Pure validation re-exports (kept in return for backward compat)
@@ -73,6 +75,12 @@ export function useDependencyInteraction({
 
   // Computed
   safeMode,
+
+  // Callbacks
+  onSuggestionOffer,
+
+  // Settings
+  defaultDepWeight,
 }) {
   // ── Context ──
   const {
@@ -89,6 +97,9 @@ export function useDependencyInteraction({
     setEditingMilestoneName,
     clipboard,
     setClipboard,
+    undo,
+    redo,
+    pushAction,
   } = useDependency();
 
   // Shared ref — used by milestone click + drag hooks to prevent click-after-drag
@@ -206,6 +217,8 @@ export function useDependencyInteraction({
     safeMode,
     addWarning,
     setBlockedMoveHighlight,
+    onSuggestionOffer,
+    defaultDepWeight,
   });
 
   // ── Copy/Paste logic ──
@@ -322,7 +335,64 @@ export function useDependencyInteraction({
       null
     );
     playSound('milestoneCreate');
-  }, [clipboard, projectId, milestones, setMilestones, setTasks, setConnections, setSelectedMilestones, setSelectedConnection, addWarning]);
+
+    // Track pasted milestone IDs and their tasks for undo
+    const pastedTaskMap = {};
+    for (const m of copiedMilestones) {
+      for (const [origId, newId] of Object.entries(idMap)) {
+        if (parseInt(origId) === m.originalId) {
+          pastedTaskMap[newId] = m.task;
+        }
+      }
+    }
+
+    pushAction({
+      description: `Paste ${newMilestoneIds.length} milestone(s)`,
+      undo: async () => {
+        // Delete all pasted milestones (connections auto-deleted server-side)
+        for (const mId of newMilestoneIds) {
+          try { await delete_milestone(projectId, mId); } catch (e) { /* may already be deleted */ }
+          setMilestones(prev => { const u = { ...prev }; delete u[mId]; return u; });
+          const taskId = pastedTaskMap[mId];
+          if (taskId) {
+            setTasks(prev => ({
+              ...prev,
+              [taskId]: { ...prev[taskId], milestones: (prev[taskId]?.milestones || []).filter(m => m.id !== mId) }
+            }));
+          }
+        }
+        // Remove pasted connections
+        setConnections(prev => prev.filter(c =>
+          !newMilestoneIds.includes(c.source) && !newMilestoneIds.includes(c.target)
+        ));
+      },
+      redo: async () => {
+        // Re-paste (simplified: re-run the paste logic)
+        const newIdMap2 = {};
+        const newIds2 = [];
+        for (const m of copiedMilestones) {
+          const newStartIndex = m.start_index + offset;
+          const result = await add_milestone(projectId, m.task, { name: `${m.name} (copy)`, description: m.description, start_index: newStartIndex });
+          if (result.added_milestone) {
+            const nId = result.added_milestone.id;
+            newIdMap2[m.originalId] = nId;
+            newIds2.push(nId);
+            if (m.duration > 1) await change_duration(projectId, nId, m.duration - 1);
+            const ms = { ...result.added_milestone, start_index: newStartIndex, duration: m.duration, display: "default", color: m.color };
+            setMilestones(prev => ({ ...prev, [nId]: ms }));
+            setTasks(prev => ({ ...prev, [m.task]: { ...prev[m.task], milestones: [...(prev[m.task]?.milestones || []), ms] } }));
+          }
+        }
+        for (const conn of clipboard.connections) {
+          const ns = newIdMap2[conn.source], nt = newIdMap2[conn.target];
+          if (ns && nt) {
+            await create_dependency(projectId, ns, nt);
+            setConnections(prev => [...prev, { source: ns, target: nt }]);
+          }
+        }
+      },
+    });
+  }, [clipboard, projectId, milestones, setMilestones, setTasks, setConnections, setSelectedMilestones, setSelectedConnection, addWarning, pushAction]);
 
   // ________Global Keyboard Listener___________
   // ________________________________________
@@ -343,6 +413,18 @@ export function useDependencyInteraction({
       if (hasModifier && e.key === 'v') {
         e.preventDefault();
         handlePaste();
+        return;
+      }
+
+      // Undo/Redo shortcuts (Ctrl+Z / Ctrl+Y)
+      if (hasModifier && e.key === 'z') {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if (hasModifier && e.key === 'y') {
+        e.preventDefault();
+        redo();
         return;
       }
 
@@ -378,7 +460,7 @@ export function useDependencyInteraction({
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("keyup", handleKeyUp);
     };
-  }, [setMode, setViewMode, handleCopy, handlePaste]);
+  }, [setMode, setViewMode, handleCopy, handlePaste, undo, redo]);
 
   // Close team settings when clicking outside
   useEffect(() => {

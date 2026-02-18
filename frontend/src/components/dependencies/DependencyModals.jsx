@@ -54,6 +54,10 @@ export default function DependencyModals({
   connectionEditModal,
   setConnectionEditModal,
   handleUpdateConnection,
+  // Suggestion offer modal
+  suggestionOfferModal,
+  setSuggestionOfferModal,
+  handleSuggestionOfferAccept,
 }) {
   return (
     <>
@@ -438,6 +442,37 @@ export default function DependencyModals({
         </div>
       )}
 
+      {/* Suggestion Offer Modal */}
+      {suggestionOfferModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-sm w-full mx-4">
+            <h2 className="text-lg font-semibold text-slate-900 mb-2">
+              Timing Constraint Violated
+            </h2>
+            <p className="text-sm text-slate-600 mb-4">
+              The source milestone doesn't finish before the target starts, so a strong or weak dependency can't be created. Would you like to create it as a <span className="font-semibold text-blue-700">suggestion</span> instead?
+            </p>
+            <p className="text-xs text-slate-400 mb-4">
+              Suggestion dependencies warn about violations but don't block moves.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setSuggestionOfferModal(null)}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSuggestionOfferAccept}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+              >
+                Create as Suggestion
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Connection Edit Modal */}
       <ConnectionEditModal
         connectionEditModal={connectionEditModal}
@@ -462,12 +497,13 @@ function ConnectionEditModal({ connectionEditModal, setConnectionEditModal, hand
 
   if (!connectionEditModal) return null;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (handleUpdateConnection) {
-      handleUpdateConnection(
-        { source: connectionEditModal.source, target: connectionEditModal.target },
+      const result = await handleUpdateConnection(
+        connectionEditModal,
         { weight: editWeight, reason: editReason || null }
       );
+      if (result === false) return; // validation failed — keep modal open
     }
     setConnectionEditModal(null);
   };

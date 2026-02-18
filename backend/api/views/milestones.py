@@ -57,6 +57,8 @@ def add_milestone(request, project_id):
     name = request.data.get("name") or f"{task.name}_0"
     description = request.data.get("description") or ""
     start_index = request.data.get("start_index", 0)
+    if int(start_index) < 0:
+        return Response({"detail": "Milestone cannot be placed before day 0"}, status=status.HTTP_400_BAD_REQUEST)
     duration = 1
     milestone = Milestone.objects.create(
         project=project,
@@ -92,6 +94,10 @@ def update_start_index(request, project_id):
 
     if new_index is None or milestone_id is None:
         return Response({"detail": "milestone_id and index are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Prevent moving before project start (day 0)
+    if int(new_index) < 0:
+        return Response({"detail": "Milestone cannot be placed before day 0"}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         milestone = Milestone.objects.select_related('task').get(id=milestone_id, project=project)

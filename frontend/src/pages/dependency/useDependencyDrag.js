@@ -48,6 +48,7 @@ export function useDependencyDrag({
     selectedMilestones,
     setSelectedMilestones,
     setSelectedConnection,
+    pushAction,
   } = useDependency();
 
   // ── Team drag state ──
@@ -129,12 +130,28 @@ export function useDependencyDrag({
         const hiddenTeams = teamOrder.filter(tid => !isTeamVisible(tid));
         const newOrder = [...newVisibleTeams, ...hiddenTeams];
 
+        // Capture old order for undo
+        const oldOrder = [...teamOrder];
+
         setTeamOrder(newOrder);
         try {
           // Filter out virtual teams (like __unassigned__) before saving to backend
           const persistOrder = newOrder.filter(tid => !teams[tid]?._virtual);
           await safe_team_order(projectId, persistOrder);
           playSound('teamDragDrop');
+
+          pushAction({
+            description: 'Reorder teams',
+            undo: async () => {
+              setTeamOrder(oldOrder);
+              const oldPersistOrder = oldOrder.filter(tid => !teams[tid]?._virtual);
+              await safe_team_order(projectId, oldPersistOrder);
+            },
+            redo: async () => {
+              setTeamOrder(newOrder);
+              await safe_team_order(projectId, persistOrder);
+            },
+          });
         } catch (err) {
           console.error("Failed to save team order:", err);
         }
@@ -234,6 +251,9 @@ export function useDependencyDrag({
             const hiddenTasks = team.tasks.filter(tid => !isTaskVisible(tid, taskDisplaySettings));
             const fullOrder = [...newOrder, ...hiddenTasks];
 
+            // Capture old order for undo
+            const oldFullOrder = [...team.tasks];
+
             setTeams(prev => ({
               ...prev,
               [teamId]: { ...prev[teamId], tasks: fullOrder }
@@ -244,6 +264,18 @@ export function useDependencyDrag({
               try {
                 await reorder_team_tasks(projectId, taskId, teamId, fullOrder);
                 playSound('taskDragDrop');
+
+                pushAction({
+                  description: 'Reorder tasks',
+                  undo: async () => {
+                    setTeams(prev => ({ ...prev, [teamId]: { ...prev[teamId], tasks: oldFullOrder } }));
+                    await reorder_team_tasks(projectId, taskId, teamId, oldFullOrder);
+                  },
+                  redo: async () => {
+                    setTeams(prev => ({ ...prev, [teamId]: { ...prev[teamId], tasks: fullOrder } }));
+                    await reorder_team_tasks(projectId, taskId, teamId, fullOrder);
+                  },
+                });
               } catch (err) {
                 console.error("Failed to reorder tasks:", err);
               }

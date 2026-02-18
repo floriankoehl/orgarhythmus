@@ -436,6 +436,32 @@ export default function DependencyToolbar({
                             })}
                           </div>
                         </div>
+                        {/* Default weight for new dependencies */}
+                        <div className="mt-2">
+                          <span className="text-[10px] text-slate-500 block mb-1">Default weight for new connections:</span>
+                          <div className="flex gap-1">
+                            {[
+                              { value: 'strong', label: 'Strong', color: 'bg-red-100 text-red-800 border-red-300' },
+                              { value: 'weak', label: 'Weak', color: 'bg-amber-100 text-amber-800 border-amber-300' },
+                              { value: 'suggestion', label: 'Suggestion', color: 'bg-blue-100 text-blue-800 border-blue-300' },
+                            ].map(opt => {
+                              const isActive = (depSettings.defaultDepWeight || 'strong') === opt.value;
+                              return (
+                                <button
+                                  key={opt.value}
+                                  onClick={() => setDepSettings(prev => ({ ...prev, defaultDepWeight: opt.value }))}
+                                  className={`flex-1 px-2 py-1 text-[10px] rounded border transition ${
+                                    isActive
+                                      ? `${opt.color} ring-1 ring-offset-1 ring-slate-400 font-semibold`
+                                      : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                         {/* Edit selected connection */}
                         {selectedConnection && (
                           <button

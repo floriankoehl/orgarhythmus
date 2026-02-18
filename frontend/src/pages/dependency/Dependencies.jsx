@@ -32,7 +32,7 @@ import { useDependencyInteraction } from './useDependencyInteraction';
 import { useDependencyData } from './useDependencyData';
 import { useDependencyUIState } from './useDependencyUIState';
 import { useDependencyActions } from './useDependencyActions';
-import { set_task_deadline } from '../../api/dependencies_api';
+import { set_task_deadline, update_start_index, update_dependency, create_dependency, delete_dependency_api } from '../../api/dependencies_api';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
@@ -54,7 +54,7 @@ export default function Dependencies() {
 
 function DependenciesContent() {
 
-  const { projectId, teamContainerRef } = useDependency();
+  const { projectId, teamContainerRef, pushAction } = useDependency();
 
   // ________Data Hook___________
   // ________________________________________
@@ -152,10 +152,14 @@ function DependenciesContent() {
     hideSuggestions: false,      // hide suggestion-weight dependencies
     uniformVisuals: false,       // all deps same thickness (no weight differentiation)
     filterWeights: [],           // empty = show all; otherwise array of 'strong'|'weak'|'suggestion'
+    defaultDepWeight: 'strong',  // default weight when creating new dependencies
   });
 
   // Connection edit modal (for editing weight/reason of a selected connection)
   const [connectionEditModal, setConnectionEditModal] = useState(null); // { source, target, weight, reason }
+
+  // Suggestion offer modal (when creating a dep that violates timing, offer to create as suggestion)
+  const [suggestionOfferModal, setSuggestionOfferModal] = useState(null); // { sourceId, targetId }
 
 
   // Day purpose modal
@@ -434,6 +438,8 @@ function DependenciesContent() {
     getTaskYOffset,
     getVisibleTasks,
     safeMode,
+    onSuggestionOffer: setSuggestionOfferModal,
+    defaultDepWeight: depSettings.defaultDepWeight || 'strong',
   });
 
   // ________Actions Hook___________
@@ -495,33 +501,101 @@ function DependenciesContent() {
     safeMode,
   });
 
+  // Handle suggestion offer: user accepted creating a timing-violated dep as suggestion
+  const handleSuggestionOfferAccept = useCallback(async () => {
+    if (!suggestionOfferModal) return;
+    const { sourceId, targetId } = suggestionOfferModal;
+    setSuggestionOfferModal(null);
+    try {
+      await create_dependency(projectId, sourceId, targetId, { weight: 'suggestion' });
+      setConnections(prev => [...prev, { source: sourceId, target: targetId, weight: 'suggestion', reason: null }]);
+      pushAction({
+        description: 'Create dependency (suggestion)',
+        undo: async () => {
+          await delete_dependency_api(projectId, sourceId, targetId);
+          setConnections(prev => prev.filter(c => !(c.source === sourceId && c.target === targetId)));
+        },
+        redo: async () => {
+          await create_dependency(projectId, sourceId, targetId, { weight: 'suggestion' });
+          setConnections(prev => [...prev, { source: sourceId, target: targetId, weight: 'suggestion', reason: null }]);
+        },
+      });
+    } catch (err) {
+      console.error("Failed to create suggestion dependency:", err);
+    }
+  }, [suggestionOfferModal, projectId, setConnections, pushAction]);
+
   // Handle weak dependency conflict: convert weak deps to suggestions, then allow the move
   const handleWeakDepConvert = useCallback(async (conflictData) => {
     if (!conflictData) return;
     const { weakConnections, milestonesToMove, initialPositions, currentDeltaIndex } = conflictData;
 
+    // Capture old positions and weights for undo
+    const beforePositions = {};
+    for (const mId of milestonesToMove) {
+      const initial = initialPositions[mId];
+      if (initial) beforePositions[mId] = initial.startIndex;
+    }
+    const convertedConnWeights = weakConnections.map(c => ({ ...c, oldWeight: c.weight || 'weak' }));
+
     // Convert each weak connection to suggestion
     for (const conn of weakConnections) {
-      await handleUpdateConnection(conn, { weight: 'suggestion' });
+      await handleUpdateConnection(conn, { weight: 'suggestion' }, { skipHistory: true });
     }
 
     // Now apply the move
+    const afterPositions = {};
     for (const mId of milestonesToMove) {
       const initial = initialPositions[mId];
       if (!initial) continue;
       const newStart = initial.startIndex + currentDeltaIndex;
+      afterPositions[mId] = newStart;
       setMilestones(prev => {
         const { x, ...rest } = prev[mId];
         return { ...prev, [mId]: { ...rest, start_index: newStart } };
       });
       try {
-        const { update_start_index } = await import('../../api/dependencies_api.js');
         await update_start_index(projectId, mId, newStart);
       } catch (err) {
         console.error("Failed to update start index after weak dep conversion:", err);
       }
     }
-  }, [handleUpdateConnection, setMilestones, projectId]);
+
+    pushAction({
+      description: 'Weak dep convert + move',
+      undo: async () => {
+        // Restore positions
+        for (const mId of milestonesToMove) {
+          const oldStart = beforePositions[mId];
+          if (oldStart === undefined) continue;
+          await update_start_index(projectId, mId, oldStart);
+          setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], start_index: oldStart } }));
+        }
+        // Restore connection weights
+        for (const c of convertedConnWeights) {
+          await update_dependency(projectId, c.source, c.target, { weight: c.oldWeight });
+          setConnections(prev => prev.map(conn =>
+            conn.source === c.source && conn.target === c.target ? { ...conn, weight: c.oldWeight } : conn
+          ));
+        }
+      },
+      redo: async () => {
+        // Re-convert and re-move
+        for (const c of convertedConnWeights) {
+          await update_dependency(projectId, c.source, c.target, { weight: 'suggestion' });
+          setConnections(prev => prev.map(conn =>
+            conn.source === c.source && conn.target === c.target ? { ...conn, weight: 'suggestion' } : conn
+          ));
+        }
+        for (const mId of milestonesToMove) {
+          const newStart = afterPositions[mId];
+          if (newStart === undefined) continue;
+          await update_start_index(projectId, mId, newStart);
+          setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], start_index: newStart } }));
+        }
+      },
+    });
+  }, [handleUpdateConnection, setMilestones, setConnections, projectId, pushAction]);
 
   // Toggle task size
   const toggleTaskSize = (taskId) => {
@@ -650,6 +724,13 @@ function DependenciesContent() {
 
   // Set or clear a task's hard deadline
   const handleSetDeadline = useCallback(async (taskId, deadlineDayIndex) => {
+    // Capture old value for undo
+    let oldDeadline = null;
+    setTasks(prev => {
+      oldDeadline = prev[taskId]?.hard_deadline ?? null;
+      return prev; // no change, just reading
+    });
+
     try {
       await set_task_deadline(projectId, taskId, deadlineDayIndex);
       // Update local tasks state
@@ -661,10 +742,22 @@ function DependenciesContent() {
         }
       }));
       playSound('milestoneMove');
+
+      pushAction({
+        description: 'Set deadline',
+        undo: async () => {
+          await set_task_deadline(projectId, taskId, oldDeadline);
+          setTasks(prev => ({ ...prev, [taskId]: { ...prev[taskId], hard_deadline: oldDeadline } }));
+        },
+        redo: async () => {
+          await set_task_deadline(projectId, taskId, deadlineDayIndex);
+          setTasks(prev => ({ ...prev, [taskId]: { ...prev[taskId], hard_deadline: deadlineDayIndex } }));
+        },
+      });
     } catch (err) {
       console.error("Failed to set deadline:", err);
     }
-  }, [projectId, setTasks]);
+  }, [projectId, setTasks, pushAction]);
 
   // Collapse all teams
   const collapseAllTeams = useCallback(() => {
@@ -795,6 +888,10 @@ function DependenciesContent() {
         connectionEditModal={connectionEditModal}
         setConnectionEditModal={setConnectionEditModal}
         handleUpdateConnection={handleUpdateConnection}
+        // Suggestion offer modal
+        suggestionOfferModal={suggestionOfferModal}
+        setSuggestionOfferModal={setSuggestionOfferModal}
+        handleSuggestionOfferAccept={handleSuggestionOfferAccept}
       />
 
       {/* Team Settings Dropdown - Rendered outside the transformed container */}

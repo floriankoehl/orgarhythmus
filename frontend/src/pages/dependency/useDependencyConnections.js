@@ -42,6 +42,10 @@ export function useDependencyConnections({
   // Warning/feedback (from useDependencyWarnings)
   addWarning,
   setBlockedMoveHighlight,
+  // Callbacks
+  onSuggestionOffer,
+  // Settings
+  defaultDepWeight = 'strong',
 }) {
   const {
     projectId,
@@ -51,6 +55,7 @@ export function useDependencyConnections({
     selectedConnection,
     setSelectedConnection,
     warningDuration,
+    pushAction,
   } = useDependency();
 
   // ── Connection drag state ──
@@ -194,20 +199,40 @@ export function useDependencyConnections({
 
           if (sourceMilestone && targetMilestoneData) {
             const sourceEndIndex = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
+            const timingViolated = sourceEndIndex >= targetMilestoneData.start_index;
 
-            if (sourceEndIndex >= targetMilestoneData.start_index) {
-              setBlockedMoveHighlight({
-                milestoneId: sourceId,
-                connectionSource: sourceId,
-                connectionTarget: targetId,
-              });
-              setTimeout(() => setBlockedMoveHighlight(null), warningDuration);
-              addWarning("Cannot create dependency", "Source milestone must finish before target starts.");
+            if (timingViolated && defaultDepWeight !== 'suggestion') {
+              // Timing violated — offer to create as suggestion instead
+              if (onSuggestionOffer) {
+                onSuggestionOffer({ sourceId, targetId });
+              } else {
+                setBlockedMoveHighlight({
+                  milestoneId: sourceId,
+                  connectionSource: sourceId,
+                  connectionTarget: targetId,
+                });
+                setTimeout(() => setBlockedMoveHighlight(null), warningDuration);
+                addWarning("Cannot create dependency", "Source milestone must finish before target starts.");
+              }
             } else {
+              // Either timing is OK, or default weight is 'suggestion' (no constraint)
+              const weightToUse = timingViolated ? 'suggestion' : defaultDepWeight;
               try {
-                await create_dependency(projectId, sourceId, targetId);
-                setConnections(prev => [...prev, { source: sourceId, target: targetId, weight: 'strong', reason: null }]);
+                await create_dependency(projectId, sourceId, targetId, { weight: weightToUse !== 'strong' ? weightToUse : undefined });
+                setConnections(prev => [...prev, { source: sourceId, target: targetId, weight: weightToUse, reason: null }]);
                 playSound('connectionCreate');
+
+                pushAction({
+                  description: 'Create dependency',
+                  undo: async () => {
+                    await delete_dependency(projectId, sourceId, targetId);
+                    setConnections(prev => prev.filter(c => !(c.source === sourceId && c.target === targetId)));
+                  },
+                  redo: async () => {
+                    await create_dependency(projectId, sourceId, targetId, { weight: weightToUse !== 'strong' ? weightToUse : undefined });
+                    setConnections(prev => [...prev, { source: sourceId, target: targetId, weight: weightToUse, reason: null }]);
+                  },
+                });
               } catch (err) {
                 console.error("Failed to create dependency:", err);
               }
@@ -246,11 +271,32 @@ export function useDependencyConnections({
   // Delete connection
   // ────────────────────────────────────────
   const handleDeleteConnection = async (connection) => {
+    // Capture full connection for undo
+    const deletedConn = { ...connection };
     try {
       await delete_dependency(projectId, connection.source, connection.target);
       setConnections(prev => prev.filter(c => !(c.source === connection.source && c.target === connection.target)));
       setSelectedConnection(null);
       playSound('connectionDelete');
+
+      pushAction({
+        description: 'Delete dependency',
+        undo: async () => {
+          await create_dependency(projectId, deletedConn.source, deletedConn.target);
+          // Restore weight/reason if they were set
+          if (deletedConn.weight && deletedConn.weight !== 'strong') {
+            await update_dependency(projectId, deletedConn.source, deletedConn.target, { weight: deletedConn.weight });
+          }
+          if (deletedConn.reason) {
+            await update_dependency(projectId, deletedConn.source, deletedConn.target, { reason: deletedConn.reason });
+          }
+          setConnections(prev => [...prev, { source: deletedConn.source, target: deletedConn.target, weight: deletedConn.weight || 'strong', reason: deletedConn.reason || null }]);
+        },
+        redo: async () => {
+          await delete_dependency(projectId, deletedConn.source, deletedConn.target);
+          setConnections(prev => prev.filter(c => !(c.source === deletedConn.source && c.target === deletedConn.target)));
+        },
+      });
     } catch (err) {
       console.error("Failed to delete dependency:", err);
     }
@@ -259,7 +305,44 @@ export function useDependencyConnections({
   // ────────────────────────────────────────
   // Update connection weight / reason
   // ────────────────────────────────────────
-  const handleUpdateConnection = async (connection, updates) => {
+  const handleUpdateConnection = async (connection, updates, { skipHistory = false } = {}) => {
+    // ── Validate weight upgrade ──
+    // If upgrading weight (suggestion→weak/strong, or weak→strong), check that
+    // the source milestone finishes before the target milestone starts.
+    if (updates.weight) {
+      const WEIGHT_ORDER = { suggestion: 0, weak: 1, strong: 2 };
+      const oldWeight = connection.weight || 'strong';
+      const newWeight = updates.weight;
+      if ((WEIGHT_ORDER[newWeight] ?? 0) > (WEIGHT_ORDER[oldWeight] ?? 0)) {
+        // It's an upgrade — validate positions
+        const sourceMilestone = milestones[connection.source];
+        const targetMilestone = milestones[connection.target];
+        if (sourceMilestone && targetMilestone) {
+          const sourceEnd = sourceMilestone.start_index + (sourceMilestone.duration || 1) - 1;
+          if (sourceEnd >= targetMilestone.start_index) {
+            addWarning(
+              `Cannot upgrade to ${newWeight}`,
+              "The source milestone must finish before the target starts. Move the milestones apart first."
+            );
+            if (setBlockedMoveHighlight) {
+              setBlockedMoveHighlight({
+                milestoneId: connection.source,
+                connectionSource: connection.source,
+                connectionTarget: connection.target,
+              });
+              setTimeout(() => setBlockedMoveHighlight(null), warningDuration);
+            }
+            return false; // abort the update
+          }
+        }
+      }
+    }
+
+    // Capture old values for undo
+    const oldValues = {};
+    for (const key of Object.keys(updates)) {
+      oldValues[key] = connection[key];
+    }
     try {
       await update_dependency(projectId, connection.source, connection.target, updates);
       setConnections(prev => prev.map(c => {
@@ -268,8 +351,34 @@ export function useDependencyConnections({
         }
         return c;
       }));
+
+      if (!skipHistory) {
+        pushAction({
+          description: 'Update dependency',
+          undo: async () => {
+            await update_dependency(projectId, connection.source, connection.target, oldValues);
+            setConnections(prev => prev.map(c => {
+              if (c.source === connection.source && c.target === connection.target) {
+                return { ...c, ...oldValues };
+              }
+              return c;
+            }));
+          },
+          redo: async () => {
+            await update_dependency(projectId, connection.source, connection.target, updates);
+            setConnections(prev => prev.map(c => {
+              if (c.source === connection.source && c.target === connection.target) {
+                return { ...c, ...updates };
+              }
+              return c;
+            }));
+          },
+        });
+      }
+      return true;
     } catch (err) {
       console.error("Failed to update dependency:", err);
+      return false;
     }
   };
 

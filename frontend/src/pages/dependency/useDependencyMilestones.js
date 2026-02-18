@@ -5,6 +5,8 @@ import {
   rename_milestone,
   delete_milestone,
   change_duration,
+  add_milestone,
+  create_dependency,
 } from '../../api/dependencies_api.js';
 import { useDependency } from './DependencyContext.jsx';
 import {
@@ -54,6 +56,7 @@ export function useDependencyMilestones({
     autoSelectBlocking,
     setEditingMilestoneId,
     setEditingMilestoneName,
+    pushAction,
   } = useDependency();
 
   // ────────────────────────────────────────
@@ -155,6 +158,26 @@ export function useDependencyMilestones({
           return updated;
         });
         return;
+      }
+
+      // Check day-0 boundary: no milestone can move before the project start
+      for (const mId of milestonesToMove) {
+        const initial = initialPositions[mId];
+        if (initial && initial.startIndex + currentDeltaIndex < 0) {
+          addWarning("Move blocked: before day 0", "Milestones cannot be placed before the project start.");
+          setMilestones(prev => {
+            const updated = { ...prev };
+            for (const mid of milestonesToMove) {
+              const init = initialPositions[mid];
+              if (init) {
+                const { x, ...rest } = updated[mid];
+                updated[mid] = { ...rest, start_index: init.startIndex };
+              }
+            }
+            return updated;
+          });
+          return;
+        }
       }
 
       // Validate dependency constraints
@@ -279,11 +302,18 @@ export function useDependencyMilestones({
 
       // Validation passed — save for all milestones
       playSound('milestoneMove');
+      const beforePositions = {};
+      const afterPositions = {};
       for (const mId of milestonesToMove) {
         const initial = initialPositions[mId];
         if (!initial) continue;
+        beforePositions[mId] = initial.startIndex;
+        afterPositions[mId] = initial.startIndex + currentDeltaIndex;
+      }
 
-        const newStart = initial.startIndex + currentDeltaIndex;
+      for (const mId of milestonesToMove) {
+        const newStart = afterPositions[mId];
+        if (newStart === undefined) continue;
 
         setMilestones(prev => {
           const { x, ...rest } = prev[mId];
@@ -296,6 +326,26 @@ export function useDependencyMilestones({
           console.error("Failed to update start index:", err);
         }
       }
+
+      pushAction({
+        description: `Move ${milestonesToMove.length} milestone(s)`,
+        undo: async () => {
+          for (const mId of milestonesToMove) {
+            const oldStart = beforePositions[mId];
+            if (oldStart === undefined) continue;
+            setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], start_index: oldStart } }));
+            await update_start_index(projectId, mId, oldStart);
+          }
+        },
+        redo: async () => {
+          for (const mId of milestonesToMove) {
+            const newStart = afterPositions[mId];
+            if (newStart === undefined) continue;
+            setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], start_index: newStart } }));
+            await update_start_index(projectId, mId, newStart);
+          }
+        },
+      });
     };
 
     document.addEventListener('mousemove', onMouseMove);
@@ -491,12 +541,18 @@ export function useDependencyMilestones({
 
       // Validation passed — save changes for all milestones
       playSound('milestoneResize');
+      const resizeBefore = {};
+      const resizeAfter = {};
+
       for (const mId of milestonesToResize) {
         const initial = initialStates[mId];
         if (!initial) continue;
 
         const currentM = milestones[mId];
         if (!currentM) continue;
+
+        resizeBefore[mId] = { startIndex: initial.startIndex, duration: initial.duration };
+        resizeAfter[mId] = { startIndex: currentM.start_index, duration: currentM.duration };
 
         const durationChange = currentM.duration - initial.duration;
         if (durationChange !== 0) {
@@ -515,6 +571,32 @@ export function useDependencyMilestones({
           }
         }
       }
+
+      pushAction({
+        description: `Resize ${milestonesToResize.length} milestone(s)`,
+        undo: async () => {
+          for (const mId of milestonesToResize) {
+            const before = resizeBefore[mId];
+            const after = resizeAfter[mId];
+            if (!before || !after) continue;
+            const durationDelta = before.duration - after.duration;
+            if (durationDelta !== 0) await change_duration(projectId, mId, durationDelta);
+            if (before.startIndex !== after.startIndex) await update_start_index(projectId, mId, before.startIndex);
+            setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], start_index: before.startIndex, duration: before.duration } }));
+          }
+        },
+        redo: async () => {
+          for (const mId of milestonesToResize) {
+            const before = resizeBefore[mId];
+            const after = resizeAfter[mId];
+            if (!before || !after) continue;
+            const durationDelta = after.duration - before.duration;
+            if (durationDelta !== 0) await change_duration(projectId, mId, durationDelta);
+            if (before.startIndex !== after.startIndex) await update_start_index(projectId, mId, after.startIndex);
+            setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], start_index: after.startIndex, duration: after.duration } }));
+          }
+        },
+      });
     };
 
     document.addEventListener('mousemove', onMouseMove);
@@ -562,6 +644,11 @@ export function useDependencyMilestones({
   // Milestone delete
   // ────────────────────────────────────────
   const handleMilestoneDelete = async (milestoneId) => {
+    // Capture state for undo BEFORE deleting
+    const deletedMilestone = milestones[milestoneId];
+    const deletedConnections = connections.filter(c => c.source === milestoneId || c.target === milestoneId);
+    const ownerTaskId = deletedMilestone?.task;
+
     try {
       await delete_milestone(projectId, milestoneId);
       playSound('milestoneDelete');
@@ -594,6 +681,89 @@ export function useDependencyMilestones({
         return updated;
       });
 
+      // Push undo action — recreate the milestone + connections
+      if (deletedMilestone) {
+        pushAction({
+          description: 'Delete milestone',
+          undo: async () => {
+            // Recreate milestone
+            const result = await add_milestone(projectId, ownerTaskId, {
+              name: deletedMilestone.name,
+              description: deletedMilestone.description || '',
+              start_index: deletedMilestone.start_index,
+            });
+            if (result.added_milestone) {
+              const newId = result.added_milestone.id;
+              const dur = (deletedMilestone.duration || 1) - 1;
+              if (dur > 0) await change_duration(projectId, newId, dur);
+
+              const restoredMs = {
+                ...result.added_milestone,
+                start_index: deletedMilestone.start_index,
+                duration: deletedMilestone.duration || 1,
+                display: deletedMilestone.display || 'default',
+              };
+              setMilestones(prev => ({ ...prev, [newId]: restoredMs }));
+              setTasks(prev => ({
+                ...prev,
+                [ownerTaskId]: {
+                  ...prev[ownerTaskId],
+                  milestones: [...(prev[ownerTaskId]?.milestones || []), restoredMs],
+                },
+              }));
+
+              // Recreate connections (mapping old ID → new ID)
+              const restoredConns = [];
+              for (const conn of deletedConnections) {
+                const src = conn.source === milestoneId ? newId : conn.source;
+                const tgt = conn.target === milestoneId ? newId : conn.target;
+                try {
+                  await create_dependency(projectId, src, tgt);
+                  restoredConns.push({ source: src, target: tgt, weight: conn.weight || 'strong', reason: conn.reason || null });
+                } catch (e) { /* skip if other milestone also deleted */ }
+              }
+              if (restoredConns.length > 0) {
+                setConnections(prev => [...prev, ...restoredConns]);
+              }
+            }
+          },
+          redo: async () => {
+            // redo = delete again — we need to find the milestone that occupies same task/position
+            // Since undo created a new ID we can't predict it. Trigger a simpler approach:
+            // Find milestone by task+start+name
+            // This is best-effort — for robustness, just reload after redo of deletes
+            // But let's try: find latest milestone matching this fingerprint
+            const currentMs = Object.entries(milestones).find(([, m]) =>
+              m.task === ownerTaskId &&
+              m.name === deletedMilestone.name &&
+              m.start_index === deletedMilestone.start_index
+            );
+            if (currentMs) {
+              const [redoId] = currentMs;
+              await delete_milestone(projectId, parseInt(redoId));
+              setMilestones(prev => {
+                const updated = { ...prev };
+                delete updated[redoId];
+                return updated;
+              });
+              setTasks(prev => {
+                const updated = { ...prev };
+                for (const taskId of Object.keys(updated)) {
+                  if (updated[taskId]?.milestones) {
+                    updated[taskId] = {
+                      ...updated[taskId],
+                      milestones: updated[taskId].milestones.filter(m => m.id !== parseInt(redoId))
+                    };
+                  }
+                }
+                return updated;
+              });
+              setConnections(prev => prev.filter(c => c.source !== parseInt(redoId) && c.target !== parseInt(redoId)));
+            }
+          },
+        });
+      }
+
     } catch (err) {
       console.error("Failed to delete milestone:", err);
       throw err;
@@ -619,17 +789,32 @@ export function useDependencyMilestones({
       return;
     }
 
+    const oldName = milestones[milestoneId]?.name || "";
+    const newName = editingMilestoneNameVal.trim();
+
     try {
-      await rename_milestone(projectId, milestoneId, editingMilestoneNameVal.trim());
+      await rename_milestone(projectId, milestoneId, newName);
       playSound('milestoneRename');
 
       setMilestones(prev => ({
         ...prev,
         [milestoneId]: {
           ...prev[milestoneId],
-          name: editingMilestoneNameVal.trim()
+          name: newName
         }
       }));
+
+      pushAction({
+        description: 'Rename milestone',
+        undo: async () => {
+          await rename_milestone(projectId, milestoneId, oldName);
+          setMilestones(prev => ({ ...prev, [milestoneId]: { ...prev[milestoneId], name: oldName } }));
+        },
+        redo: async () => {
+          await rename_milestone(projectId, milestoneId, newName);
+          setMilestones(prev => ({ ...prev, [milestoneId]: { ...prev[milestoneId], name: newName } }));
+        },
+      });
     } catch (err) {
       console.error("Failed to rename milestone:", err);
     }

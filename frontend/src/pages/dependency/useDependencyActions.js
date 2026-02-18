@@ -4,6 +4,7 @@ import {
   update_start_index,
   set_day_purpose,
   reorder_team_tasks,
+  delete_milestone,
 } from '../../api/dependencies_api.js';
 import {
   createTeamForProject,
@@ -77,6 +78,7 @@ export function useDependencyActions({
     setSelectedConnection,
     selectedMilestones,
     setSelectedMilestones,
+    pushAction,
   } = useDependency();
 
   // ________DAY PURPOSE HANDLERS________
@@ -85,13 +87,42 @@ export function useDependencyActions({
   const handleSaveDayPurpose = async () => {
     if (!dayPurposeModal) return;
     
+    // Capture old day data for undo (need to read current projectDays)
+    const dayIdx = dayPurposeModal.dayIndex;
+    const savePurpose = newDayPurpose;
+    const savePurposeTeams = newDayPurposeTeams;
+
     try {
-      const result = await set_day_purpose(projectId, dayPurposeModal.dayIndex, newDayPurpose, newDayPurposeTeams);
+      // Capture old value before saving
+      let oldPurpose = null;
+      let oldPurposeTeams = null;
+      setProjectDays(prev => {
+        const oldDay = prev[dayIdx];
+        if (oldDay) {
+          oldPurpose = oldDay.purpose || null;
+          oldPurposeTeams = oldDay.purpose_teams || null;
+        }
+        return prev;
+      });
+
+      const result = await set_day_purpose(projectId, dayIdx, savePurpose, savePurposeTeams);
       if (result.success) {
         setProjectDays(prev => ({
           ...prev,
-          [dayPurposeModal.dayIndex]: result.day
+          [dayIdx]: result.day
         }));
+
+        pushAction({
+          description: 'Set day purpose',
+          undo: async () => {
+            const r = await set_day_purpose(projectId, dayIdx, oldPurpose, oldPurposeTeams);
+            if (r.success) setProjectDays(prev => ({ ...prev, [dayIdx]: r.day }));
+          },
+          redo: async () => {
+            const r = await set_day_purpose(projectId, dayIdx, savePurpose, savePurposeTeams);
+            if (r.success) setProjectDays(prev => ({ ...prev, [dayIdx]: r.day }));
+          },
+        });
       }
     } catch (err) {
       console.error("Failed to save day purpose:", err);
@@ -105,13 +136,39 @@ export function useDependencyActions({
   const handleClearDayPurpose = async () => {
     if (!dayPurposeModal) return;
     
+    const dayIdx = dayPurposeModal.dayIndex;
+
     try {
-      const result = await set_day_purpose(projectId, dayPurposeModal.dayIndex, null, null);
+      // Capture old value
+      let oldPurpose = null;
+      let oldPurposeTeams = null;
+      setProjectDays(prev => {
+        const oldDay = prev[dayIdx];
+        if (oldDay) {
+          oldPurpose = oldDay.purpose || null;
+          oldPurposeTeams = oldDay.purpose_teams || null;
+        }
+        return prev;
+      });
+
+      const result = await set_day_purpose(projectId, dayIdx, null, null);
       if (result.success) {
         setProjectDays(prev => ({
           ...prev,
-          [dayPurposeModal.dayIndex]: result.day
+          [dayIdx]: result.day
         }));
+
+        pushAction({
+          description: 'Clear day purpose',
+          undo: async () => {
+            const r = await set_day_purpose(projectId, dayIdx, oldPurpose, oldPurposeTeams);
+            if (r.success) setProjectDays(prev => ({ ...prev, [dayIdx]: r.day }));
+          },
+          redo: async () => {
+            const r = await set_day_purpose(projectId, dayIdx, null, null);
+            if (r.success) setProjectDays(prev => ({ ...prev, [dayIdx]: r.day }));
+          },
+        });
       }
     } catch (err) {
       console.error("Failed to clear day purpose:", err);
@@ -130,9 +187,10 @@ export function useDependencyActions({
     try {
       const result = await add_milestone(projectId, taskId);
       if (result.added_milestone) {
+        const newId = result.added_milestone.id;
         setMilestones(prev => ({
           ...prev,
-          [result.added_milestone.id]: { ...result.added_milestone, display: "default" }
+          [newId]: { ...result.added_milestone, display: "default" }
         }));
         // Update tasks to include the new milestone
         setTasks(prev => ({
@@ -143,6 +201,28 @@ export function useDependencyActions({
           }
         }));
         playSound('milestoneCreate');
+
+        pushAction({
+          description: 'Add milestone',
+          undo: async () => {
+            await delete_milestone(projectId, newId);
+            setMilestones(prev => { const u = { ...prev }; delete u[newId]; return u; });
+            setTasks(prev => ({
+              ...prev,
+              [taskId]: { ...prev[taskId], milestones: (prev[taskId]?.milestones || []).filter(m => m.id !== newId) }
+            }));
+          },
+          redo: async () => {
+            const r = await add_milestone(projectId, taskId);
+            if (r.added_milestone) {
+              setMilestones(prev => ({ ...prev, [r.added_milestone.id]: { ...r.added_milestone, display: "default" } }));
+              setTasks(prev => ({
+                ...prev,
+                [taskId]: { ...prev[taskId], milestones: [...(prev[taskId]?.milestones || []), r.added_milestone] }
+              }));
+            }
+          },
+        });
       }
     } catch (err) {
       console.error("Failed to add milestone:", err);
@@ -158,14 +238,15 @@ export function useDependencyActions({
     try {
       const result = await add_milestone(projectId, taskId);
       if (result.added_milestone) {
+        const newId = result.added_milestone.id;
         // Update the milestone with the correct start index
-        await update_start_index(projectId, result.added_milestone.id, dayIndex);
+        await update_start_index(projectId, newId, dayIndex);
         
         const newMilestone = { ...result.added_milestone, start_index: dayIndex, display: "default" };
         
         setMilestones(prev => ({
           ...prev,
-          [result.added_milestone.id]: newMilestone
+          [newId]: newMilestone
         }));
         
         setTasks(prev => ({
@@ -176,6 +257,30 @@ export function useDependencyActions({
           }
         }));
         playSound('milestoneCreate');
+
+        pushAction({
+          description: 'Create milestone at day',
+          undo: async () => {
+            await delete_milestone(projectId, newId);
+            setMilestones(prev => { const u = { ...prev }; delete u[newId]; return u; });
+            setTasks(prev => ({
+              ...prev,
+              [taskId]: { ...prev[taskId], milestones: (prev[taskId]?.milestones || []).filter(m => m.id !== newId) }
+            }));
+          },
+          redo: async () => {
+            const r = await add_milestone(projectId, taskId);
+            if (r.added_milestone) {
+              await update_start_index(projectId, r.added_milestone.id, dayIndex);
+              const ms = { ...r.added_milestone, start_index: dayIndex, display: "default" };
+              setMilestones(prev => ({ ...prev, [r.added_milestone.id]: ms }));
+              setTasks(prev => ({
+                ...prev,
+                [taskId]: { ...prev[taskId], milestones: [...(prev[taskId]?.milestones || []), ms] }
+              }));
+            }
+          },
+        });
       }
     } catch (err) {
       console.error("Failed to create milestone:", err);
@@ -192,6 +297,11 @@ export function useDependencyActions({
   const handleConfirmMove = async () => {
     const { taskId, sourceTeamId, targetTeamId, insertIndex } = moveModal;
     
+    // Capture old state for undo
+    const oldSourceTasks = [...teams[sourceTeamId].tasks];
+    const oldTargetTasks = [...teams[targetTeamId].tasks];
+    const oldTaskTeam = sourceTeamId; // task is currently in source team
+
     // Remove task from source team
     const sourceTeam = teams[sourceTeamId];
     const newSourceTasks = sourceTeam.tasks.filter(id => id !== taskId);
@@ -233,6 +343,28 @@ export function useDependencyActions({
     // Save to backend
     try {
       await reorder_team_tasks(projectId, taskId, targetTeamId, newTargetTasks);
+
+      pushAction({
+        description: 'Move task cross-team',
+        undo: async () => {
+          setTeams(prev => ({
+            ...prev,
+            [sourceTeamId]: { ...prev[sourceTeamId], tasks: oldSourceTasks },
+            [targetTeamId]: { ...prev[targetTeamId], tasks: oldTargetTasks },
+          }));
+          setTasks(prev => ({ ...prev, [taskId]: { ...prev[taskId], team: oldTaskTeam } }));
+          await reorder_team_tasks(projectId, taskId, sourceTeamId, oldSourceTasks);
+        },
+        redo: async () => {
+          setTeams(prev => ({
+            ...prev,
+            [sourceTeamId]: { ...prev[sourceTeamId], tasks: newSourceTasks },
+            [targetTeamId]: { ...prev[targetTeamId], tasks: newTargetTasks },
+          }));
+          setTasks(prev => ({ ...prev, [taskId]: { ...prev[taskId], team: targetTeamId } }));
+          await reorder_team_tasks(projectId, taskId, targetTeamId, newTargetTasks);
+        },
+      });
     } catch (err) {
       console.error("Failed to move task:", err);
     }

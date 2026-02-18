@@ -63,8 +63,10 @@ def create_dependency(request, project_id):
         return Response({"detail": "Reverse dependency already exists — would create a cycle"}, status=status.HTTP_400_BAD_REQUEST)
 
     # Validate scheduling: source must finish before target starts
+    # Skip this check for suggestion-weight dependencies (they don't enforce ordering)
+    weight = request.data.get("weight")
     source_end_index = source.start_index + (source.duration or 1) - 1
-    if source_end_index >= target.start_index:
+    if source_end_index >= target.start_index and weight != 'suggestion':
         return Response(
             {"detail": "Cannot create dependency: source milestone must finish before target milestone starts"},
             status=status.HTTP_400_BAD_REQUEST,
