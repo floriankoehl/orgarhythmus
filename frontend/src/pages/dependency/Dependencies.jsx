@@ -33,7 +33,7 @@ import { useDependencyInteraction } from './useDependencyInteraction';
 import { useDependencyData } from './useDependencyData';
 import { useDependencyUIState } from './useDependencyUIState';
 import { useDependencyActions } from './useDependencyActions';
-import { set_task_deadline, update_start_index, change_duration, update_dependency, create_dependency, delete_dependency_api, create_phase, update_phase, delete_phase, get_all_views, create_view, update_view, delete_view, set_default_view } from '../../api/dependencies_api';
+import { set_task_deadline, update_start_index, change_duration, update_dependency, create_dependency, delete_dependency_api, create_phase, update_phase, delete_phase, get_all_views, create_view, update_view, delete_view, set_default_view, list_snapshots, create_snapshot, restore_snapshot as restore_snapshot_api, delete_snapshot, rename_snapshot } from '../../api/dependencies_api';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
@@ -197,6 +197,10 @@ function DependenciesContent() {
   const [savedViews, setSavedViews] = useState([]);
   const [activeViewId, setActiveViewId] = useState(null); // null = Default view
   const [activeViewName, setActiveViewName] = useState("Default");
+
+  // ── Project Snapshots (full data + view state backups) ──
+  const [snapshots, setSnapshots] = useState([]);
+  const [snapshotsLoading, setSnapshotsLoading] = useState(false);
 
   // Dynamic constants based on settings
   const DAYWIDTH = customDayWidth;
@@ -557,6 +561,80 @@ function DependenciesContent() {
   }, [projectId]);
 
   // ═══════════════ End Views ═══════════════
+
+  // ═══════════════ Project Snapshots ═══════════════
+
+  // Fetch snapshots on mount
+  useEffect(() => {
+    if (!projectId) return;
+    list_snapshots(projectId)
+      .then(data => setSnapshots(data.snapshots || []))
+      .catch(err => console.error("Failed to load snapshots:", err));
+  }, [projectId]);
+
+  const handleCreateSnapshot = useCallback(async (name, description) => {
+    if (!name?.trim()) return;
+    setSnapshotsLoading(true);
+    try {
+      const data = await create_snapshot(projectId, { name: name.trim(), description: description || "" });
+      const created = data.snapshot || data;
+      setSnapshots(prev => [created, ...prev]);
+    } catch (err) {
+      console.error("Failed to create snapshot:", err);
+      alert("Failed to create snapshot: " + (err.message || err));
+    } finally {
+      setSnapshotsLoading(false);
+    }
+  }, [projectId]);
+
+  const handleRestoreSnapshot = useCallback(async (snapshotId) => {
+    setSnapshotsLoading(true);
+    try {
+      await restore_snapshot_api(projectId, snapshotId);
+      // Re-fetch all data from backend after restore
+      setReloadData(true);
+      // Also reload views since they were restored too
+      const viewData = await get_all_views(projectId);
+      const views = viewData || [];
+      setSavedViews(views);
+      setActiveViewId(null);
+      setActiveViewName("Default");
+      const defaultView = views.find(v => v.is_default);
+      if (defaultView) {
+        applyViewState(defaultView.state);
+        setActiveViewId(defaultView.id);
+        setActiveViewName(defaultView.name);
+      }
+    } catch (err) {
+      console.error("Failed to restore snapshot:", err);
+      alert("Failed to restore snapshot: " + (err.message || err));
+    } finally {
+      setSnapshotsLoading(false);
+    }
+  }, [projectId, setReloadData, applyViewState]);
+
+  const handleDeleteSnapshot = useCallback(async (snapshotId) => {
+    try {
+      await delete_snapshot(projectId, snapshotId);
+      setSnapshots(prev => prev.filter(s => s.id !== snapshotId));
+    } catch (err) {
+      console.error("Failed to delete snapshot:", err);
+      alert("Failed to delete snapshot: " + (err.message || err));
+    }
+  }, [projectId]);
+
+  const handleRenameSnapshot = useCallback(async (snapshotId, name, description) => {
+    try {
+      const data = await rename_snapshot(projectId, snapshotId, { name, description });
+      const updated = data.snapshot || data;
+      setSnapshots(prev => prev.map(s => s.id === snapshotId ? { ...s, ...updated } : s));
+    } catch (err) {
+      console.error("Failed to rename snapshot:", err);
+      alert("Failed to rename snapshot: " + (err.message || err));
+    }
+  }, [projectId]);
+
+  // ═══════════════ End Project Snapshots ═══════════════
 
   // ── Phase CRUD handlers ──
   const handleCreatePhase = useCallback(async (phaseData) => {
@@ -1030,8 +1108,9 @@ function DependenciesContent() {
     const { sourceId, targetId } = suggestionOfferModal;
     setSuggestionOfferModal(null);
     try {
-      await create_dependency(projectId, sourceId, targetId, { weight: 'suggestion' });
-      setConnections(prev => [...prev, { source: sourceId, target: targetId, weight: 'suggestion', reason: null }]);
+      const defaultReason = 'could be before';
+      await create_dependency(projectId, sourceId, targetId, { weight: 'suggestion', reason: defaultReason });
+      setConnections(prev => [...prev, { source: sourceId, target: targetId, weight: 'suggestion', reason: defaultReason }]);
       pushAction({
         description: 'Create dependency (suggestion)',
         undo: async () => {
@@ -1039,8 +1118,8 @@ function DependenciesContent() {
           setConnections(prev => prev.filter(c => !(c.source === sourceId && c.target === targetId)));
         },
         redo: async () => {
-          await create_dependency(projectId, sourceId, targetId, { weight: 'suggestion' });
-          setConnections(prev => [...prev, { source: sourceId, target: targetId, weight: 'suggestion', reason: null }]);
+          await create_dependency(projectId, sourceId, targetId, { weight: 'suggestion', reason: defaultReason });
+          setConnections(prev => [...prev, { source: sourceId, target: targetId, weight: 'suggestion', reason: defaultReason }]);
         },
       });
     } catch (err) {
@@ -1799,6 +1878,13 @@ function DependenciesContent() {
           onRenameView={handleRenameView}
           onDeleteView={handleDeleteView}
           onSetDefaultView={handleSetDefaultView}
+          // Snapshots
+          snapshots={snapshots}
+          snapshotsLoading={snapshotsLoading}
+          onCreateSnapshot={handleCreateSnapshot}
+          onRestoreSnapshot={handleRestoreSnapshot}
+          onDeleteSnapshot={handleDeleteSnapshot}
+          onRenameSnapshot={handleRenameSnapshot}
         />
 
         <DependencyCanvas

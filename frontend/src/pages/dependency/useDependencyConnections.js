@@ -257,9 +257,10 @@ export function useDependencyConnections({
             } else {
               // Either timing is OK, or default weight is 'suggestion' (no constraint)
               const weightToUse = timingViolated ? 'suggestion' : defaultDepWeight;
+              const defaultReason = weightToUse === 'strong' ? 'is required for' : weightToUse === 'weak' ? 'should be before' : 'could be before';
               try {
-                await create_dependency(projectId, sourceId, targetId, { weight: weightToUse !== 'strong' ? weightToUse : undefined });
-                setConnections(prev => [...prev, { source: sourceId, target: targetId, weight: weightToUse, reason: null }]);
+                await create_dependency(projectId, sourceId, targetId, { weight: weightToUse !== 'strong' ? weightToUse : undefined, reason: defaultReason });
+                setConnections(prev => [...prev, { source: sourceId, target: targetId, weight: weightToUse, reason: defaultReason }]);
                 playSound('connectionCreate');
 
                 pushAction({
@@ -269,8 +270,8 @@ export function useDependencyConnections({
                     setConnections(prev => prev.filter(c => !(c.source === sourceId && c.target === targetId)));
                   },
                   redo: async () => {
-                    await create_dependency(projectId, sourceId, targetId, { weight: weightToUse !== 'strong' ? weightToUse : undefined });
-                    setConnections(prev => [...prev, { source: sourceId, target: targetId, weight: weightToUse, reason: null }]);
+                    await create_dependency(projectId, sourceId, targetId, { weight: weightToUse !== 'strong' ? weightToUse : undefined, reason: defaultReason });
+                    setConnections(prev => [...prev, { source: sourceId, target: targetId, weight: weightToUse, reason: defaultReason }]);
                   },
                 });
               } catch (err) {
@@ -394,6 +395,16 @@ export function useDependencyConnections({
             return false; // abort the update
           }
         }
+      }
+    }
+
+    // Auto-update reason when weight changes and current reason is a default or empty
+    const DEFAULT_REASONS = ['is required for', 'should be before', 'could be before'];
+    const WEIGHT_REASON_MAP = { strong: 'is required for', weak: 'should be before', suggestion: 'could be before' };
+    if (updates.weight && !updates.reason) {
+      const currentReason = connection.reason;
+      if (!currentReason || DEFAULT_REASONS.includes(currentReason)) {
+        updates = { ...updates, reason: WEIGHT_REASON_MAP[updates.weight] || currentReason };
       }
     }
 

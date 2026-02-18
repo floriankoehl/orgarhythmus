@@ -416,3 +416,61 @@ export async function set_default_view(projectId, viewId) {
     const data = await res.json();
     return data.views || data;
 }
+
+
+// ═══════════════════════ Project Snapshots ═══════════════════════
+
+export async function list_snapshots(projectId) {
+    const res = await authFetch(`/api/projects/${projectId}/snapshots/`);
+    if (!res.ok) throw new Error('Failed to list snapshots');
+    return await res.json();
+}
+
+export async function create_snapshot(projectId, { name, description } = {}) {
+    const res = await authFetch(`/api/projects/${projectId}/snapshots/create/`, {
+        method: "POST",
+        body: JSON.stringify({ name, description: description || "" }),
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to create snapshot');
+    }
+    return await res.json();
+}
+
+export async function get_snapshot(projectId, snapshotId) {
+    const res = await authFetch(`/api/projects/${projectId}/snapshots/${snapshotId}/`);
+    if (!res.ok) throw new Error('Failed to get snapshot');
+    return await res.json();
+}
+
+export async function restore_snapshot(projectId, snapshotId) {
+    const res = await authFetch(`/api/projects/${projectId}/snapshots/${snapshotId}/restore/`, {
+        method: "POST",
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to restore snapshot');
+    }
+    return await res.json();
+}
+
+export async function delete_snapshot(projectId, snapshotId) {
+    const res = await authFetch(`/api/projects/${projectId}/snapshots/${snapshotId}/delete/`, {
+        method: "DELETE",
+    });
+    if (!res.ok) throw new Error('Failed to delete snapshot');
+    return await res.json();
+}
+
+export async function rename_snapshot(projectId, snapshotId, { name, description } = {}) {
+    const res = await authFetch(`/api/projects/${projectId}/snapshots/${snapshotId}/rename/`, {
+        method: "PATCH",
+        body: JSON.stringify({ ...(name !== undefined ? { name } : {}), ...(description !== undefined ? { description } : {}) }),
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to rename snapshot');
+    }
+    return await res.json();
+}

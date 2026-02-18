@@ -21,6 +21,8 @@ import EditIcon from '@mui/icons-material/Edit';
 import ViewListIcon from '@mui/icons-material/ViewList';
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
+import CameraAltIcon from '@mui/icons-material/CameraAlt';
+import RestoreIcon from '@mui/icons-material/Restore';
 
 import {
   DEFAULT_TASKHEIGHT_NORMAL,
@@ -132,6 +134,13 @@ export default function DependencyToolbar({
   onRenameView,
   onDeleteView,
   onSetDefaultView,
+  // Snapshots
+  snapshots = [],
+  snapshotsLoading,
+  onCreateSnapshot,
+  onRestoreSnapshot,
+  onDeleteSnapshot,
+  onRenameSnapshot,
 }) {
   const hasSelection = selectedMilestones?.size > 0 || selectedConnections?.length > 0;
 
@@ -142,6 +151,16 @@ export default function DependencyToolbar({
   const [renamingViewId, setRenamingViewId] = useState(null);
   const [renameText, setRenameText] = useState("");
   const [confirmDeleteViewId, setConfirmDeleteViewId] = useState(null);
+
+  // ── Snapshot UI state ──
+  const [showSnapshotDropdown, setShowSnapshotDropdown] = useState(false);
+  const [newSnapshotName, setNewSnapshotName] = useState("");
+  const [newSnapshotDesc, setNewSnapshotDesc] = useState("");
+  const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
+  const [confirmRestoreId, setConfirmRestoreId] = useState(null);
+  const [confirmDeleteSnapshotId, setConfirmDeleteSnapshotId] = useState(null);
+  const [renamingSnapshotId, setRenamingSnapshotId] = useState(null);
+  const [renameSnapshotText, setRenameSnapshotText] = useState("");
   
   // Compute how many teams are hidden via teamDisplaySettings
   const filteredTeamCount = teamOrder.filter(tid => teamDisplaySettings[tid]?.hidden).length;
@@ -602,6 +621,28 @@ export default function DependencyToolbar({
                                 </button>
                               ))}
                             </div>
+                            {/* Bulk reason edit */}
+                            <form
+                              className="flex gap-1"
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                const val = e.target.elements.bulkReason.value;
+                                if (onBulkUpdateConnections) onBulkUpdateConnections(selectedConnections, { reason: val || null });
+                              }}
+                            >
+                              <input
+                                name="bulkReason"
+                                type="text"
+                                placeholder="Set reason for all…"
+                                className="flex-1 text-[10px] border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:border-indigo-400"
+                              />
+                              <button
+                                type="submit"
+                                className="px-1.5 py-1 text-[10px] rounded border border-indigo-300 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition"
+                              >
+                                Apply
+                              </button>
+                            </form>
                             <button
                               onClick={() => onDeleteSelected && onDeleteSelected()}
                               className="w-full px-2 py-1 text-[10px] rounded border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition"
@@ -1140,6 +1181,222 @@ export default function DependencyToolbar({
                     >
                       <AddIcon style={{ fontSize: 13 }} />
                       <span>New View</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Section 6: Snapshots */}
+        <div className="p-3 flex-shrink-0" style={{ minWidth: '180px' }}>
+          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+            Snapshots
+          </h3>
+          <div className="relative">
+            <div className="flex items-center gap-1">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowSnapshotDropdown(!showSnapshotDropdown);
+                }}
+                className={`flex-1 flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition justify-between min-w-0 ${
+                  showSnapshotDropdown
+                    ? 'border-amber-400 bg-amber-50 text-amber-700'
+                    : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <CameraAltIcon style={{ fontSize: 14 }} />
+                  <span className="truncate">Snapshots</span>
+                </div>
+                <span className="text-[10px] opacity-60">{snapshots.length > 0 ? `${snapshots.length}` : ''}</span>
+              </button>
+            </div>
+
+            {showSnapshotDropdown && (
+              <div
+                className="absolute top-full right-0 mt-1 w-80 rounded-lg border border-slate-200 bg-white shadow-xl z-50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="p-3 space-y-2">
+                  {/* Info text */}
+                  <p className="text-[10px] text-slate-400 leading-tight">
+                    Save the entire project state (teams, tasks, milestones, dependencies, days, phases, views). Restore to revert all data.
+                  </p>
+
+                  {/* Existing snapshots */}
+                  {snapshots.length > 0 && (
+                    <div className="border-t border-slate-100 pt-2 space-y-1 max-h-64 overflow-y-auto">
+                      {snapshots.map(snap => (
+                        <div key={snap.id} className="rounded px-2 py-1.5 hover:bg-slate-50 transition group">
+                          {renamingSnapshotId === snap.id ? (
+                            <form
+                              className="flex items-center gap-1"
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                if (renameSnapshotText.trim()) {
+                                  onRenameSnapshot(snap.id, renameSnapshotText);
+                                  setRenamingSnapshotId(null);
+                                }
+                              }}
+                            >
+                              <input
+                                type="text"
+                                value={renameSnapshotText}
+                                onChange={(e) => setRenameSnapshotText(e.target.value)}
+                                autoFocus
+                                className="flex-1 text-xs border border-slate-300 rounded px-1.5 py-0.5 focus:outline-none focus:border-amber-400"
+                                onBlur={() => setRenamingSnapshotId(null)}
+                                onKeyDown={(e) => { if (e.key === 'Escape') setRenamingSnapshotId(null); }}
+                              />
+                            </form>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              {/* Snapshot name & date */}
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs text-slate-700 font-medium truncate">{snap.name}</div>
+                                <div className="text-[10px] text-slate-400">
+                                  {new Date(snap.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  {' '}
+                                  {new Date(snap.created_at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                              </div>
+
+                              {/* Restore */}
+                              {confirmRestoreId === snap.id ? (
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                  <span className="text-[10px] text-amber-600 font-semibold">Restore?</span>
+                                  <button
+                                    onClick={() => {
+                                      onRestoreSnapshot(snap.id);
+                                      setConfirmRestoreId(null);
+                                      setShowSnapshotDropdown(false);
+                                    }}
+                                    className="text-[10px] text-amber-700 hover:text-amber-800 font-bold"
+                                  >
+                                    Yes
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmRestoreId(null)}
+                                    className="text-[10px] text-slate-400 hover:text-slate-600"
+                                  >
+                                    No
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setConfirmRestoreId(snap.id)}
+                                  className="p-0.5 text-slate-400 hover:text-amber-600 rounded opacity-0 group-hover:opacity-100 transition"
+                                  title="Restore this snapshot"
+                                >
+                                  <RestoreIcon style={{ fontSize: 13 }} />
+                                </button>
+                              )}
+
+                              {/* Rename */}
+                              <button
+                                onClick={() => {
+                                  setRenamingSnapshotId(snap.id);
+                                  setRenameSnapshotText(snap.name);
+                                }}
+                                className="p-0.5 text-slate-400 hover:text-slate-600 rounded opacity-0 group-hover:opacity-100 transition"
+                                title="Rename snapshot"
+                              >
+                                <EditIcon style={{ fontSize: 12 }} />
+                              </button>
+
+                              {/* Delete */}
+                              {confirmDeleteSnapshotId === snap.id ? (
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                  <button
+                                    onClick={() => {
+                                      onDeleteSnapshot(snap.id);
+                                      setConfirmDeleteSnapshotId(null);
+                                    }}
+                                    className="text-[10px] text-red-600 hover:text-red-700 font-semibold"
+                                  >
+                                    Yes
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmDeleteSnapshotId(null)}
+                                    className="text-[10px] text-slate-400 hover:text-slate-600"
+                                  >
+                                    No
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setConfirmDeleteSnapshotId(snap.id)}
+                                  className="p-0.5 text-slate-400 hover:text-red-500 rounded opacity-0 group-hover:opacity-100 transition"
+                                  title="Delete snapshot"
+                                >
+                                  <DeleteIcon style={{ fontSize: 12 }} />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Create new snapshot */}
+                  {isCreatingSnapshot ? (
+                    <form
+                      className="space-y-1.5 mt-1"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (newSnapshotName.trim()) {
+                          onCreateSnapshot(newSnapshotName, newSnapshotDesc);
+                          setNewSnapshotName("");
+                          setNewSnapshotDesc("");
+                          setIsCreatingSnapshot(false);
+                        }
+                      }}
+                    >
+                      <input
+                        type="text"
+                        value={newSnapshotName}
+                        onChange={(e) => setNewSnapshotName(e.target.value)}
+                        placeholder="Snapshot name…"
+                        autoFocus
+                        className="w-full text-xs border border-slate-300 rounded px-2 py-1 focus:outline-none focus:border-amber-400"
+                        onKeyDown={(e) => { if (e.key === 'Escape') { setIsCreatingSnapshot(false); setNewSnapshotName(""); setNewSnapshotDesc(""); } }}
+                      />
+                      <input
+                        type="text"
+                        value={newSnapshotDesc}
+                        onChange={(e) => setNewSnapshotDesc(e.target.value)}
+                        placeholder="Description (optional)…"
+                        className="w-full text-xs border border-slate-300 rounded px-2 py-1 focus:outline-none focus:border-amber-400"
+                      />
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="submit"
+                          disabled={!newSnapshotName.trim() || snapshotsLoading}
+                          className="px-2 py-1 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 transition"
+                        >
+                          {snapshotsLoading ? 'Saving…' : 'Save Snapshot'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setIsCreatingSnapshot(false); setNewSnapshotName(""); setNewSnapshotDesc(""); }}
+                          className="px-2 py-1 text-xs rounded text-slate-500 hover:text-slate-700 transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <button
+                      onClick={() => setIsCreatingSnapshot(true)}
+                      disabled={snapshotsLoading}
+                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs rounded-lg border border-dashed border-slate-300 text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition mt-1 disabled:opacity-40"
+                    >
+                      <CameraAltIcon style={{ fontSize: 13 }} />
+                      <span>{snapshotsLoading ? 'Creating…' : 'New Snapshot'}</span>
                     </button>
                   )}
                 </div>

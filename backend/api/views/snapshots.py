@@ -6,6 +6,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 
+from datetime import date as date_type
+
 from ..models import (
     Project, ProjectSnapshot, Team, Task, Milestone,
     Dependency, Day, Phase, DependencyView,
@@ -81,7 +83,7 @@ def list_snapshots(request, project_id):
     snapshots = ProjectSnapshot.objects.filter(project=project).values(
         'id', 'name', 'description', 'created_at', 'created_by__username',
     )
-    return Response(list(snapshots))
+    return Response({'snapshots': list(snapshots)})
 
 
 @api_view(['POST'])
@@ -110,12 +112,12 @@ def create_snapshot(request, project_id):
         created_by=request.user,
     )
 
-    return Response({
+    return Response({'snapshot': {
         'id': snapshot.id,
         'name': snapshot.name,
         'description': snapshot.description,
         'created_at': snapshot.created_at,
-    }, status=status.HTTP_201_CREATED)
+    }}, status=status.HTTP_201_CREATED)
 
 
 @api_view(['GET'])
@@ -166,9 +168,11 @@ def restore_snapshot(request, project_id, snapshot_id):
     # ── 1. Restore project dates ──
     proj_data = data.get('project', {})
     if proj_data.get('start_date'):
-        project.start_date = proj_data['start_date']
+        sd = proj_data['start_date']
+        project.start_date = date_type.fromisoformat(sd) if isinstance(sd, str) else sd
     if proj_data.get('end_date'):
-        project.end_date = proj_data['end_date']
+        ed = proj_data['end_date']
+        project.end_date = date_type.fromisoformat(ed) if isinstance(ed, str) else ed
     project.save()
 
     # ── 2. Wipe current data ──
@@ -313,8 +317,8 @@ def rename_snapshot(request, project_id, snapshot_id):
         snapshot.description = description.strip()
     snapshot.save()
 
-    return Response({
+    return Response({'snapshot': {
         'id': snapshot.id,
         'name': snapshot.name,
         'description': snapshot.description,
-    })
+    }})
