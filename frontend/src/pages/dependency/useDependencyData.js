@@ -9,6 +9,7 @@ import {
   get_all_milestones,
   get_all_dependencies,
   get_project_days,
+  get_all_phases,
 } from '../../api/dependencies_api.js';
 import { daysBetween } from './layoutMath';
 
@@ -21,6 +22,9 @@ export function useDependencyData(projectId) {
   const [days, setDays] = useState(null);
   const [projectStartDate, setProjectStartDate] = useState(null);
   const [projectDays, setProjectDays] = useState({}); // { dayIndex: { purpose, is_sunday, day_name_short, ... } }
+
+  // Phases (named timeline spans)
+  const [phases, setPhases] = useState([]); // array of { id, name, start_index, duration, color, order_index }
 
   // Entity data
   const [milestones, setMilestones] = useState({});
@@ -120,6 +124,15 @@ export function useDependencyData(projectId) {
         setProjectDays({});
       }
 
+      // Load phases
+      try {
+        const resPhases = await get_all_phases(projectId);
+        setPhases(resPhases.phases || []);
+      } catch (err) {
+        console.error("Failed to load phases:", err);
+        setPhases([]);
+      }
+
       setTeamOrder(newTeamOrder);
       setTeams(teamObject);
       setTasks(resTasks.tasks);
@@ -149,6 +162,8 @@ export function useDependencyData(projectId) {
     projectStartDate,
     projectDays,
     setProjectDays,
+    phases,
+    setPhases,
 
     // Entity data
     milestones,

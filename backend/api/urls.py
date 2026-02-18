@@ -121,6 +121,12 @@ urlpatterns = [
     path("projects/<int:project_id>/days/set_purpose/", views.set_day_purpose),
     path("projects/<int:project_id>/validate_dates/", views.validate_project_dates),
     path("projects/<int:project_id>/sync_days/", views.sync_project_days),
+
+    # Phases
+    path("projects/<int:project_id>/phases/", views.get_all_phases),
+    path("projects/<int:project_id>/phases/create/", views.create_phase),
+    path("projects/<int:project_id>/phases/<int:phase_id>/", views.update_phase),
+    path("projects/<int:project_id>/phases/<int:phase_id>/delete/", views.delete_phase),
     # _____________________________ END OF NEW ADDING ______________________________
 ]
 

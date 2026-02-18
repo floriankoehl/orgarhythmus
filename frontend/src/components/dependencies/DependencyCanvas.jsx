@@ -10,6 +10,8 @@ import {
   DAY_NAME_WIDTH_THRESHOLD,
 } from '../../pages/dependency/layoutMath';
 
+const PHASE_HEADER_HEIGHT = 26;
+
 export default function DependencyCanvas({
   // Refs
   teamContainerRef,
@@ -20,6 +22,7 @@ export default function DependencyCanvas({
   milestones,
   connections,
   dayLabels,
+  phases = [],
   // Layout helpers
   isTeamVisible,
   isTeamCollapsed,
@@ -36,10 +39,13 @@ export default function DependencyCanvas({
   TEAMWIDTH,
   TASKWIDTH,
   DAYWIDTH,
+  COLLAPSED_DAY_WIDTH = 6,
   TEAM_DRAG_HIGHLIGHT_HEIGHT,
   MARIGN_BETWEEN_DRAG_HIGHLIGHT,
   TEAM_HEADER_LINE_HEIGHT,
   TEAM_HEADER_GAP,
+  // Day column layout
+  dayColumnLayout,
   // Dimensions
   days,
   contentHeight,
@@ -49,6 +55,11 @@ export default function DependencyCanvas({
   hideAllDependencies,
   hideCollapsedDependencies,
   hideCollapsedMilestones,
+  // Day selection / collapse
+  selectedDays = new Set(),
+  collapsedDays = new Set(),
+  onDaySelect,
+  onUncollapseDays,
   // UI state
   hoveredMilestone,
   selectedMilestones,
@@ -109,7 +120,15 @@ export default function DependencyCanvas({
   // Dependency display settings
   depSettings = {},
   setConnectionEditModal,
+  // Phase
+  setPhaseEditModal,
+  // Phase colors in grid
+  showPhaseColorsInGrid = true,
 }) {
+  const hasPhases = phases.length > 0;
+  const totalHeaderHeight = HEADER_HEIGHT + (hasPhases ? PHASE_HEADER_HEIGHT : 0);
+  const totalDaysWidth = dayColumnLayout?.totalDaysWidth ?? (days || 0) * DAYWIDTH;
+  const totalWidth = TEAMWIDTH + TASKWIDTH + totalDaysWidth;
   return (
     <>
       {/* Scroll container - wrapper to flip scrollbar to top */}
@@ -139,7 +158,7 @@ export default function DependencyCanvas({
             }
           }}
           style={{
-            width: `${TEAMWIDTH + TASKWIDTH + (days || 0) * DAYWIDTH}px`,
+            width: `${totalWidth}px`,
             height: `${contentHeight}px`,
             transform: 'scaleY(-1)',
           }}
@@ -197,104 +216,232 @@ export default function DependencyCanvas({
           </div>
 
           {/* Header Row */}
-          <div className="flex" style={{ height: `${HEADER_HEIGHT}px`, position: 'relative', zIndex: 50 }}>
-            <div
-              className="flex border-b bg-slate-100 text-sm font-semibold text-slate-700"
-              style={{
-                width: `${TEAMWIDTH + TASKWIDTH}px`,
-                height: `${HEADER_HEIGHT}px`,
-                position: 'sticky',
-                left: 0,
-                zIndex: 50,
-              }}
-            >
-              <div
-                className="flex items-center justify-center border-r border-slate-300"
-                style={{ width: `${TEAMWIDTH}px`, position: 'relative' }}
-              >
-                Team
-                {/* Resize divider: team column right edge */}
+          <div className="flex flex-col" style={{ height: `${totalHeaderHeight}px`, position: 'relative', zIndex: 50 }}>
+            {/* Phase header row (only if phases exist) */}
+            {hasPhases && (
+              <div className="flex" style={{ height: `${PHASE_HEADER_HEIGHT}px` }}>
                 <div
-                  onMouseDown={(e) => handleColumnResize('team', e)}
+                  className="bg-slate-50 border-b border-r border-slate-200 flex items-center justify-center text-[10px] font-semibold text-slate-400"
                   style={{
-                    position: 'absolute',
-                    right: -2,
-                    top: 0,
-                    width: '5px',
-                    height: '100%',
-                    cursor: 'col-resize',
-                    zIndex: 60,
+                    width: `${TEAMWIDTH + TASKWIDTH}px`,
+                    height: `${PHASE_HEADER_HEIGHT}px`,
+                    position: 'sticky',
+                    left: 0,
+                    zIndex: 51,
                   }}
-                  className="hover:bg-blue-400/40 transition-colors"
-                />
-              </div>
-              <div
-                className="flex items-center justify-center border-r border-slate-300"
-                style={{ width: `${TASKWIDTH}px`, position: 'relative' }}
-              >
-                Tasks
-                {/* Resize divider: task column right edge */}
-                <div
-                  onMouseDown={(e) => handleColumnResize('task', e)}
-                  style={{
-                    position: 'absolute',
-                    right: -2,
-                    top: 0,
-                    width: '5px',
-                    height: '100%',
-                    cursor: 'col-resize',
-                    zIndex: 60,
-                  }}
-                  className="hover:bg-blue-400/40 transition-colors"
-                />
-              </div>
-            </div>
-            
-            {/* Day Headers - Enhanced */}
-            <div className="flex border-b">
-              {dayLabels.map((dayInfo, i) => {
-                const hasPurpose = !!dayInfo.purpose;
-                const isTeamSpecific = hasPurpose && Array.isArray(dayInfo.purposeTeams) && dayInfo.purposeTeams.length > 0;
-                const isSunday = dayInfo.isSunday;
-                const showDayName = DAYWIDTH >= DAY_NAME_WIDTH_THRESHOLD;
-                
-                return (
+                >
+                  Phases
+                </div>
+                <div className="relative border-b border-slate-200" style={{ width: `${totalDaysWidth}px`, height: `${PHASE_HEADER_HEIGHT}px` }}>
+                  {phases.map((phase) => {
+                    const phaseX = dayColumnLayout?.dayXOffset(phase.start_index) ?? (phase.start_index * DAYWIDTH);
+                    const endIdx = phase.start_index + phase.duration;
+                    const phaseEndX = endIdx < days
+                      ? (dayColumnLayout?.dayXOffset(endIdx) ?? (endIdx * DAYWIDTH))
+                      : totalDaysWidth;
+                    const phaseW = phaseEndX - phaseX;
+                    if (phaseW <= 0) return null;
+                    return (
+                      <div
+                        key={phase.id}
+                        className="absolute top-0 flex items-center justify-center cursor-pointer hover:brightness-110 transition-all overflow-hidden"
+                        style={{
+                          left: `${phaseX}px`,
+                          width: `${phaseW}px`,
+                          height: `${PHASE_HEADER_HEIGHT}px`,
+                          backgroundColor: phase.color || '#3b82f6',
+                          color: '#fff',
+                          borderRadius: '0 0 4px 4px',
+                          fontSize: '10px',
+                          fontWeight: 600,
+                          letterSpacing: '0.02em',
+                        }}
+                        title={`${phase.name} (days ${phase.start_index + 1}–${phase.start_index + phase.duration}) — double-click to edit`}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          if (setPhaseEditModal) setPhaseEditModal({ ...phase, mode: 'edit' });
+                        }}
+                      >
+                        <span className="truncate px-1">{phase.name}</span>
+                      </div>
+                    );
+                  })}
+                  {/* Click empty space to add phase */}
                   <div
-                    key={i}
-                    onClick={() => handleDayHeaderClick(i)}
-                    className={`flex flex-col items-center justify-center text-xs border-r cursor-pointer transition-colors ${
-                      hasPurpose 
-                        ? isTeamSpecific
-                          ? 'bg-slate-600 text-white hover:bg-slate-500'
-                          : 'bg-slate-800 text-white hover:bg-slate-700' 
-                        : isSunday 
-                          ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
-                          : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
-                    }`}
-                    style={{ 
-                      width: `${DAYWIDTH}px`,
-                      height: `${HEADER_HEIGHT}px`,
+                    className="absolute inset-0"
+                    style={{ zIndex: -1 }}
+                    onDoubleClick={(e) => {
+                      if (!setPhaseEditModal) return;
+                      // Determine approximate day index from click position
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const clickX = e.clientX - rect.left;
+                      let dayIdx = 0;
+                      if (dayColumnLayout?.offsets) {
+                        for (let i = 0; i < days; i++) {
+                          if (dayColumnLayout.offsets[i] > clickX) break;
+                          dayIdx = i;
+                        }
+                      }
+                      setPhaseEditModal({ mode: 'create', start_index: dayIdx, duration: 7, name: '', color: '#3b82f6' });
                     }}
-                    title={hasPurpose 
-                      ? `${dayInfo.purpose}${isTeamSpecific ? ' (team-specific)' : ' (all teams)'} - Click to edit` 
-                      : 'Click to set purpose'}
-                  >
-                    {showDayName && (
-                      <span className={`text-[10px] font-medium ${hasPurpose ? 'text-slate-300' : isSunday ? 'text-purple-600' : 'text-slate-400'}`}>
-                        {dayInfo.dayNameShort}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Day header row */}
+            <div className="flex" style={{ height: `${HEADER_HEIGHT}px`, position: 'relative', zIndex: 50 }}>
+              <div
+                className="flex border-b bg-slate-100 text-sm font-semibold text-slate-700"
+                style={{
+                  width: `${TEAMWIDTH + TASKWIDTH}px`,
+                  height: `${HEADER_HEIGHT}px`,
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 50,
+                }}
+              >
+                <div
+                  className="flex items-center justify-center border-r border-slate-300"
+                  style={{ width: `${TEAMWIDTH}px`, position: 'relative' }}
+                >
+                  Team
+                  {/* Resize divider: team column right edge */}
+                  <div
+                    onMouseDown={(e) => handleColumnResize('team', e)}
+                    style={{
+                      position: 'absolute',
+                      right: -2,
+                      top: 0,
+                      width: '5px',
+                      height: '100%',
+                      cursor: 'col-resize',
+                      zIndex: 60,
+                    }}
+                    className="hover:bg-blue-400/40 transition-colors"
+                  />
+                </div>
+                <div
+                  className="flex items-center justify-center border-r border-slate-300"
+                  style={{ width: `${TASKWIDTH}px`, position: 'relative' }}
+                >
+                  Tasks
+                  {/* Resize divider: task column right edge */}
+                  <div
+                    onMouseDown={(e) => handleColumnResize('task', e)}
+                    style={{
+                      position: 'absolute',
+                      right: -2,
+                      top: 0,
+                      width: '5px',
+                      height: '100%',
+                      cursor: 'col-resize',
+                      zIndex: 60,
+                    }}
+                    className="hover:bg-blue-400/40 transition-colors"
+                  />
+                </div>
+              </div>
+              
+              {/* Day Headers - Enhanced with dayColumnLayout */}
+              <div className="relative border-b" style={{ width: `${totalDaysWidth}px` }}>
+                {dayLabels.map((dayInfo, i) => {
+                  const isCollapsed = collapsedDays.has(i);
+                  const isSelected = selectedDays.has(i);
+                  const colWidth = dayColumnLayout?.dayWidth(i) ?? DAYWIDTH;
+                  const colX = dayColumnLayout?.dayXOffset(i) ?? (i * DAYWIDTH);
+                  const hasPurpose = !!dayInfo.purpose;
+                  const isTeamSpecific = hasPurpose && Array.isArray(dayInfo.purposeTeams) && dayInfo.purposeTeams.length > 0;
+                  const isSunday = dayInfo.isSunday;
+                  const showDayName = colWidth >= DAY_NAME_WIDTH_THRESHOLD;
+
+                  if (isCollapsed) {
+                    // Collapsed day indicator — thin bar with hover to uncollapse
+                    // Detect collapsed range for this day
+                    const range = dayColumnLayout?.collapsedRanges?.find(r => i >= r.start && i <= r.end);
+                    const isRangeStart = range && i === range.start;
+                    
+                    return (
+                      <div
+                        key={i}
+                        className="absolute top-0 group cursor-pointer"
+                        style={{
+                          left: `${colX}px`,
+                          width: `${colWidth}px`,
+                          height: `${HEADER_HEIGHT}px`,
+                          backgroundColor: '#94a3b8',
+                          backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,0.3) 2px, rgba(255,255,255,0.3) 4px)',
+                        }}
+                        title={`Collapsed day${range ? `s ${range.start + 1}–${range.end + 1}` : ` ${i + 1}`} — click to expand`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (range && onUncollapseDays) {
+                            const rangeIndices = [];
+                            for (let d = range.start; d <= range.end; d++) rangeIndices.push(d);
+                            onUncollapseDays(rangeIndices);
+                          } else if (onUncollapseDays) {
+                            onUncollapseDays([i]);
+                          }
+                        }}
+                      >
+                        {/* Expand indicator on first day of a collapsed range */}
+                        {isRangeStart && (
+                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-amber-500/90 text-white text-[8px] font-bold" style={{ zIndex: 2 }}>
+                            ⤢
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={i}
+                      className={`absolute top-0 flex flex-col items-center justify-center text-xs border-r cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'bg-blue-200 text-blue-900 ring-1 ring-inset ring-blue-400'
+                          : hasPurpose 
+                            ? isTeamSpecific
+                              ? 'bg-slate-600 text-white hover:bg-slate-500'
+                              : 'bg-slate-800 text-white hover:bg-slate-700' 
+                            : isSunday 
+                              ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
+                              : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                      }`}
+                      style={{ 
+                        left: `${colX}px`,
+                        width: `${colWidth}px`,
+                        height: `${HEADER_HEIGHT}px`,
+                      }}
+                      title={hasPurpose 
+                        ? `${dayInfo.purpose}${isTeamSpecific ? ' (team-specific)' : ' (all teams)'} - Click to select, Double-click to edit` 
+                        : 'Click to select, Double-click to edit purpose'}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDaySelect?.(i, e);
+                      }}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        handleDayHeaderClick(i);
+                      }}
+                    >
+                      {showDayName && (
+                        <span className={`text-[10px] font-medium ${isSelected ? 'text-blue-700' : hasPurpose ? 'text-slate-300' : isSunday ? 'text-purple-600' : 'text-slate-400'}`}>
+                          {dayInfo.dayNameShort}
+                        </span>
+                      )}
+                      <span className={`font-medium ${isSelected ? 'text-blue-900' : hasPurpose ? 'text-white' : ''}`}>
+                        {dayInfo.dateStr}
                       </span>
-                    )}
-                    <span className={`font-medium ${hasPurpose ? 'text-white' : ''}`}>
-                      {dayInfo.dateStr}
-                    </span>
-                    {hasPurpose && DAYWIDTH >= 50 && (
-                      <span className="text-[9px] truncate max-w-full px-1 text-slate-300">
-                        {dayInfo.purpose}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
+                      {hasPurpose && colWidth >= 50 && (
+                        <span className="text-[9px] truncate max-w-full px-1 text-slate-300">
+                          {dayInfo.purpose}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -321,6 +468,10 @@ export default function DependencyCanvas({
             MARIGN_BETWEEN_DRAG_HIGHLIGHT={MARIGN_BETWEEN_DRAG_HIGHLIGHT}
             TEAM_HEADER_LINE_HEIGHT={TEAM_HEADER_LINE_HEIGHT}
             TEAM_HEADER_GAP={TEAM_HEADER_GAP}
+            // Day column layout
+            dayColumnLayout={dayColumnLayout}
+            collapsedDays={collapsedDays}
+            selectedDays={selectedDays}
             // State
             days={days}
             dayLabels={dayLabels}
@@ -352,6 +503,9 @@ export default function DependencyCanvas({
             handleRefactorDrag={handleRefactorDrag}
             // Deadline
             onSetDeadline={onSetDeadline}
+            // Phases in grid
+            phases={phases}
+            showPhaseColorsInGrid={showPhaseColorsInGrid}
           />
 
           {/* SVG Layer for Connections - ABOVE day grid */}
@@ -392,6 +546,13 @@ export default function DependencyCanvas({
               const sourceMilestone = milestones[conn.source];
               const targetMilestone = milestones[conn.target];
               if (sourceMilestone && targetMilestone) {
+                // Hide connections whose milestones overlap collapsed days
+                const sMil = sourceMilestone;
+                const tMil = targetMilestone;
+                const sOverlapsCollapsed = [...Array(sMil.duration || 1)].some((_, d) => collapsedDays.has(sMil.start_index + d));
+                const tOverlapsCollapsed = [...Array(tMil.duration || 1)].some((_, d) => collapsedDays.has(tMil.start_index + d));
+                if (sOverlapsCollapsed || tOverlapsCollapsed) return null;
+
                 const sourceTaskId = sourceMilestone.task;
                 const targetTaskId = targetMilestone.task;
                 // Always hide for collapsed teams
@@ -585,6 +746,9 @@ export default function DependencyCanvas({
             MARIGN_BETWEEN_DRAG_HIGHLIGHT={MARIGN_BETWEEN_DRAG_HIGHLIGHT}
             TEAM_HEADER_LINE_HEIGHT={TEAM_HEADER_LINE_HEIGHT}
             TEAM_HEADER_GAP={TEAM_HEADER_GAP}
+            // Day column layout
+            dayColumnLayout={dayColumnLayout}
+            collapsedDays={collapsedDays}
             isTeamVisible={isTeamVisible}
             isTeamCollapsed={isTeamCollapsed}
             getVisibleTasks={getVisibleTasks}

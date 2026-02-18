@@ -25,6 +25,9 @@ export default function DependencyMilestoneLayer({
   MARIGN_BETWEEN_DRAG_HIGHLIGHT,
   TEAM_HEADER_LINE_HEIGHT,
   TEAM_HEADER_GAP,
+  // Day column layout
+  dayColumnLayout,
+  collapsedDays = new Set(),
   isTeamVisible,
   isTeamCollapsed,
   getVisibleTasks,
@@ -49,6 +52,30 @@ export default function DependencyMilestoneLayer({
   onSetDeadline,
   days,
 }) {
+  // Helper: get pixel X offset for a day index using dayColumnLayout
+  const getDayX = (dayIndex) => {
+    if (dayColumnLayout) return TEAMWIDTH + TASKWIDTH + dayColumnLayout.dayXOffset(dayIndex);
+    return TEAMWIDTH + TASKWIDTH + dayIndex * DAYWIDTH;
+  };
+
+  // Helper: get pixel width for a milestone spanning start_index..start_index+duration
+  const getMilestonePixelWidth = (startIndex, duration) => {
+    if (dayColumnLayout) {
+      const startX = dayColumnLayout.dayXOffset(startIndex);
+      const endIdx = startIndex + duration;
+      const endX = endIdx < days ? dayColumnLayout.dayXOffset(endIdx) : dayColumnLayout.totalDaysWidth;
+      return endX - startX;
+    }
+    return duration * DAYWIDTH;
+  };
+
+  // Helper: check if any day in a range is collapsed
+  const isAnyDayCollapsed = (startIndex, duration) => {
+    for (let i = startIndex; i < startIndex + duration; i++) {
+      if (collapsedDays.has(i)) return true;
+    }
+    return false;
+  };
   // Compute task time spans for Gantt-like bars
   const getTaskTimeSpan = (taskId) => {
     const task = tasks[taskId];
@@ -88,6 +115,9 @@ export default function DependencyMilestoneLayer({
           const span = getTaskTimeSpan(task_key);
           if (!span) return null;
 
+          // Hide if any day in span is collapsed
+          if (isAnyDayCollapsed(span.start, span.end - span.start)) return null;
+
           const taskHeight = getTaskHeight(task_key, taskDisplaySettings);
           const teamYOffset = getTeamYOffset(team_key);
           const taskYOffset = getTaskYOffset(task_key, team_key);
@@ -95,8 +125,8 @@ export default function DependencyMilestoneLayer({
           const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
           const taskY = teamYOffset + dropHighlightOffset + headerOffset + taskYOffset;
 
-          const barLeft = TEAMWIDTH + TASKWIDTH + span.start * DAYWIDTH;
-          const barWidth = (span.end - span.start) * DAYWIDTH;
+          const barLeft = getDayX(span.start);
+          const barWidth = getMilestonePixelWidth(span.start, span.end - span.start);
 
           return (
             <div
@@ -144,6 +174,9 @@ export default function DependencyMilestoneLayer({
           const deadline = task.hard_deadline;
           if (deadline === null || deadline === undefined) return null;
 
+          // Hide flag if deadline day is collapsed
+          if (collapsedDays.has(deadline)) return null;
+
           const taskHeight = getTaskHeight(task_key, taskDisplaySettings);
           const teamYOffset = getTeamYOffset(team_key);
           const taskYOffset = getTaskYOffset(task_key, team_key);
@@ -151,7 +184,7 @@ export default function DependencyMilestoneLayer({
           const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
           const taskY = teamYOffset + dropHighlightOffset + headerOffset + taskYOffset;
 
-          const flagLeft = TEAMWIDTH + TASKWIDTH + (deadline + 1) * DAYWIDTH - 6;
+          const flagLeft = getDayX(deadline) + (dayColumnLayout?.dayWidth(deadline) ?? DAYWIDTH) - 6;
 
           return (
             <div
@@ -217,6 +250,11 @@ export default function DependencyMilestoneLayer({
               return null;
             }
 
+            // Hide milestones that overlap any collapsed day
+            if (isAnyDayCollapsed(milestone.start_index, milestone.duration || 1)) {
+              return null;
+            }
+
             const showDurationMinus = false;
             const showConnect = false;
             const isSelected = selectedMilestones.has(milestone.id);
@@ -226,6 +264,13 @@ export default function DependencyMilestoneLayer({
 
             // Get team color for milestone
             const milestoneColor = milestone.color || team.color || '#facc15';
+
+            // Use milestone.x (pixel offset) during drag for smooth visual feedback,
+            // otherwise use dayColumnLayout-based position
+            const msLeft = milestone.x !== undefined
+              ? (TEAMWIDTH + TASKWIDTH + milestone.x)
+              : getDayX(milestone.start_index);
+            const msWidth = getMilestonePixelWidth(milestone.start_index, milestone.duration || 1);
 
             return (
               <div
@@ -264,9 +309,9 @@ export default function DependencyMilestoneLayer({
                         : 'hover:brightness-95'
                 }`}
                 style={{
-                  left: `${TEAMWIDTH + TASKWIDTH + (milestone.x ?? milestone.start_index * DAYWIDTH)}px`,
+                  left: `${msLeft}px`,
                   top: `${taskY}px`,
-                  width: `${DAYWIDTH * milestone.duration}px`,
+                  width: `${msWidth}px`,
                   height: `${taskHeight - 4}px`,
                   backgroundColor: milestoneColor,
                   pointerEvents: 'auto',

@@ -32,7 +32,7 @@ import { useDependencyInteraction } from './useDependencyInteraction';
 import { useDependencyData } from './useDependencyData';
 import { useDependencyUIState } from './useDependencyUIState';
 import { useDependencyActions } from './useDependencyActions';
-import { set_task_deadline, update_start_index, update_dependency, create_dependency, delete_dependency_api } from '../../api/dependencies_api';
+import { set_task_deadline, update_start_index, update_dependency, create_dependency, delete_dependency_api, create_phase, update_phase, delete_phase } from '../../api/dependencies_api';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
@@ -63,6 +63,8 @@ function DependenciesContent() {
     projectStartDate,
     projectDays,
     setProjectDays,
+    phases,
+    setPhases,
     milestones,
     setMilestones,
     teamOrder,
@@ -146,6 +148,9 @@ function DependenciesContent() {
   // Expanded task view (Gantt-like: show task time span across milestones)
   const [expandedTaskView, setExpandedTaskView] = useState(false);
 
+  // Phase color in grid (tint day cells within phases)
+  const [showPhaseColorsInGrid, setShowPhaseColorsInGrid] = useState(true);
+
   // Dependency display settings
   const [depSettings, setDepSettings] = useState({
     showReasons: true,          // show reason text on paths
@@ -167,6 +172,14 @@ function DependenciesContent() {
   const [newDayPurpose, setNewDayPurpose] = useState("");
   const [newDayPurposeTeams, setNewDayPurposeTeams] = useState(null); // null = all, array of IDs = specific
 
+  // ── Day Selection & Collapsing ──
+  const [selectedDays, setSelectedDays] = useState(new Set());       // Set of selected day indices
+  const [collapsedDays, setCollapsedDays] = useState(new Set());     // Set of collapsed (hidden) day indices
+  const lastSelectedDayRef = useRef(null);                           // for shift-click range selection
+
+  // ── Phase edit modal ──
+  const [phaseEditModal, setPhaseEditModal] = useState(null); // null | { id?, name, start_index, duration, color }
+
   // Column widths (resizable)
   const [teamColumnWidth, setTeamColumnWidth] = useState(DEFAULT_TEAMWIDTH_CONSTANT);
   const [taskColumnWidth, setTaskColumnWidth] = useState(DEFAULT_TASKWIDTH_CONSTANT);
@@ -177,6 +190,50 @@ function DependenciesContent() {
   const TASKWIDTH = taskColumnWidth;
   const TASKHEIGHT_NORMAL = customTaskHeightNormal;
   const TASKHEIGHT_SMALL = customTaskHeightSmall;
+  const COLLAPSED_DAY_WIDTH = 6; // thin indicator for collapsed days
+
+  // ── Day column layout: maps logical day indices to visual X offsets ──
+  // Accounts for collapsed days having a thin width instead of full DAYWIDTH
+  const dayColumnLayout = useMemo(() => {
+    if (!days) return { dayXOffset: () => 0, dayWidth: () => DAYWIDTH, totalDaysWidth: 0, visibleDayIndices: [], collapsedRanges: [] };
+
+    const offsets = new Array(days);
+    const widths = new Array(days);
+    const visibleDayIndices = [];
+    let x = 0;
+
+    // Detect collapsed ranges for the collapse indicator
+    const collapsedRanges = [];
+    let rangeStart = null;
+    for (let i = 0; i < days; i++) {
+      const isCollapsed = collapsedDays.has(i);
+      if (isCollapsed && rangeStart === null) rangeStart = i;
+      if (!isCollapsed && rangeStart !== null) {
+        collapsedRanges.push({ start: rangeStart, end: i - 1 });
+        rangeStart = null;
+      }
+    }
+    if (rangeStart !== null) collapsedRanges.push({ start: rangeStart, end: days - 1 });
+
+    for (let i = 0; i < days; i++) {
+      offsets[i] = x;
+      const w = collapsedDays.has(i) ? COLLAPSED_DAY_WIDTH : DAYWIDTH;
+      widths[i] = w;
+      if (!collapsedDays.has(i)) visibleDayIndices.push(i);
+      x += w;
+    }
+    const totalDaysWidth = x;
+
+    return {
+      dayXOffset: (dayIndex) => offsets[dayIndex] ?? 0,
+      dayWidth: (dayIndex) => widths[dayIndex] ?? DAYWIDTH,
+      totalDaysWidth,
+      visibleDayIndices,
+      collapsedRanges,
+      offsets,
+      widths,
+    };
+  }, [days, collapsedDays, DAYWIDTH, COLLAPSED_DAY_WIDTH]);
 
   // Column resize handler
   const handleColumnResize = (column, e) => {
@@ -232,6 +289,96 @@ function DependenciesContent() {
     setNewDayPurpose(dayData.purpose || "");
     setNewDayPurposeTeams(dayData.purpose_teams || null);
   };
+
+  // ── Day selection handlers ──
+  const handleDaySelect = useCallback((dayIndex, event) => {
+    if (event?.shiftKey && lastSelectedDayRef.current !== null) {
+      // Shift+click: range select from last selected day to this one
+      const start = Math.min(lastSelectedDayRef.current, dayIndex);
+      const end = Math.max(lastSelectedDayRef.current, dayIndex);
+      setSelectedDays(prev => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i++) next.add(i);
+        return next;
+      });
+    } else if (event?.ctrlKey || event?.metaKey) {
+      // Ctrl/Cmd+click: toggle single day
+      setSelectedDays(prev => {
+        const next = new Set(prev);
+        if (next.has(dayIndex)) next.delete(dayIndex);
+        else next.add(dayIndex);
+        return next;
+      });
+    } else {
+      // Plain click: select only this day (or deselect if already sole selection)
+      setSelectedDays(prev => {
+        if (prev.size === 1 && prev.has(dayIndex)) return new Set();
+        return new Set([dayIndex]);
+      });
+    }
+    lastSelectedDayRef.current = dayIndex;
+  }, []);
+
+  const clearDaySelection = useCallback(() => {
+    setSelectedDays(new Set());
+    lastSelectedDayRef.current = null;
+  }, []);
+
+  // ── Day collapse/uncollapse handlers ──
+  const collapseSelectedDays = useCallback(() => {
+    if (selectedDays.size === 0) return;
+    setCollapsedDays(prev => {
+      const next = new Set(prev);
+      for (const d of selectedDays) next.add(d);
+      return next;
+    });
+    setSelectedDays(new Set());
+  }, [selectedDays]);
+
+  const uncollapseDays = useCallback((dayIndices) => {
+    setCollapsedDays(prev => {
+      const next = new Set(prev);
+      for (const d of dayIndices) next.delete(d);
+      return next;
+    });
+  }, []);
+
+  const uncollapseAll = useCallback(() => {
+    setCollapsedDays(new Set());
+  }, []);
+
+  // ── Phase CRUD handlers ──
+  const handleCreatePhase = useCallback(async (phaseData) => {
+    try {
+      const res = await create_phase(projectId, phaseData);
+      const created = res.phase || res;
+      setPhases(prev => [...prev, created]);
+      setPhaseEditModal(null);
+    } catch (err) {
+      console.error("Failed to create phase:", err);
+    }
+  }, [projectId]);
+
+  const handleUpdatePhase = useCallback(async (phaseId, phaseData) => {
+    try {
+      const res = await update_phase(projectId, phaseId, phaseData);
+      const updated = res.phase || res;
+      setPhases(prev => prev.map(p => p.id === phaseId ? { ...p, ...updated } : p));
+      setPhaseEditModal(null);
+    } catch (err) {
+      console.error("Failed to update phase:", err);
+    }
+  }, [projectId]);
+
+  const handleDeletePhase = useCallback(async (phaseId) => {
+    try {
+      await delete_phase(projectId, phaseId);
+      setPhases(prev => prev.filter(p => p.id !== phaseId));
+      setPhaseEditModal(null);
+    } catch (err) {
+      console.error("Failed to delete phase:", err);
+    }
+  }, [projectId]);
 
   // ── Refactor drag: pick up a team / task / milestone and drop on IdeaBin ──
   const handleRefactorDrag = useCallback((e, type, payload) => {
@@ -334,12 +481,16 @@ function DependenciesContent() {
   const visibleTeamCount = teamOrder.filter(tid => isTeamVisible(tid)).length;
   const hiddenTeamCount = getHiddenTeamCount();
 
-  // Calculate content height
-  const layoutConstants = { HEADER_HEIGHT, TEAM_DRAG_HIGHLIGHT_HEIGHT, MARIGN_BETWEEN_DRAG_HIGHLIGHT, TEAM_HEADER_LINE_HEIGHT, TEAM_HEADER_GAP };
+  // Calculate content height — include phase header in HEADER_HEIGHT so all Y offsets
+  // (milestones, connections, drag hit-testing) account for the extra row.
+  const PHASE_HEADER_HEIGHT = 26;
+  const hasPhases = phases.length > 0;
+  const effectiveHeaderHeight = HEADER_HEIGHT + (hasPhases ? PHASE_HEADER_HEIGHT : 0);
+  const layoutConstants = { HEADER_HEIGHT: effectiveHeaderHeight, TEAM_DRAG_HIGHLIGHT_HEIGHT, MARIGN_BETWEEN_DRAG_HIGHLIGHT, TEAM_HEADER_LINE_HEIGHT, TEAM_HEADER_GAP };
   
   const contentHeight = useMemo(() => {
     return calculateContentHeight(teamOrder, isTeamVisible, getTeamHeight, layoutConstants);
-  }, [teamOrder, teams, taskDisplaySettings, teamDisplaySettings, TASKHEIGHT_NORMAL, TASKHEIGHT_SMALL]);
+  }, [teamOrder, teams, taskDisplaySettings, teamDisplaySettings, TASKHEIGHT_NORMAL, TASKHEIGHT_SMALL, hasPhases]);
 
   // Get visible team index (accounting for hidden teams)
   const getVisibleTeamIndex = (teamId) => 
@@ -440,6 +591,8 @@ function DependenciesContent() {
     safeMode,
     onSuggestionOffer: setSuggestionOfferModal,
     defaultDepWeight: depSettings.defaultDepWeight || 'strong',
+    dayColumnLayout,
+    collapsedDays,
   });
 
   // ________Actions Hook___________
@@ -892,6 +1045,13 @@ function DependenciesContent() {
         suggestionOfferModal={suggestionOfferModal}
         setSuggestionOfferModal={setSuggestionOfferModal}
         handleSuggestionOfferAccept={handleSuggestionOfferAccept}
+        // Phase modal
+        phaseEditModal={phaseEditModal}
+        setPhaseEditModal={setPhaseEditModal}
+        handleCreatePhase={handleCreatePhase}
+        handleUpdatePhase={handleUpdatePhase}
+        handleDeletePhase={handleDeletePhase}
+        days={days}
       />
 
       {/* Team Settings Dropdown - Rendered outside the transformed container */}
@@ -1057,6 +1217,17 @@ function DependenciesContent() {
           connections={connections}
           handleUpdateConnection={handleUpdateConnection}
           setConnectionEditModal={setConnectionEditModal}
+          // Day selection & collapse
+          selectedDays={selectedDays}
+          collapsedDays={collapsedDays}
+          collapseSelectedDays={collapseSelectedDays}
+          uncollapseAll={uncollapseAll}
+          clearDaySelection={clearDaySelection}
+          // Phases
+          phases={phases}
+          setPhaseEditModal={setPhaseEditModal}
+          showPhaseColorsInGrid={showPhaseColorsInGrid}
+          setShowPhaseColorsInGrid={setShowPhaseColorsInGrid}
         />
 
         <DependencyCanvas
@@ -1069,6 +1240,7 @@ function DependenciesContent() {
           milestones={milestones}
           connections={connections}
           dayLabels={dayLabels}
+          phases={phases}
           // Layout helpers
           isTeamVisible={isTeamVisible}
           isTeamCollapsed={isTeamCollapsed}
@@ -1085,10 +1257,13 @@ function DependenciesContent() {
           TEAMWIDTH={TEAMWIDTH}
           TASKWIDTH={TASKWIDTH}
           DAYWIDTH={DAYWIDTH}
+          COLLAPSED_DAY_WIDTH={COLLAPSED_DAY_WIDTH}
           TEAM_DRAG_HIGHLIGHT_HEIGHT={TEAM_DRAG_HIGHLIGHT_HEIGHT}
           MARIGN_BETWEEN_DRAG_HIGHLIGHT={MARIGN_BETWEEN_DRAG_HIGHLIGHT}
           TEAM_HEADER_LINE_HEIGHT={TEAM_HEADER_LINE_HEIGHT}
           TEAM_HEADER_GAP={TEAM_HEADER_GAP}
+          // Day column layout
+          dayColumnLayout={dayColumnLayout}
           // Dimensions
           days={days}
           contentHeight={contentHeight}
@@ -1098,6 +1273,11 @@ function DependenciesContent() {
           hideAllDependencies={hideAllDependencies}
           hideCollapsedDependencies={hideCollapsedDependencies}
           hideCollapsedMilestones={hideCollapsedMilestones}
+          // Day selection / collapse
+          selectedDays={selectedDays}
+          collapsedDays={collapsedDays}
+          onDaySelect={handleDaySelect}
+          onUncollapseDays={uncollapseDays}
           // UI state
           hoveredMilestone={hoveredMilestone}
           selectedMilestones={selectedMilestones}
@@ -1158,6 +1338,10 @@ function DependenciesContent() {
           // Dependency display settings
           depSettings={depSettings}
           setConnectionEditModal={setConnectionEditModal}
+          // Phase
+          setPhaseEditModal={setPhaseEditModal}
+          // Phase colors in grid
+          showPhaseColorsInGrid={showPhaseColorsInGrid}
         />
       </div>
 

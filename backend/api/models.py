@@ -248,6 +248,29 @@ class Dependency(models.Model):
 
 
 # ═══════════════════════════════════════════════
+#  PHASE (named timeframe spans across the timeline)
+# ═══════════════════════════════════════════════
+
+class Phase(models.Model):
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="phases")
+    name = models.CharField(max_length=200)
+    start_index = models.IntegerField(default=0)      # 0-based day index
+    duration = models.IntegerField(default=1)          # number of days
+    color = models.CharField(max_length=20, default='#3b82f6')  # hex color
+    order_index = models.IntegerField(default=0)       # stacking / display order
+
+    class Meta:
+        ordering = ["project", "order_index", "start_index"]
+
+    def __str__(self):
+        return f"{self.project.name} - Phase: {self.name} (day {self.start_index}–{self.start_index + self.duration - 1})"
+
+    @property
+    def end_index(self):
+        return self.start_index + self.duration - 1
+
+
+# ═══════════════════════════════════════════════
 #  NOTIFICATION
 # ═══════════════════════════════════════════════
 

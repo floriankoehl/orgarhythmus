@@ -64,6 +64,13 @@ export default function DependencyTeamList({
   handleRefactorDrag,
   // Deadline
   onSetDeadline,
+  // Day column layout
+  dayColumnLayout,
+  collapsedDays,
+  selectedDays,
+  // Phases in grid
+  phases = [],
+  showPhaseColorsInGrid = true,
 }) {
   const navigate = useNavigate();
   const { projectId } = useParams();
@@ -405,6 +412,11 @@ export default function DependencyTeamList({
                 handleDayCellClick={handleDayCellClick}
                 tasks={tasks}
                 onSetDeadline={onSetDeadline}
+                dayColumnLayout={dayColumnLayout}
+                collapsedDays={collapsedDays}
+                selectedDays={selectedDays}
+                phases={phases}
+                showPhaseColorsInGrid={showPhaseColorsInGrid}
               />
             </div>
           </div>

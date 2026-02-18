@@ -199,15 +199,23 @@ export function useDependencyDrag({
       let targetTeamId = null;
       let insertIndex = 0;
 
+      // Per-team overhead before task rows begin
+      const taskAreaOverhead =
+        TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2 +
+        TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
+
       for (const tid of teamOrder) {
         if (!isTeamVisible(tid)) continue;
         const teamYOff = getTeamYOffset(tid);
         const teamH = getTeamHeight(tid);
+        // Total region occupied by this team including overhead
+        const totalTeamH = taskAreaOverhead + teamH;
 
-        if (y >= teamYOff && y <= teamYOff + teamH) {
+        if (y >= teamYOff && y <= teamYOff + totalTeamH) {
           targetTeamId = tid;
           const visibleTasks = getVisibleTasks(tid);
-          let taskCumY = teamYOff;
+          // Tasks start after the overhead area
+          let taskCumY = teamYOff + taskAreaOverhead;
 
           for (let i = 0; i < visibleTasks.length; i++) {
             const th = getTaskHeight(visibleTasks[i], taskDisplaySettings);

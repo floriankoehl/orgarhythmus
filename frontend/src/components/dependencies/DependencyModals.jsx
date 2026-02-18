@@ -58,6 +58,13 @@ export default function DependencyModals({
   suggestionOfferModal,
   setSuggestionOfferModal,
   handleSuggestionOfferAccept,
+  // Phase modal
+  phaseEditModal,
+  setPhaseEditModal,
+  handleCreatePhase,
+  handleUpdatePhase,
+  handleDeletePhase,
+  days,
 }) {
   return (
     <>
@@ -473,6 +480,16 @@ export default function DependencyModals({
         </div>
       )}
 
+      {/* Phase Edit Modal */}
+      <PhaseEditModal
+        phaseEditModal={phaseEditModal}
+        setPhaseEditModal={setPhaseEditModal}
+        handleCreatePhase={handleCreatePhase}
+        handleUpdatePhase={handleUpdatePhase}
+        handleDeletePhase={handleDeletePhase}
+        days={days}
+      />
+
       {/* Connection Edit Modal */}
       <ConnectionEditModal
         connectionEditModal={connectionEditModal}
@@ -584,6 +601,165 @@ function ConnectionEditModal({ connectionEditModal, setConnectionEditModal, hand
           >
             Save
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Phase Create/Edit Modal ──
+const PHASE_COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#64748b', '#f97316'];
+
+function PhaseEditModal({ phaseEditModal, setPhaseEditModal, handleCreatePhase, handleUpdatePhase, handleDeletePhase, days }) {
+  const [name, setName] = useState('');
+  const [startIndex, setStartIndex] = useState(0);
+  const [duration, setDuration] = useState(7);
+  const [color, setColor] = useState('#3b82f6');
+
+  useEffect(() => {
+    if (phaseEditModal) {
+      setName(phaseEditModal.name || '');
+      setStartIndex(phaseEditModal.start_index ?? 0);
+      setDuration(phaseEditModal.duration ?? 7);
+      setColor(phaseEditModal.color || '#3b82f6');
+    }
+  }, [phaseEditModal]);
+
+  if (!phaseEditModal) return null;
+
+  const isEdit = phaseEditModal.mode === 'edit';
+
+  const handleSave = () => {
+    if (!name.trim()) return;
+    const data = { name: name.trim(), start_index: startIndex, duration, color };
+    if (isEdit) {
+      handleUpdatePhase(phaseEditModal.id, data);
+    } else {
+      handleCreatePhase(data);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-slate-900">
+            {isEdit ? 'Edit Phase' : 'Create Phase'}
+          </h2>
+          <button
+            onClick={() => setPhaseEditModal(null)}
+            className="p-1 rounded hover:bg-slate-100"
+          >
+            <CloseIcon fontSize="small" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Phase Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g., Sprint 1, Planning, Delivery..."
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSave();
+                if (e.key === 'Escape') setPhaseEditModal(null);
+              }}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Start Day</label>
+              <input
+                type="number"
+                value={startIndex + 1}
+                onChange={(e) => setStartIndex(Math.max(0, Math.min((days || 365) - 1, parseInt(e.target.value, 10) - 1 || 0)))}
+                min={1}
+                max={days || 365}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Duration (days)</label>
+              <input
+                type="number"
+                value={duration}
+                onChange={(e) => setDuration(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                min={1}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Color</label>
+            <div className="flex gap-2 flex-wrap">
+              {PHASE_COLORS.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setColor(c)}
+                  className={`w-7 h-7 rounded-full border-2 transition-all ${
+                    color === c ? 'border-slate-900 scale-110 shadow' : 'border-transparent hover:border-slate-300'
+                  }`}
+                  style={{ backgroundColor: c }}
+                  title={c}
+                />
+              ))}
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="w-7 h-7 rounded cursor-pointer border border-slate-200"
+                title="Pick custom color"
+              />
+            </div>
+          </div>
+
+          {/* Preview */}
+          <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+            <div className="text-[10px] text-slate-400 mb-1">Preview</div>
+            <div
+              className="h-6 rounded text-white text-xs font-semibold flex items-center justify-center truncate px-2"
+              style={{ backgroundColor: color, maxWidth: '100%' }}
+            >
+              {name || 'Phase Name'}
+            </div>
+            <div className="text-[10px] text-slate-400 mt-1">
+              Day {startIndex + 1} – Day {startIndex + duration} ({duration} day{duration !== 1 ? 's' : ''})
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-between mt-6">
+          <div>
+            {isEdit && (
+              <button
+                onClick={() => handleDeletePhase(phaseEditModal.id)}
+                className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
+              >
+                Delete
+              </button>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setPhaseEditModal(null)}
+              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={!name.trim()}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-40"
+            >
+              {isEdit ? 'Save' : 'Create'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -320,3 +320,40 @@ export async function delete_team(projectId, teamId) {
     if (res.status === 204) return null;
     return await res.json();
 }
+
+
+// ════════════════════════════════════════════
+// Phases (timeline phases / named timeframes)
+// ════════════════════════════════════════════
+
+export async function get_all_phases(projectId) {
+    const res = await authFetch(`/api/projects/${projectId}/phases/`);
+    if (!res.ok) throw new Error('Failed to fetch phases');
+    return await res.json();
+}
+
+export async function create_phase(projectId, data) {
+    const res = await authFetch(`/api/projects/${projectId}/phases/create/`, {
+        method: "POST",
+        body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Failed to create phase');
+    return await res.json();
+}
+
+export async function update_phase(projectId, phaseId, updates) {
+    const res = await authFetch(`/api/projects/${projectId}/phases/${phaseId}/`, {
+        method: "PATCH",
+        body: JSON.stringify(updates),
+    });
+    if (!res.ok) throw new Error('Failed to update phase');
+    return await res.json();
+}
+
+export async function delete_phase(projectId, phaseId) {
+    const res = await authFetch(`/api/projects/${projectId}/phases/${phaseId}/delete/`, {
+        method: "DELETE",
+    });
+    if (!res.ok) throw new Error('Failed to delete phase');
+    return await res.json();
+}

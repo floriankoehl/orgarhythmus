@@ -72,6 +72,8 @@ export function useDependencyInteraction({
   getTeamYOffset,
   getTaskYOffset,
   getVisibleTasks,
+  dayColumnLayout,
+  collapsedDays,
 
   // Computed
   safeMode,
@@ -184,6 +186,8 @@ export function useDependencyInteraction({
     addWarning,
     showBlockingFeedback,
     onWeakDepConflict: setWeakDepModal,
+    collapsedDays,
+    dayColumnLayout,
   });
 
   // ── Connection interactions ──
@@ -219,6 +223,7 @@ export function useDependencyInteraction({
     setBlockedMoveHighlight,
     onSuggestionOffer,
     defaultDepWeight,
+    dayColumnLayout,
   });
 
   // ── Copy/Paste logic ──

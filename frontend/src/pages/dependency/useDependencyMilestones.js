@@ -35,6 +35,8 @@ export function useDependencyMilestones({
   setMilestoneCreateModal,
   // Layout
   DAYWIDTH,
+  // Day column layout for accurate pixel offsets
+  dayColumnLayout,
   // Mode
   safeMode,
   // Ref from orchestrator
@@ -44,6 +46,8 @@ export function useDependencyMilestones({
   showBlockingFeedback,
   // Weak dependency confirmation callback
   onWeakDepConflict,
+  // Collapsed days for barrier check
+  collapsedDays,
 }) {
   const {
     projectId,
@@ -87,7 +91,10 @@ export function useDependencyMilestones({
       if (m) {
         initialPositions[mId] = {
           startIndex: m.start_index,
-          startVisualX: m.start_index * DAYWIDTH,
+          duration: m.duration || 1,
+          startVisualX: dayColumnLayout
+            ? dayColumnLayout.dayXOffset(m.start_index)
+            : m.start_index * DAYWIDTH,
         };
       }
     }
@@ -177,6 +184,33 @@ export function useDependencyMilestones({
             return updated;
           });
           return;
+        }
+      }
+
+      // Check collapsed-day barrier: milestones cannot overlap collapsed days
+      if (collapsedDays && collapsedDays.size > 0) {
+        for (const mId of milestonesToMove) {
+          const initial = initialPositions[mId];
+          if (!initial) continue;
+          const newStart = initial.startIndex + currentDeltaIndex;
+          const duration = initial.duration || 1;
+          for (let d = newStart; d < newStart + duration; d++) {
+            if (collapsedDays.has(d)) {
+              addWarning("Move blocked: collapsed day", "Milestones cannot be placed on collapsed days. Uncollapse the days first.");
+              setMilestones(prev => {
+                const updated = { ...prev };
+                for (const mid of milestonesToMove) {
+                  const init = initialPositions[mid];
+                  if (init) {
+                    const { x, ...rest } = updated[mid];
+                    updated[mid] = { ...rest, start_index: init.startIndex };
+                  }
+                }
+                return updated;
+              });
+              return;
+            }
+          }
         }
       }
 

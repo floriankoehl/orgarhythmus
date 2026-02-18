@@ -18,14 +18,34 @@ export default function DependencyDayGrid({
   handleDayCellClick,
   tasks,
   onSetDeadline,
+  // Day column layout
+  dayColumnLayout,
+  collapsedDays = new Set(),
+  selectedDays = new Set(),
+  phases = [],
+  showPhaseColorsInGrid = true,
 }) {
+  const totalDaysWidth = dayColumnLayout?.totalDaysWidth ?? (days || 0) * DAYWIDTH;
+
+  // Build a lookup: dayIndex → phase color (first matching phase wins)
+  const phaseColorMap = {};
+  if (showPhaseColorsInGrid && phases.length > 0) {
+    for (const phase of phases) {
+      for (let d = phase.start_index; d < phase.start_index + phase.duration; d++) {
+        if (!(d in phaseColorMap)) {
+          phaseColorMap[d] = phase.color || '#3b82f6';
+        }
+      }
+    }
+  }
+
   return (
     <>
       {/* SCROLLABLE RIGHT: Milestones/Days - day grid with interactive cells in milestone mode */}
       {!isCollapsed && (
         <div
-          className="border-y border-slate-200"
-          style={{ height: `${teamHeight}px`, backgroundColor: '#fafbfc' }}
+          className="border-y border-slate-200 relative"
+          style={{ height: `${teamHeight}px`, width: `${totalDaysWidth}px`, backgroundColor: '#fafbfc' }}
         >
           {teamTasks.map((task_key, taskIndex) => {
             if (!isTaskVisible(task_key, taskDisplaySettings)) return null;
@@ -34,18 +54,51 @@ export default function DependencyDayGrid({
             const visibleTaskIndex = visibleTasks.indexOf(task_key);
             const isLastVisible = visibleTaskIndex === visibleTasks.length - 1;
             const taskDeadline = tasks?.[task_key]?.hard_deadline;
+
+            // Calculate Y offset for this task row
+            let taskYOffset = 0;
+            for (let vi = 0; vi < visibleTaskIndex; vi++) {
+              taskYOffset += getTaskHeight(visibleTasks[vi], taskDisplaySettings);
+            }
             
             return (
               <div
-                className="flex relative"
+                className="relative"
                 style={{
+                  position: 'absolute',
+                  top: `${taskYOffset}px`,
+                  left: 0,
+                  width: `${totalDaysWidth}px`,
                   height: `${taskHeight}px`,
                   borderBottom: isLastVisible ? "none" : "1px solid #e2e8f0",
                 }}
                 key={`${task_key}_milestone`}
               >
-                {/* Day rendering - interactive when adding milestone */}
+                {/* Day rendering - use absolute positioning with dayColumnLayout */}
                 {[...Array(days)].map((_, i) => {
+                  const isDayCollapsed = collapsedDays.has(i);
+                  const isDaySelected = selectedDays.has(i);
+                  const colX = dayColumnLayout?.dayXOffset(i) ?? (i * DAYWIDTH);
+                  const colW = dayColumnLayout?.dayWidth(i) ?? DAYWIDTH;
+
+                  if (isDayCollapsed) {
+                    // Thin collapsed column indicator
+                    return (
+                      <div
+                        key={i}
+                        className="absolute top-0"
+                        style={{
+                          left: `${colX}px`,
+                          width: `${colW}px`,
+                          height: `${taskHeight}px`,
+                          backgroundColor: '#94a3b8',
+                          backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,0.25) 2px, rgba(255,255,255,0.25) 4px)',
+                          opacity: ghost?.id === team_key ? 0.2 : 0.7,
+                        }}
+                      />
+                    );
+                  }
+
                   const isHovered = isAddingMilestone && 
                     hoveredDayCell?.taskId === task_key && 
                     hoveredDayCell?.dayIndex === i;
@@ -60,6 +113,21 @@ export default function DependencyDayGrid({
                   // Hard deadline: mark days after the deadline
                   const isPastDeadline = taskDeadline !== null && taskDeadline !== undefined && i > taskDeadline;
                   const isDeadlineDay = taskDeadline !== null && taskDeadline !== undefined && i === taskDeadline;
+                  const phaseColor = phaseColorMap[i];
+
+                  // Compute background: priority is deadline > purpose > selected > phase > default
+                  let cellBg = {};
+                  if (!isHovered) {
+                    if (isPastDeadline) {
+                      cellBg = { backgroundColor: 'rgba(15, 23, 42, 0.12)', backgroundImage: 'repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(15,23,42,0.04) 3px, rgba(15,23,42,0.04) 6px)' };
+                    } else if (showPurposeHighlight) {
+                      cellBg = { backgroundColor: isDaySelected ? 'rgba(30, 41, 59, 0.10)' : 'rgba(30, 41, 59, 0.06)' };
+                    } else if (isDaySelected) {
+                      cellBg = { backgroundColor: phaseColor ? `${phaseColor}18` : 'rgba(59, 130, 246, 0.08)' };
+                    } else if (phaseColor) {
+                      cellBg = { backgroundColor: `${phaseColor}0A` }; // very subtle tint
+                    }
+                  }
                   
                   return (
                     <div
@@ -69,16 +137,16 @@ export default function DependencyDayGrid({
                       data-dep-day-team-id={team_key}
                       data-dep-day-label={dayInfo?.dateStr || ''}
                       data-dep-day-weekday={dayInfo?.dayNameShort || ''}
-                      className={`dep-day-cell border-r border-slate-100 transition-colors ${
+                      className={`dep-day-cell absolute top-0 border-r border-slate-100 transition-colors ${
                         isAddingMilestone ? 'cursor-pointer hover:bg-blue-50' : ''
                       } ${isHovered ? 'bg-blue-100' : ''}`}
                       style={{
+                        left: `${colX}px`,
+                        width: `${colW}px`,
                         height: `${taskHeight}px`,
-                        width: `${DAYWIDTH}px`,
                         opacity: ghost?.id === team_key ? 0.2 : 1,
                         pointerEvents: isAddingMilestone ? 'auto' : 'auto',
-                        ...(!isHovered && showPurposeHighlight && !isPastDeadline ? { backgroundColor: 'rgba(30, 41, 59, 0.06)' } : {}),
-                        ...(isPastDeadline ? { backgroundColor: 'rgba(15, 23, 42, 0.12)', backgroundImage: 'repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(15,23,42,0.04) 3px, rgba(15,23,42,0.04) 6px)' } : {}),
+                        ...cellBg,
                         ...(isDeadlineDay ? { borderRight: '2.5px solid #ef4444' } : {}),
                       }}
                       key={i}
@@ -94,10 +162,8 @@ export default function DependencyDayGrid({
                       e.preventDefault();
                       e.stopPropagation();
                       if (onSetDeadline) {
-                        // Right-click to set deadline at this day for this task
                         const currentDeadline = tasks?.[task_key]?.hard_deadline;
                         if (currentDeadline === i) {
-                          // Clicking on current deadline clears it
                           onSetDeadline(task_key, null);
                         } else {
                           onSetDeadline(task_key, i);
@@ -114,21 +180,27 @@ export default function DependencyDayGrid({
         {/* Empty placeholder when all tasks hidden or team is empty */}
         {rawHeight === 0 && teamHeight > 0 && (
           <div
-            className="flex"
-            style={{ height: `${teamHeight}px` }}
+            className="relative"
+            style={{ height: `${teamHeight}px`, width: `${totalDaysWidth}px` }}
           >
-            {[...Array(days)].map((_, i) => (
-              <div
-                className="border-r border-dashed border-slate-200"
-                style={{
-                  height: `${teamHeight}px`,
-                  width: `${DAYWIDTH}px`,
-                  opacity: 0.4,
-                  background: 'repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(148,163,184,0.06) 8px, rgba(148,163,184,0.06) 16px)',
-                }}
-                key={i}
-              />
-            ))}
+            {[...Array(days)].map((_, i) => {
+              if (collapsedDays.has(i)) return null;
+              const colX = dayColumnLayout?.dayXOffset(i) ?? (i * DAYWIDTH);
+              const colW = dayColumnLayout?.dayWidth(i) ?? DAYWIDTH;
+              return (
+                <div
+                  className="absolute top-0 border-r border-dashed border-slate-200"
+                  style={{
+                    left: `${colX}px`,
+                    height: `${teamHeight}px`,
+                    width: `${colW}px`,
+                    opacity: 0.4,
+                    background: 'repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(148,163,184,0.06) 8px, rgba(148,163,184,0.06) 16px)',
+                  }}
+                  key={i}
+                />
+              );
+            })}
           </div>
         )}
       </div>
@@ -138,7 +210,7 @@ export default function DependencyDayGrid({
       {isCollapsed && (
         <div
           className="border-y border-slate-200 bg-slate-50"
-          style={{ height: `${teamHeight}px` }}
+          style={{ height: `${teamHeight}px`, width: `${totalDaysWidth}px` }}
         />
       )}
     </>

@@ -46,6 +46,8 @@ export function useDependencyConnections({
   onSuggestionOffer,
   // Settings
   defaultDepWeight = 'strong',
+  // Day column layout
+  dayColumnLayout,
 }) {
   const {
     projectId,
@@ -81,9 +83,18 @@ export function useDependencyConnections({
       const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
       const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
 
-      const milestoneX = TEAMWIDTH + TASKWIDTH + milestone.start_index * DAYWIDTH;
+      const milestoneX = dayColumnLayout
+        ? TEAMWIDTH + TASKWIDTH + dayColumnLayout.dayXOffset(milestone.start_index)
+        : TEAMWIDTH + TASKWIDTH + milestone.start_index * DAYWIDTH;
       const milestoneTopY = teamYOff + dropHighlightOffset + headerOffset + taskYOff;
-      const milestoneWidth = DAYWIDTH * milestone.duration;
+      const milestoneWidth = dayColumnLayout
+        ? (() => {
+            const startX = dayColumnLayout.dayXOffset(milestone.start_index);
+            const endIdx = milestone.start_index + (milestone.duration || 1);
+            const endX = endIdx < (dayColumnLayout.offsets?.length ?? Infinity) ? dayColumnLayout.dayXOffset(endIdx) : dayColumnLayout.totalDaysWidth;
+            return endX - startX;
+          })()
+        : DAYWIDTH * milestone.duration;
 
       if (
         x >= milestoneX - 10 &&
@@ -117,9 +128,20 @@ export function useDependencyConnections({
     const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
     const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
 
-    const milestoneX = TEAMWIDTH + TASKWIDTH + (milestone.x ?? milestone.start_index * DAYWIDTH);
+    // Use dayColumnLayout for X if available, else fall back to linear formula
+    let milestoneX, milestoneWidth;
+    if (dayColumnLayout) {
+      milestoneX = TEAMWIDTH + TASKWIDTH + dayColumnLayout.dayXOffset(milestone.start_index);
+      const endIdx = milestone.start_index + (milestone.duration || 1);
+      const endX = endIdx < (dayColumnLayout.offsets?.length ?? Infinity)
+        ? dayColumnLayout.dayXOffset(endIdx)
+        : dayColumnLayout.totalDaysWidth;
+      milestoneWidth = endX - dayColumnLayout.dayXOffset(milestone.start_index);
+    } else {
+      milestoneX = TEAMWIDTH + TASKWIDTH + (milestone.x ?? milestone.start_index * DAYWIDTH);
+      milestoneWidth = DAYWIDTH * milestone.duration;
+    }
     const milestoneY = teamYOff + dropHighlightOffset + headerOffset + taskYOff + taskHeightVal / 2;
-    const milestoneWidth = DAYWIDTH * milestone.duration;
 
     if (handleType === "source") {
       return { x: milestoneX + milestoneWidth, y: milestoneY };

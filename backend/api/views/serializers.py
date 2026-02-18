@@ -12,6 +12,7 @@ from ..models import (
     Category,
     LegendType,
     Day,
+    Phase,
 )
 
 
@@ -216,6 +217,14 @@ class DaySerializer(serializers.ModelSerializer):
             "day_name_short",
         ]
         read_only_fields = ["id", "project", "date", "day_index", "is_weekend", "is_sunday", "day_name", "day_name_short"]
+
+
+# PhaseSerializer
+class PhaseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Phase
+        fields = ["id", "project", "name", "start_index", "duration", "color", "order_index"]
+        read_only_fields = ["id", "project"]
 
 
 # _____________________________ END OF NEW ADDING ______________________________

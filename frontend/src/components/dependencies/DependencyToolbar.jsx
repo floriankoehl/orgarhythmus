@@ -95,6 +95,18 @@ export default function DependencyToolbar({
   connections,
   handleUpdateConnection,
   setConnectionEditModal,
+  // Day selection & collapse
+  selectedDays,
+  collapsedDays,
+  collapseSelectedDays,
+  uncollapseAll,
+  clearDaySelection,
+  // Phases
+  phases = [],
+  setPhaseEditModal,
+  // Phase colors in grid
+  showPhaseColorsInGrid,
+  setShowPhaseColorsInGrid,
 }) {
   const hasSelection = selectedMilestones?.size > 0 || selectedConnection;
   
@@ -275,6 +287,17 @@ export default function DependencyToolbar({
                         />
                         <span>Show empty teams</span>
                       </label>
+                      {phases.length > 0 && (
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={showPhaseColorsInGrid}
+                            onChange={(e) => setShowPhaseColorsInGrid?.(e.target.checked)}
+                            className="rounded border-slate-300"
+                          />
+                          <span>Show phase colors in grid</span>
+                        </label>
+                      )}
                     </div>
 
                     <div className="border-t border-slate-100 pt-3">
@@ -628,6 +651,59 @@ export default function DependencyToolbar({
             >
               <BuildIcon style={{ fontSize: 14 }} />
               <span>Refactor</span>
+            </button>
+
+            {/* Day Selection / Collapse Controls */}
+            {selectedDays?.size > 0 && (
+              <>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    collapseSelectedDays?.();
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+                  title={`Collapse ${selectedDays.size} selected day(s)`}
+                >
+                  <UnfoldLessIcon style={{ fontSize: 14 }} />
+                  <span>Collapse {selectedDays.size} day{selectedDays.size > 1 ? 's' : ''}</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    clearDaySelection?.();
+                  }}
+                  className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 transition"
+                  title="Clear day selection"
+                >
+                  ✕
+                </button>
+              </>
+            )}
+            {collapsedDays?.size > 0 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  uncollapseAll?.();
+                }}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition"
+                title={`Expand all ${collapsedDays.size} collapsed day(s)`}
+              >
+                <UnfoldMoreIcon style={{ fontSize: 14 }} />
+                <span>Expand All ({collapsedDays.size})</span>
+              </button>
+            )}
+
+            {/* Add Phase */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setPhaseEditModal?.({ mode: 'create', start_index: 0, duration: 7, name: '', color: '#3b82f6' });
+              }}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+              title="Add a new phase/timeframe"
+            >
+              <ViewTimelineIcon style={{ fontSize: 14 }} />
+              <span>+ Phase</span>
             </button>
           </div>
           {isAddingMilestone && (

@@ -150,10 +150,11 @@ export const isTeamVisibleBase = (teamId, teamDisplaySettings, teams, taskDispla
 
 export const getTaskDropIndicatorY = (taskDropTarget, getTeamYOffsetFn, getVisibleTasksFn, getTaskHeightFn, taskDisplaySettings, layoutConstants) => {
     if (!taskDropTarget) return 0;
-    const { TEAM_DRAG_HIGHLIGHT_HEIGHT, MARIGN_BETWEEN_DRAG_HIGHLIGHT } = layoutConstants;
+    const { TEAM_DRAG_HIGHLIGHT_HEIGHT, MARIGN_BETWEEN_DRAG_HIGHLIGHT, TEAM_HEADER_LINE_HEIGHT, TEAM_HEADER_GAP } = layoutConstants;
     const { teamId, insertIndex } = taskDropTarget;
     const teamYOffset = getTeamYOffsetFn(teamId);
     const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+    const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
     
     const visibleTasks = getVisibleTasksFn(teamId);
     let taskOffset = 0;
@@ -161,7 +162,7 @@ export const getTaskDropIndicatorY = (taskDropTarget, getTeamYOffsetFn, getVisib
       taskOffset += getTaskHeightFn(visibleTasks[i], taskDisplaySettings);
     }
     
-    return teamYOffset + dropHighlightOffset + taskOffset;
+    return teamYOffset + dropHighlightOffset + headerOffset + taskOffset;
 };
 
 // ==========================================
