@@ -1,25 +1,13 @@
 // Data loading and CRUD logic for the Ideas page
 import { useState, useEffect } from "react";
-import { BASE_URL } from '../../../config/api';
-
-// Authenticated fetch helper - includes JWT token in all requests
-function authFetch(url, options = {}) {
-  const token = localStorage.getItem('access_token');
-  return fetch(url, {
-    ...options,
-    headers: {
-      ...options.headers,
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-}
+import { authFetch } from '../../../auth';
 
 /**
  * Hook for loading and managing ideas, categories, and legend types.
  * Handles all API fetching, creation, deletion, and state management.
  */
 export function useIdeasData(projectId) {
-  const API = `${BASE_URL}/api/projects/${projectId}`;
+  const API = `/api/projects/${projectId}`;
 
   // Categories
   const [categories, setCategories] = useState({});

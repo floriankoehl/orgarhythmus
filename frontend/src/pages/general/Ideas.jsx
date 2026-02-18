@@ -1,6 +1,5 @@
 ﻿import { useRef } from "react";
 import { useParams } from "react-router-dom";
-import { BASE_URL } from '../../config/api';
 
 // Hooks
 import { useIdeasData } from "./ideas/useIdeasData";
@@ -16,7 +15,7 @@ import CategoryCanvas from "../../components/ideas/CategoryCanvas";
 
 export default function Ideas() {
   const { projectId } = useParams();
-  const apiBase = `${BASE_URL}/api/projects/${projectId}`;
+  const apiBase = `/api/projects/${projectId}`;
 
   // Refs shared across hooks / components
   const IdeaListRef = useRef(null);

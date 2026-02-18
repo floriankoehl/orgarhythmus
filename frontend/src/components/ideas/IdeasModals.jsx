@@ -1,19 +1,7 @@
 // Modals: confirm delete + create category form overlay
 import { useState } from "react";
 import TextField from "@mui/material/TextField";
-import { BASE_URL } from '../../config/api';
-
-// Authenticated fetch helper
-function authFetch(url, options = {}) {
-  const token = localStorage.getItem('access_token');
-  return fetch(url, {
-    ...options,
-    headers: {
-      ...options.headers,
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-}
+import { authFetch } from '../../auth';
 
 /* ===== CONFIRM MODAL ===== */
 export function ConfirmModal({ message, onConfirm, onCancel }) {
