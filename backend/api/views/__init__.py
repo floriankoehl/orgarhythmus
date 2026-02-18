@@ -97,6 +97,7 @@ from .dependency_views import (
     create_view,
     update_view,
     delete_view,
+    set_default_view,
 )
 
 from .ideas import (

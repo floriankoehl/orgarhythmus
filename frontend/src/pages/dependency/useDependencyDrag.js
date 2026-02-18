@@ -43,6 +43,11 @@ export function useDependencyDrag({
   justDraggedRef,
   // Phase row offset
   getTeamPhaseRowHeight,
+  // Layout constants (includes effective HEADER_HEIGHT)
+  layoutConstants,
+  // Day layout
+  dayColumnLayout,
+  collapsedDays,
 }) {
   const {
     projectId,
@@ -83,11 +88,33 @@ export function useDependencyDrag({
     const startY = e.clientY;
     let currentOrderIndex = orderIndex;
 
+    // Compute team Y offset and ghost offset within team for accurate positioning
+    const teamYOffset = getTeamYOffset(teamId);
+    const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+    const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
+    const teamTopY = teamYOffset + dropHighlightOffset + headerOffset;
+    const cursorY = e.clientY - containerRect.top;
+    const offsetY = cursorY - teamTopY;
+    const teamHeight = getTeamHeight(teamId);
+
+    // Collect milestones belonging to this team for ghost rendering
+    const teamMilestones = [];
+    for (const [mId, m] of Object.entries(milestones)) {
+      const task = tasks[m.task];
+      if (!task || !team.tasks.includes(m.task)) continue;
+      teamMilestones.push({ ...m, id: parseInt(mId) });
+    }
+
     setGhost({
       id: teamId,
       name: team.name,
       color: team.color,
-      y: e.clientY - containerRect.top,
+      y: cursorY,
+      offsetY,
+      height: teamHeight,
+      teamTasks: team.tasks,
+      milestones: teamMilestones,
+      teamYOffset: teamTopY,
     });
     setDropIndex(orderIndex);
 
@@ -100,7 +127,7 @@ export function useDependencyDrag({
         TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2 +
         TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
 
-      let cumulativeY = 0;
+      let cumulativeY = layoutConstants?.HEADER_HEIGHT || 0;
       let newDropIndex = 0;
       const visibleTeams = teamOrder.filter(tid => isTeamVisible(tid));
 
@@ -182,6 +209,23 @@ export function useDependencyDrag({
     const startY = e.clientY;
     const taskHeight = getTaskHeight(taskId, taskDisplaySettings);
 
+    // Collect milestones for this task
+    const taskMilestones = [];
+    for (const [mId, m] of Object.entries(milestones)) {
+      if (m.task === taskId) {
+        taskMilestones.push({ ...m, id: parseInt(mId) });
+      }
+    }
+
+    // Compute task Y offset for connection tracking
+    const teamYOffset = getTeamYOffset(teamId);
+    const dropHighlightOffset = TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+    const headerOffset = TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
+    const phaseRowH = getTeamPhaseRowHeight ? getTeamPhaseRowHeight(teamId) : 0;
+    const taskYOff = getTaskYOffset(taskId, teamId);
+    const taskTopY = teamYOffset + dropHighlightOffset + headerOffset + phaseRowH + taskYOff;
+    const cursorY = e.clientY - containerRect.top;
+
     setTaskGhost({
       taskKey: taskId,
       teamKey: teamId,
@@ -189,7 +233,10 @@ export function useDependencyDrag({
       height: taskHeight,
       width: TASKWIDTH,
       x: e.clientX - containerRect.left,
-      y: e.clientY - containerRect.top,
+      y: cursorY,
+      milestones: taskMilestones,
+      taskTopY,
+      offsetY: cursorY - taskTopY,
     });
 
     const onMouseMove = (moveEvent) => {

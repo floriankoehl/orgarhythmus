@@ -368,6 +368,7 @@ class DependencyView(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="dependency_views")
     name = models.CharField(max_length=200)
     state = models.JSONField(default=dict, blank=True)
+    is_default = models.BooleanField(default=False)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_views")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

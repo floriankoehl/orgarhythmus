@@ -86,6 +86,9 @@ export function useDependencyInteraction({
 
   // Phase row offset
   getTeamPhaseRowHeight,
+
+  // Layout constants (includes effective HEADER_HEIGHT)
+  layoutConstants,
 }) {
   // ── Context ──
   const {
@@ -165,6 +168,9 @@ export function useDependencyInteraction({
     getVisibleTasks,
     justDraggedRef,
     getTeamPhaseRowHeight,
+    layoutConstants,
+    dayColumnLayout,
+    collapsedDays,
   });
 
   // ── Milestone interactions ──

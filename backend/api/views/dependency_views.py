@@ -117,3 +117,37 @@ def delete_view(request, project_id, view_id):
 
     view.delete()
     return Response({"detail": "View deleted"})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def set_default_view(request, project_id):
+    """
+    Set a view as the project default, or clear the default.
+    Body: { "view_id": <int|null> }
+    If view_id is null, clears the default.
+    """
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    view_id = request.data.get("view_id")
+
+    # Clear all defaults for this project
+    DependencyView.objects.filter(project=project, is_default=True).update(is_default=False)
+
+    if view_id:
+        try:
+            view = DependencyView.objects.get(pk=view_id, project=project)
+        except DependencyView.DoesNotExist:
+            return Response({"detail": "View not found"}, status=status.HTTP_404_NOT_FOUND)
+        view.is_default = True
+        view.save()
+
+    views = DependencyView.objects.filter(project=project)
+    serialized = DependencyViewSerializer(views, many=True)
+    return Response({"views": serialized.data})

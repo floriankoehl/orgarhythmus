@@ -19,6 +19,8 @@ import SaveIcon from '@mui/icons-material/Save';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import ViewListIcon from '@mui/icons-material/ViewList';
+import StarIcon from '@mui/icons-material/Star';
+import StarBorderIcon from '@mui/icons-material/StarBorder';
 
 import {
   DEFAULT_TASKHEIGHT_NORMAL,
@@ -128,6 +130,7 @@ export default function DependencyToolbar({
   onCreateView,
   onRenameView,
   onDeleteView,
+  onSetDefaultView,
 }) {
   const hasSelection = selectedMilestones?.size > 0 || selectedConnection;
 
@@ -900,23 +903,39 @@ export default function DependencyToolbar({
             Views
           </h3>
           <div className="relative">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowViewDropdown(!showViewDropdown);
-              }}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition w-full justify-between ${
-                showViewDropdown
-                  ? 'border-teal-400 bg-teal-50 text-teal-700'
-                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              <div className="flex items-center gap-1.5 min-w-0">
-                <ViewListIcon style={{ fontSize: 14 }} />
-                <span className="truncate">{activeViewName || "Default"}</span>
-              </div>
-              <span className="text-[10px] opacity-60">{savedViews.length > 0 ? `${savedViews.length}` : ''}</span>
-            </button>
+            {/* View selector + save button row */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowViewDropdown(!showViewDropdown);
+                }}
+                className={`flex-1 flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border transition justify-between min-w-0 ${
+                  showViewDropdown
+                    ? 'border-teal-400 bg-teal-50 text-teal-700'
+                    : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <ViewListIcon style={{ fontSize: 14 }} />
+                  <span className="truncate">{activeViewName || "Default"}</span>
+                </div>
+                <span className="text-[10px] opacity-60">{savedViews.length > 0 ? `${savedViews.length}` : ''}</span>
+              </button>
+              {/* Save button — always visible, disabled when on default */}
+              <button
+                onClick={() => { if (activeViewId) onSaveView(); }}
+                disabled={!activeViewId}
+                className={`flex items-center justify-center p-1.5 rounded-lg border transition ${
+                  activeViewId
+                    ? 'border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100 cursor-pointer'
+                    : 'border-slate-200 bg-slate-50 text-slate-300 cursor-not-allowed'
+                }`}
+                title={activeViewId ? `Save "${activeViewName}"` : 'Select a saved view to save'}
+              >
+                <SaveIcon style={{ fontSize: 14 }} />
+              </button>
+            </div>
 
             {showViewDropdown && (
               <div
@@ -924,7 +943,7 @@ export default function DependencyToolbar({
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="p-3 space-y-2">
-                  {/* Default view */}
+                  {/* Default (built-in) view */}
                   <button
                     onClick={() => {
                       onLoadView(null);
@@ -937,7 +956,7 @@ export default function DependencyToolbar({
                     }`}
                   >
                     Default
-                    <span className="ml-1 text-[10px] text-slate-400">(unsaved)</span>
+                    <span className="ml-1 text-[10px] text-slate-400">(built-in)</span>
                   </button>
 
                   {/* Saved views */}
@@ -971,6 +990,24 @@ export default function DependencyToolbar({
                             </form>
                           ) : (
                             <>
+                              {/* Default star toggle */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSetDefaultView(view.is_default ? null : view.id);
+                                }}
+                                className={`p-0.5 rounded transition ${
+                                  view.is_default
+                                    ? 'text-amber-500 hover:text-amber-600'
+                                    : 'text-slate-300 hover:text-amber-400'
+                                }`}
+                                title={view.is_default ? 'Remove as default' : 'Set as default'}
+                              >
+                                {view.is_default
+                                  ? <StarIcon style={{ fontSize: 13 }} />
+                                  : <StarBorderIcon style={{ fontSize: 13 }} />
+                                }
+                              </button>
                               {/* View name - click to load */}
                               <button
                                 onClick={() => {
@@ -982,6 +1019,7 @@ export default function DependencyToolbar({
                                 }`}
                               >
                                 {view.name}
+                                {view.is_default && <span className="ml-1 text-[10px] text-amber-500">(default)</span>}
                               </button>
                               {/* Edit (rename) */}
                               <button
@@ -1027,20 +1065,6 @@ export default function DependencyToolbar({
                         </div>
                       ))}
                     </div>
-                  )}
-
-                  {/* Save current view (only when on a saved view) */}
-                  {activeViewId && (
-                    <button
-                      onClick={() => {
-                        onSaveView();
-                        setShowViewDropdown(false);
-                      }}
-                      className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs rounded-lg border border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100 transition mt-1"
-                    >
-                      <SaveIcon style={{ fontSize: 13 }} />
-                      <span>Save "{activeViewName}"</span>
-                    </button>
                   )}
 
                   {/* Create new view */}

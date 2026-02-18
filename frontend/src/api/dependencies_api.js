@@ -403,3 +403,16 @@ export async function delete_view(projectId, viewId) {
     if (!res.ok) throw new Error('Failed to delete view');
     return await res.json();
 }
+
+export async function set_default_view(projectId, viewId) {
+    const res = await authFetch(`/api/projects/${projectId}/views/set-default/`, {
+        method: "POST",
+        body: JSON.stringify({ view_id: viewId }),
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to set default view');
+    }
+    const data = await res.json();
+    return data.views || data;
+}

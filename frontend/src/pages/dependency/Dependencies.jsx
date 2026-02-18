@@ -33,7 +33,7 @@ import { useDependencyInteraction } from './useDependencyInteraction';
 import { useDependencyData } from './useDependencyData';
 import { useDependencyUIState } from './useDependencyUIState';
 import { useDependencyActions } from './useDependencyActions';
-import { set_task_deadline, update_start_index, update_dependency, create_dependency, delete_dependency_api, create_phase, update_phase, delete_phase, get_all_views, create_view, update_view, delete_view } from '../../api/dependencies_api';
+import { set_task_deadline, update_start_index, update_dependency, create_dependency, delete_dependency_api, create_phase, update_phase, delete_phase, get_all_views, create_view, update_view, delete_view, set_default_view } from '../../api/dependencies_api';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
@@ -457,11 +457,21 @@ function DependenciesContent() {
     if (state.refactorMode !== undefined) setRefactorMode(state.refactorMode);
   }, []);
 
-  // Fetch saved views on mount
+  // Fetch saved views on mount & auto-load default view
   useEffect(() => {
     if (!projectId) return;
     get_all_views(projectId)
-      .then(data => setSavedViews(data || []))
+      .then(data => {
+        const views = data || [];
+        setSavedViews(views);
+        // Auto-load the default view if one exists
+        const defaultView = views.find(v => v.is_default);
+        if (defaultView) {
+          applyViewState(defaultView.state);
+          setActiveViewId(defaultView.id);
+          setActiveViewName(defaultView.name);
+        }
+      })
       .catch(err => console.error("Failed to load views:", err));
   }, [projectId]);
 
@@ -533,6 +543,17 @@ function DependenciesContent() {
       alert("Failed to delete view: " + (err.message || err));
     }
   }, [projectId, activeViewId]);
+
+  // Set / clear the default view for this project
+  const handleSetDefaultView = useCallback(async (viewId) => {
+    try {
+      const updatedViews = await set_default_view(projectId, viewId);
+      setSavedViews(updatedViews || []);
+    } catch (err) {
+      console.error("Failed to set default view:", err);
+      alert("Failed to set default view: " + (err.message || err));
+    }
+  }, [projectId]);
 
   // ═══════════════ End Views ═══════════════
 
@@ -940,6 +961,7 @@ function DependenciesContent() {
     dayColumnLayout,
     collapsedDays,
     getTeamPhaseRowHeight,
+    layoutConstants,
   });
 
   // ________Actions Hook___________
@@ -1660,6 +1682,7 @@ function DependenciesContent() {
           onCreateView={handleCreateView}
           onRenameView={handleRenameView}
           onDeleteView={handleDeleteView}
+          onSetDefaultView={handleSetDefaultView}
         />
 
         <DependencyCanvas

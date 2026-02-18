@@ -133,6 +133,7 @@ urlpatterns = [
     path("projects/<int:project_id>/views/create/", views.create_view),
     path("projects/<int:project_id>/views/<int:view_id>/", views.update_view),
     path("projects/<int:project_id>/views/<int:view_id>/delete/", views.delete_view),
+    path("projects/<int:project_id>/views/set-default/", views.set_default_view),
     # _____________________________ END OF NEW ADDING ______________________________
 ]
 

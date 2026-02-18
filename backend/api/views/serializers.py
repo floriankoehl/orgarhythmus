@@ -234,7 +234,7 @@ class DependencyViewSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DependencyView
-        fields = ["id", "project", "name", "state", "created_by", "created_by_name", "created_at", "updated_at"]
+        fields = ["id", "project", "name", "state", "is_default", "created_by", "created_by_name", "created_at", "updated_at"]
         read_only_fields = ["id", "project", "created_by", "created_at", "updated_at"]
 
     def get_created_by_name(self, obj):

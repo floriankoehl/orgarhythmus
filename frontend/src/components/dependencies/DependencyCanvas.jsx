@@ -202,28 +202,99 @@ export default function DependencyCanvas({
                 }}
               />
             )}
+          </div>
 
-            {/* Team Ghost */}
-            {ghost && (
+          {/* Team Ghost — full-width row */}
+          {ghost && (() => {
+            const ghostTop = ghost.y - ghost.offsetY;
+            // Build task Y offset map within the ghost
+            const taskYMap = {};
+            let cumTaskY = 0;
+            const phaseRowH = getTeamPhaseRowHeight ? getTeamPhaseRowHeight(ghost.id) : 0;
+            for (const tid of (ghost.teamTasks || [])) {
+              taskYMap[tid] = cumTaskY;
+              cumTaskY += getTaskHeight(tid, taskDisplaySettings);
+            }
+            return (
               <div
                 className="pointer-events-none absolute"
                 style={{
-                  top: `${ghost.y}px`,
+                  top: `${ghostTop}px`,
                   left: 0,
                   height: `${ghost.height}px`,
-                  width: `${TEAMWIDTH + TASKWIDTH}px`,
-                  backgroundColor: `${ghost.color}`,
+                  width: `${totalWidth}px`,
                   zIndex: 100,
                   opacity: 0.85,
                   border: '2px dashed #1e293b',
                   borderRadius: '4px',
                   boxShadow: '0 4px 16px rgba(0,0,0,0.25), 0 0 0 1px rgba(0,0,0,0.1)',
+                  overflow: 'hidden',
                 }}
               >
-                <div className="p-2 text-sm font-medium text-slate-900">{ghost.name}</div>
+                {/* Team color background */}
+                <div style={{ position: 'absolute', inset: 0, backgroundColor: ghost.color, opacity: 0.35 }} />
+                {/* Team name */}
+                <div
+                  className="text-sm font-bold text-slate-900 flex items-start"
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    width: `${TEAMWIDTH}px`,
+                    height: '100%',
+                    backgroundColor: ghost.color,
+                    padding: '6px 8px',
+                    borderRight: '1px solid rgba(0,0,0,0.15)',
+                  }}
+                >
+                  {ghost.name}
+                </div>
+                {/* Task names column */}
+                <div style={{ position: 'absolute', left: `${TEAMWIDTH}px`, top: `${phaseRowH}px`, width: `${TASKWIDTH}px`, height: `${ghost.height - phaseRowH}px`, borderRight: '1px solid rgba(0,0,0,0.1)' }}>
+                  {(ghost.teamTasks || []).map(tid => {
+                    const t = tasks[tid];
+                    if (!t) return null;
+                    const th = getTaskHeight(tid, taskDisplaySettings);
+                    return (
+                      <div key={tid} className="flex items-center px-2 text-xs text-slate-700 truncate" style={{ height: `${th}px`, borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+                        {t.name}
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Milestone indicators in day grid */}
+                {(ghost.milestones || []).map(m => {
+                  const col = dayColumnLayout?.columns?.[m.start_index];
+                  if (!col) return null;
+                  const dur = m.duration || 1;
+                  let mW = 0;
+                  for (let d = 0; d < dur; d++) {
+                    const c = dayColumnLayout?.columns?.[m.start_index + d];
+                    if (c) mW += c.width;
+                  }
+                  if (!mW) mW = DAYWIDTH;
+                  const mX = TEAMWIDTH + TASKWIDTH + col.x;
+                  const th = getTaskHeight(m.task, taskDisplaySettings);
+                  const mY = phaseRowH + (taskYMap[m.task] ?? 0);
+                  return (
+                    <div
+                      key={m.id}
+                      className="absolute rounded-sm"
+                      style={{
+                        left: `${mX}px`,
+                        top: `${mY + 4}px`,
+                        width: `${mW}px`,
+                        height: `${th - 8}px`,
+                        backgroundColor: ghost.color,
+                        border: '1px solid rgba(0,0,0,0.25)',
+                        opacity: 0.7,
+                      }}
+                    />
+                  );
+                })}
               </div>
-            )}
-          </div>
+            );
+          })()}
 
           {/* Header Row */}
           <div className="flex flex-col" style={{ height: `${totalHeaderHeight}px`, position: 'relative', zIndex: 50 }}>
@@ -608,6 +679,24 @@ export default function DependencyCanvas({
 
               if (!sourcePos || !targetPos) return null;
 
+              // Offset endpoints when their team/task is being dragged
+              let srcY = sourcePos.y;
+              let tgtY = targetPos.y;
+              if (ghost) {
+                const teamDragDelta = (ghost.y - ghost.offsetY) - ghost.teamYOffset;
+                const sMil = milestones[conn.source];
+                const tMil = milestones[conn.target];
+                if (sMil && ghost.teamTasks?.includes(sMil.task)) srcY += teamDragDelta;
+                if (tMil && ghost.teamTasks?.includes(tMil.task)) tgtY += teamDragDelta;
+              }
+              if (taskGhost) {
+                const taskDragDelta = (taskGhost.y - taskGhost.offsetY) - taskGhost.taskTopY;
+                const sMil = milestones[conn.source];
+                const tMil = milestones[conn.target];
+                if (sMil && sMil.task === taskGhost.taskKey) srcY += taskDragDelta;
+                if (tMil && tMil.task === taskGhost.taskKey) tgtY += taskDragDelta;
+              }
+
               // Hide connections when either endpoint's team is collapsed
               const sourceMilestone = milestones[conn.source];
               const targetMilestone = milestones[conn.target];
@@ -694,7 +783,7 @@ export default function DependencyCanvas({
 
               const strokeWidth = isBlockedHighlight ? "5" : isHighlighted ? String(baseStrokeWidth + 1) : String(baseStrokeWidth);
               const pathId = `dep-path-${conn.source}-${conn.target}`;
-              const pathD = getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y);
+              const pathD = getConnectionPath(sourcePos.x, srcY, targetPos.x, tgtY);
 
               // Reason label text
               const showReasons = depSettings.showReasons !== false;
@@ -860,23 +949,59 @@ export default function DependencyCanvas({
             />
           )}
 
-          {/* Task Ghost */}
-          {taskGhost && (
-            <div
-              className="absolute rounded border-2 border-blue-500 bg-blue-100/95 flex items-center px-2 text-sm font-medium text-blue-900 pointer-events-none"
-              style={{
-                height: `${taskGhost.height}px`,
-                width: `${taskGhost.width}px`,
-                left: `${taskGhost.x}px`,
-                top: `${taskGhost.y}px`,
-                zIndex: 100,
-                transform: 'translate(-12px, -50%)',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.25), 0 0 0 1px rgba(59,130,246,0.3)',
-              }}
-            >
-              {taskGhost.name}
-            </div>
-          )}
+          {/* Task Ghost — full-width row */}
+          {taskGhost && (() => {
+            const taskGhostTop = taskGhost.y - taskGhost.offsetY;
+            return (
+              <div
+                className="absolute pointer-events-none"
+                style={{
+                  top: `${taskGhostTop}px`,
+                  left: `${TEAMWIDTH}px`,
+                  height: `${taskGhost.height}px`,
+                  width: `${TASKWIDTH + totalDaysWidth}px`,
+                  zIndex: 100,
+                  border: '2px solid rgba(59,130,246,0.7)',
+                  borderRadius: '4px',
+                  backgroundColor: 'rgba(219,234,254,0.85)',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.25), 0 0 0 1px rgba(59,130,246,0.3)',
+                  overflow: 'hidden',
+                }}
+              >
+                {/* Task name */}
+                <div className="flex items-center px-2 text-sm font-medium text-blue-900 h-full" style={{ width: `${TASKWIDTH}px`, borderRight: '1px solid rgba(59,130,246,0.2)' }}>
+                  {taskGhost.name}
+                </div>
+                {/* Milestone indicators */}
+                {(taskGhost.milestones || []).map(m => {
+                  const col = dayColumnLayout?.columns?.[m.start_index];
+                  if (!col) return null;
+                  const dur = m.duration || 1;
+                  let mW = 0;
+                  for (let d = 0; d < dur; d++) {
+                    const c = dayColumnLayout?.columns?.[m.start_index + d];
+                    if (c) mW += c.width;
+                  }
+                  if (!mW) mW = DAYWIDTH;
+                  const mX = TASKWIDTH + col.x;
+                  return (
+                    <div
+                      key={m.id}
+                      className="absolute rounded-sm"
+                      style={{
+                        left: `${mX}px`,
+                        top: '4px',
+                        width: `${mW}px`,
+                        height: `${taskGhost.height - 8}px`,
+                        backgroundColor: 'rgba(59,130,246,0.4)',
+                        border: '1px solid rgba(59,130,246,0.5)',
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </>
