@@ -136,7 +136,10 @@ export function useDependencyMilestones({
       stopLoopSound('dragLoop');
 
       if (hasDragged) {
-        // Clear visual x property
+        justDraggedRef.current = true;
+        setTimeout(() => { justDraggedRef.current = false; }, 0);
+      } else {
+        // No drag, just a click — clear visual x and return
         setMilestones(prev => {
           const updated = { ...prev };
           for (const mId of milestonesToMove) {

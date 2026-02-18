@@ -60,7 +60,8 @@ const SOUND_FILES = {
   // ── Milestone interactions ──
   milestoneSelect:       selectSound,            // clicking a milestone
   milestoneDeselect:     subtleSound,            // deselecting / escape
-  milestoneMove:         snapSound,              // drag-drop milestone to new day
+  // milestoneMove:         snapSound,              // drag-drop milestone to new day
+  milestoneMove:         phaseDropResizeSound,              // drag-drop milestone to new day
   milestoneResize:       clackSound,             // edge-resize completes
   milestoneCreate:       messageSound,           // new milestone created
   milestoneDelete:       deletingSound,          // milestone removed
@@ -242,7 +243,7 @@ export function startLoopSound(key, options = {}) {
   try {
     const audio = new Audio(src);
     audio.loop = true;
-    audio.volume = options.volume ?? globalVolume * 0.4;
+    audio.volume = options.volume ?? globalVolume * 0.7;
     audio.play().catch(() => {});
     loopingAudios[key] = audio;
   } catch (e) {

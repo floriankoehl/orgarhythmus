@@ -128,6 +128,7 @@ export function useDependencyActions({
       console.error("Failed to save day purpose:", err);
     }
     
+    playSound('settingToggle');
     setDayPurposeModal(null);
     setNewDayPurpose("");
     setNewDayPurposeTeams(null);
@@ -170,6 +171,7 @@ export function useDependencyActions({
           },
         });
       }
+      playSound('settingToggle');
     } catch (err) {
       console.error("Failed to clear day purpose:", err);
     }
@@ -343,6 +345,7 @@ export function useDependencyActions({
     // Save to backend
     try {
       await reorder_team_tasks(projectId, taskId, targetTeamId, newTargetTasks);
+      playSound('taskDragDrop');
 
       pushAction({
         description: 'Move task cross-team',

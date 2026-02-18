@@ -7,6 +7,7 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ArrowRightIcon from '@mui/icons-material/ArrowRight';
 import DependencyDayGrid from './DependencyDayGrid';
+import { playSound } from '../../assets/sound_registry';
 import { TEAM_PHASE_ROW_HEIGHT } from '../../pages/dependency/layoutMath';
 import { useNavigate } from 'react-router-dom';
 import { useParams } from 'react-router-dom';
@@ -171,6 +172,7 @@ export default function DependencyTeamList({
                     <button
                       onClick={() => {
                         if (!setCollapsedTeamPhaseRows) return;
+                        playSound('collapse');
                         setCollapsedTeamPhaseRows(prev => {
                           const next = new Set(prev);
                           if (next.has(teamIdNum)) next.delete(teamIdNum);

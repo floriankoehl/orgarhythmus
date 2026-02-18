@@ -43,7 +43,7 @@ import DependencyModals from '../../components/dependencies/DependencyModals';
 import DependencyCanvas from '../../components/dependencies/DependencyCanvas';
 import DependencyWarningToast from '../../components/dependencies/DependencyWarningToast';
 import { DependencyProvider, useDependency } from './DependencyContext.jsx';
-import { playSound, preloadSounds } from '../../assets/sound_registry';
+import { playSound, preloadSounds, startLoopSound, stopLoopSound } from '../../assets/sound_registry';
 
 export default function Dependencies() {
   return (
@@ -153,7 +153,7 @@ function DependenciesContent() {
   const [showPhaseColorsInGrid, setShowPhaseColorsInGrid] = useState(true);
 
   // Dependency display settings
-  const [depSettings, setDepSettings] = useState({
+  const DEFAULT_DEP_SETTINGS = {
     showReasons: true,          // show reason text on paths
     hideSuggestions: false,      // hide suggestion-weight dependencies
     uniformVisuals: false,       // all deps same thickness (no weight differentiation)
@@ -161,7 +161,8 @@ function DependenciesContent() {
     defaultDepWeight: 'strong',  // default weight when creating new dependencies
     weakDepPrompt: true,         // show prompt on weak dep conflict (false = auto-block)
     colorDirectionHighlight: true, // color incoming (red) and outgoing (green) deps on milestone select
-  });
+  };
+  const [depSettings, setDepSettings] = useState(DEFAULT_DEP_SETTINGS);
 
   // Connection edit modal (for editing weight/reason of a selected connection)
   const [connectionEditModal, setConnectionEditModal] = useState(null); // { source, target, weight, reason }
@@ -201,6 +202,10 @@ function DependenciesContent() {
   // ── Project Snapshots (full data + view state backups) ──
   const [snapshots, setSnapshots] = useState([]);
   const [snapshotsLoading, setSnapshotsLoading] = useState(false);
+
+  // Keep a ref to phases so drag handlers always see fresh data
+  const phasesRef = useRef(phases);
+  phasesRef.current = phases;
 
   // Dynamic constants based on settings
   const DAYWIDTH = customDayWidth;
@@ -310,6 +315,7 @@ function DependenciesContent() {
 
   // ── Day selection handlers ──
   const handleDaySelect = useCallback((dayIndex, event) => {
+    playSound('uiClick');
     if (event?.shiftKey && lastSelectedDayRef.current !== null) {
       // Shift+click: range select from last selected day to this one
       const start = Math.min(lastSelectedDayRef.current, dayIndex);
@@ -345,6 +351,7 @@ function DependenciesContent() {
   // ── Day collapse/uncollapse handlers ──
   const collapseSelectedDays = useCallback(() => {
     if (selectedDays.size === 0) return;
+    playSound('collapse');
     setCollapsedDays(prev => {
       const next = new Set(prev);
       for (const d of selectedDays) next.add(d);
@@ -354,6 +361,7 @@ function DependenciesContent() {
   }, [selectedDays]);
 
   const uncollapseDays = useCallback((dayIndices) => {
+    playSound('collapse');
     setCollapsedDays(prev => {
       const next = new Set(prev);
       for (const d of dayIndices) next.delete(d);
@@ -362,12 +370,14 @@ function DependenciesContent() {
   }, []);
 
   const uncollapseAll = useCallback(() => {
+    playSound('collapse');
     setCollapsedDays(new Set());
   }, []);
 
   // ── Phase range collapse (collapse/uncollapse all days covered by a phase) ──
   const collapsePhaseRange = useCallback((phase) => {
     if (!phase) return;
+    playSound('collapse');
     const start = phase.start_index;
     const end = start + (phase.duration || 1);
     setCollapsedDays(prev => {
@@ -388,12 +398,14 @@ function DependenciesContent() {
 
   // ── Show all team phase rows ──
   const showAllTeamPhases = useCallback(() => {
+    playSound('collapse');
     setCollapsedTeamPhaseRows(new Set());
     setCollapseAllTeamPhases(false);
   }, []);
 
   // ── Hide all team phase rows ──
   const hideAllTeamPhases = useCallback(() => {
+    playSound('collapse');
     setCollapseAllTeamPhases(true);
   }, []);
 
@@ -434,32 +446,48 @@ function DependenciesContent() {
     autoSelectBlocking, warningDuration, refactorMode,
   ]);
 
-  // Apply a saved view state, restoring all settings
+  // Apply a saved view state, restoring all settings.
+  // Always sets every setting — uses sensible defaults for any missing keys so
+  // older saved views still work correctly after new settings are introduced.
   const applyViewState = useCallback((state) => {
     if (!state) return;
-    if (state.taskDisplaySettings !== undefined) setTaskDisplaySettings(state.taskDisplaySettings);
-    if (state.teamDisplaySettings !== undefined) setTeamDisplaySettings(state.teamDisplaySettings);
-    if (state.viewMode !== undefined) { setViewMode(state.viewMode); baseViewModeRef.current = state.viewMode; }
-    if (state.mode !== undefined) setMode(state.mode);
-    if (state.collapsedDays !== undefined) setCollapsedDays(new Set(state.collapsedDays));
-    if (state.selectedDays !== undefined) setSelectedDays(new Set(state.selectedDays));
-    if (state.depSettings !== undefined) setDepSettings(state.depSettings);
-    if (state.showPhaseColorsInGrid !== undefined) setShowPhaseColorsInGrid(state.showPhaseColorsInGrid);
-    if (state.expandedTaskView !== undefined) setExpandedTaskView(state.expandedTaskView);
-    if (state.hideAllDependencies !== undefined) setHideAllDependencies(state.hideAllDependencies);
-    if (state.hideCollapsedDependencies !== undefined) setHideCollapsedDependencies(state.hideCollapsedDependencies);
-    if (state.hideCollapsedMilestones !== undefined) setHideCollapsedMilestones(state.hideCollapsedMilestones);
-    if (state.showEmptyTeams !== undefined) setShowEmptyTeams(state.showEmptyTeams);
-    if (state.customDayWidth !== undefined) setCustomDayWidth(state.customDayWidth);
-    if (state.customTaskHeightNormal !== undefined) setCustomTaskHeightNormal(state.customTaskHeightNormal);
-    if (state.customTaskHeightSmall !== undefined) setCustomTaskHeightSmall(state.customTaskHeightSmall);
-    if (state.collapsedTeamPhaseRows !== undefined) setCollapsedTeamPhaseRows(new Set(state.collapsedTeamPhaseRows));
-    if (state.collapseAllTeamPhases !== undefined) setCollapseAllTeamPhases(state.collapseAllTeamPhases);
-    if (state.teamColumnWidth !== undefined) setTeamColumnWidth(state.teamColumnWidth);
-    if (state.taskColumnWidth !== undefined) setTaskColumnWidth(state.taskColumnWidth);
-    if (state.autoSelectBlocking !== undefined) setAutoSelectBlocking(state.autoSelectBlocking);
-    if (state.warningDuration !== undefined) setWarningDuration(state.warningDuration);
-    if (state.refactorMode !== undefined) setRefactorMode(state.refactorMode);
+    // Per-item display settings: merge with current so new teams/tasks keep their defaults
+    if (state.taskDisplaySettings) {
+      setTaskDisplaySettings(prev => ({ ...prev, ...state.taskDisplaySettings }));
+    }
+    if (state.teamDisplaySettings) {
+      setTeamDisplaySettings(prev => ({ ...prev, ...state.teamDisplaySettings }));
+    }
+    // View & interaction modes
+    const vm = state.viewMode ?? 'inspection';
+    setViewMode(vm);
+    baseViewModeRef.current = vm;
+    setMode(state.mode ?? 'drag');
+    // Day states
+    setCollapsedDays(new Set(state.collapsedDays ?? []));
+    setSelectedDays(new Set(state.selectedDays ?? []));
+    // Dependency display — merge with defaults so new keys always have values
+    setDepSettings({ ...DEFAULT_DEP_SETTINGS, ...(state.depSettings ?? {}) });
+    // Boolean / scalar toggles
+    setShowPhaseColorsInGrid(state.showPhaseColorsInGrid ?? true);
+    setExpandedTaskView(state.expandedTaskView ?? false);
+    setHideAllDependencies(state.hideAllDependencies ?? false);
+    setHideCollapsedDependencies(state.hideCollapsedDependencies ?? false);
+    setHideCollapsedMilestones(state.hideCollapsedMilestones ?? false);
+    setShowEmptyTeams(state.showEmptyTeams ?? true);
+    // Dimensions
+    setCustomDayWidth(state.customDayWidth ?? DEFAULT_DAYWIDTH);
+    setCustomTaskHeightNormal(state.customTaskHeightNormal ?? DEFAULT_TASKHEIGHT_NORMAL);
+    setCustomTaskHeightSmall(state.customTaskHeightSmall ?? DEFAULT_TASKHEIGHT_SMALL);
+    setTeamColumnWidth(state.teamColumnWidth ?? DEFAULT_TEAMWIDTH_CONSTANT);
+    setTaskColumnWidth(state.taskColumnWidth ?? DEFAULT_TASKWIDTH_CONSTANT);
+    // Team phase rows
+    setCollapsedTeamPhaseRows(new Set(state.collapsedTeamPhaseRows ?? []));
+    setCollapseAllTeamPhases(state.collapseAllTeamPhases ?? false);
+    // Advanced toggles
+    setAutoSelectBlocking(state.autoSelectBlocking ?? true);
+    setWarningDuration(state.warningDuration ?? 2000);
+    setRefactorMode(state.refactorMode ?? false);
   }, []);
 
   // Fetch saved views on mount & auto-load default view
@@ -483,9 +511,11 @@ function DependenciesContent() {
   // Load a view (switch to it)
   const handleLoadView = useCallback((view) => {
     if (!view) {
-      // Reset to default
+      // Reset to defaults — apply an empty state object so every setting reverts
+      applyViewState({});
       setActiveViewId(null);
       setActiveViewName("Default");
+      playSound('viewLoad');
       return;
     }
     applyViewState(view.state);
@@ -680,8 +710,9 @@ function DependenciesContent() {
 
   // ── Phase overlap detection helper ──
   // Returns true if a phase at (startIdx, dur) would overlap any other phase in the same scope
+  // Uses phasesRef to always check against the latest phases (avoids stale closures during drag)
   const wouldPhaseOverlap = useCallback((phaseId, startIdx, dur, teamId) => {
-    for (const p of phases) {
+    for (const p of phasesRef.current) {
       if (p.id === phaseId) continue;
       // Same scope check: both global (team==null) or both same team
       const sameScope = (teamId == null && p.team == null) ||
@@ -693,14 +724,14 @@ function DependenciesContent() {
       }
     }
     return false;
-  }, [phases]);
+  }, []);
 
   // ── Phase edge resize (drag left/right edges to resize) ──
   const handlePhaseEdgeResize = useCallback((e, phaseId, edge) => {
     e.stopPropagation();
     e.preventDefault();
 
-    const phase = phases.find(p => p.id === phaseId);
+    const phase = phasesRef.current.find(p => p.id === phaseId);
     if (!phase) return;
 
     const startX = e.clientX;
@@ -733,9 +764,11 @@ function DependenciesContent() {
     const onMouseUp = async () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      stopLoopSound('dragLoop');
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
 
+      playSound('phaseUpdate');
       setPhases(prev => {
         const current = prev.find(p => p.id === phaseId);
         if (current) {
@@ -752,14 +785,15 @@ function DependenciesContent() {
     document.body.style.userSelect = 'none';
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-  }, [phases, DAYWIDTH, projectId, wouldPhaseOverlap]);
+    startLoopSound('dragLoop');
+  }, [DAYWIDTH, projectId, wouldPhaseOverlap]);
 
   // ── Phase drag to move (mousedown on phase bar body) ──
   const handlePhaseDrag = useCallback((e, phaseId) => {
     e.stopPropagation();
     e.preventDefault();
 
-    const phase = phases.find(p => p.id === phaseId);
+    const phase = phasesRef.current.find(p => p.id === phaseId);
     if (!phase) return;
 
     const startX = e.clientX;
@@ -786,11 +820,13 @@ function DependenciesContent() {
     const onMouseUp = async () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
+      stopLoopSound('dragLoop');
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
 
       if (!moved) return;
 
+      playSound('phaseUpdate');
       setPhases(prev => {
         const current = prev.find(p => p.id === phaseId);
         if (current) {
@@ -809,7 +845,8 @@ function DependenciesContent() {
     document.body.style.userSelect = 'none';
     document.addEventListener('mousemove', onMouseMove);
     document.addEventListener('mouseup', onMouseUp);
-  }, [phases, DAYWIDTH, projectId, wouldPhaseOverlap]);
+    startLoopSound('dragLoop');
+  }, [DAYWIDTH, projectId, wouldPhaseOverlap]);
 
   // ── Refactor drag: pick up a team / task / milestone and drop on IdeaBin ──
   const handleRefactorDrag = useCallback((e, type, payload) => {
@@ -1276,6 +1313,7 @@ function DependenciesContent() {
   // Bulk update multiple connections (weight/reason change)
   const handleBulkUpdateConnections = async (conns, updates) => {
     if (!conns || conns.length === 0) return;
+    playSound('settingToggle');
     const oldValues = conns.map(c => ({ source: c.source, target: c.target, weight: c.weight, reason: c.reason }));
     for (const conn of conns) {
       await handleUpdateConnection(conn, updates, { skipHistory: true });
@@ -1327,6 +1365,7 @@ function DependenciesContent() {
 
   // Toggle task size
   const toggleTaskSize = (taskId) => {
+    playSound('collapse');
     setTaskDisplaySettings(prev => ({
       ...prev,
       [taskId]: {
@@ -1368,6 +1407,7 @@ function DependenciesContent() {
 
   // Toggle team visibility
   const toggleTeamVisibility = (teamId) => {
+    playSound('teamFilter');
     setTeamDisplaySettings(prev => ({
       ...prev,
       [teamId]: {
@@ -1381,6 +1421,7 @@ function DependenciesContent() {
   const setTeamTasksSmall = (teamId) => {
     const team = teams[teamId];
     if (!team) return;
+    playSound('collapse');
     setTaskDisplaySettings(prev => {
       const updated = { ...prev };
       for (const taskId of team.tasks) {
@@ -1394,6 +1435,7 @@ function DependenciesContent() {
   const setTeamTasksNormal = (teamId) => {
     const team = teams[teamId];
     if (!team) return;
+    playSound('collapse');
     setTaskDisplaySettings(prev => {
       const updated = { ...prev };
       for (const taskId of team.tasks) {
@@ -1528,6 +1570,7 @@ function DependenciesContent() {
   const showAllTeamTasks = (teamId) => {
     const team = teams[teamId];
     if (!team) return;
+    playSound('collapse');
     setTaskDisplaySettings(prev => {
       const updated = { ...prev };
       for (const taskId of team.tasks) {
@@ -1544,6 +1587,7 @@ function DependenciesContent() {
 
   // Show all hidden teams
   const showAllHiddenTeams = () => {
+    playSound('collapse');
     setTeamDisplaySettings(prev => {
       const updated = { ...prev };
       for (const teamId of teamOrder) {

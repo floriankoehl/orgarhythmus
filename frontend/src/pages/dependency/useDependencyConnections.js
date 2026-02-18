@@ -417,6 +417,7 @@ export function useDependencyConnections({
     }
     try {
       await update_dependency(projectId, connection.source, connection.target, updates);
+      playSound('settingToggle');
       setConnections(prev => prev.map(c => {
         if (c.source === connection.source && c.target === connection.target) {
           return { ...c, ...updates };

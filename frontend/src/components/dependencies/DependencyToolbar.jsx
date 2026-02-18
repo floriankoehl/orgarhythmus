@@ -676,6 +676,7 @@ export default function DependencyToolbar({
                 e.stopPropagation();
                 setViewMode("inspection");
                 baseViewModeRef.current = "inspection";
+                playSound('modeSwitch');
               }}
               className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
                 viewMode === "inspection"
@@ -692,6 +693,7 @@ export default function DependencyToolbar({
                 e.stopPropagation();
                 setViewMode("schedule");
                 baseViewModeRef.current = "schedule";
+                playSound('modeSwitch');
               }}
               className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
                 viewMode === "schedule"
@@ -708,6 +710,7 @@ export default function DependencyToolbar({
                 e.stopPropagation();
                 setViewMode("dependency");
                 baseViewModeRef.current = "dependency";
+                playSound('modeSwitch');
               }}
               className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md transition ${
                 viewMode === "dependency"
