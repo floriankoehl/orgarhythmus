@@ -1390,20 +1390,48 @@ function DependenciesContent() {
           const depResult = validateMilestoneMove(mId, dayIndex);
           if (depResult && !depResult.valid) {
             const strongBlockers = (depResult.allBlocking || []).filter(b => b.weight === 'strong');
+            const weakBlockers = (depResult.allBlocking || []).filter(b => b.weight === 'weak');
+            const suggestionBlockers = (depResult.allBlocking || []).filter(b => b.weight === 'suggestion');
+
+            // Hard block: strong dependencies
             if (strongBlockers.length > 0) {
               addWarning('Blocked', 'Move violates a dependency constraint');
               for (const b of strongBlockers) {
                 showBlockingFeedback(b.blockingMilestoneId, b.blockingConnection);
               }
-              // Auto-select blocking milestones when setting is active
               if (autoSelectBlocking) {
-                const blockingIds = new Set(strongBlockers.map(b => b.blockingMilestoneId));
+                const blockingIds = new Set([mId, ...strongBlockers.map(b => b.blockingMilestoneId)]);
                 setSelectedMilestones(blockingIds);
                 setSelectedConnections([]);
               }
               playSound('blocked');
               setRefactorGhost(null);
               return;
+            }
+
+            // Weak dependency conflict — show modal (or auto-block if prompt disabled)
+            if (weakBlockers.length > 0) {
+              setWeakDepModal({
+                weakConnections: weakBlockers.map(b => b.blockingConnection),
+                blockingMilestoneIds: weakBlockers.map(b => b.blockingMilestoneId),
+                milestonesToMove: [mId],
+                initialPositions: { [mId]: { startIndex: oldStartIndex } },
+                currentDeltaIndex: dayIndex - oldStartIndex,
+                suggestionBlocking: suggestionBlockers.map(b => b.blockingConnection),
+                taskChanges: taskChanged ? { [mId]: { from: oldTaskKey, to: targetTaskKey } } : null,
+              });
+              playSound('blocked');
+              setRefactorGhost(null);
+              return;
+            }
+
+            // Only suggestion blocking — allow but warn
+            if (suggestionBlockers.length > 0) {
+              addWarning('Suggestion dependency violated', 'This move violates a suggestion dependency, but it is allowed.');
+              for (const b of suggestionBlockers) {
+                showBlockingFeedback(b.blockingMilestoneId, b.blockingConnection);
+              }
+              // Fall through to allow the move
             }
           }
 
@@ -1542,7 +1570,7 @@ function DependenciesContent() {
 
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [refactorMode, milestones, tasks, connections, projectId, setMilestones, setTasks, pushAction, validateMilestoneMove, showBlockingFeedback, addWarning, autoSelectBlocking, setSelectedMilestones, setSelectedConnections]);
+  }, [refactorMode, milestones, tasks, connections, projectId, setMilestones, setTasks, pushAction, validateMilestoneMove, showBlockingFeedback, addWarning, autoSelectBlocking, setSelectedMilestones, setSelectedConnections, setWeakDepModal]);
 
   // ________Actions Hook___________
   // ________________________________________
@@ -1712,7 +1740,7 @@ function DependenciesContent() {
       });
     } else {
       // ──── Move path (original) ────
-      const { milestonesToMove, initialPositions, currentDeltaIndex } = conflictData;
+      const { milestonesToMove, initialPositions, currentDeltaIndex, taskChanges } = conflictData;
 
       const beforePositions = {};
       for (const mId of milestonesToMove) {
@@ -1737,6 +1765,37 @@ function DependenciesContent() {
         }
       }
 
+      // Apply task changes if present (from refactor drag)
+      if (taskChanges) {
+        for (const [mId, change] of Object.entries(taskChanges)) {
+          setMilestones(prev => ({
+            ...prev,
+            [mId]: { ...prev[mId], task: change.to },
+          }));
+          setTasks(prev => {
+            const updated = { ...prev };
+            if (updated[change.from]) {
+              updated[change.from] = {
+                ...updated[change.from],
+                milestones: (updated[change.from].milestones || []).filter(ref => String(ref.id) !== String(mId)),
+              };
+            }
+            if (updated[change.to]) {
+              updated[change.to] = {
+                ...updated[change.to],
+                milestones: [...(updated[change.to].milestones || []), { id: parseInt(mId) || mId }],
+              };
+            }
+            return updated;
+          });
+          try {
+            await move_milestone_task(projectId, mId, change.to);
+          } catch (err) {
+            console.error("Failed to move milestone task after weak dep conversion:", err);
+          }
+        }
+      }
+
       pushAction({
         description: 'Weak dep convert + move',
         undo: async () => {
@@ -1745,6 +1804,28 @@ function DependenciesContent() {
             if (oldStart === undefined) continue;
             await update_start_index(projectId, mId, oldStart);
             setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], start_index: oldStart } }));
+          }
+          if (taskChanges) {
+            for (const [mId, change] of Object.entries(taskChanges)) {
+              setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], task: change.from } }));
+              setTasks(prev => {
+                const updated = { ...prev };
+                if (updated[change.to]) {
+                  updated[change.to] = {
+                    ...updated[change.to],
+                    milestones: (updated[change.to].milestones || []).filter(ref => String(ref.id) !== String(mId)),
+                  };
+                }
+                if (updated[change.from]) {
+                  updated[change.from] = {
+                    ...updated[change.from],
+                    milestones: [...(updated[change.from].milestones || []), { id: parseInt(mId) || mId }],
+                  };
+                }
+                return updated;
+              });
+              await move_milestone_task(projectId, mId, change.from);
+            }
           }
           for (const c of convertedConnWeights) {
             await update_dependency(projectId, c.source, c.target, { weight: c.oldWeight });
@@ -1762,10 +1843,32 @@ function DependenciesContent() {
             await update_start_index(projectId, mId, newStart);
             setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], start_index: newStart } }));
           }
+          if (taskChanges) {
+            for (const [mId, change] of Object.entries(taskChanges)) {
+              setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], task: change.to } }));
+              setTasks(prev => {
+                const updated = { ...prev };
+                if (updated[change.from]) {
+                  updated[change.from] = {
+                    ...updated[change.from],
+                    milestones: (updated[change.from].milestones || []).filter(ref => String(ref.id) !== String(mId)),
+                  };
+                }
+                if (updated[change.to]) {
+                  updated[change.to] = {
+                    ...updated[change.to],
+                    milestones: [...(updated[change.to].milestones || []), { id: parseInt(mId) || mId }],
+                  };
+                }
+                return updated;
+              });
+              await move_milestone_task(projectId, mId, change.to);
+            }
+          }
         },
       });
     }
-  }, [handleUpdateConnection, setMilestones, setConnections, projectId, pushAction]);
+  }, [handleUpdateConnection, setMilestones, setTasks, setConnections, projectId, pushAction]);
 
   // Bulk update multiple connections (weight/reason change)
   const handleBulkUpdateConnections = async (conns, updates) => {

@@ -608,45 +608,59 @@ export function useDependencyInteraction({
     }
 
     // Check dependency constraints (predecessor/successor)
+    let depResult;
     if (milestonesToMove.length === 1) {
       const mId = milestonesToMove[0];
-      const depResult = _validateMilestoneMove(milestones, connections, mId, afterPositions[mId]);
-      if (!depResult.valid) {
-        // Only block on strong dependencies, allow weak/suggestion with warning
-        const strongBlockers = depResult.allBlocking.filter(b => b.weight === 'strong');
-        if (strongBlockers.length > 0) {
-          addWarning('Blocked', 'Move violates a dependency constraint');
-          for (const b of strongBlockers) {
-            showBlockingFeedback(b.blockingMilestoneId, b.blockingConnection);
-          }
-          // Auto-select blocking milestones when setting is active
-          if (autoSelectBlocking) {
-            const blockingIds = new Set(strongBlockers.map(b => b.blockingMilestoneId));
-            setSelectedMilestones(blockingIds);
-            setSelectedConnections([]);
-          }
-          playSound('blocked');
-          return;
-        }
-      }
+      depResult = _validateMilestoneMove(milestones, connections, mId, afterPositions[mId]);
     } else {
-      const depResult = _validateMultiMilestoneMove(milestones, connections, milestonesToMove, delta);
-      if (!depResult.valid) {
-        const strongBlockers = depResult.allBlocking.filter(b => b.weight === 'strong');
-        if (strongBlockers.length > 0) {
-          addWarning('Blocked', 'Move violates a dependency constraint');
-          for (const b of strongBlockers) {
-            showBlockingFeedback(b.blockingMilestoneId, b.blockingConnection);
-          }
-          // Auto-select blocking milestones when setting is active
-          if (autoSelectBlocking) {
-            const blockingIds = new Set(strongBlockers.map(b => b.blockingMilestoneId));
-            setSelectedMilestones(blockingIds);
-            setSelectedConnections([]);
-          }
-          playSound('blocked');
-          return;
+      depResult = _validateMultiMilestoneMove(milestones, connections, milestonesToMove, delta);
+    }
+
+    if (depResult && !depResult.valid) {
+      const strongBlockers = depResult.allBlocking.filter(b => b.weight === 'strong');
+      const weakBlockers = depResult.allBlocking.filter(b => b.weight === 'weak');
+      const suggestionBlockers = depResult.allBlocking.filter(b => b.weight === 'suggestion');
+
+      // Hard block: strong dependencies
+      if (strongBlockers.length > 0) {
+        addWarning('Blocked', 'Move violates a dependency constraint');
+        for (const b of strongBlockers) {
+          showBlockingFeedback(b.blockingMilestoneId, b.blockingConnection);
         }
+        if (autoSelectBlocking) {
+          const blockingIds = new Set([...milestonesToMove, ...strongBlockers.map(b => b.blockingMilestoneId)]);
+          setSelectedMilestones(blockingIds);
+          setSelectedConnections([]);
+        }
+        playSound('blocked');
+        return;
+      }
+
+      // Weak dependency conflict — show modal (or auto-block if prompt disabled)
+      if (weakBlockers.length > 0) {
+        const initialPositions = {};
+        for (const mId of milestonesToMove) {
+          initialPositions[mId] = { startIndex: beforePositions[mId] };
+        }
+        setWeakDepModal({
+          weakConnections: weakBlockers.map(b => b.blockingConnection),
+          blockingMilestoneIds: weakBlockers.map(b => b.blockingMilestoneId),
+          milestonesToMove,
+          initialPositions,
+          currentDeltaIndex: delta,
+          suggestionBlocking: suggestionBlockers.map(b => b.blockingConnection),
+        });
+        playSound('blocked');
+        return;
+      }
+
+      // Only suggestion blocking — allow but warn
+      if (suggestionBlockers.length > 0) {
+        addWarning('Suggestion dependency violated', 'This move violates a suggestion dependency, but it is allowed.');
+        for (const b of suggestionBlockers) {
+          showBlockingFeedback(b.blockingMilestoneId, b.blockingConnection);
+        }
+        // Fall through to allow the move
       }
     }
 
@@ -682,7 +696,7 @@ export function useDependencyInteraction({
         }
       },
     });
-  }, [selectedMilestones, milestones, tasks, connections, setMilestones, pushAction, projectId, addWarning, showBlockingFeedback, autoSelectBlocking, setSelectedMilestones, setSelectedConnections]);
+  }, [selectedMilestones, milestones, tasks, connections, setMilestones, pushAction, projectId, addWarning, showBlockingFeedback, autoSelectBlocking, setSelectedMilestones, setSelectedConnections, setWeakDepModal]);
 
   const handleArrowMoveVertical = useCallback(async (direction) => {
     // direction: -1 (up) or +1 (down) — move milestone to adjacent task
@@ -746,11 +760,11 @@ export function useDependencyInteraction({
     // Update task milestones arrays
     setTasks(prev => {
       const updated = { ...prev };
-      // Remove from old task
+      // Remove from old task (use String() to guard against type mismatches)
       if (updated[oldTaskKey]) {
         updated[oldTaskKey] = {
           ...updated[oldTaskKey],
-          milestones: (updated[oldTaskKey].milestones || []).filter(ref => ref.id !== mId),
+          milestones: (updated[oldTaskKey].milestones || []).filter(ref => String(ref.id) !== String(mId)),
         };
       }
       // Add to new task
@@ -777,7 +791,7 @@ export function useDependencyInteraction({
         if (updated[targetTaskKey]) {
           updated[targetTaskKey] = {
             ...updated[targetTaskKey],
-            milestones: (updated[targetTaskKey].milestones || []).filter(ref => ref.id !== mId),
+            milestones: (updated[targetTaskKey].milestones || []).filter(ref => String(ref.id) !== String(mId)),
           };
         }
         if (updated[oldTaskKey]) {
@@ -804,7 +818,7 @@ export function useDependencyInteraction({
           if (updated[targetTaskKey]) {
             updated[targetTaskKey] = {
               ...updated[targetTaskKey],
-              milestones: (updated[targetTaskKey].milestones || []).filter(ref => ref.id !== mId),
+              milestones: (updated[targetTaskKey].milestones || []).filter(ref => String(ref.id) !== String(mId)),
             };
           }
           if (updated[oldTaskKey]) {
@@ -827,7 +841,7 @@ export function useDependencyInteraction({
           if (updated[oldTaskKey]) {
             updated[oldTaskKey] = {
               ...updated[oldTaskKey],
-              milestones: (updated[oldTaskKey].milestones || []).filter(ref => ref.id !== mId),
+              milestones: (updated[oldTaskKey].milestones || []).filter(ref => String(ref.id) !== String(mId)),
             };
           }
           if (updated[targetTaskKey]) {
