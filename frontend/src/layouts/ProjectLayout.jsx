@@ -7,12 +7,12 @@ export default function ProjectLayout() {
   const { projectId } = useParams();
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-b from-slate-50 to-slate-100 ">
+    <div className="min-h-screen w-full bg-gradient-to-b from-slate-50 to-slate-100 pt-16">
       {/* Header always visible */}
       <ProjectHeader projectId={projectId} />
 
-      {/* Page content below header */}
-      <main className="relative w-full flex justify-center mt-5">
+      {/* Page content below header — pt-16 on wrapper clears the fixed header */}
+      <main className="relative w-full flex justify-center">
         <Outlet />
       </main>
 

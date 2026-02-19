@@ -142,6 +142,7 @@ export default function DependencyToolbar({
   onDeleteView,
   onSetDefaultView,
   onUpdateViewShortcut,
+  viewShortcuts = {},
   // Snapshots
   snapshots = [],
   snapshotsLoading,
@@ -929,27 +930,48 @@ export default function DependencyToolbar({
                                 {view.is_default && <span className="ml-1 text-[10px] text-amber-500">(default)</span>}
                               </button>
                               {editingShortcutViewId === view.id ? (
-                                <input type="text" maxLength={1} autoFocus placeholder="key" className="w-8 text-center text-[10px] font-mono border border-teal-300 rounded px-0.5 py-0 focus:outline-none focus:border-teal-500"
+                                <input type="text" maxLength={2} autoFocus placeholder="key(s)"
+                                  className="w-12 text-center text-[10px] font-mono border border-teal-300 rounded px-0.5 py-0 focus:outline-none focus:border-teal-500"
+                                  defaultValue={(viewShortcuts[view.id] || []).join('').toUpperCase()}
                                   onKeyDown={(e) => {
                                     e.stopPropagation();
                                     if (e.key === 'Escape') { setEditingShortcutViewId(null); return; }
-                                    if (e.key === 'Backspace' || e.key === 'Delete') { onUpdateViewShortcut(view.id, null); setEditingShortcutViewId(null); return; }
-                                    if (e.key.length === 1 && /^[a-z0-9]$/i.test(e.key)) {
-                                      const k = e.key.toLowerCase();
-                                      if (['e', 'd', 'x', 's', 'y'].includes(k)) return;
-                                      onUpdateViewShortcut(view.id, k);
+                                    if (e.key === 'Backspace' || e.key === 'Delete') {
+                                      if (!e.target.value) { onUpdateViewShortcut(view.id, null); setEditingShortcutViewId(null); }
+                                      return;
+                                    }
+                                    if (e.key === 'Enter') {
+                                      const val = e.target.value.toLowerCase();
+                                      if (!val) { onUpdateViewShortcut(view.id, null); }
+                                      else {
+                                        const keys = val.split('').filter(c => /^[a-z0-9]$/i.test(c)).slice(0, 2);
+                                        if (keys.length > 0 && !keys.some(k => ['e', 'd', 'x', 's', 'y'].includes(k))) {
+                                          onUpdateViewShortcut(view.id, keys);
+                                        }
+                                      }
                                       setEditingShortcutViewId(null);
+                                      return;
                                     }
                                   }}
-                                  onBlur={() => setEditingShortcutViewId(null)}
+                                  onBlur={(e) => {
+                                    const val = e.target.value.toLowerCase();
+                                    if (!val) { onUpdateViewShortcut(view.id, null); }
+                                    else {
+                                      const keys = val.split('').filter(c => /^[a-z0-9]$/i.test(c)).slice(0, 2);
+                                      if (keys.length > 0 && !keys.some(k => ['e', 'd', 'x', 's', 'y'].includes(k))) {
+                                        onUpdateViewShortcut(view.id, keys);
+                                      }
+                                    }
+                                    setEditingShortcutViewId(null);
+                                  }}
                                   onClick={(e) => e.stopPropagation()}
                                 />
                               ) : (
                                 <button onClick={(e) => { e.stopPropagation(); setEditingShortcutViewId(view.id); }}
-                                  className={`px-1 py-0 text-[9px] font-mono rounded border transition ${view.state?.viewShortcutKey ? 'border-teal-300 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-400 hover:border-slate-300'}`}
-                                  title={view.state?.viewShortcutKey ? `Shortcut: V + ${view.state.viewShortcutKey.toUpperCase()}` : 'Set shortcut (V + key)'}
+                                  className={`px-1 py-0 text-[9px] font-mono rounded border transition ${viewShortcuts[view.id]?.length ? 'border-teal-300 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-400 hover:border-slate-300'}`}
+                                  title={viewShortcuts[view.id]?.length ? `Shortcut: X → ${viewShortcuts[view.id].map(k => k.toUpperCase()).join(' → ')}` : 'Set shortcut (X + key(s))'}
                                 >
-                                  {view.state?.viewShortcutKey ? `V+${view.state.viewShortcutKey.toUpperCase()}` : '⌨'}
+                                  {viewShortcuts[view.id]?.length ? `X+${viewShortcuts[view.id].map(k => k.toUpperCase()).join('+')}` : '⌨'}
                                 </button>
                               )}
                               <button onClick={() => { setRenamingViewId(view.id); setRenameText(view.name); }} className="p-0.5 text-slate-400 hover:text-slate-600 rounded" title="Rename"><EditIcon style={{ fontSize: 12 }} /></button>
@@ -1131,7 +1153,7 @@ export default function DependencyToolbar({
                 </div>
                 <div className="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-50">
                   <span className="text-xs text-slate-600">Load view by shortcut</span>
-                  <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px] border border-slate-200">X → key</kbd>
+                  <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px] border border-slate-200">X → key (→ key₂)</kbd>
                 </div>
                 <div className="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-50">
                   <span className="text-xs text-slate-600">Next view</span>
@@ -1141,10 +1163,10 @@ export default function DependencyToolbar({
                   <span className="text-xs text-slate-600">Previous view</span>
                   <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px] border border-slate-200">X → ←</kbd>
                 </div>
-                {savedViews.filter(v => v.state?.viewShortcutKey).map(v => (
+                {savedViews.filter(v => viewShortcuts[v.id]?.length).map(v => (
                   <div key={v.id} className="flex items-center justify-between py-1 px-2 rounded bg-blue-50/50 ml-4">
                     <span className="text-xs text-slate-500">{v.name}</span>
-                    <kbd className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-mono text-[10px] border border-blue-200">X → {v.state.viewShortcutKey.toUpperCase()}</kbd>
+                    <kbd className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-mono text-[10px] border border-blue-200">X → {viewShortcuts[v.id].map(k => k.toUpperCase()).join(' → ')}</kbd>
                   </div>
                 ))}
               </div>
