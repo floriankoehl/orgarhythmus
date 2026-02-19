@@ -15,128 +15,138 @@ const PHASE_HEADER_HEIGHT = 26;
 export default function DependencyCanvas({
   // Refs
   teamContainerRef,
-  // Data
-  teamOrder,
-  teams,
-  tasks,
-  milestones,
-  connections,
-  dayLabels,
-  phases = [],
-  // Layout helpers
-  isTeamVisible,
-  isTeamCollapsed,
-  getVisibleTeamIndex,
-  getTeamHeight,
-  getRawTeamHeight,
-  getVisibleTasks,
-  getTaskHeight,
-  getTeamYOffset,
-  getTaskYOffset,
-  getTaskDropIndicatorY,
-  getMilestoneHandlePosition,
-  // Constants
-  TEAMWIDTH,
-  TASKWIDTH,
-  DAYWIDTH,
-  COLLAPSED_DAY_WIDTH = 6,
-  TEAM_DRAG_HIGHLIGHT_HEIGHT,
-  MARIGN_BETWEEN_DRAG_HIGHLIGHT,
-  TEAM_HEADER_LINE_HEIGHT,
-  TEAM_HEADER_GAP,
-  // Day column layout
-  dayColumnLayout,
-  // Dimensions
+  // Scalar dimensions (not grouped — used directly in outer container styles)
   days,
   contentHeight,
-  // Display settings
-  taskDisplaySettings,
-  teamDisplaySettings,
-  hideAllDependencies,
-  hideCollapsedDependencies,
-  hideCollapsedMilestones,
-  // Day selection / collapse
-  selectedDays = new Set(),
-  collapsedDays = new Set(),
-  onDaySelect,
-  onUncollapseDays,
-  // UI state
-  hoveredMilestone,
-  selectedMilestones,
-  selectedConnections,
-  editingMilestoneId,
-  editingMilestoneName,
-  blockedMoveHighlight,
-  viewMode,
-  mode,
-  safeMode,
-  // Transient state
-  ghost,
-  dropIndex,
-  taskGhost,
-  taskDropTarget,
-  isDraggingConnection,
-  connectionStart,
-  connectionEnd,
-  openTeamSettings,
-  isAddingMilestone,
-  hoveredDayCell,
-  visibleTeamCount,
-  hiddenTeamCount,
-  // Handlers
-  handleDayHeaderClick,
-  handleTeamDrag,
-  handleTaskDrag,
-  handleConnectionClick,
-  handleMileStoneMouseDown,
-  handleMilestoneClick,
-  handleMilestoneEdgeResize,
-  handleConnectionDragStart,
-  handleMilestoneRenameSubmit,
-  handleDayCellClick,
-  toggleTaskSize,
-  toggleTaskVisibility,
-  toggleTeamCollapsed,
-  addMilestoneLocal,
-  showAllHiddenTeams,
-  toggleTeamVisibility,
-  handleColumnResize,
-  // Setters
-  setHoveredMilestone,
-  setEditingMilestoneName,
-  setEditingMilestoneId,
-  setDeleteConfirmModal,
-  setOpenTeamSettings,
-  setHoveredDayCell,
-  marqueeRect,
-  handleMarqueeStart,
-  // Refactor mode
-  refactorMode,
-  handleRefactorDrag,
-  // Expanded task view (Gantt)
-  expandedTaskView,
-  // Deadline
-  onSetDeadline,
-  // Dependency display settings
-  depSettings = {},
-  setConnectionEditModal,
-  // Phase
-  setPhaseEditModal,
-  handlePhaseEdgeResize,
-  handlePhaseDrag,
-  // Phase colors in grid
-  showPhaseColorsInGrid = true,
-  // Team phase rows
-  teamPhasesMap = {},
-  getTeamPhaseRowHeight,
-  collapsedTeamPhaseRows = new Set(),
-  setCollapsedTeamPhaseRows,
-  collapsePhaseRange,
-  focusOnPhase,
-  // Layout visibility
-  hideGlobalPhases = false,
-  hideDayHeader = false,
+  // ── Structured controller objects ────────────────────────────────────────
+  //
+  //  layout       — layout helpers (functions) + display constants
+  //  data         — core domain data
+  //  displayState — all display / UI state values
+  //  handlers     — event handlers and state setters
+  //
+  layout = {},
+  data = {},
+  displayState = {},
+  handlers = {},
 }) {
+  // ── Destructure layout ──────────────────────────────────────────────────
+  const {
+    isTeamVisible,
+    isTeamCollapsed,
+    getVisibleTeamIndex,
+    getTeamHeight,
+    getRawTeamHeight,
+    getVisibleTasks,
+    getTaskHeight,
+    getTeamYOffset,
+    getTaskYOffset,
+    getTaskDropIndicatorY,
+    getMilestoneHandlePosition,
+    getTeamPhaseRowHeight,
+    TEAMWIDTH,
+    TASKWIDTH,
+    DAYWIDTH,
+    COLLAPSED_DAY_WIDTH = 6,
+    TEAM_DRAG_HIGHLIGHT_HEIGHT,
+    MARIGN_BETWEEN_DRAG_HIGHLIGHT,
+    TEAM_HEADER_LINE_HEIGHT,
+    TEAM_HEADER_GAP,
+    dayColumnLayout,
+  } = layout;
+
+  // ── Destructure data ────────────────────────────────────────────────────
+  const {
+    teamOrder,
+    teams,
+    tasks,
+    milestones,
+    connections,
+    dayLabels,
+    phases = [],
+    teamPhasesMap = {},
+  } = data;
+
+  // ── Destructure displayState ────────────────────────────────────────────
+  const {
+    taskDisplaySettings,
+    teamDisplaySettings,
+    hideAllDependencies,
+    hideCollapsedDependencies,
+    hideCollapsedMilestones,
+    selectedDays = new Set(),
+    collapsedDays = new Set(),
+    hoveredMilestone,
+    selectedMilestones,
+    selectedConnections,
+    editingMilestoneId,
+    editingMilestoneName,
+    blockedMoveHighlight,
+    viewMode,
+    mode,
+    safeMode,
+    ghost,
+    dropIndex,
+    taskGhost,
+    taskDropTarget,
+    isDraggingConnection,
+    connectionStart,
+    connectionEnd,
+    openTeamSettings,
+    isAddingMilestone,
+    hoveredDayCell,
+    visibleTeamCount,
+    hiddenTeamCount,
+    refactorMode,
+    expandedTaskView,
+    depSettings = {},
+    showPhaseColorsInGrid = true,
+    collapsedTeamPhaseRows = new Set(),
+    hideGlobalPhases = false,
+    hideDayHeader = false,
+    marqueeRect,
+  } = displayState;
+
+  // ── Destructure handlers ────────────────────────────────────────────────
+  const {
+    handleDayHeaderClick,
+    handleTeamDrag,
+    handleTaskDrag,
+    handleConnectionClick,
+    handleMileStoneMouseDown,
+    handleMilestoneClick,
+    handleMilestoneEdgeResize,
+    handleConnectionDragStart,
+    handleMilestoneRenameSubmit,
+    handleDayCellClick,
+    toggleTaskSize,
+    toggleTaskVisibility,
+    toggleTeamCollapsed,
+    addMilestoneLocal,
+    showAllHiddenTeams,
+    toggleTeamVisibility,
+    handleColumnResize,
+    setHoveredMilestone,
+    setEditingMilestoneName,
+    setEditingMilestoneId,
+    setDeleteConfirmModal,
+    setOpenTeamSettings,
+    setHoveredDayCell,
+    handleMarqueeStart,
+    handleRefactorDrag,
+    onSetDeadline,
+    setConnectionEditModal,
+    setPhaseEditModal,
+    handlePhaseEdgeResize,
+    handlePhaseDrag,
+    setCollapsedTeamPhaseRows,
+    collapsePhaseRange,
+    focusOnPhase,
+    onDaySelect,
+    onUncollapseDays,
+  } = handlers;
+
+
   const hasPhases = phases.length > 0;
   const globalPhases = phases.filter(p => p.team == null);
   const hasGlobalPhases = globalPhases.length > 0;
