@@ -39,6 +39,10 @@ import { useDependencyInteraction } from './useDependencyInteraction';
 import { useDependencyData } from './useDependencyData';
 import { useDependencyUIState } from './useDependencyUIState';
 import { useDependencyActions } from './useDependencyActions';
+import { useDisplaySettings } from './useDisplaySettings';
+import { useModalState } from './useModalState';
+import { useDayAndPhaseState } from './useDayAndPhaseState';
+import { useViewState } from './useViewState';
 import { set_task_deadline, update_start_index, change_duration, update_dependency, create_dependency, delete_dependency_api, create_phase, update_phase, delete_phase, get_all_views, create_view, update_view, delete_view, set_default_view, list_snapshots, create_snapshot, restore_snapshot as restore_snapshot_api, delete_snapshot, rename_snapshot, get_user_shortcuts, save_user_shortcuts, move_milestone_task } from '../../api/dependencies_api';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
@@ -118,87 +122,125 @@ function DependenciesContent() {
     setEditingMilestoneName,
   } = useDependencyUIState();
 
-  // Team settings dropdown
-  const [openTeamSettings, setOpenTeamSettings] = useState(null);
+  // Modal states (consolidated)
+  const {
+    milestoneCreateModal,
+    setMilestoneCreateModal,
+    hoveredDayCell,
+    setHoveredDayCell,
+    isAddingMilestone,
+    setIsAddingMilestone,
+    deleteConfirmModal,
+    setDeleteConfirmModal,
+    showCreateTeamModal,
+    setShowCreateTeamModal,
+    showCreateTaskModal,
+    setShowCreateTaskModal,
+    newTeamName,
+    setNewTeamName,
+    newTeamColor,
+    setNewTeamColor,
+    newTaskName,
+    setNewTaskName,
+    newTaskTeamId,
+    setNewTaskTeamId,
+    isCreating,
+    setIsCreating,
+    connectionEditModal,
+    setConnectionEditModal,
+    suggestionOfferModal,
+    setSuggestionOfferModal,
+    dayPurposeModal,
+    setDayPurposeModal,
+    newDayPurpose,
+    setNewDayPurpose,
+    newDayPurposeTeams,
+    setNewDayPurposeTeams,
+    phaseEditModal,
+    setPhaseEditModal,
+  } = useModalState();
 
-  // Filter dropdown visibility
-  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  // Display settings (consolidated)
+  const {
+    hideCollapsedDependencies,
+    setHideCollapsedDependencies,
+    hideCollapsedMilestones,
+    setHideCollapsedMilestones,
+    hideAllDependencies,
+    setHideAllDependencies,
+    showEmptyTeams,
+    setShowEmptyTeams,
+    expandedTaskView,
+    setExpandedTaskView,
+    showPhaseColorsInGrid,
+    setShowPhaseColorsInGrid,
+    depSettings,
+    setDepSettings,
+    customDayWidth,
+    setCustomDayWidth,
+    customTaskHeightNormal,
+    setCustomTaskHeightNormal,
+    customTaskHeightSmall,
+    setCustomTaskHeightSmall,
+    teamColumnWidth,
+    setTeamColumnWidth,
+    taskColumnWidth,
+    setTaskColumnWidth,
+    hideGlobalPhases,
+    setHideGlobalPhases,
+    toolbarCollapsed,
+    setToolbarCollapsed,
+    headerCollapsed,
+    setHeaderCollapsed,
+    hideDayHeader,
+    setHideDayHeader,
+    soundEnabled,
+    setSoundEnabled,
+    isFullscreen,
+    setIsFullscreen,
+    showSettingsDropdown,
+    setShowSettingsDropdown,
+    showFilterDropdown,
+    setShowFilterDropdown,
+    openTeamSettings,
+    setOpenTeamSettings,
+  } = useDisplaySettings();
 
-  // Day cell hover state for milestone creation
-  const [hoveredDayCell, setHoveredDayCell] = useState(null);
-  const [isAddingMilestone, setIsAddingMilestone] = useState(false); // { taskId, dayIndex }
-  
-  // Milestone creation confirmation modal
-  const [milestoneCreateModal, setMilestoneCreateModal] = useState(null); // { taskId, dayIndex }
+  // Day and phase state (consolidated)
+  const {
+    selectedDays,
+    setSelectedDays,
+    collapsedDays,
+    setCollapsedDays,
+    lastSelectedDayRef,
+    collapsedTeamPhaseRows,
+    setCollapsedTeamPhaseRows,
+    collapseAllTeamPhases,
+    setCollapseAllTeamPhases,
+  } = useDayAndPhaseState();
 
-  // Milestone delete confirmation modal
-  const [deleteConfirmModal, setDeleteConfirmModal] = useState(null); // { milestoneId, milestoneName }
-
-  // Create modals
-  const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
-  const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
-  const [newTeamName, setNewTeamName] = useState("");
-  const [newTeamColor, setNewTeamColor] = useState("#facc15");
-  const [newTaskName, setNewTaskName] = useState("");
-  const [newTaskTeamId, setNewTaskTeamId] = useState(null);
-  const [isCreating, setIsCreating] = useState(false);
-
-  // Advanced settings
-  const [hideCollapsedDependencies, setHideCollapsedDependencies] = useState(false);
-  const [hideCollapsedMilestones, setHideCollapsedMilestones] = useState(false);
-  const [customDayWidth, setCustomDayWidth] = useState(DEFAULT_DAYWIDTH);
-  const [customTaskHeightNormal, setCustomTaskHeightNormal] = useState(DEFAULT_TASKHEIGHT_NORMAL);
-  const [customTaskHeightSmall, setCustomTaskHeightSmall] = useState(DEFAULT_TASKHEIGHT_SMALL);
-  const [hideAllDependencies, setHideAllDependencies] = useState(false);
-  const [showEmptyTeams, setShowEmptyTeams] = useState(true);
-  const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
-
-  // Expanded task view (Gantt-like: show task time span across milestones)
-  const [expandedTaskView, setExpandedTaskView] = useState(false);
-
-  // Phase color in grid (tint day cells within phases)
-  const [showPhaseColorsInGrid, setShowPhaseColorsInGrid] = useState(true);
-
-  // Dependency display settings (defaults from viewDefaults.js)
-  const [depSettings, setDepSettings] = useState({ ...DEFAULT_DEP_SETTINGS });
-
-  // Connection edit modal (for editing weight/reason of a selected connection)
-  const [connectionEditModal, setConnectionEditModal] = useState(null); // { source, target, weight, reason }
-
-  // Suggestion offer modal (when creating a dep that violates timing, offer to create as suggestion)
-  const [suggestionOfferModal, setSuggestionOfferModal] = useState(null); // { sourceId, targetId }
-
-
-  // Day purpose modal
-  const [dayPurposeModal, setDayPurposeModal] = useState(null); // { dayIndex, currentPurpose, currentPurposeTeams }
-  const [newDayPurpose, setNewDayPurpose] = useState("");
-  const [newDayPurposeTeams, setNewDayPurposeTeams] = useState(null); // null = all, array of IDs = specific
-
-  // ── Day Selection & Collapsing ──
-  const [selectedDays, setSelectedDays] = useState(new Set());       // Set of selected day indices
-  const [collapsedDays, setCollapsedDays] = useState(new Set());     // Set of collapsed (hidden) day indices
-  const lastSelectedDayRef = useRef(null);                           // for shift-click range selection
-
-  // ── Phase edit modal ──
-  const [phaseEditModal, setPhaseEditModal] = useState(null); // null | { id?, name, start_index, duration, color }
-
-  // ── Team phase row collapse state ──
-  // collapsedTeamPhaseRows: Set of team IDs whose phase rows are collapsed
-  // collapseAllTeamPhases: boolean to collapse all team phase rows at once
-  const [collapsedTeamPhaseRows, setCollapsedTeamPhaseRows] = useState(new Set());
-  const [collapseAllTeamPhases, setCollapseAllTeamPhases] = useState(false);
-
-  // Column widths (resizable)
-  const [teamColumnWidth, setTeamColumnWidth] = useState(DEFAULT_TEAMWIDTH_CONSTANT);
-  const [taskColumnWidth, setTaskColumnWidth] = useState(DEFAULT_TASKWIDTH_CONSTANT);
-
-  // ── Layout visibility (collapsible sections) ──
-  const [hideGlobalPhases, setHideGlobalPhases] = useState(DEFAULT_HIDE_GLOBAL_PHASES);
-  const [toolbarCollapsed, setToolbarCollapsed] = useState(DEFAULT_TOOLBAR_COLLAPSED);
-  const [headerCollapsed, setHeaderCollapsed] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [hideDayHeader, setHideDayHeader] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement);
+  // View state (consolidated)
+  const {
+    viewTransition,
+    setViewTransition,
+    viewTransitionRef,
+    viewFlashName,
+    setViewFlashName,
+    viewFlashTimerRef,
+    viewFlashCounterRef,
+    savedViews,
+    setSavedViews,
+    activeViewId,
+    setActiveViewId,
+    activeViewName,
+    setActiveViewName,
+    snapshots,
+    setSnapshots,
+    snapshotsLoading,
+    setSnapshotsLoading,
+    popupCloseSignal,
+    setPopupCloseSignal,
+  } = useViewState();
 
   // ── User shortcuts ──
   const [userShortcuts, setUserShortcuts] = useState({});
@@ -215,7 +257,7 @@ function DependenciesContent() {
     const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', onFsChange);
     return () => document.removeEventListener('fullscreenchange', onFsChange);
-  }, []);
+  }, [setIsFullscreen]);
 
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) {
@@ -259,25 +301,6 @@ function DependenciesContent() {
 
   // ── Sync sound mute state ──
   useEffect(() => { setMuted(!soundEnabled); }, [soundEnabled]);
-
-  // ── Popup close signal (incremented on canvas click to close toolbar dropdowns) ──
-  const [popupCloseSignal, setPopupCloseSignal] = useState(0);
-
-  // ── View transition animation ──
-  const [viewTransition, setViewTransition] = useState(null); // 'out' | 'in-start' | 'in' | null
-  const viewTransitionRef = useRef(null);
-  const [viewFlashName, setViewFlashName] = useState(null);
-  const viewFlashTimerRef = useRef(null);
-  const viewFlashCounterRef = useRef(0);
-
-  // ── Views (saveable frontend state snapshots) ──
-  const [savedViews, setSavedViews] = useState([]);
-  const [activeViewId, setActiveViewId] = useState(null); // null = Default view
-  const [activeViewName, setActiveViewName] = useState("Default");
-
-  // ── Project Snapshots (full data + view state backups) ──
-  const [snapshots, setSnapshots] = useState([]);
-  const [snapshotsLoading, setSnapshotsLoading] = useState(false);
 
   // Keep a ref to phases so drag handlers always see fresh data
   const phasesRef = useRef(phases);
