@@ -26,6 +26,7 @@ import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import RestoreIcon from '@mui/icons-material/Restore';
 import KeyboardIcon from '@mui/icons-material/Keyboard';
 import CloseIcon from '@mui/icons-material/Close';
+import VerifiedUserIcon from '@mui/icons-material/VerifiedUser';
 
 import {
   DEFAULT_TASKHEIGHT_NORMAL,
@@ -168,6 +169,9 @@ export default function DependencyToolbar({
   // User shortcuts
   userShortcuts = {},
   onSaveShortcuts,
+  // Safety check
+  onRunSafetyCheck,
+  safetyCheckRunning,
 }) {
   const hasSelection = selectedMilestones?.size > 0 || selectedConnections?.length > 0;
 
@@ -637,6 +641,23 @@ export default function DependencyToolbar({
               >
                 <KeyboardIcon style={{ fontSize: 18 }} />
                 <span>Shortcuts</span>
+              </button>
+            </div>
+
+            {/* Safety Check button */}
+            <div className="flex-shrink-0 self-stretch flex">
+              <button
+                onClick={(e) => { e.stopPropagation(); if (onRunSafetyCheck) onRunSafetyCheck(); }}
+                disabled={safetyCheckRunning}
+                className={`flex flex-col items-center justify-center gap-0.5 px-3 text-xs font-medium rounded-md border transition ${
+                  safetyCheckRunning
+                    ? 'border-blue-300 bg-blue-50 text-blue-500 cursor-wait'
+                    : 'border-green-300 text-green-700 hover:bg-green-50'
+                }`}
+                title="Run safety check — validate all scheduling rules"
+              >
+                <VerifiedUserIcon style={{ fontSize: 18 }} />
+                <span>{safetyCheckRunning ? 'Checking…' : 'Safety'}</span>
               </button>
             </div>
 

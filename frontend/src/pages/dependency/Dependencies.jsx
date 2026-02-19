@@ -53,6 +53,8 @@ import DependencyToolbar from '../../components/dependencies/DependencyToolbar';
 import DependencyModals from '../../components/dependencies/DependencyModals';
 import DependencyCanvas from '../../components/dependencies/DependencyCanvas';
 import DependencyWarningToast from '../../components/dependencies/DependencyWarningToast';
+import SafetyCheckPanel from '../../components/dependencies/SafetyCheckPanel';
+import { useSafetyCheck } from './useSafetyCheck';
 import { DependencyProvider, useDependency } from './DependencyContext.jsx';
 import { playSound, setMuted } from '../../assets/sound_registry';
 
@@ -454,6 +456,15 @@ function DependenciesContent() {
     setActiveViewName,
     setSavedViews,
   });
+
+  // __ Safety Check __
+  const {
+    isRunning: safetyCheckRunning,
+    results: safetyCheckResults,
+    showPanel: showSafetyPanel,
+    setShowPanel: setShowSafetyPanel,
+    runCheck: runSafetyCheck,
+  } = useSafetyCheck(projectId);
 
   // __ Phase Management __
   const {
@@ -1535,6 +1546,8 @@ function DependenciesContent() {
               popupCloseSignal={popupCloseSignal}
               userShortcuts={userShortcuts}
               onSaveShortcuts={handleSaveShortcuts}
+              onRunSafetyCheck={runSafetyCheck}
+              safetyCheckRunning={safetyCheckRunning}
             />
           )}
         </div>
@@ -1598,6 +1611,25 @@ function DependenciesContent() {
             Exit
           </button>
         </div>
+      )}
+
+      {/* Safety Check Panel */}
+      {showSafetyPanel && (
+        <SafetyCheckPanel
+          results={safetyCheckResults}
+          isRunning={safetyCheckRunning}
+          onClose={() => setShowSafetyPanel(false)}
+          onLocateIssue={(issue) => {
+            handleLoadView(null);
+            setTimeout(() => {
+              if (issue.milestoneIds?.length) {
+                setSelectedMilestones(new Set(issue.milestoneIds));
+                issue.milestoneIds.forEach(id => showBlockingFeedback(id));
+              }
+            }, 300);
+            setShowSafetyPanel(false);
+          }}
+        />
       )}
 
       {/* View name flash overlay */}
