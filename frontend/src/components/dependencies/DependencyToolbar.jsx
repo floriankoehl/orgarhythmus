@@ -1071,7 +1071,6 @@ export default function DependencyToolbar({
                   { keys: 'Ctrl + C', label: 'Copy' },
                   { keys: 'Ctrl + V', label: 'Paste' },
                   { keys: 'Ctrl + Z', label: 'Undo' },
-                  { keys: 'Ctrl + Y', label: 'Redo' },
                   { keys: 'Ctrl + M', label: 'Select All Milestones' },
                   { keys: 'Ctrl + D', label: 'Select All Dependencies' },
                   { keys: 'Ctrl+Shift+M', label: 'Select Visible Milestones' },
@@ -1095,6 +1094,10 @@ export default function DependencyToolbar({
                 <div className="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-50">
                   <span className="text-xs text-slate-600">Save current view</span>
                   <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px] border border-slate-200">X → S</kbd>
+                </div>
+                <div className="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-50">
+                  <span className="text-xs text-slate-600">Load default view</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px] border border-slate-200">X → D</kbd>
                 </div>
                 <div className="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-50">
                   <span className="text-xs text-slate-600">Load view by shortcut</span>
@@ -1151,6 +1154,10 @@ export default function DependencyToolbar({
                   { key: 'selectAllDeps', label: 'Select All Dependencies', description: 'Select every dependency' },
                   { key: 'selectVisibleMilestones', label: 'Select Visible Milestones', description: 'Select displayed milestones only' },
                   { key: 'selectVisibleDeps', label: 'Select Visible Deps', description: 'Select displayed dependencies only' },
+                  { key: 'createTeam', label: 'Create Team', description: 'Open create team dialog' },
+                  { key: 'createTask', label: 'Create Task', description: 'Open create task dialog' },
+                  { key: 'createPhase', label: 'Create Phase', description: 'Open create phase dialog' },
+                  { key: 'loadDefaultView', label: 'Load Default View', description: 'Switch to the default view' },
                 ].map(action => {
                   const currentKey = editingShortcuts[action.key] || '';
                   return (

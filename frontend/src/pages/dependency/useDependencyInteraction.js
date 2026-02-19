@@ -129,6 +129,12 @@ export function useDependencyInteraction({
   // Quick snapshot save
   snapshots = [],
   onQuickSaveSnapshot,
+  // Create modals for shortcuts
+  setShowCreateTeamModal,
+  setShowCreateTaskModal,
+  setPhaseEditModal,
+  // Default view
+  onLoadDefaultView,
 }) {
   // ── Context ──
   const {
@@ -170,6 +176,8 @@ export function useDependencyInteraction({
     teamDisplaySettings,
     setTaskDisplaySettings,
     setTeamDisplaySettings,
+    hideAllDependencies,
+    setHideAllDependencies,
   });
 
   // ── Team / task drag + marquee ──
@@ -545,6 +553,11 @@ export function useDependencyInteraction({
         playSound('milestoneSelect');
         return true;
       }
+      // Create actions (open modals)
+      case 'createTeam': if (setShowCreateTeamModal) setShowCreateTeamModal(true); playSound('uiClick'); return true;
+      case 'createTask': if (setShowCreateTaskModal) setShowCreateTaskModal(true); playSound('uiClick'); return true;
+      case 'createPhase': if (setPhaseEditModal) setPhaseEditModal({ mode: 'create', start_index: 0, duration: 7, name: '', color: '#3b82f6', team: null }); playSound('uiClick'); return true;
+      case 'loadDefaultView': if (onLoadDefaultView) onLoadDefaultView(); return true;
       default: return false;
     }
   }, [setToolbarCollapsed, setHeaderCollapsed, toggleFullscreen, setViewMode, setRefactorMode,
@@ -555,7 +568,8 @@ export function useDependencyInteraction({
       setHideGlobalPhases, uncollapseAll, setAutoSelectBlocking,
       milestones, connections, setSelectedMilestones, setSelectedConnections,
       tasks, isTeamVisible, isTeamCollapsed, hideAllDependencies,
-      hideCollapsedDependencies, hideCollapsedMilestones]);
+      hideCollapsedDependencies, hideCollapsedMilestones,
+      setShowCreateTeamModal, setShowCreateTaskModal, setPhaseEditModal, onLoadDefaultView]);
 
   // ── Arrow key milestone movement ──
   const handleArrowMoveHorizontal = useCallback(async (direction) => {
@@ -605,6 +619,12 @@ export function useDependencyInteraction({
           for (const b of strongBlockers) {
             showBlockingFeedback(b.blockingMilestoneId, b.blockingConnection);
           }
+          // Auto-select blocking milestones when setting is active
+          if (autoSelectBlocking) {
+            const blockingIds = new Set(strongBlockers.map(b => b.blockingMilestoneId));
+            setSelectedMilestones(blockingIds);
+            setSelectedConnections([]);
+          }
           playSound('blocked');
           return;
         }
@@ -617,6 +637,12 @@ export function useDependencyInteraction({
           addWarning('Blocked', 'Move violates a dependency constraint');
           for (const b of strongBlockers) {
             showBlockingFeedback(b.blockingMilestoneId, b.blockingConnection);
+          }
+          // Auto-select blocking milestones when setting is active
+          if (autoSelectBlocking) {
+            const blockingIds = new Set(strongBlockers.map(b => b.blockingMilestoneId));
+            setSelectedMilestones(blockingIds);
+            setSelectedConnections([]);
           }
           playSound('blocked');
           return;
@@ -656,7 +682,7 @@ export function useDependencyInteraction({
         }
       },
     });
-  }, [selectedMilestones, milestones, tasks, connections, setMilestones, pushAction, projectId, addWarning, showBlockingFeedback]);
+  }, [selectedMilestones, milestones, tasks, connections, setMilestones, pushAction, projectId, addWarning, showBlockingFeedback, autoSelectBlocking, setSelectedMilestones, setSelectedConnections]);
 
   const handleArrowMoveVertical = useCallback(async (direction) => {
     // direction: -1 (up) or +1 (down) — move milestone to adjacent task
@@ -895,6 +921,13 @@ export function useDependencyInteraction({
         if (pressedKey === 's' || pressedKey === 'y') {
           e.preventDefault();
           if (onSaveView) onSaveView();
+          return;
+        }
+
+        // X + D = load default view
+        if (pressedKey === 'd') {
+          e.preventDefault();
+          if (onLoadDefaultView) onLoadDefaultView();
           return;
         }
 

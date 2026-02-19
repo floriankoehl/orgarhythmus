@@ -14,6 +14,8 @@ export function useDependencyWarnings({
   teamDisplaySettings,
   setTaskDisplaySettings,
   setTeamDisplaySettings,
+  hideAllDependencies,
+  setHideAllDependencies,
 }) {
   const { autoSelectBlocking, warningDuration } = useDependency();
 
@@ -50,7 +52,13 @@ export function useDependencyWarnings({
       taskSize: taskDisplaySettings[taskId]?.size || 'normal',
       teamCollapsed: teamDisplaySettings[teamId]?.collapsed || false,
       teamHidden: teamDisplaySettings[teamId]?.hidden || false,
+      depsHidden: hideAllDependencies || false,
     };
+
+    // Temporarily reveal all dependencies if they are hidden
+    if (originalState.depsHidden) {
+      setHideAllDependencies(false);
+    }
 
     if (originalState.teamHidden) {
       setTeamDisplaySettings(prev => ({
@@ -86,6 +94,10 @@ export function useDependencyWarnings({
     if (autoSelectBlocking) {
       setTimeout(() => {
         setBlockedMoveHighlight(null);
+        // Restore hidden deps after feedback
+        if (originalState.depsHidden) {
+          setHideAllDependencies(true);
+        }
       }, warningDuration);
     } else {
       setTimeout(() => {
@@ -114,6 +126,10 @@ export function useDependencyWarnings({
             ...prev,
             [taskId]: { ...prev[taskId], size: 'small' }
           }));
+        }
+        // Restore hidden deps after feedback
+        if (originalState.depsHidden) {
+          setHideAllDependencies(true);
         }
       }, warningDuration);
     }

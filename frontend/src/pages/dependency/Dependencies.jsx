@@ -39,7 +39,7 @@ import { useDependencyInteraction } from './useDependencyInteraction';
 import { useDependencyData } from './useDependencyData';
 import { useDependencyUIState } from './useDependencyUIState';
 import { useDependencyActions } from './useDependencyActions';
-import { set_task_deadline, update_start_index, change_duration, update_dependency, create_dependency, delete_dependency_api, create_phase, update_phase, delete_phase, get_all_views, create_view, update_view, delete_view, set_default_view, list_snapshots, create_snapshot, restore_snapshot as restore_snapshot_api, delete_snapshot, rename_snapshot, get_user_shortcuts, save_user_shortcuts } from '../../api/dependencies_api';
+import { set_task_deadline, update_start_index, change_duration, update_dependency, create_dependency, delete_dependency_api, create_phase, update_phase, delete_phase, get_all_views, create_view, update_view, delete_view, set_default_view, list_snapshots, create_snapshot, restore_snapshot as restore_snapshot_api, delete_snapshot, rename_snapshot, get_user_shortcuts, save_user_shortcuts, move_milestone_task } from '../../api/dependencies_api';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
@@ -1054,44 +1054,7 @@ function DependenciesContent() {
     startLoopSound('dragLoop');
   }, [DAYWIDTH, projectId, wouldPhaseOverlap]);
 
-  // ── Refactor drag: pick up a team / task / milestone and drop on IdeaBin ──
-  const handleRefactorDrag = useCallback((e, type, payload) => {
-    if (!refactorMode) return;
-    e.preventDefault();
-    e.stopPropagation();
-    refactorDragging.current = true;
-
-    let ghost = { type, ...payload, x: e.clientX, y: e.clientY, overIdeaBin: false };
-    setRefactorGhost(ghost);
-
-    const onMove = (ev) => {
-      const ideaBinEl = document.querySelector("[data-ideabin-window]");
-      let overIdeaBin = false;
-      if (ideaBinEl) {
-        const r = ideaBinEl.getBoundingClientRect();
-        overIdeaBin = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
-      }
-      ghost = { ...ghost, x: ev.clientX, y: ev.clientY, overIdeaBin };
-      setRefactorGhost(ghost);
-    };
-
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      refactorDragging.current = false;
-
-      if (ghost.overIdeaBin) {
-        // Dispatch event so IdeaBin can handle the drop
-        window.dispatchEvent(new CustomEvent("dep-refactor-drop", {
-          detail: { type, ...payload },
-        }));
-      }
-      setRefactorGhost(null);
-    };
-
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, [refactorMode]);
+  // ── Refactor drag: defined after useDependencyInteraction hook below ──
 
 
   // ... (keep all other existing functions like getTeamHeight, handleTeamDrag, etc.)
@@ -1226,9 +1189,11 @@ function DependenciesContent() {
     handleUpdateConnection,
     validateMilestoneMove,
     validateMultiMilestoneMove,
+    checkMilestoneOverlap,
     findMilestoneAtPosition,
     getMilestoneHandlePosition,
     showBlockingFeedback,
+    addWarning,
     // Warning messages for toast
     warningMessages,
     // Transient interaction state
@@ -1331,7 +1296,253 @@ function DependenciesContent() {
     // Quick snapshot save
     snapshots,
     onQuickSaveSnapshot: handleQuickSaveSnapshot,
+    // Create modals for shortcuts
+    setShowCreateTeamModal,
+    setShowCreateTaskModal,
+    setPhaseEditModal,
+    // Default view
+    onLoadDefaultView: () => handleLoadView(null),
   });
+
+  // ── Refactor drag: pick up a team / task / milestone and drop on IdeaBin or grid cell ──
+  const handleRefactorDrag = useCallback((e, type, payload) => {
+    if (!refactorMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    refactorDragging.current = true;
+
+    let ghost = { type, ...payload, x: e.clientX, y: e.clientY, overIdeaBin: false, overCell: null };
+    setRefactorGhost(ghost);
+
+    const onMove = (ev) => {
+      const ideaBinEl = document.querySelector("[data-ideabin-window]");
+      let overIdeaBin = false;
+      if (ideaBinEl) {
+        const r = ideaBinEl.getBoundingClientRect();
+        overIdeaBin = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+      }
+
+      // Detect hovering over a day grid cell
+      let overCell = null;
+      if (!overIdeaBin && type === 'milestone') {
+        const el = document.elementFromPoint(ev.clientX, ev.clientY);
+        if (el) {
+          const cell = el.closest('[data-dep-day-index]');
+          if (cell) {
+            overCell = {
+              dayIndex: parseInt(cell.dataset.depDayIndex, 10),
+              taskId: cell.dataset.depDayTaskId,
+              teamId: cell.dataset.depDayTeamId,
+            };
+          }
+        }
+      }
+
+      ghost = { ...ghost, x: ev.clientX, y: ev.clientY, overIdeaBin, overCell };
+      setRefactorGhost(ghost);
+    };
+
+    const onUp = async () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      refactorDragging.current = false;
+
+      if (ghost.overIdeaBin) {
+        // Dispatch event so IdeaBin can handle the drop
+        window.dispatchEvent(new CustomEvent("dep-refactor-drop", {
+          detail: { type, ...payload },
+        }));
+        setRefactorGhost(null);
+        return;
+      }
+
+      // Drop milestone on a grid cell
+      if (type === 'milestone' && ghost.overCell) {
+        const { dayIndex, taskId: targetTaskKey } = ghost.overCell;
+        const mId = payload.id;
+        const m = milestones[mId];
+
+        if (m && targetTaskKey) {
+          const oldTaskKey = m.task;
+          const oldStartIndex = m.start_index;
+          const duration = m.duration || 1;
+          const taskChanged = String(targetTaskKey) !== String(oldTaskKey);
+
+          // Check overlap on target task
+          const targetTask = tasks[targetTaskKey];
+          if (targetTask) {
+            const targetMilestones = targetTask.milestones || [];
+            for (const mRef of targetMilestones) {
+              const other = milestones[mRef.id];
+              if (!other || String(mRef.id) === String(mId)) continue;
+              const otherEnd = other.start_index + (other.duration || 1) - 1;
+              const mEnd = dayIndex + duration - 1;
+              if (dayIndex <= otherEnd && mEnd >= other.start_index) {
+                playSound('error');
+                addWarning('Overlap', 'Cannot move — milestone would overlap on target task');
+                setRefactorGhost(null);
+                return;
+              }
+            }
+          }
+
+          // Check dependency constraints (predecessor/successor rule)
+          const depResult = validateMilestoneMove(mId, dayIndex);
+          if (depResult && !depResult.valid) {
+            const strongBlockers = (depResult.allBlocking || []).filter(b => b.weight === 'strong');
+            if (strongBlockers.length > 0) {
+              addWarning('Blocked', 'Move violates a dependency constraint');
+              for (const b of strongBlockers) {
+                showBlockingFeedback(b.blockingMilestoneId, b.blockingConnection);
+              }
+              // Auto-select blocking milestones when setting is active
+              if (autoSelectBlocking) {
+                const blockingIds = new Set(strongBlockers.map(b => b.blockingMilestoneId));
+                setSelectedMilestones(blockingIds);
+                setSelectedConnections([]);
+              }
+              playSound('blocked');
+              setRefactorGhost(null);
+              return;
+            }
+          }
+
+          // Apply move
+          playSound('milestoneMove');
+
+          // Update milestone state
+          setMilestones(prev => ({
+            ...prev,
+            [mId]: { ...prev[mId], task: targetTaskKey, start_index: dayIndex },
+          }));
+
+          // Update task arrays if task changed
+          if (taskChanged) {
+            setTasks(prev => {
+              const updated = { ...prev };
+              if (updated[oldTaskKey]) {
+                updated[oldTaskKey] = {
+                  ...updated[oldTaskKey],
+                  milestones: (updated[oldTaskKey].milestones || []).filter(ref => String(ref.id) !== String(mId)),
+                };
+              }
+              if (updated[targetTaskKey]) {
+                updated[targetTaskKey] = {
+                  ...updated[targetTaskKey],
+                  milestones: [...(updated[targetTaskKey].milestones || []), { id: mId }],
+                };
+              }
+              return updated;
+            });
+          }
+
+          // Persist to backend
+          try {
+            if (taskChanged) {
+              await move_milestone_task(projectId, mId, targetTaskKey);
+            }
+            if (dayIndex !== oldStartIndex) {
+              await update_start_index(projectId, mId, dayIndex);
+            }
+          } catch (err) {
+            console.error("Refactor drag move failed:", err);
+            // Revert on failure
+            setMilestones(prev => ({
+              ...prev,
+              [mId]: { ...prev[mId], task: oldTaskKey, start_index: oldStartIndex },
+            }));
+            if (taskChanged) {
+              setTasks(prev => {
+                const updated = { ...prev };
+                if (updated[targetTaskKey]) {
+                  updated[targetTaskKey] = {
+                    ...updated[targetTaskKey],
+                    milestones: (updated[targetTaskKey].milestones || []).filter(ref => String(ref.id) !== String(mId)),
+                  };
+                }
+                if (updated[oldTaskKey]) {
+                  updated[oldTaskKey] = {
+                    ...updated[oldTaskKey],
+                    milestones: [...(updated[oldTaskKey].milestones || []), { id: mId }],
+                  };
+                }
+                return updated;
+              });
+            }
+            playSound('error');
+            setRefactorGhost(null);
+            return;
+          }
+
+          // Push undo/redo action
+          pushAction({
+            description: `Refactor drag milestone to ${taskChanged ? 'different task' : 'new position'}`,
+            undo: async () => {
+              setMilestones(prev => ({
+                ...prev,
+                [mId]: { ...prev[mId], task: oldTaskKey, start_index: oldStartIndex },
+              }));
+              if (taskChanged) {
+                setTasks(prev => {
+                  const updated = { ...prev };
+                  if (updated[targetTaskKey]) {
+                    updated[targetTaskKey] = {
+                      ...updated[targetTaskKey],
+                      milestones: (updated[targetTaskKey].milestones || []).filter(ref => String(ref.id) !== String(mId)),
+                    };
+                  }
+                  if (updated[oldTaskKey]) {
+                    updated[oldTaskKey] = {
+                      ...updated[oldTaskKey],
+                      milestones: [...(updated[oldTaskKey].milestones || []), { id: mId }],
+                    };
+                  }
+                  return updated;
+                });
+                await move_milestone_task(projectId, mId, oldTaskKey);
+              }
+              if (dayIndex !== oldStartIndex) {
+                await update_start_index(projectId, mId, oldStartIndex);
+              }
+            },
+            redo: async () => {
+              setMilestones(prev => ({
+                ...prev,
+                [mId]: { ...prev[mId], task: targetTaskKey, start_index: dayIndex },
+              }));
+              if (taskChanged) {
+                setTasks(prev => {
+                  const updated = { ...prev };
+                  if (updated[oldTaskKey]) {
+                    updated[oldTaskKey] = {
+                      ...updated[oldTaskKey],
+                      milestones: (updated[oldTaskKey].milestones || []).filter(ref => String(ref.id) !== String(mId)),
+                    };
+                  }
+                  if (updated[targetTaskKey]) {
+                    updated[targetTaskKey] = {
+                      ...updated[targetTaskKey],
+                      milestones: [...(updated[targetTaskKey].milestones || []), { id: mId }],
+                    };
+                  }
+                  return updated;
+                });
+                await move_milestone_task(projectId, mId, targetTaskKey);
+              }
+              if (dayIndex !== oldStartIndex) {
+                await update_start_index(projectId, mId, dayIndex);
+              }
+            },
+          });
+        }
+      }
+
+      setRefactorGhost(null);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [refactorMode, milestones, tasks, connections, projectId, setMilestones, setTasks, pushAction, validateMilestoneMove, showBlockingFeedback, addWarning, autoSelectBlocking, setSelectedMilestones, setSelectedConnections]);
 
   // ________Actions Hook___________
   // ________________________________________
@@ -2395,6 +2606,8 @@ function DependenciesContent() {
           className={`px-3 py-2 rounded-lg shadow-lg border-2 text-xs font-semibold max-w-[200px] truncate ${
             refactorGhost.overIdeaBin
               ? "bg-yellow-100 border-yellow-500 text-yellow-800"
+              : refactorGhost.overCell
+              ? "bg-blue-100 border-blue-500 text-blue-800"
               : "bg-white border-slate-300 text-slate-700"
           }`}
         >
@@ -2404,6 +2617,9 @@ function DependenciesContent() {
           {refactorGhost.type === "milestone" && `🏁 ${refactorGhost.name}`}
           {refactorGhost.overIdeaBin && (
             <div className="text-[10px] font-normal text-yellow-600 mt-0.5">Drop to create idea</div>
+          )}
+          {refactorGhost.overCell && refactorGhost.type === "milestone" && (
+            <div className="text-[10px] font-normal text-blue-600 mt-0.5">Drop to move here</div>
           )}
         </div>
       )}
@@ -2415,7 +2631,7 @@ function DependenciesContent() {
           className="px-4 py-2 rounded-full bg-orange-500 text-white text-xs font-bold shadow-lg animate-pulse flex items-center gap-2"
         >
           <span>🔧 Refactor Mode</span>
-          <span className="font-normal opacity-80">— drag items to IdeaBin</span>
+          <span className="font-normal opacity-80">— drag items to IdeaBin or cells</span>
           <button
             onClick={() => { setRefactorMode(false); playSound('refactorToggle'); }}
             className="ml-2 px-2 py-0.5 rounded bg-orange-700 hover:bg-orange-800 text-white text-[10px] font-semibold"
