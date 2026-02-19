@@ -562,6 +562,7 @@ export default function DependencyTeamList({
                 selectedDays={selectedDays}
                 phases={phases}
                 showPhaseColorsInGrid={showPhaseColorsInGrid}
+                refactorMode={refactorMode}
               />
             </div>
           </div>

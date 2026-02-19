@@ -24,7 +24,9 @@ export default function DependencyDayGrid({
   selectedDays = new Set(),
   phases = [],
   showPhaseColorsInGrid = true,
+  refactorMode = false,
 }) {
+  const canClickToAdd = isAddingMilestone || refactorMode;
   const totalDaysWidth = dayColumnLayout?.totalDaysWidth ?? (days || 0) * DAYWIDTH;
 
   // Build a lookup: dayIndex → phase color (first matching phase wins)
@@ -104,7 +106,7 @@ export default function DependencyDayGrid({
                     );
                   }
 
-                  const isHovered = isAddingMilestone && 
+                  const isHovered = canClickToAdd && 
                     hoveredDayCell?.taskId === task_key && 
                     hoveredDayCell?.dayIndex === i;
                   const dayInfo = dayLabels && dayLabels[i];
@@ -146,22 +148,22 @@ export default function DependencyDayGrid({
                       data-dep-day-label={dayInfo?.dateStr || ''}
                       data-dep-day-weekday={dayInfo?.dayNameShort || ''}
                       className={`dep-day-cell absolute top-0 border-r border-slate-100 transition-colors ${
-                        isAddingMilestone ? 'cursor-pointer hover:bg-blue-50' : ''
+                        canClickToAdd ? 'cursor-pointer hover:bg-blue-50' : ''
                       } ${isHovered ? 'bg-blue-100' : ''}`}
                       style={{
                         left: `${colX}px`,
                         width: `${colW}px`,
                         height: `${taskHeight}px`,
                         opacity: ghost?.id === team_key ? 0.2 : 1,
-                        pointerEvents: isAddingMilestone ? 'auto' : 'auto',
+                        pointerEvents: canClickToAdd ? 'auto' : 'auto',
                         ...cellBg,
                         ...(isDeadlineDay ? { borderRight: '2.5px solid #ef4444' } : {}),
                       }}
                       key={i}
-                    onMouseEnter={() => isAddingMilestone && setHoveredDayCell({ taskId: task_key, dayIndex: i })}
+                    onMouseEnter={() => canClickToAdd && setHoveredDayCell({ taskId: task_key, dayIndex: i })}
                     onMouseLeave={() => setHoveredDayCell(null)}
                     onClick={(e) => {
-                      if (isAddingMilestone) {
+                      if (canClickToAdd) {
                         e.stopPropagation();
                         handleDayCellClick(task_key, i);
                       }

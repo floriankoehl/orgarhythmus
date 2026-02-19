@@ -47,6 +47,10 @@ export const DEFAULT_REFACTOR_MODE             = false;  // refactor mode off by
 export const DEFAULT_COLLAPSE_ALL_TEAM_PHASES  = false;  // don't hide team phase rows
 export const DEFAULT_HIDE_GLOBAL_PHASES        = false;  // show global phase header row
 export const DEFAULT_TOOLBAR_COLLAPSED         = false;  // show the control-board toolbar
+export const DEFAULT_HEADER_COLLAPSED          = false;  // show the app/project header
+export const DEFAULT_SOUND_ENABLED             = true;   // play UI sounds
+export const DEFAULT_HIDE_DAY_HEADER           = false;  // show the day column header row
+export const DEFAULT_IS_FULLSCREEN             = false;  // not fullscreen by default
 
 // ── Numeric settings ─────────────────────────────────────────
 export const DEFAULT_WARNING_DURATION          = 2000;   // ms — how long warning toast shows
@@ -96,5 +100,9 @@ export function getDefaultViewState() {
     // Layout visibility
     hideGlobalPhases:        DEFAULT_HIDE_GLOBAL_PHASES,
     toolbarCollapsed:        DEFAULT_TOOLBAR_COLLAPSED,
+    headerCollapsed:         DEFAULT_HEADER_COLLAPSED,
+    soundEnabled:            DEFAULT_SOUND_ENABLED,
+    hideDayHeader:           DEFAULT_HIDE_DAY_HEADER,
+    isFullscreen:            DEFAULT_IS_FULLSCREEN,
   };
 }

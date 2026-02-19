@@ -138,10 +138,24 @@ export const getVisibleTeamIndex = (teamId, teamOrder, isTeamVisibleFn) => {
     return index;
 };
 
-export const isTeamVisibleBase = (teamId, teamDisplaySettings, teams, taskDisplaySettings) => {
+export const isTeamVisibleBase = (teamId, teamDisplaySettings, teams, taskDisplaySettings, showEmptyTeams = true, milestones = null) => {
     const settings = teamDisplaySettings[teamId];
     if (settings?.hidden) return false;
     
+    // Hide empty teams (teams with no milestones) when showEmptyTeams is off
+    if (!showEmptyTeams && milestones) {
+      const team = teams[teamId];
+      if (team) {
+        const teamTasks = team.tasks || [];
+        const hasMilestone = teamTasks.some(taskKey => {
+          const task = taskDisplaySettings[taskKey];
+          // Check if any milestone belongs to this task
+          return Object.values(milestones).some(m => String(m.task) === String(taskKey));
+        });
+        if (!hasMilestone) return false;
+      }
+    }
+
     return true;
 };
 

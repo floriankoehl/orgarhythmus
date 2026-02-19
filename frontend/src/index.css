@@ -1,5 +1,69 @@
 @import "tailwindcss";
 
+/* ─── Subtle modal entrance animation ─── */
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes modal-backdrop-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-animate-in {
+  animation: modal-enter 0.18s ease-out both;
+}
+
+.modal-backdrop-animate {
+  animation: modal-backdrop-enter 0.15s ease-out both;
+}
+
+/* ─── View name flash overlay ─── */
+@keyframes viewFlashFade {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.92);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.04);
+  }
+}
+
+/* ─── Subtle button press feedback ─── */
+.btn-press {
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.btn-press:active {
+  transform: scale(0.96);
+}
+
+/* ─── Toolbar button subtle glow on hover ─── */
+.toolbar-btn-glow {
+  transition: transform 0.1s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+.toolbar-btn-glow:active {
+  transform: scale(0.95);
+}
+.toolbar-btn-glow:hover:not(:disabled) {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.08);
+}
+
 /* Custom grab cursor with dark outline for visibility on light backgrounds */
 .cursor-grab-visible {
   cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='22' viewBox='0 0 20 22'%3E%3Cpath d='M7 8V4.5a1.5 1.5 0 0 1 3 0V8m0-3.5a1.5 1.5 0 0 1 3 0V8m0-2.5a1.5 1.5 0 0 1 3 0V12m-9-4V3.5a1.5 1.5 0 0 0-3 0V12l-1.4-2.8a1.5 1.5 0 0 0-2.6 1.5L4 18c0 2.2 1.8 4 4 4h5c2.2 0 4-1.8 4-4V8.5a1.5 1.5 0 0 0-3 0' fill='none' stroke='%231e293b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") 10 8, grab;

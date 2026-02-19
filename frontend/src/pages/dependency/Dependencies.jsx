@@ -39,7 +39,7 @@ import { useDependencyInteraction } from './useDependencyInteraction';
 import { useDependencyData } from './useDependencyData';
 import { useDependencyUIState } from './useDependencyUIState';
 import { useDependencyActions } from './useDependencyActions';
-import { set_task_deadline, update_start_index, change_duration, update_dependency, create_dependency, delete_dependency_api, create_phase, update_phase, delete_phase, get_all_views, create_view, update_view, delete_view, set_default_view, list_snapshots, create_snapshot, restore_snapshot as restore_snapshot_api, delete_snapshot, rename_snapshot } from '../../api/dependencies_api';
+import { set_task_deadline, update_start_index, change_duration, update_dependency, create_dependency, delete_dependency_api, create_phase, update_phase, delete_phase, get_all_views, create_view, update_view, delete_view, set_default_view, list_snapshots, create_snapshot, restore_snapshot as restore_snapshot_api, delete_snapshot, rename_snapshot, get_user_shortcuts, save_user_shortcuts } from '../../api/dependencies_api';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
@@ -50,7 +50,7 @@ import DependencyModals from '../../components/dependencies/DependencyModals';
 import DependencyCanvas from '../../components/dependencies/DependencyCanvas';
 import DependencyWarningToast from '../../components/dependencies/DependencyWarningToast';
 import { DependencyProvider, useDependency } from './DependencyContext.jsx';
-import { playSound, preloadSounds, startLoopSound, stopLoopSound } from '../../assets/sound_registry';
+import { playSound, preloadSounds, startLoopSound, stopLoopSound, setMuted } from '../../assets/sound_registry';
 
 export default function Dependencies() {
   return (
@@ -196,6 +196,34 @@ function DependenciesContent() {
   const [hideGlobalPhases, setHideGlobalPhases] = useState(DEFAULT_HIDE_GLOBAL_PHASES);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(DEFAULT_TOOLBAR_COLLAPSED);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [hideDayHeader, setHideDayHeader] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(!!document.fullscreenElement);
+
+  // ── User shortcuts ──
+  const [userShortcuts, setUserShortcuts] = useState({});
+  useEffect(() => {
+    get_user_shortcuts().then(data => setUserShortcuts(data.shortcuts || {})).catch(() => {});
+  }, []);
+  const handleSaveShortcuts = useCallback((shortcuts) => {
+    setUserShortcuts(shortcuts);
+    save_user_shortcuts(shortcuts).catch(() => {});
+  }, []);
+
+  // ── Fullscreen sync ──
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  }, []);
 
   // ── Header collapse DOM effect (hides both ProjectHeader + OrgaLayout header) ──
   useEffect(() => {
@@ -229,12 +257,18 @@ function DependenciesContent() {
     };
   }, [headerCollapsed]);
 
+  // ── Sync sound mute state ──
+  useEffect(() => { setMuted(!soundEnabled); }, [soundEnabled]);
+
   // ── Popup close signal (incremented on canvas click to close toolbar dropdowns) ──
   const [popupCloseSignal, setPopupCloseSignal] = useState(0);
 
   // ── View transition animation ──
   const [viewTransition, setViewTransition] = useState(null); // 'out' | 'in-start' | 'in' | null
   const viewTransitionRef = useRef(null);
+  const [viewFlashName, setViewFlashName] = useState(null);
+  const viewFlashTimerRef = useRef(null);
+  const viewFlashCounterRef = useRef(0);
 
   // ── Views (saveable frontend state snapshots) ──
   const [savedViews, setSavedViews] = useState([]);
@@ -438,6 +472,35 @@ function DependenciesContent() {
     });
   }, []);
 
+  // ── Focus on phase: collapse ALL days EXCEPT the phase's range ──
+  const focusOnPhase = useCallback((phase) => {
+    if (!phase) return;
+    playSound('collapse');
+    const start = phase.start_index;
+    const end = start + (phase.duration || 1);
+    setCollapsedDays(prev => {
+      // Check if we're already focused on this phase (all outside collapsed, all inside expanded)
+      let alreadyFocused = true;
+      for (let d = 0; d < days; d++) {
+        if (d >= start && d < end) {
+          if (prev.has(d)) { alreadyFocused = false; break; }
+        } else {
+          if (!prev.has(d)) { alreadyFocused = false; break; }
+        }
+      }
+      if (alreadyFocused) {
+        // Un-focus: uncollapse everything
+        return new Set();
+      }
+      // Focus: collapse everything outside the phase range
+      const next = new Set();
+      for (let d = 0; d < days; d++) {
+        if (d < start || d >= end) next.add(d);
+      }
+      return next;
+    });
+  }, [days]);
+
   // ── Show all team phase rows ──
   const showAllTeamPhases = useCallback(() => {
     playSound('collapse');
@@ -480,6 +543,10 @@ function DependenciesContent() {
     refactorMode,
     hideGlobalPhases,
     toolbarCollapsed,
+    headerCollapsed,
+    soundEnabled,
+    hideDayHeader,
+    isFullscreen,
   }), [
     taskDisplaySettings, teamDisplaySettings, viewMode, mode,
     collapsedDays, selectedDays, depSettings, showPhaseColorsInGrid,
@@ -489,6 +556,7 @@ function DependenciesContent() {
     collapseAllTeamPhases, teamColumnWidth, taskColumnWidth,
     autoSelectBlocking, warningDuration, refactorMode,
     hideGlobalPhases, toolbarCollapsed, headerCollapsed,
+    soundEnabled, hideDayHeader, isFullscreen,
   ]);
 
   // Apply a saved view state, restoring all settings.
@@ -537,7 +605,16 @@ function DependenciesContent() {
     // Layout visibility
     setHideGlobalPhases(state.hideGlobalPhases ?? d.hideGlobalPhases);
     setToolbarCollapsed(state.toolbarCollapsed ?? d.toolbarCollapsed);
-    setHeaderCollapsed(state.headerCollapsed ?? false);
+    setHeaderCollapsed(state.headerCollapsed ?? d.headerCollapsed);
+    setSoundEnabled(state.soundEnabled ?? d.soundEnabled);
+    setHideDayHeader(state.hideDayHeader ?? d.hideDayHeader);
+    // Fullscreen: toggle to match saved state
+    const wantFs = state.isFullscreen ?? d.isFullscreen;
+    if (wantFs && !document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else if (!wantFs && document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
   }, []);
 
   // Fetch saved views on mount & auto-load default view
@@ -564,6 +641,7 @@ function DependenciesContent() {
     setViewTransition('out');
     if (viewTransitionRef.current) clearTimeout(viewTransitionRef.current);
     viewTransitionRef.current = setTimeout(() => {
+      const viewName = view ? view.name : 'Default';
       if (!view) {
         applyViewState(getDefaultViewState());
         setActiveViewId(null);
@@ -573,6 +651,13 @@ function DependenciesContent() {
         setActiveViewId(view.id);
         setActiveViewName(view.name);
       }
+      // Flash the view name overlay
+      if (viewFlashTimerRef.current) clearTimeout(viewFlashTimerRef.current);
+      viewFlashCounterRef.current += 1;
+      setViewFlashName({ name: viewName, key: viewFlashCounterRef.current });
+      viewFlashTimerRef.current = setTimeout(() => {
+        setViewFlashName(null);
+      }, 1200);
       // Position off-screen right (no transition), then animate in
       setViewTransition('in-start');
       requestAnimationFrame(() => {
@@ -586,6 +671,26 @@ function DependenciesContent() {
       playSound('viewLoad');
     }, 220);
   }, [applyViewState]);
+
+  // Cycle to next/prev view
+  const handleNextView = useCallback(() => {
+    // Build ordered list: Default (null) + saved views
+    const allViews = [null, ...savedViews];
+    const currentIdx = activeViewId
+      ? allViews.findIndex(v => v && v.id === activeViewId)
+      : 0;
+    const nextIdx = (currentIdx + 1) % allViews.length;
+    handleLoadView(allViews[nextIdx]);
+  }, [savedViews, activeViewId, handleLoadView]);
+
+  const handlePrevView = useCallback(() => {
+    const allViews = [null, ...savedViews];
+    const currentIdx = activeViewId
+      ? allViews.findIndex(v => v && v.id === activeViewId)
+      : 0;
+    const prevIdx = (currentIdx - 1 + allViews.length) % allViews.length;
+    handleLoadView(allViews[prevIdx]);
+  }, [savedViews, activeViewId, handleLoadView]);
 
   // Save current state to active view
   const handleSaveView = useCallback(async () => {
@@ -689,6 +794,7 @@ function DependenciesContent() {
       const data = await create_snapshot(projectId, { name: name.trim(), description: description || "" });
       const created = data.snapshot || data;
       setSnapshots(prev => [created, ...prev]);
+      playSound('snapshotSave');
     } catch (err) {
       console.error("Failed to create snapshot:", err);
       alert("Failed to create snapshot: " + (err.message || err));
@@ -696,6 +802,29 @@ function DependenciesContent() {
       setSnapshotsLoading(false);
     }
   }, [projectId]);
+
+  // Quick-save snapshot: overwrite the most recent snapshot, or create a new one
+  const handleQuickSaveSnapshot = useCallback(async () => {
+    if (snapshots.length > 0) {
+      // Overwrite the most recent snapshot (re-create with same name)
+      const latest = snapshots[0];
+      setSnapshotsLoading(true);
+      try {
+        const data = await create_snapshot(projectId, { name: latest.name, description: latest.description || '' });
+        const created = data.snapshot || data;
+        setSnapshots(prev => [created, ...prev]);
+        playSound('snapshotSave');
+      } catch (err) {
+        console.error("Quick-save snapshot failed:", err);
+      } finally {
+        setSnapshotsLoading(false);
+      }
+    } else {
+      // No snapshots yet — create one with a default name
+      await handleCreateSnapshot('Quick Save', '');
+      playSound('snapshotSave');
+    }
+  }, [projectId, snapshots, handleCreateSnapshot]);
 
   const handleRestoreSnapshot = useCallback(async (snapshotId) => {
     setSnapshotsLoading(true);
@@ -1035,7 +1164,11 @@ function DependenciesContent() {
     getRawTeamHeightBase(teams[teamId], taskDisplaySettings, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL);
 
   const isTeamVisible = (teamId) => 
-    isTeamVisibleBase(teamId, teamDisplaySettings, teams, taskDisplaySettings);
+    isTeamVisibleBase(teamId, teamDisplaySettings, teams, taskDisplaySettings, showEmptyTeams, milestones);
+
+  const isTeamCollapsed = (teamId) => {
+    return teamDisplaySettings[teamId]?.collapsed ?? false;
+  };
 
   const getVisibleTasks = (teamId) => 
     getVisibleTasksBase(teams[teamId], taskDisplaySettings);
@@ -1052,12 +1185,12 @@ function DependenciesContent() {
   const PHASE_HEADER_HEIGHT = 26;
   const hasGlobalPhases = globalPhases.length > 0;
   const hasPhases = phases.length > 0;
-  const effectiveHeaderHeight = HEADER_HEIGHT + (hasGlobalPhases && !hideGlobalPhases ? PHASE_HEADER_HEIGHT : 0);
+  const effectiveHeaderHeight = (hideDayHeader ? 0 : HEADER_HEIGHT) + (hasGlobalPhases && !hideGlobalPhases ? PHASE_HEADER_HEIGHT : 0);
   const layoutConstants = { HEADER_HEIGHT: effectiveHeaderHeight, TEAM_DRAG_HIGHLIGHT_HEIGHT, MARIGN_BETWEEN_DRAG_HIGHLIGHT, TEAM_HEADER_LINE_HEIGHT, TEAM_HEADER_GAP };
   
   const contentHeight = useMemo(() => {
     return calculateContentHeight(teamOrder, isTeamVisible, getTeamHeight, layoutConstants);
-  }, [teamOrder, teams, taskDisplaySettings, teamDisplaySettings, TASKHEIGHT_NORMAL, TASKHEIGHT_SMALL, hasGlobalPhases, hideGlobalPhases, phases, collapseAllTeamPhases, collapsedTeamPhaseRows]);
+  }, [teamOrder, teams, taskDisplaySettings, teamDisplaySettings, TASKHEIGHT_NORMAL, TASKHEIGHT_SMALL, hasGlobalPhases, hideGlobalPhases, hideDayHeader, phases, collapseAllTeamPhases, collapsedTeamPhaseRows, showEmptyTeams, milestones]);
 
   // Get visible team index (accounting for hidden teams)
   const getVisibleTeamIndex = (teamId) => 
@@ -1165,6 +1298,39 @@ function DependenciesContent() {
     savedViews,
     onLoadView: handleLoadView,
     onSaveView: handleSaveView,
+    onNextView: handleNextView,
+    onPrevView: handlePrevView,
+    refactorMode,
+    setRefactorMode,
+    // Toggle shortcuts
+    setToolbarCollapsed,
+    setHeaderCollapsed,
+    toggleFullscreen,
+    // User shortcuts
+    userShortcuts,
+    // Q+W shortcut action setters
+    setCustomDayWidth,
+    setCustomTaskHeightNormal,
+    setCustomTaskHeightSmall,
+    setHideDayHeader,
+    setSoundEnabled,
+    setShowEmptyTeams,
+    setShowPhaseColorsInGrid,
+    setHideAllDependencies,
+    setHideCollapsedDependencies,
+    setHideCollapsedMilestones,
+    setExpandedTaskView,
+    setHideGlobalPhases,
+    uncollapseAll,
+    setAutoSelectBlocking,
+    // Visibility state values (for select-visible shortcuts)
+    hideAllDependencies,
+    hideCollapsedDependencies,
+    hideCollapsedMilestones,
+    isTeamCollapsed,
+    // Quick snapshot save
+    snapshots,
+    onQuickSaveSnapshot: handleQuickSaveSnapshot,
   });
 
   // ________Actions Hook___________
@@ -1567,11 +1733,6 @@ function DependenciesContent() {
     }
   };
 
-  // Check if team is collapsed
-  const isTeamCollapsed = (teamId) => {
-    return teamDisplaySettings[teamId]?.collapsed ?? false;
-  };
-
   // Set or clear a task's hard deadline
   const handleSetDeadline = useCallback(async (taskId, deadlineDayIndex) => {
     // Capture old value for undo
@@ -1900,7 +2061,7 @@ function DependenciesContent() {
       <div 
         className="p-10 w-full min-w-0 select-none"
         style={{
-          backgroundColor: '#f8f9fb',
+          background: 'linear-gradient(160deg, #f8f9fb 0%, #f6f7fa 50%, #f7f6f5 100%)',
           ...(viewTransition === 'out' ? {
             transition: 'transform 0.2s ease-in, opacity 0.2s ease-in',
             transform: 'translateX(-50px)',
@@ -2065,8 +2226,29 @@ function DependenciesContent() {
           // Layout visibility
           hideGlobalPhases={hideGlobalPhases}
           setHideGlobalPhases={setHideGlobalPhases}
+          // Sound toggle
+          soundEnabled={soundEnabled}
+          setSoundEnabled={setSoundEnabled}
+          // Day header toggle
+          hideDayHeader={hideDayHeader}
+          setHideDayHeader={setHideDayHeader}
+          // Fullscreen
+          isFullscreen={isFullscreen}
+          toggleFullscreen={toggleFullscreen}
+          // State indicators
+          allTasksSmall={teamOrder.every(tid => {
+            if (!isTeamVisible(tid)) return true;
+            const team = teams[tid];
+            if (!team) return true;
+            const visible = team.tasks.filter(t => isTaskVisible(t, taskDisplaySettings));
+            return visible.length === 0 || visible.every(t => taskDisplaySettings[t]?.size === 'small');
+          })}
+          allTeamsCollapsed={teamOrder.every(tid => !isTeamVisible(tid) || teamDisplaySettings[tid]?.collapsed)}
           // Popup close signal
           popupCloseSignal={popupCloseSignal}
+          // User shortcuts
+          userShortcuts={userShortcuts}
+          onSaveShortcuts={handleSaveShortcuts}
         />
           )}
         </div>
@@ -2191,8 +2373,10 @@ function DependenciesContent() {
           collapsedTeamPhaseRows={collapsedTeamPhaseRows}
           setCollapsedTeamPhaseRows={setCollapsedTeamPhaseRows}
           collapsePhaseRange={collapsePhaseRange}
+          focusOnPhase={focusOnPhase}
           // Layout visibility
           hideGlobalPhases={hideGlobalPhases}
+          hideDayHeader={hideDayHeader}
         />
       </div>
 
@@ -2238,6 +2422,25 @@ function DependenciesContent() {
           >
             Exit
           </button>
+        </div>
+      )}
+
+      {/* View name flash overlay */}
+      {viewFlashName && (
+        <div
+          key={viewFlashName.key}
+          style={{
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 99999,
+            pointerEvents: 'none',
+            animation: 'viewFlashFade 1.2s ease-out forwards',
+          }}
+          className="px-8 py-4 rounded-2xl bg-black/60 backdrop-blur-sm text-white text-2xl font-bold tracking-wide shadow-2xl"
+        >
+          {viewFlashName.name}
         </div>
       )}
     </>

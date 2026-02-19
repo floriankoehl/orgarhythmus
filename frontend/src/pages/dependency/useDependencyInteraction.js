@@ -20,6 +20,7 @@ import {
   create_dependency,
   delete_milestone,
   delete_dependency_api as delete_dependency,
+  move_milestone_task,
 } from '../../api/dependencies_api.js';
 
 // Pure validation re-exports (kept in return for backward compat)
@@ -90,10 +91,44 @@ export function useDependencyInteraction({
   // Layout constants (includes effective HEADER_HEIGHT)
   layoutConstants,
 
-  // Views (for keyboard shortcuts: V + key)
+  // Views (for keyboard shortcuts: X + key)
   savedViews = [],
   onLoadView,
   onSaveView,
+  onNextView,
+  onPrevView,
+  // Refactor mode
+  refactorMode,
+  setRefactorMode,
+  // Toggle shortcuts
+  setToolbarCollapsed,
+  setHeaderCollapsed,
+  toggleFullscreen,
+  // User shortcuts
+  userShortcuts = {},
+  // Q+W shortcut action setters
+  setCustomDayWidth,
+  setCustomTaskHeightNormal,
+  setCustomTaskHeightSmall,
+  setHideDayHeader,
+  setSoundEnabled,
+  setShowEmptyTeams,
+  setShowPhaseColorsInGrid,
+  setHideAllDependencies,
+  setHideCollapsedDependencies,
+  setHideCollapsedMilestones,
+  setExpandedTaskView,
+  setHideGlobalPhases,
+  uncollapseAll,
+  setAutoSelectBlocking,
+  // Visibility state values (for select-visible shortcuts)
+  hideAllDependencies,
+  hideCollapsedDependencies,
+  hideCollapsedMilestones,
+  isTeamCollapsed,
+  // Quick snapshot save
+  snapshots = [],
+  onQuickSaveSnapshot,
 }) {
   // ── Context ──
   const {
@@ -418,9 +453,369 @@ export function useDependencyInteraction({
   // ________Global Keyboard Listener___________
   // ________________________________________
 
-  // Ref for V-key chord: V + <key> = load view with that shortcut
-  const vKeyPendingRef = useRef(null); // holds timeout ID when V is pressed
-  const vKeyActiveRef = useRef(false); // true while waiting for the second key
+  // Ref for X-key chord: X + <key> = load view with that shortcut
+  const xKeyPendingRef = useRef(null); // holds timeout ID when X is pressed
+  const xKeyActiveRef = useRef(false); // true while waiting for the second key
+
+  // Ref for Q+W chord: Q -> W -> <key> = trigger custom shortcut
+  const qwChordStage = useRef(0); // 0=idle, 1=Q pressed, 2=Q+W pressed, 3=Q+W+E pressed (snapshot chord)
+  const qwChordTimerRef = useRef(null);
+
+  // Helper: execute a shortcut action by its action key
+  const executeShortcutAction = useCallback((actionKey) => {
+    switch (actionKey) {
+      // Original mode/toggle actions (also have direct keys, but kept for Q+W compat)
+      case 'toggleToolbar': setToolbarCollapsed(prev => !prev); playSound('uiClick'); return true;
+      case 'toggleHeader': setHeaderCollapsed(prev => !prev); playSound('uiClick'); return true;
+      case 'focusMode': setHeaderCollapsed(prev => !prev); setToolbarCollapsed(prev => !prev); toggleFullscreen(); playSound('uiClick'); return true;
+      case 'modeSchedule': setViewMode("schedule"); baseViewModeRef.current = "schedule"; playSound('modeSwitch'); return true;
+      case 'modeDependency': setViewMode("dependency"); baseViewModeRef.current = "dependency"; playSound('modeSwitch'); return true;
+      case 'modeInspection': setViewMode("inspection"); baseViewModeRef.current = "inspection"; playSound('modeSwitch'); return true;
+      case 'modeRefactor': setRefactorMode(prev => !prev); playSound('refactorToggle'); return true;
+      // Sizing
+      case 'dayWidthUp': setCustomDayWidth(prev => Math.min((prev || 50) + 10, 200)); playSound('settingToggle'); return true;
+      case 'dayWidthDown': setCustomDayWidth(prev => Math.max((prev || 50) - 10, 20)); playSound('settingToggle'); return true;
+      case 'taskHeightUp': setCustomTaskHeightNormal(prev => Math.min((prev || 38) + 4, 80)); playSound('settingToggle'); return true;
+      case 'taskHeightDown': setCustomTaskHeightNormal(prev => Math.max((prev || 38) - 4, 16)); playSound('settingToggle'); return true;
+      case 'taskHeightSmallUp': setCustomTaskHeightSmall(prev => Math.min((prev || 20) + 4, 60)); playSound('settingToggle'); return true;
+      case 'taskHeightSmallDown': setCustomTaskHeightSmall(prev => Math.max((prev || 20) - 4, 10)); playSound('settingToggle'); return true;
+      // Visibility toggles
+      case 'toggleDayHeader': setHideDayHeader(prev => !prev); playSound('settingToggle'); return true;
+      case 'toggleSound': setSoundEnabled(prev => !prev); playSound('settingToggle'); return true;
+      case 'toggleFullscreen': toggleFullscreen(); playSound('uiClick'); return true;
+      case 'toggleEmptyTeams': setShowEmptyTeams(prev => !prev); playSound('settingToggle'); return true;
+      case 'togglePhaseColors': setShowPhaseColorsInGrid(prev => !prev); playSound('settingToggle'); return true;
+      case 'toggleAllDeps': setHideAllDependencies(prev => !prev); playSound('settingToggle'); return true;
+      case 'toggleCollapsedDeps': setHideCollapsedDependencies(prev => !prev); playSound('settingToggle'); return true;
+      case 'toggleCollapsedMilestones': setHideCollapsedMilestones(prev => !prev); playSound('settingToggle'); return true;
+      case 'toggleExpandedTask': setExpandedTaskView(prev => !prev); playSound('settingToggle'); return true;
+      case 'toggleGlobalPhases': setHideGlobalPhases(prev => !prev); playSound('settingToggle'); return true;
+      case 'toggleAutoSelect': setAutoSelectBlocking(prev => !prev); playSound('settingToggle'); return true;
+      // Bulk team/task actions
+      case 'collapseAllTeams': setTeamDisplaySettings(prev => {
+        const u = { ...prev }; for (const tid of teamOrder) u[tid] = { ...u[tid], collapsed: true }; return u;
+      }); playSound('settingToggle'); return true;
+      case 'expandAllTeams': setTeamDisplaySettings(prev => {
+        const u = { ...prev }; for (const tid of teamOrder) u[tid] = { ...u[tid], collapsed: false }; return u;
+      }); playSound('settingToggle'); return true;
+      case 'allTasksSmall': setTaskDisplaySettings(prev => {
+        const u = { ...prev }; for (const tid of teamOrder) { const t = teams[tid]; if (t) for (const tk of t.tasks) u[tk] = { ...u[tk], size: 'small' }; } return u;
+      }); playSound('settingToggle'); return true;
+      case 'allTasksNormal': setTaskDisplaySettings(prev => {
+        const u = { ...prev }; for (const tid of teamOrder) { const t = teams[tid]; if (t) for (const tk of t.tasks) u[tk] = { ...u[tk], size: 'normal' }; } return u;
+      }); playSound('settingToggle'); return true;
+      case 'uncollapseAllDays': if (uncollapseAll) uncollapseAll(); return true;
+      // Select-all shortcuts
+      case 'selectAllMilestones': setSelectedMilestones(new Set(Object.keys(milestones).map(Number))); setSelectedConnections([]); playSound('milestoneSelect'); return true;
+      case 'selectAllDeps': setSelectedConnections([...connections]); setSelectedMilestones(new Set()); playSound('milestoneSelect'); return true;
+      // Select visible (currently displayed) milestones / deps
+      case 'selectVisibleMilestones': {
+        const visibleIds = new Set();
+        for (const [id, ms] of Object.entries(milestones)) {
+          const task = tasks[ms.task];
+          if (!task) continue;
+          if (!isTeamVisible(task.team)) continue;
+          if (isTeamCollapsed && isTeamCollapsed(task.team)) continue;
+          if (taskDisplaySettings[ms.task]?.hidden) continue;
+          if (hideCollapsedMilestones && taskDisplaySettings[ms.task]?.size === 'small') continue;
+          visibleIds.add(Number(id));
+        }
+        setSelectedMilestones(visibleIds);
+        setSelectedConnections([]);
+        playSound('milestoneSelect');
+        return true;
+      }
+      case 'selectVisibleDeps': {
+        if (hideAllDependencies) { setSelectedConnections([]); return true; }
+        const visibleConns = connections.filter(conn => {
+          const srcMs = milestones[conn.source];
+          const tgtMs = milestones[conn.target];
+          if (!srcMs || !tgtMs) return false;
+          const srcTask = tasks[srcMs.task];
+          const tgtTask = tasks[tgtMs.task];
+          if (!srcTask || !tgtTask) return false;
+          if (!isTeamVisible(srcTask.team) || !isTeamVisible(tgtTask.team)) return false;
+          if (hideCollapsedDependencies) {
+            if (isTeamCollapsed && (isTeamCollapsed(srcTask.team) || isTeamCollapsed(tgtTask.team))) return false;
+          }
+          return true;
+        });
+        setSelectedConnections(visibleConns);
+        setSelectedMilestones(new Set());
+        playSound('milestoneSelect');
+        return true;
+      }
+      default: return false;
+    }
+  }, [setToolbarCollapsed, setHeaderCollapsed, toggleFullscreen, setViewMode, setRefactorMode,
+      setCustomDayWidth, setCustomTaskHeightNormal, setCustomTaskHeightSmall, setHideDayHeader,
+      setSoundEnabled, setShowEmptyTeams, setShowPhaseColorsInGrid, setHideAllDependencies,
+      setHideCollapsedDependencies, setHideCollapsedMilestones, setExpandedTaskView,
+      setTeamDisplaySettings, setTaskDisplaySettings, teamOrder, teams,
+      setHideGlobalPhases, uncollapseAll, setAutoSelectBlocking,
+      milestones, connections, setSelectedMilestones, setSelectedConnections,
+      tasks, isTeamVisible, isTeamCollapsed, hideAllDependencies,
+      hideCollapsedDependencies, hideCollapsedMilestones]);
+
+  // ── Arrow key milestone movement ──
+  const handleArrowMoveHorizontal = useCallback(async (direction) => {
+    // direction: -1 (left) or +1 (right)
+    if (selectedMilestones.size === 0) return;
+
+    const delta = direction;
+    const beforePositions = {};
+    const afterPositions = {};
+    const milestonesToMove = [];
+
+    for (const mId of selectedMilestones) {
+      const m = milestones[mId];
+      if (!m) continue;
+      const newStart = m.start_index + delta;
+      if (newStart < 0) {
+        playSound('error');
+        return; // Can't move before day 0
+      }
+      beforePositions[mId] = m.start_index;
+      afterPositions[mId] = newStart;
+      milestonesToMove.push(mId);
+    }
+
+    if (milestonesToMove.length === 0) return;
+
+    // Check overlap for each milestone being moved
+    const excludeIds = new Set(milestonesToMove);
+    for (const mId of milestonesToMove) {
+      const m = milestones[mId];
+      const result = _checkMilestoneOverlap(milestones, tasks, mId, afterPositions[mId], m.duration || 1, excludeIds);
+      if (!result.valid) {
+        playSound('error');
+        return;
+      }
+    }
+
+    // Check dependency constraints (predecessor/successor)
+    if (milestonesToMove.length === 1) {
+      const mId = milestonesToMove[0];
+      const depResult = _validateMilestoneMove(milestones, connections, mId, afterPositions[mId]);
+      if (!depResult.valid) {
+        // Only block on strong dependencies, allow weak/suggestion with warning
+        const strongBlockers = depResult.allBlocking.filter(b => b.weight === 'strong');
+        if (strongBlockers.length > 0) {
+          addWarning('Blocked', 'Move violates a dependency constraint');
+          for (const b of strongBlockers) {
+            showBlockingFeedback(b.blockingMilestoneId, b.blockingConnection);
+          }
+          playSound('blocked');
+          return;
+        }
+      }
+    } else {
+      const depResult = _validateMultiMilestoneMove(milestones, connections, milestonesToMove, delta);
+      if (!depResult.valid) {
+        const strongBlockers = depResult.allBlocking.filter(b => b.weight === 'strong');
+        if (strongBlockers.length > 0) {
+          addWarning('Blocked', 'Move violates a dependency constraint');
+          for (const b of strongBlockers) {
+            showBlockingFeedback(b.blockingMilestoneId, b.blockingConnection);
+          }
+          playSound('blocked');
+          return;
+        }
+      }
+    }
+
+    // Apply move
+    playSound('milestoneMove');
+    for (const mId of milestonesToMove) {
+      const newStart = afterPositions[mId];
+      setMilestones(prev => ({
+        ...prev,
+        [mId]: { ...prev[mId], start_index: newStart },
+      }));
+      try {
+        await update_start_index(projectId, mId, newStart);
+      } catch (err) {
+        console.error("Arrow move failed:", err);
+      }
+    }
+
+    pushAction({
+      description: `Arrow move ${milestonesToMove.length} milestone(s)`,
+      undo: async () => {
+        for (const mId of milestonesToMove) {
+          const oldStart = beforePositions[mId];
+          setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], start_index: oldStart } }));
+          await update_start_index(projectId, mId, oldStart);
+        }
+      },
+      redo: async () => {
+        for (const mId of milestonesToMove) {
+          const newStart = afterPositions[mId];
+          setMilestones(prev => ({ ...prev, [mId]: { ...prev[mId], start_index: newStart } }));
+          await update_start_index(projectId, mId, newStart);
+        }
+      },
+    });
+  }, [selectedMilestones, milestones, tasks, connections, setMilestones, pushAction, projectId, addWarning, showBlockingFeedback]);
+
+  const handleArrowMoveVertical = useCallback(async (direction) => {
+    // direction: -1 (up) or +1 (down) — move milestone to adjacent task
+    // Only works in refactor mode, only for a single selected milestone
+    if (selectedMilestones.size !== 1) return;
+    if (!refactorMode) return;
+
+    const mId = Array.from(selectedMilestones)[0];
+    const m = milestones[mId];
+    if (!m) return;
+
+    // Build flat ordered task list from team order
+    const allTasks = [];
+    for (const teamId of teamOrder) {
+      const team = teams[teamId];
+      if (!team) continue;
+      for (const taskKey of (team.tasks || [])) {
+        allTasks.push({ taskKey, teamId });
+      }
+    }
+
+    const currentIdx = allTasks.findIndex(t => String(t.taskKey) === String(m.task));
+    if (currentIdx === -1) return;
+
+    const targetIdx = currentIdx + direction;
+    if (targetIdx < 0 || targetIdx >= allTasks.length) {
+      playSound('error');
+      return;
+    }
+
+    const targetTaskKey = allTasks[targetIdx].taskKey;
+    const oldTaskKey = m.task;
+
+    // Check overlap on target task
+    const result = _checkMilestoneOverlap(milestones, tasks, mId, m.start_index, m.duration || 1, new Set([mId]));
+    // Manual check on target task milestones
+    const targetTask = tasks[targetTaskKey];
+    if (targetTask) {
+      const targetMilestones = targetTask.milestones || [];
+      for (const mRef of targetMilestones) {
+        const other = milestones[mRef.id];
+        if (!other || mRef.id === mId) continue;
+        const otherEnd = other.start_index + (other.duration || 1) - 1;
+        const mEnd = m.start_index + (m.duration || 1) - 1;
+        if (m.start_index <= otherEnd && mEnd >= other.start_index) {
+          playSound('error');
+          addWarning('Overlap', 'Cannot move — milestone would overlap on target task');
+          return;
+        }
+      }
+    }
+
+    // Apply move optimistically
+    playSound('milestoneMove');
+
+    // Update local state: move milestone to new task
+    setMilestones(prev => ({
+      ...prev,
+      [mId]: { ...prev[mId], task: targetTaskKey },
+    }));
+    // Update task milestones arrays
+    setTasks(prev => {
+      const updated = { ...prev };
+      // Remove from old task
+      if (updated[oldTaskKey]) {
+        updated[oldTaskKey] = {
+          ...updated[oldTaskKey],
+          milestones: (updated[oldTaskKey].milestones || []).filter(ref => ref.id !== mId),
+        };
+      }
+      // Add to new task
+      if (updated[targetTaskKey]) {
+        updated[targetTaskKey] = {
+          ...updated[targetTaskKey],
+          milestones: [...(updated[targetTaskKey].milestones || []), { id: mId }],
+        };
+      }
+      return updated;
+    });
+
+    try {
+      await move_milestone_task(projectId, mId, targetTaskKey);
+    } catch (err) {
+      console.error("Arrow vertical move failed:", err);
+      // Revert on failure
+      setMilestones(prev => ({
+        ...prev,
+        [mId]: { ...prev[mId], task: oldTaskKey },
+      }));
+      setTasks(prev => {
+        const updated = { ...prev };
+        if (updated[targetTaskKey]) {
+          updated[targetTaskKey] = {
+            ...updated[targetTaskKey],
+            milestones: (updated[targetTaskKey].milestones || []).filter(ref => ref.id !== mId),
+          };
+        }
+        if (updated[oldTaskKey]) {
+          updated[oldTaskKey] = {
+            ...updated[oldTaskKey],
+            milestones: [...(updated[oldTaskKey].milestones || []), { id: mId }],
+          };
+        }
+        return updated;
+      });
+      playSound('error');
+      return;
+    }
+
+    pushAction({
+      description: `Move milestone to ${direction > 0 ? 'next' : 'previous'} task`,
+      undo: async () => {
+        setMilestones(prev => ({
+          ...prev,
+          [mId]: { ...prev[mId], task: oldTaskKey },
+        }));
+        setTasks(prev => {
+          const updated = { ...prev };
+          if (updated[targetTaskKey]) {
+            updated[targetTaskKey] = {
+              ...updated[targetTaskKey],
+              milestones: (updated[targetTaskKey].milestones || []).filter(ref => ref.id !== mId),
+            };
+          }
+          if (updated[oldTaskKey]) {
+            updated[oldTaskKey] = {
+              ...updated[oldTaskKey],
+              milestones: [...(updated[oldTaskKey].milestones || []), { id: mId }],
+            };
+          }
+          return updated;
+        });
+        await move_milestone_task(projectId, mId, oldTaskKey);
+      },
+      redo: async () => {
+        setMilestones(prev => ({
+          ...prev,
+          [mId]: { ...prev[mId], task: targetTaskKey },
+        }));
+        setTasks(prev => {
+          const updated = { ...prev };
+          if (updated[oldTaskKey]) {
+            updated[oldTaskKey] = {
+              ...updated[oldTaskKey],
+              milestones: (updated[oldTaskKey].milestones || []).filter(ref => ref.id !== mId),
+            };
+          }
+          if (updated[targetTaskKey]) {
+            updated[targetTaskKey] = {
+              ...updated[targetTaskKey],
+              milestones: [...(updated[targetTaskKey].milestones || []), { id: mId }],
+            };
+          }
+          return updated;
+        });
+        await move_milestone_task(projectId, mId, targetTaskKey);
+      },
+    });
+  }, [selectedMilestones, milestones, tasks, teams, teamOrder, refactorMode, setMilestones, setTasks, pushAction, projectId, addWarning]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -428,20 +823,90 @@ export function useDependencyInteraction({
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
       const hasModifier = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
 
-      // --- V-key chord: second key pressed while V is pending ---
-      if (vKeyActiveRef.current && !hasModifier && e.key !== 'v' && e.key !== 'V') {
-        // Cancel the pending inspection-mode switch
-        clearTimeout(vKeyPendingRef.current);
-        vKeyActiveRef.current = false;
-        vKeyPendingRef.current = null;
+      // --- Q+W chord system: Q -> W -> <key> triggers custom shortcut ---
+      // Extended: Q -> W -> E -> R triggers quick-save snapshot
+      if (!hasModifier) {
+        if (qwChordStage.current === 3) {
+          // Stage 3: Q+W+E pressed, expecting R for quick snapshot save
+          clearTimeout(qwChordTimerRef.current);
+          qwChordStage.current = 0;
+          if (key === 'r') {
+            e.preventDefault();
+            if (onQuickSaveSnapshot) onQuickSaveSnapshot();
+            return;
+          }
+          // Not R — ignore and fall through
+          return;
+        }
+        if (qwChordStage.current === 2) {
+          // Stage 2: Q+W already pressed, now the action key
+          // But if E is pressed, advance to stage 3 (snapshot chord)
+          if (key === 'e') {
+            clearTimeout(qwChordTimerRef.current);
+            qwChordStage.current = 3;
+            qwChordTimerRef.current = setTimeout(() => { qwChordStage.current = 0; }, 600);
+            e.preventDefault();
+            return;
+          }
+          clearTimeout(qwChordTimerRef.current);
+          qwChordStage.current = 0;
+          e.preventDefault();
+          // Find which action has this key assigned
+          for (const [actionKey, assignedKey] of Object.entries(userShortcuts)) {
+            if (assignedKey && assignedKey.toLowerCase() === key) {
+              executeShortcutAction(actionKey);
+              return;
+            }
+          }
+          return;
+        }
+        if (qwChordStage.current === 1 && key === 'w') {
+          // Stage 1->2: W pressed after Q
+          clearTimeout(qwChordTimerRef.current);
+          qwChordStage.current = 2;
+          qwChordTimerRef.current = setTimeout(() => { qwChordStage.current = 0; }, 600);
+          e.preventDefault();
+          return;
+        }
+        if (qwChordStage.current === 1 && key !== 'w') {
+          // Q was pressed but next key is not W — cancel chord and process normally
+          clearTimeout(qwChordTimerRef.current);
+          qwChordStage.current = 0;
+        }
+        if (key === 'q' && qwChordStage.current === 0) {
+          // Stage 0->1: Q pressed
+          qwChordStage.current = 1;
+          qwChordTimerRef.current = setTimeout(() => { qwChordStage.current = 0; }, 600);
+          return; // swallow Q
+        }
+      }
+
+      // --- X-key chord: second key pressed while X is pending ---
+      if (xKeyActiveRef.current && !hasModifier && e.key !== 'x' && e.key !== 'X') {
+        clearTimeout(xKeyPendingRef.current);
+        xKeyActiveRef.current = false;
+        xKeyPendingRef.current = null;
 
         const pressedKey = e.key.toLowerCase();
 
-        // V + S = save active view
-        if (pressedKey === 's') {
+        // X + S or X + Y = save active view
+        if (pressedKey === 's' || pressedKey === 'y') {
           e.preventDefault();
           if (onSaveView) onSaveView();
+          return;
+        }
+
+        // X + ArrowRight = next view, X + ArrowLeft = prev view
+        if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          if (onNextView) onNextView();
+          return;
+        }
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          if (onPrevView) onPrevView();
           return;
         }
 
@@ -478,8 +943,52 @@ export function useDependencyInteraction({
         return;
       }
 
-      if (e.key === "Delete") {
-        // Delete handled by actions hook
+      // Select visible milestones (Ctrl+Shift+M)
+      if (hasModifier && e.shiftKey && key === 'm') {
+        e.preventDefault();
+        executeShortcutAction('selectVisibleMilestones');
+        return;
+      }
+      // Select visible dependencies (Ctrl+Shift+D)
+      if (hasModifier && e.shiftKey && key === 'd') {
+        e.preventDefault();
+        executeShortcutAction('selectVisibleDeps');
+        return;
+      }
+
+      // Select all milestones (Ctrl+M)
+      if (hasModifier && key === 'm') {
+        e.preventDefault();
+        setSelectedMilestones(new Set(Object.keys(milestones).map(Number)));
+        setSelectedConnections([]);
+        playSound('milestoneSelect');
+        return;
+      }
+      // Select all dependencies (Ctrl+D)
+      if (hasModifier && key === 'd') {
+        e.preventDefault();
+        setSelectedConnections([...connections]);
+        setSelectedMilestones(new Set());
+        playSound('milestoneSelect');
+        return;
+      }
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        // Trigger delete for selected milestones/connections
+        if (selectedConnections.length > 0) {
+          setDeleteConfirmModal({
+            connectionId: true,
+            connectionName: 'Dependency',
+            connections: [...selectedConnections],
+          });
+        } else if (selectedMilestones.size > 0) {
+          const milestoneIds = Array.from(selectedMilestones);
+          if (milestoneIds.length === 1) {
+            setDeleteConfirmModal({ milestoneId: milestoneIds[0], milestoneName: 'this milestone' });
+          } else {
+            setDeleteConfirmModal({ milestoneIds });
+          }
+        }
       } else if (e.key === "Escape") {
         setSelectedMilestones(new Set());
         setSelectedConnections([]);
@@ -487,6 +996,18 @@ export function useDependencyInteraction({
         setEditingMilestoneName("");
         setIsAddingMilestone(false);
         playSound('milestoneDeselect');
+      } else if (e.key === 'ArrowLeft' && selectedMilestones.size > 0) {
+        e.preventDefault();
+        handleArrowMoveHorizontal(-1);
+      } else if (e.key === 'ArrowRight' && selectedMilestones.size > 0) {
+        e.preventDefault();
+        handleArrowMoveHorizontal(1);
+      } else if (e.key === 'ArrowUp' && selectedMilestones.size > 0 && refactorMode) {
+        e.preventDefault();
+        handleArrowMoveVertical(-1);
+      } else if (e.key === 'ArrowDown' && selectedMilestones.size > 0 && refactorMode) {
+        e.preventDefault();
+        handleArrowMoveVertical(1);
       } else if (!hasModifier && (e.key === "e" || e.key === "E")) {
         setViewMode("schedule");
         baseViewModeRef.current = "schedule";
@@ -496,16 +1017,34 @@ export function useDependencyInteraction({
         baseViewModeRef.current = "dependency";
         playSound('modeSwitch');
       } else if (!hasModifier && (e.key === "v" || e.key === "V")) {
-        // Start V-key chord: wait briefly for a second key (V+S save, V+<key> load view)
-        vKeyActiveRef.current = true;
-        vKeyPendingRef.current = setTimeout(() => {
-          // No second key pressed — switch to inspection mode
-          vKeyActiveRef.current = false;
-          vKeyPendingRef.current = null;
-          setViewMode("inspection");
-          baseViewModeRef.current = "inspection";
-          playSound('modeSwitch');
-        }, 350);
+        // V = switch to inspection mode (no chord)
+        setViewMode("inspection");
+        baseViewModeRef.current = "inspection";
+        playSound('modeSwitch');
+      } else if (!hasModifier && (e.key === "x" || e.key === "X")) {
+        // Start X-key chord: wait briefly for a second key (X+S save, X+<key> load view)
+        xKeyActiveRef.current = true;
+        xKeyPendingRef.current = setTimeout(() => {
+          xKeyActiveRef.current = false;
+          xKeyPendingRef.current = null;
+        }, 500);
+      } else if (!hasModifier && (e.key === "r" || e.key === "R")) {
+        setRefactorMode(prev => !prev);
+        playSound('refactorToggle');
+      } else if (!hasModifier && (e.key === "s" || e.key === "S")) {
+        // Toggle toolbar
+        setToolbarCollapsed(prev => !prev);
+        playSound('uiClick');
+      } else if (!hasModifier && (e.key === "h" || e.key === "H")) {
+        // Toggle header
+        setHeaderCollapsed(prev => !prev);
+        playSound('uiClick');
+      } else if (!hasModifier && (e.key === "f" || e.key === "F")) {
+        // Focus mode: toggle header + toolbar + fullscreen
+        setHeaderCollapsed(prev => !prev);
+        setToolbarCollapsed(prev => !prev);
+        toggleFullscreen();
+        playSound('uiClick');
       }
     };
     const handleKeyUp = (e) => {
@@ -516,10 +1055,11 @@ export function useDependencyInteraction({
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("keyup", handleKeyUp);
-      // Cleanup pending V-key timer on unmount
-      if (vKeyPendingRef.current) clearTimeout(vKeyPendingRef.current);
+      // Cleanup pending X-key timer on unmount
+      if (xKeyPendingRef.current) clearTimeout(xKeyPendingRef.current);
+      if (qwChordTimerRef.current) clearTimeout(qwChordTimerRef.current);
     };
-  }, [setMode, setViewMode, handleCopy, handlePaste, undo, redo, savedViews, onLoadView, onSaveView]);
+  }, [setMode, setViewMode, handleCopy, handlePaste, undo, redo, savedViews, onLoadView, onSaveView, onNextView, onPrevView, setRefactorMode, setToolbarCollapsed, setHeaderCollapsed, toggleFullscreen, userShortcuts, executeShortcutAction, selectedMilestones, selectedConnections, setDeleteConfirmModal, milestones, connections, setSelectedMilestones, setSelectedConnections, onQuickSaveSnapshot, handleArrowMoveHorizontal, handleArrowMoveVertical, refactorMode]);
 
   // Close team settings when clicking outside
   useEffect(() => {

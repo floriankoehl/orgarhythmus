@@ -32,14 +32,16 @@ import whip2Sound from './whip_2.mp3';
 import settingToneSound from './new/change_any_setting_tone.mp3';
 import refactorModeSound from './new/change_to_refractor_mode.wav';
 import changeViewSound from './new/change_view.wav';
+// import changeViewSound from './new/second_camera.wav';
 import collapseIdeaSound from './new/collapse_idea_container.wav';
 import collapseTeamSound from './new/collapse_team.wav';
-import deletingSound from './new/deleting_anything.wav';
+import deletingSound from './new/delete_perfect.mp3';
 import phaseDropResizeSound from './new/dropping_and_resizing_phase.wav';
 import dropIdeaSound from './new/drop_idea.wav';
 import filterTeamSound from './new/filter_for_team.wav';
 import phaseAddedSound from './new/phase_added.wav';
 import saveViewSound from './new/safe_view.wav';
+import safe_snapshot from './new/second_camera.wav';
 import taskReorderSound from './new/task_reordering.wav';
 import teamReorderSound from './new/team_reordering.wav';
 
@@ -98,6 +100,7 @@ const SOUND_FILES = {
   // ── Views & Snapshots ──
   viewLoad:              changeViewSound,        // saved view loaded
   viewSave:              saveViewSound,          // view saved / created
+  snapshotSave:          safe_snapshot,           // snapshot created / quick-saved
   snapshotRestore:       rewindSound,            // snapshot restored
   undo:                  rewindSound,            // Ctrl+Z undo
 

@@ -132,14 +132,17 @@ export default function DependencyCanvas({
   collapsedTeamPhaseRows = new Set(),
   setCollapsedTeamPhaseRows,
   collapsePhaseRange,
+  focusOnPhase,
   // Layout visibility
   hideGlobalPhases = false,
+  hideDayHeader = false,
 }) {
   const hasPhases = phases.length > 0;
   const globalPhases = phases.filter(p => p.team == null);
   const hasGlobalPhases = globalPhases.length > 0;
   const showGlobalPhases = hasGlobalPhases && !hideGlobalPhases;
-  const totalHeaderHeight = HEADER_HEIGHT + (showGlobalPhases ? PHASE_HEADER_HEIGHT : 0);
+  const showDayHeader = !hideDayHeader;
+  const totalHeaderHeight = (showDayHeader ? HEADER_HEIGHT : 0) + (showGlobalPhases ? PHASE_HEADER_HEIGHT : 0);
   const totalDaysWidth = dayColumnLayout?.totalDaysWidth ?? (days || 0) * DAYWIDTH;
   const totalWidth = TEAMWIDTH + TASKWIDTH + totalDaysWidth;
   return (
@@ -324,8 +327,18 @@ export default function DependencyCanvas({
                     const phaseEndX = endIdx < days
                       ? (dayColumnLayout?.dayXOffset(endIdx) ?? (endIdx * DAYWIDTH))
                       : totalDaysWidth;
-                    const phaseW = phaseEndX - phaseX;
-                    if (phaseW <= 0) return null;
+                    const rawPhaseW = phaseEndX - phaseX;
+                    if (rawPhaseW <= 0) return null;
+
+                    // Check if all days in this phase are collapsed
+                    let allDaysCollapsed = true;
+                    for (let d = phase.start_index; d < endIdx; d++) {
+                      if (!collapsedDays.has(d)) { allDaysCollapsed = false; break; }
+                    }
+                    // Ensure minimum width when all days are collapsed so toggle stays usable
+                    const MIN_COLLAPSED_PHASE_W = 28;
+                    const phaseW = allDaysCollapsed ? Math.max(rawPhaseW, MIN_COLLAPSED_PHASE_W) : rawPhaseW;
+
                     return (
                       <div
                         key={phase.id}
@@ -342,18 +355,25 @@ export default function DependencyCanvas({
                           fontWeight: 600,
                           letterSpacing: '0.02em',
                           borderBottom: '2px solid rgba(0,0,0,0.15)',
+                          zIndex: allDaysCollapsed ? 2 : undefined,
                         }}
-                        title={`${phase.name}${phase.team ? ` (${teams?.[phase.team]?.name || 'Team'})` : ''} — days ${phase.start_index + 1}–${phase.start_index + phase.duration} — double-click to edit, drag to move, drag edges to resize`}
+                        title={`${phase.name}${phase.team ? ` (${teams?.[phase.team]?.name || 'Team'})` : ''} — days ${phase.start_index + 1}–${phase.start_index + phase.duration}${allDaysCollapsed ? ' (collapsed — click chevron to expand)' : ' — double-click to edit, drag to move, drag edges to resize'}`}
                         onMouseDown={(e) => {
                           e.stopPropagation();
-                          if (handlePhaseDrag) handlePhaseDrag(e, phase.id);
+                          if (!allDaysCollapsed && handlePhaseDrag) handlePhaseDrag(e, phase.id);
                         }}
                         onDoubleClick={(e) => {
                           e.stopPropagation();
-                          if (setPhaseEditModal) setPhaseEditModal({ ...phase, mode: 'edit' });
+                          if (allDaysCollapsed) {
+                            // When collapsed, double-click expands the phase
+                            if (collapsePhaseRange) collapsePhaseRange(phase);
+                          } else {
+                            if (setPhaseEditModal) setPhaseEditModal({ ...phase, mode: 'edit' });
+                          }
                         }}
                       >
-                        {/* Left resize handle */}
+                        {/* Left resize handle — hidden when all days collapsed */}
+                        {!allDaysCollapsed && (
                         <div
                           className="absolute left-0 top-0 w-[6px] h-full cursor-col-resize opacity-0 group-hover/phase:opacity-100 transition-opacity z-10"
                           style={{ background: 'linear-gradient(90deg, rgba(255,255,255,0.5), transparent)' }}
@@ -363,14 +383,15 @@ export default function DependencyCanvas({
                             if (handlePhaseEdgeResize) handlePhaseEdgeResize(e, phase.id, 'left');
                           }}
                         />
-                        <span className="truncate px-2 flex items-center gap-1">
-                          {phase.name}
-                          {phase.team != null && <span className="opacity-60 ml-0.5 text-[8px]"> · {teams?.[phase.team]?.name || ''}</span>}
-                          {/* Collapse phase range button - inline with name */}
+                        )}
+                        <span className="truncate px-1 flex items-center gap-0.5">
+                          {!allDaysCollapsed && phase.name}
+                          {!allDaysCollapsed && phase.team != null && <span className="opacity-60 ml-0.5 text-[8px]"> · {teams?.[phase.team]?.name || ''}</span>}
+                          {/* Collapse/expand phase range button */}
                           {collapsePhaseRange && (
                             <span
-                              className="inline-flex items-center opacity-0 group-hover/phase:opacity-100 transition-opacity cursor-pointer flex-shrink-0"
-                              title={`Collapse days ${phase.start_index + 1}–${phase.start_index + phase.duration}`}
+                              className={`inline-flex items-center cursor-pointer flex-shrink-0 transition-opacity ${allDaysCollapsed ? 'opacity-100' : 'opacity-0 group-hover/phase:opacity-100'}`}
+                              title={allDaysCollapsed ? `Expand days ${phase.start_index + 1}–${phase.start_index + phase.duration}` : `Collapse days ${phase.start_index + 1}–${phase.start_index + phase.duration}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 collapsePhaseRange(phase);
@@ -378,13 +399,40 @@ export default function DependencyCanvas({
                               onMouseDown={(e) => e.stopPropagation()}
                             >
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="7 13 12 18 17 13" />
-                                <polyline points="7 6 12 11 17 6" />
+                                {allDaysCollapsed ? (
+                                  <>
+                                    <polyline points="7 11 12 6 17 11" />
+                                    <polyline points="7 18 12 13 17 18" />
+                                  </>
+                                ) : (
+                                  <>
+                                    <polyline points="7 13 12 18 17 13" />
+                                    <polyline points="7 6 12 11 17 6" />
+                                  </>
+                                )}
+                              </svg>
+                            </span>
+                          )}
+                          {/* Focus on phase button (collapse everything else) */}
+                          {focusOnPhase && !allDaysCollapsed && (
+                            <span
+                              className="inline-flex items-center opacity-0 group-hover/phase:opacity-100 transition-opacity cursor-pointer flex-shrink-0"
+                              title={`Focus: collapse all days except ${phase.name}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                focusOnPhase(phase);
+                              }}
+                              onMouseDown={(e) => e.stopPropagation()}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="3" />
+                                <circle cx="12" cy="12" r="8" />
                               </svg>
                             </span>
                           )}
                         </span>
-                        {/* Right resize handle */}
+                        {/* Right resize handle — hidden when all days collapsed */}
+                        {!allDaysCollapsed && (
                         <div
                           className="absolute right-0 top-0 w-[6px] h-full cursor-col-resize opacity-0 group-hover/phase:opacity-100 transition-opacity z-10"
                           style={{ background: 'linear-gradient(270deg, rgba(255,255,255,0.5), transparent)' }}
@@ -394,6 +442,7 @@ export default function DependencyCanvas({
                             if (handlePhaseEdgeResize) handlePhaseEdgeResize(e, phase.id, 'right');
                           }}
                         />
+                        )}
                       </div>
                     );
                   })}
@@ -421,6 +470,7 @@ export default function DependencyCanvas({
             )}
 
             {/* Day header row */}
+            {showDayHeader && (
             <div className="flex" style={{ height: `${HEADER_HEIGHT}px`, position: 'relative', zIndex: 50 }}>
               <div
                 className="flex border-b bg-slate-100 text-sm font-semibold text-slate-700"
@@ -574,6 +624,7 @@ export default function DependencyCanvas({
                 })}
               </div>
             </div>
+            )}
           </div>
 
           <DependencyTeamList
@@ -721,7 +772,7 @@ export default function DependencyCanvas({
                   if (t && t.tasks.includes(targetTaskId) && isTeamCollapsed(tId)) return null;
                 }
                 // Optionally hide dependencies for collapsed (small) tasks
-                if (hideCollapsedDependencies) {
+                if (hideCollapsedDependencies || hideCollapsedMilestones) {
                   const sourceTaskCollapsed = taskDisplaySettings[sourceTaskId]?.size === 'small';
                   const targetTaskCollapsed = taskDisplaySettings[targetTaskId]?.size === 'small';
                   if (sourceTaskCollapsed || targetTaskCollapsed) return null;

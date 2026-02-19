@@ -1,5 +1,29 @@
 import CloseIcon from '@mui/icons-material/Close';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+
+// ── Hook: Enter/Escape key handler for modals ──
+function useModalKeys(isOpen, onConfirm, onCancel) {
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e) => {
+      // Allow Enter from INPUT/SELECT (user is typing a name, Enter confirms).
+      // Skip Enter only from TEXTAREA (multi-line input).
+      if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        if (onConfirm) onConfirm();
+        return;
+      }
+      // Escape always works regardless of focus
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (onCancel) onCancel();
+        return;
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isOpen, onConfirm, onCancel]);
+}
 
 export default function DependencyModals({
   // Day Purpose Modal
@@ -69,12 +93,28 @@ export default function DependencyModals({
   projectStartDate,
   phases,
 }) {
+  // ── Enter key handlers for confirmation modals ──
+  const confirmCreateTeam = useCallback(() => {
+    if (newTeamName?.trim() && handleCreateTeam) handleCreateTeam();
+  }, [newTeamName, handleCreateTeam]);
+  const confirmCreateTask = useCallback(() => {
+    if (newTaskName?.trim() && newTaskTeamId && handleCreateTask) handleCreateTask();
+  }, [newTaskName, newTaskTeamId, handleCreateTask]);
+
+  useModalKeys(!!showCreateTeamModal, confirmCreateTeam, () => { setShowCreateTeamModal(false); setNewTeamName(""); setNewTeamColor("#facc15"); });
+  useModalKeys(!!showCreateTaskModal, confirmCreateTask, () => { setShowCreateTaskModal(false); setNewTaskName(""); setNewTaskTeamId(null); });
+  useModalKeys(!!moveModal, handleConfirmMove, () => setMoveModal(null));
+  useModalKeys(!!milestoneCreateModal, confirmMilestoneCreate, () => setMilestoneCreateModal(null));
+  useModalKeys(!!deleteConfirmModal, handleConfirmDelete, () => setDeleteConfirmModal(null));
+  useModalKeys(!!weakDepModal, () => { if (handleWeakDepConvert) handleWeakDepConvert(weakDepModal); setWeakDepModal(null); }, () => setWeakDepModal(null));
+  useModalKeys(!!suggestionOfferModal, handleSuggestionOfferAccept, () => setSuggestionOfferModal(null));
+
   return (
     <>
       {/* Day Purpose Modal */}
       {dayPurposeModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm modal-backdrop-animate">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4 modal-animate-in">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-slate-900">
                 Set Day Purpose
@@ -200,8 +240,8 @@ export default function DependencyModals({
 
       {/* Create Team Modal */}
       {showCreateTeamModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm modal-backdrop-animate">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4 modal-animate-in">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">Create New Team</h2>
             <div className="space-y-4">
               <div>
@@ -254,8 +294,8 @@ export default function DependencyModals({
 
       {/* Create Task Modal */}
       {showCreateTaskModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm modal-backdrop-animate">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4 modal-animate-in">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">Create New Task</h2>
             <div className="space-y-4">
               <div>
@@ -311,8 +351,8 @@ export default function DependencyModals({
 
       {/* Cross-Team Move Confirmation Modal */}
       {moveModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm modal-backdrop-animate">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4 modal-animate-in">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">Move Task to Different Team?</h2>
             <p className="text-sm text-slate-600 mb-4">
               Are you sure you want to move <strong>"{moveModal.taskName}"</strong> from{" "}
@@ -339,8 +379,8 @@ export default function DependencyModals({
 
       {/* Milestone Creation Confirmation Modal */}
       {milestoneCreateModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm modal-backdrop-animate">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4 modal-animate-in">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">Create Milestone?</h2>
             <p className="text-sm text-slate-600 mb-4">
               Create a new milestone on <strong>Day {milestoneCreateModal.dayIndex + 1}</strong> for task{" "}
@@ -368,8 +408,8 @@ export default function DependencyModals({
 
       {/* Milestone/Connection Delete Confirmation Modal */}
       {deleteConfirmModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm modal-backdrop-animate">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4 modal-animate-in">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">
               Delete {deleteConfirmModal.connectionId ? (deleteConfirmModal.connections?.length > 1 ? 'Connections' : 'Connection') : deleteConfirmModal.milestoneIds ? 'Milestones' : 'Milestone'}?
             </h2>
@@ -404,8 +444,8 @@ export default function DependencyModals({
 
       {/* Weak Dependency Conflict Modal */}
       {weakDepModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm modal-backdrop-animate">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4 modal-animate-in">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-amber-900">
                 Weak Dependency Conflict
@@ -454,8 +494,8 @@ export default function DependencyModals({
 
       {/* Suggestion Offer Modal */}
       {suggestionOfferModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-sm w-full mx-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm modal-backdrop-animate">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-sm w-full mx-4 modal-animate-in">
             <h2 className="text-lg font-semibold text-slate-900 mb-2">
               Timing Constraint Violated
             </h2>
@@ -533,8 +573,8 @@ function ConnectionEditModal({ connectionEditModal, setConnectionEditModal, hand
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm modal-backdrop-animate">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4 modal-animate-in">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-slate-900">
             Edit Dependency
@@ -712,8 +752,8 @@ function PhaseEditModal({ phaseEditModal, setPhaseEditModal, handleCreatePhase, 
   const endDateStr = indexToDateStr(startIndex + duration - 1);
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm modal-backdrop-animate">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4 modal-animate-in">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-slate-900">
             {isEdit ? 'Edit Phase' : 'Create Phase'}

@@ -84,7 +84,18 @@ export async function update_start_index(projectId, milestone_id, index) {
     return answer
 }
 
-
+export async function move_milestone_task(projectId, milestone_id, new_task_id) {
+    const res = await authFetch(`/api/projects/${projectId}/move_milestone_task/`, {
+        method: "PATCH",
+        body: JSON.stringify({
+            milestone_id: milestone_id,
+            new_task_id: new_task_id
+        })
+    })
+    if (!res.ok) throw new Error('Failed to move milestone to new task');
+    const answer = await res.json()
+    return answer
+}
 
 export async function delete_milestone(projectId, milestone_id){
     const res = await authFetch(`/api/projects/${projectId}/delete_milestones/`, {
@@ -472,5 +483,25 @@ export async function rename_snapshot(projectId, snapshotId, { name, description
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || 'Failed to rename snapshot');
     }
+    return await res.json();
+}
+
+
+// ──────────────────────────────────────────────
+// User Shortcuts
+// ──────────────────────────────────────────────
+
+export async function get_user_shortcuts() {
+    const res = await authFetch(`/api/user/shortcuts/`);
+    if (!res.ok) throw new Error('Failed to fetch shortcuts');
+    return await res.json();
+}
+
+export async function save_user_shortcuts(shortcuts) {
+    const res = await authFetch(`/api/user/shortcuts/save/`, {
+        method: 'PUT',
+        body: JSON.stringify({ shortcuts }),
+    });
+    if (!res.ok) throw new Error('Failed to save shortcuts');
     return await res.json();
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { playSound } from '../../assets/sound_registry';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
@@ -24,6 +24,8 @@ import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import CameraAltIcon from '@mui/icons-material/CameraAlt';
 import RestoreIcon from '@mui/icons-material/Restore';
+import KeyboardIcon from '@mui/icons-material/Keyboard';
+import CloseIcon from '@mui/icons-material/Close';
 
 import {
   DEFAULT_TASKHEIGHT_NORMAL,
@@ -146,8 +148,23 @@ export default function DependencyToolbar({
   // Layout visibility
   hideGlobalPhases,
   setHideGlobalPhases,
+  // Sound toggle
+  soundEnabled,
+  setSoundEnabled,
+  // Day header toggle
+  hideDayHeader,
+  setHideDayHeader,
+  // Fullscreen
+  isFullscreen,
+  toggleFullscreen,
+  // State indicators
+  allTasksSmall,
+  allTeamsCollapsed,
   // Popup close signal
   popupCloseSignal = 0,
+  // User shortcuts
+  userShortcuts = {},
+  onSaveShortcuts,
 }) {
   const hasSelection = selectedMilestones?.size > 0 || selectedConnections?.length > 0;
 
@@ -177,6 +194,31 @@ export default function DependencyToolbar({
   const [confirmDeleteSnapshotId, setConfirmDeleteSnapshotId] = useState(null);
   const [renamingSnapshotId, setRenamingSnapshotId] = useState(null);
   const [renameSnapshotText, setRenameSnapshotText] = useState("");
+
+  // ── Shortcuts modal state ──
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  const [editingShortcuts, setEditingShortcuts] = useState({});
+
+  // Enter/Escape key support for shortcuts modal
+  const saveShortcutsAndClose = useCallback(() => {
+    if (onSaveShortcuts) onSaveShortcuts(editingShortcuts);
+    setShowShortcutsModal(false);
+    playSound('settingToggle');
+  }, [editingShortcuts, onSaveShortcuts]);
+
+  useEffect(() => {
+    if (!showShortcutsModal) return;
+    const handler = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        if (e.key === 'Escape') { setShowShortcutsModal(false); }
+        return;
+      }
+      if (e.key === 'Enter') { e.preventDefault(); saveShortcutsAndClose(); }
+      if (e.key === 'Escape') { setShowShortcutsModal(false); }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [showShortcutsModal, saveShortcutsAndClose]);
   
   // Compute how many teams are hidden via teamDisplaySettings
   const filteredTeamCount = teamOrder.filter(tid => teamDisplaySettings[tid]?.hidden).length;
@@ -198,6 +240,7 @@ export default function DependencyToolbar({
   };
 
   return (
+    <>
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex divide-x divide-slate-200">
 
@@ -220,7 +263,7 @@ export default function DependencyToolbar({
                     if (m.isRefactor) { setRefactorMode(!refactorMode); playSound('refactorToggle'); }
                     else { setViewMode(m.key); baseViewModeRef.current = m.key; playSound('modeSwitch'); }
                   }}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md transition ${
+                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md transition btn-press ${
                     isActive
                       ? m.isRefactor
                         ? 'bg-orange-50 text-orange-700 ring-1 ring-orange-300 shadow-sm'
@@ -243,7 +286,7 @@ export default function DependencyToolbar({
           <div className="grid grid-cols-2 gap-1" style={{ width: 130 }}>
             <button
               onClick={(e) => { e.stopPropagation(); setShowCreateTeamModal(true); }}
-              className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+              className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition btn-press"
               title="New team"
             >
               <GroupAddIcon style={{ fontSize: 14 }} />
@@ -256,7 +299,7 @@ export default function DependencyToolbar({
                 if (firstReal) { setNewTaskTeamId(firstReal); setShowCreateTaskModal(true); }
               }}
               disabled={teamOrder.filter(tid => !teams[tid]?._virtual).length === 0}
-              className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition disabled:opacity-40"
+              className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition disabled:opacity-40 btn-press"
               title="New task"
             >
               <PlaylistAddIcon style={{ fontSize: 14 }} />
@@ -264,7 +307,7 @@ export default function DependencyToolbar({
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); setIsAddingMilestone(!isAddingMilestone); }}
-              className={`flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border transition ${
+              className={`flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border transition btn-press ${
                 isAddingMilestone ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
               }`}
               title={isAddingMilestone ? "Click task row to place" : "Add milestone"}
@@ -277,7 +320,7 @@ export default function DependencyToolbar({
                 e.stopPropagation();
                 if (setPhaseEditModal) setPhaseEditModal({ mode: 'create', start_index: 0, duration: 7, name: '', color: '#3b82f6', team: null });
               }}
-              className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+              className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition btn-press"
               title="Add a new phase"
             >
               <ViewTimelineIcon style={{ fontSize: 14 }} />
@@ -307,9 +350,9 @@ export default function DependencyToolbar({
         </div>
 
         {/* ─── COL 3.5: Selected (contextual) ─── */}
-        <div className="p-2.5 flex-shrink-0" style={{ minWidth: 70 }}>
+        <div className="p-2.5 flex-shrink-0" style={{ width: 100 }}>
           <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Selected</h3>
-          <div className="flex flex-wrap gap-1 items-start">
+          <div className="flex flex-col gap-1">
             {/* Show hidden teams */}
             {hiddenTeamCount > 0 && (
               <button
@@ -361,7 +404,7 @@ export default function DependencyToolbar({
 
             {/* Day collapse/expand */}
             {selectedDays?.size > 0 && (
-              <>
+              <div className="flex items-center gap-1">
                 <button
                   onClick={(e) => { e.stopPropagation(); collapseSelectedDays(); }}
                   className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
@@ -377,7 +420,7 @@ export default function DependencyToolbar({
                 >
                   ✕
                 </button>
-              </>
+              </div>
             )}
             {collapsedDays?.size > 0 && (
               <button
@@ -392,7 +435,7 @@ export default function DependencyToolbar({
           </div>
         </div>
 
-        {/* ─── COL 4: Filter ─── */}}
+        {/* ─── COL 4: Filter ─── */}
         <div className="p-2.5 flex-shrink-0" style={{ width: 90 }}>
           <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Filter</h3>
           <div className="relative">
@@ -475,11 +518,13 @@ export default function DependencyToolbar({
             {/* Left sub-column: Tasks + Teams stacked vertically */}
             <div className="flex flex-col gap-1 flex-shrink-0">
               {/* Task rows: collapse / expand */}
-              <div className="flex items-center gap-0.5 rounded-md border border-slate-200 overflow-hidden">
-                <span className="text-[10px] text-slate-400 font-medium px-1.5 bg-slate-50 self-stretch flex items-center">Tasks</span>
+              <div className="flex items-center gap-0.5 rounded-md border border-slate-200 overflow-hidden" style={{ minWidth: 200 }}>
+                <span className="text-[10px] text-slate-400 font-medium px-1.5 bg-slate-50 self-stretch flex items-center" style={{ width: 38 }}>Tasks</span>
                 <button
                   onClick={(e) => { e.stopPropagation(); teamOrder.forEach(tid => { if (isTeamVisible(tid)) setTeamTasksSmall(tid); }); }}
-                  className="flex items-center gap-0.5 px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-50 transition"
+                  className={`flex items-center gap-0.5 px-2 py-1.5 text-xs flex-1 transition ${
+                    allTasksSmall ? 'bg-blue-100 text-blue-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'
+                  }`}
                   title="Collapse all task rows to small size"
                 >
                   <UnfoldLessIcon style={{ fontSize: 14 }} />
@@ -488,7 +533,9 @@ export default function DependencyToolbar({
                 <div className="w-px h-5 bg-slate-200" />
                 <button
                   onClick={(e) => { e.stopPropagation(); teamOrder.forEach(tid => { if (isTeamVisible(tid)) setTeamTasksNormal(tid); }); }}
-                  className="flex items-center gap-0.5 px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-50 transition"
+                  className={`flex items-center gap-0.5 px-2 py-1.5 text-xs flex-1 transition ${
+                    !allTasksSmall ? 'bg-blue-100 text-blue-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'
+                  }`}
                   title="Expand all task rows to normal size"
                 >
                   <UnfoldMoreIcon style={{ fontSize: 14 }} />
@@ -497,11 +544,13 @@ export default function DependencyToolbar({
               </div>
 
               {/* Team rows: fold / unfold */}
-              <div className="flex items-center gap-0.5 rounded-md border border-slate-200 overflow-hidden">
-                <span className="text-[10px] text-slate-400 font-medium px-1.5 bg-slate-50 self-stretch flex items-center">Teams</span>
+              <div className="flex items-center gap-0.5 rounded-md border border-slate-200 overflow-hidden" style={{ minWidth: 200 }}>
+                <span className="text-[10px] text-slate-400 font-medium px-1.5 bg-slate-50 self-stretch flex items-center" style={{ width: 38 }}>Teams</span>
                 <button
                   onClick={(e) => { e.stopPropagation(); collapseAllTeams(); }}
-                  className="flex items-center gap-0.5 px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-50 transition"
+                  className={`flex items-center gap-0.5 px-2 py-1.5 text-xs flex-1 transition ${
+                    allTeamsCollapsed ? 'bg-blue-100 text-blue-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'
+                  }`}
                   title="Fold all teams — hide their task rows"
                 >
                   <UnfoldLessDoubleIcon style={{ fontSize: 14 }} />
@@ -510,7 +559,9 @@ export default function DependencyToolbar({
                 <div className="w-px h-5 bg-slate-200" />
                 <button
                   onClick={(e) => { e.stopPropagation(); expandAllTeams(); }}
-                  className="flex items-center gap-0.5 px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-50 transition"
+                  className={`flex items-center gap-0.5 px-2 py-1.5 text-xs flex-1 transition ${
+                    !allTeamsCollapsed ? 'bg-blue-100 text-blue-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'
+                  }`}
                   title="Unfold all teams — show their task rows"
                 >
                   <UnfoldMoreDoubleIcon style={{ fontSize: 14 }} />
@@ -574,6 +625,18 @@ export default function DependencyToolbar({
               </div>
             </div>
 
+            {/* Shortcuts button */}
+            <div className="flex-shrink-0 self-stretch flex">
+              <button
+                onClick={(e) => { e.stopPropagation(); setEditingShortcuts({ ...userShortcuts }); setShowShortcutsModal(true); }}
+                className="flex flex-col items-center justify-center gap-0.5 px-3 text-xs font-medium rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition"
+                title="Customize keyboard shortcuts"
+              >
+                <KeyboardIcon style={{ fontSize: 18 }} />
+                <span>Shortcuts</span>
+              </button>
+            </div>
+
             {/* Right: Advanced button (tall, like Delete) */}
             <div className="relative flex-shrink-0 self-stretch flex">
               <button
@@ -606,6 +669,26 @@ export default function DependencyToolbar({
                           <span>Show phase colors in grid</span>
                         </label>
                       )}
+                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                        <input type="checkbox" checked={!hideDayHeader} onChange={(e) => { setHideDayHeader(!e.target.checked); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                        <span>Show day header row</span>
+                      </label>
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-3">
+                      <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Sound</h4>
+                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                        <input type="checkbox" checked={soundEnabled} onChange={(e) => { setSoundEnabled(e.target.checked); if (e.target.checked) playSound('settingToggle'); }} className="rounded border-slate-300" />
+                        <span>Enable sounds</span>
+                      </label>
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-3">
+                      <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Display</h4>
+                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                        <input type="checkbox" checked={isFullscreen} onChange={() => { toggleFullscreen(); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                        <span>Fullscreen (F11)</span>
+                      </label>
                     </div>
 
                     <div className="border-t border-slate-100 pt-3">
@@ -713,10 +796,10 @@ export default function DependencyToolbar({
                             <p className="text-[10px] text-slate-500 font-medium">{selectedConnections.length} dependencies selected</p>
                             <div className="flex gap-1">
                               {['strong', 'weak', 'suggestion'].map(w => (
-                                <button key={w} onClick={() => { if (onBulkUpdateConnections) onBulkUpdateConnections({ weight: w }); }} className="flex-1 px-1.5 py-1 text-[10px] rounded border border-slate-200 text-slate-600 hover:bg-slate-50 capitalize transition">{w}</button>
+                                <button key={w} onClick={() => { if (onBulkUpdateConnections) onBulkUpdateConnections(selectedConnections, { weight: w }); }} className="flex-1 px-1.5 py-1 text-[10px] rounded border border-slate-200 text-slate-600 hover:bg-slate-50 capitalize transition">{w}</button>
                               ))}
                             </div>
-                            <form className="flex gap-1" onSubmit={(e) => { e.preventDefault(); const reason = e.target.bulkReason?.value?.trim(); if (reason !== undefined && onBulkUpdateConnections) onBulkUpdateConnections({ reason }); }}>
+                            <form className="flex gap-1" onSubmit={(e) => { e.preventDefault(); const reason = e.target.bulkReason?.value?.trim(); if (reason !== undefined && onBulkUpdateConnections) onBulkUpdateConnections(selectedConnections, { reason }); }}>
                               <input name="bulkReason" type="text" placeholder="Set reason for all…" className="flex-1 text-[10px] border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:border-indigo-400" />
                               <button type="submit" className="px-1.5 py-1 text-[10px] rounded border border-indigo-300 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition">Apply</button>
                             </form>
@@ -784,7 +867,7 @@ export default function DependencyToolbar({
                 className={`p-1 rounded-md border transition ${
                   activeViewId ? 'border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100' : 'border-slate-200 text-slate-300 cursor-not-allowed'
                 }`}
-                title={activeViewId ? `Save "${activeViewName}" (V+S)` : 'Select a view to save'}
+                title={activeViewId ? `Save "${activeViewName}" (X+S / X+Y)` : 'Select a view to save'}
               >
                 <SaveIcon style={{ fontSize: 14 }} />
               </button>
@@ -825,7 +908,7 @@ export default function DependencyToolbar({
                                     if (e.key === 'Backspace' || e.key === 'Delete') { onUpdateViewShortcut(view.id, null); setEditingShortcutViewId(null); return; }
                                     if (e.key.length === 1 && /^[a-z0-9]$/i.test(e.key)) {
                                       const k = e.key.toLowerCase();
-                                      if (['e', 'd', 'v', 's'].includes(k)) return;
+                                      if (['e', 'd', 'x', 's', 'y'].includes(k)) return;
                                       onUpdateViewShortcut(view.id, k);
                                       setEditingShortcutViewId(null);
                                     }
@@ -954,5 +1037,179 @@ export default function DependencyToolbar({
         </div>
       </div>
     </div>
+
+    {/* ─── Shortcuts Modal ─── */}
+    {showShortcutsModal && (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 modal-backdrop-animate" onClick={() => setShowShortcutsModal(false)}>
+        <div className="bg-white rounded-xl shadow-2xl w-[560px] max-h-[85vh] flex flex-col modal-animate-in" onClick={(e) => e.stopPropagation()}>
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-200">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">Keyboard Shortcuts</h2>
+              <p className="text-xs text-slate-500 mt-1">Direct shortcuts and customizable Q → W → key combos.</p>
+            </div>
+            <button onClick={() => setShowShortcutsModal(false)} className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition">
+              <CloseIcon style={{ fontSize: 20 }} />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-5 py-3 space-y-4">
+            {/* ── Section 1: Fixed shortcuts (read-only) ── */}
+            <div>
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Direct Shortcuts</h3>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                {[
+                  { keys: 'E', label: 'Schedule Mode' },
+                  { keys: 'D', label: 'Dependency Mode' },
+                  { keys: 'V', label: 'Inspection Mode' },
+                  { keys: 'R', label: 'Refactor Mode' },
+                  { keys: 'S', label: 'Toggle Toolbar' },
+                  { keys: 'H', label: 'Toggle Header' },
+                  { keys: 'F', label: 'Focus Mode' },
+                  { keys: 'Del / Backspace', label: 'Delete Selected' },
+                  { keys: 'Escape', label: 'Deselect All' },
+                  { keys: 'Ctrl + C', label: 'Copy' },
+                  { keys: 'Ctrl + V', label: 'Paste' },
+                  { keys: 'Ctrl + Z', label: 'Undo' },
+                  { keys: 'Ctrl + Y', label: 'Redo' },
+                  { keys: 'Ctrl + M', label: 'Select All Milestones' },
+                  { keys: 'Ctrl + D', label: 'Select All Dependencies' },
+                  { keys: 'Ctrl+Shift+M', label: 'Select Visible Milestones' },
+                  { keys: 'Ctrl+Shift+D', label: 'Select Visible Dependencies' },
+                  { keys: '← →', label: 'Move Milestone Left/Right' },
+                  { keys: '↑ ↓', label: 'Move to Task Above/Below (R)' },
+                  { keys: 'Q→W→E→R', label: 'Quick-Save Snapshot' },
+                ].map(s => (
+                  <div key={s.keys} className="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-50">
+                    <span className="text-xs text-slate-600">{s.label}</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px] border border-slate-200">{s.keys}</kbd>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Section 2: View shortcuts (read-only) ── */}
+            <div>
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">View Shortcuts</h3>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-50">
+                  <span className="text-xs text-slate-600">Save current view</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px] border border-slate-200">X → S</kbd>
+                </div>
+                <div className="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-50">
+                  <span className="text-xs text-slate-600">Load view by shortcut</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px] border border-slate-200">X → key</kbd>
+                </div>
+                <div className="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-50">
+                  <span className="text-xs text-slate-600">Next view</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px] border border-slate-200">X → →</kbd>
+                </div>
+                <div className="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-50">
+                  <span className="text-xs text-slate-600">Previous view</span>
+                  <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[10px] border border-slate-200">X → ←</kbd>
+                </div>
+                {savedViews.filter(v => v.state?.viewShortcutKey).map(v => (
+                  <div key={v.id} className="flex items-center justify-between py-1 px-2 rounded bg-blue-50/50 ml-4">
+                    <span className="text-xs text-slate-500">{v.name}</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-mono text-[10px] border border-blue-200">X → {v.state.viewShortcutKey.toUpperCase()}</kbd>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Section 3: Customizable Q+W shortcuts ── */}
+            <div>
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Customizable Shortcuts</h3>
+              <p className="text-[11px] text-blue-600 font-medium mb-2">
+                Press <kbd className="px-1 py-0.5 rounded bg-blue-100 text-blue-800 font-mono text-[10px]">Q</kbd> then <kbd className="px-1 py-0.5 rounded bg-blue-100 text-blue-800 font-mono text-[10px]">W</kbd> then your key below.
+              </p>
+              <div className="space-y-0.5">
+                {[
+                  { key: 'dayWidthUp', label: 'Day Width +', description: 'Increase day column width' },
+                  { key: 'dayWidthDown', label: 'Day Width −', description: 'Decrease day column width' },
+                  { key: 'taskHeightUp', label: 'Task Height +', description: 'Increase normal task height' },
+                  { key: 'taskHeightDown', label: 'Task Height −', description: 'Decrease normal task height' },
+                  { key: 'taskHeightSmallUp', label: 'Small Task Height +', description: 'Increase small task height' },
+                  { key: 'taskHeightSmallDown', label: 'Small Task Height −', description: 'Decrease small task height' },
+                  { key: 'toggleDayHeader', label: 'Toggle Day Header', description: 'Show/hide the day header row' },
+                  { key: 'toggleSound', label: 'Toggle Sound', description: 'Enable/disable UI sounds' },
+                  { key: 'toggleFullscreen', label: 'Toggle Fullscreen', description: 'Enter/exit fullscreen' },
+                  { key: 'toggleEmptyTeams', label: 'Toggle Empty Teams', description: 'Show/hide teams with no milestones' },
+                  { key: 'togglePhaseColors', label: 'Toggle Phase Colors', description: 'Show/hide phase colors in grid' },
+                  { key: 'toggleAllDeps', label: 'Toggle All Dependencies', description: 'Show/hide all dependency lines' },
+                  { key: 'toggleCollapsedDeps', label: 'Toggle Collapsed Deps', description: 'Show/hide deps on collapsed teams' },
+                  { key: 'toggleCollapsedMilestones', label: 'Toggle Collapsed MS', description: 'Show/hide milestones on collapsed teams' },
+                  { key: 'toggleExpandedTask', label: 'Toggle Gantt View', description: 'Expanded task / Gantt view' },
+                  { key: 'toggleGlobalPhases', label: 'Toggle Global Phases', description: 'Show/hide global phase header' },
+                  { key: 'toggleAutoSelect', label: 'Toggle Auto-Select', description: 'Auto-select blocking milestones' },
+                  { key: 'collapseAllTeams', label: 'Collapse All Teams', description: 'Collapse every team' },
+                  { key: 'expandAllTeams', label: 'Expand All Teams', description: 'Expand every team' },
+                  { key: 'allTasksSmall', label: 'All Tasks Small', description: 'Set all tasks to small size' },
+                  { key: 'allTasksNormal', label: 'All Tasks Normal', description: 'Set all tasks to normal size' },
+                  { key: 'uncollapseAllDays', label: 'Uncollapse All Days', description: 'Expand all collapsed days' },
+                  { key: 'selectAllMilestones', label: 'Select All Milestones', description: 'Select every milestone' },
+                  { key: 'selectAllDeps', label: 'Select All Dependencies', description: 'Select every dependency' },
+                  { key: 'selectVisibleMilestones', label: 'Select Visible Milestones', description: 'Select displayed milestones only' },
+                  { key: 'selectVisibleDeps', label: 'Select Visible Deps', description: 'Select displayed dependencies only' },
+                ].map(action => {
+                  const currentKey = editingShortcuts[action.key] || '';
+                  return (
+                    <div key={action.key} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-slate-50 group">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-slate-700">{action.label}</div>
+                        <div className="text-[10px] text-slate-400">{action.description}</div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <span className="text-[9px] text-slate-400 font-mono">Q→W→</span>
+                        <input
+                          type="text"
+                          maxLength={1}
+                          value={currentKey}
+                          placeholder="·"
+                          onChange={(e) => {
+                            const val = e.target.value.toLowerCase().slice(-1);
+                            setEditingShortcuts(prev => ({ ...prev, [action.key]: val }));
+                          }}
+                          className="w-8 h-7 text-center text-xs font-mono font-bold border border-slate-300 rounded-md focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 uppercase"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between px-5 py-3 border-t border-slate-200 bg-slate-50 rounded-b-xl">
+            <button
+              onClick={() => setEditingShortcuts({})}
+              className="text-xs text-slate-500 hover:text-slate-700 transition"
+            >
+              Reset All
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowShortcutsModal(false)}
+                className="px-3 py-1.5 text-xs rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (onSaveShortcuts) onSaveShortcuts(editingShortcuts);
+                  setShowShortcutsModal(false);
+                  playSound('settingToggle');
+                }}
+                className="px-4 py-1.5 text-xs rounded-md bg-blue-600 text-white font-medium hover:bg-blue-700 transition"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
   );
 }

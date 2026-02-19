@@ -228,3 +228,41 @@ def rename_milestone(request, project_id):
 
     serializer = MilestoneSerializer_Deps(milestone)
     return Response({"success": True, "data": serializer.data}, status=200)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def move_milestone_task(request, project_id):
+    """
+    Move a milestone to a different task within the same project.
+    Body: { "milestone_id": <id>, "new_task_id": <id> }
+    """
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    milestone_id = request.data.get("milestone_id")
+    new_task_id = request.data.get("new_task_id")
+
+    if not milestone_id or not new_task_id:
+        return Response({"detail": "milestone_id and new_task_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        milestone = Milestone.objects.get(id=milestone_id, project=project)
+    except Milestone.DoesNotExist:
+        return Response({"detail": "Milestone not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        new_task = Task.objects.get(id=int(new_task_id), project=project)
+    except Task.DoesNotExist:
+        return Response({"detail": "Target task not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    milestone.task = new_task
+    milestone.save()
+
+    serializer = MilestoneSerializer_Deps(milestone)
+    return Response({"success": True, "data": serializer.data}, status=200)

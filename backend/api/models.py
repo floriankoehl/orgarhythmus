@@ -406,6 +406,27 @@ class ProjectSnapshot(models.Model):
 
 
 # ═══════════════════════════════════════════════
+#  USER SHORTCUTS (per-user keyboard shortcut mapping)
+# ═══════════════════════════════════════════════
+
+class UserShortcuts(models.Model):
+    """
+    Stores a user's custom keyboard shortcuts as a JSON dict.
+    Each key is an action identifier, value is the single letter key.
+    All shortcuts use the Q+W chord prefix automatically.
+    """
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="shortcuts")
+    shortcuts = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "User shortcuts"
+
+    def __str__(self):
+        return f"Shortcuts for {self.user.username}"
+
+
+# ═══════════════════════════════════════════════
 #  IDEA
 # ═══════════════════════════════════════════════
 

@@ -68,6 +68,7 @@ from .milestones import (
     delete_milestones,
     change_duration,
     rename_milestone,
+    move_milestone_task,
 )
 
 from .dependencies import (
@@ -138,4 +139,9 @@ from .notifications import (
     mark_all_notifications_as_read,
     delete_notification,
     demo_date_view,
+)
+
+from .shortcuts import (
+    get_user_shortcuts,
+    save_user_shortcuts,
 )

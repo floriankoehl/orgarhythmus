@@ -108,6 +108,7 @@ urlpatterns = [
     path("projects/<int:project_id>/delete_milestones/", views.delete_milestones),
     path("projects/<int:project_id>/change_duration/", views.change_duration),
     path("projects/<int:project_id>/rename_milestone/", views.rename_milestone),
+    path("projects/<int:project_id>/move_milestone_task/", views.move_milestone_task),
 
     # Dependencies
     path("projects/<int:project_id>/get_all_dependencies/", views.get_all_dependencies),
@@ -143,6 +144,10 @@ urlpatterns = [
     path("projects/<int:project_id>/snapshots/<int:snapshot_id>/delete/", views.delete_snapshot),
     path("projects/<int:project_id>/snapshots/<int:snapshot_id>/rename/", views.rename_snapshot),
     # _____________________________ END OF NEW ADDING ______________________________
+
+    # User Shortcuts (per-user keyboard shortcut configuration)
+    path("user/shortcuts/", views.get_user_shortcuts, name="get_user_shortcuts"),
+    path("user/shortcuts/save/", views.save_user_shortcuts, name="save_user_shortcuts"),
 ]
 
 
