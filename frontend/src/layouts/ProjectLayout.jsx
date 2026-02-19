@@ -7,7 +7,7 @@ export default function ProjectLayout() {
   const { projectId } = useParams();
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-b from-slate-50 to-slate-100 pt-16">
+    <div className="min-h-screen w-full bg-gradient-to-b from-slate-50 to-slate-100">
       {/* Header always visible */}
       <ProjectHeader projectId={projectId} />
 
