@@ -321,12 +321,38 @@ function DependenciesContent() {
   const applyViewState = useCallback((state) => {
     if (!state) return;
     const d = getDefaultViewState();
-    if (state.taskDisplaySettings) {
-      setTaskDisplaySettings(prev => ({ ...prev, ...state.taskDisplaySettings }));
-    }
-    if (state.teamDisplaySettings) {
-      setTeamDisplaySettings(prev => ({ ...prev, ...state.teamDisplaySettings }));
-    }
+    // Replace (not merge) display settings so that loading a view fully
+    // restores the filter/collapse state it was saved with.
+    // Teams/tasks that exist now but weren't in the saved view default to
+    // visible & uncollapsed / normal-size so nothing is accidentally hidden.
+    const savedTask = state.taskDisplaySettings || {};
+    setTaskDisplaySettings(prev => {
+      const next = {};
+      for (const id of Object.keys(prev)) {
+        next[id] = savedTask[id]
+          ? { ...savedTask[id] }
+          : { size: 'normal', hidden: false };
+      }
+      // Also include entries in the saved state that aren't in prev
+      // (e.g. task existed when view was saved but was since re-created with same id)
+      for (const id of Object.keys(savedTask)) {
+        if (!(id in next)) next[id] = { ...savedTask[id] };
+      }
+      return next;
+    });
+    const savedTeam = state.teamDisplaySettings || {};
+    setTeamDisplaySettings(prev => {
+      const next = {};
+      for (const id of Object.keys(prev)) {
+        next[id] = savedTeam[id]
+          ? { ...savedTeam[id] }
+          : { hidden: false };
+      }
+      for (const id of Object.keys(savedTeam)) {
+        if (!(id in next)) next[id] = { ...savedTeam[id] };
+      }
+      return next;
+    });
     const vm = state.viewMode ?? d.viewMode;
     setViewMode(vm);
     baseViewModeRef.current = vm;

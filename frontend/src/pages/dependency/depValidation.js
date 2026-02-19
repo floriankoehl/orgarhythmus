@@ -3,6 +3,125 @@
 // Portable: can be reused on any future page that needs scheduling validation.
 
 /**
+ * Compute a cascade of milestone pushes caused by resizing/moving a set of
+ * "origin" milestones.  Each origin has a proposed new position.  Any
+ * downstream milestone that would be violated (dependency or same-task
+ * overlap) is pushed forward by the minimum amount needed.  The push
+ * propagates recursively.
+ *
+ * Returns { valid: true, pushes: { milestoneId: newStartIndex, ... } }
+ * or      { valid: false, reason: string }  when a hard deadline blocks.
+ *
+ * "pushes" contains ONLY the milestones that need to move (not the origins).
+ */
+export function computeCascadePush(milestones, tasks, connections, originPositions) {
+  // Working copy of positions: start with current positions for everything,
+  // then overwrite origins with their proposed values.
+  const pos = {}; // milestoneId → { startIndex, duration }
+  for (const [id, m] of Object.entries(milestones)) {
+    pos[id] = { startIndex: m.start_index, duration: m.duration || 1 };
+  }
+  for (const [id, p] of Object.entries(originPositions)) {
+    pos[id] = { startIndex: p.startIndex, duration: p.duration };
+  }
+
+  const originSet = new Set(Object.keys(originPositions).map(String));
+  const pushes = {}; // milestoneId → newStartIndex  (only non-origin milestones)
+
+  // BFS queue: start with every origin.
+  // A milestone can be re-queued if its position changes (pushed further by
+  // a different path).  Guard against infinite loops with an iteration cap.
+  const queue = [...originSet];
+  const MAX_ITERATIONS = Object.keys(milestones).length * 3 + 100;
+  let iterations = 0;
+
+  while (queue.length > 0 && iterations < MAX_ITERATIONS) {
+    iterations++;
+    const currentId = queue.shift();
+
+    const cur = pos[currentId];
+    if (!cur) continue;
+    const curEnd = cur.startIndex + cur.duration - 1;
+
+    // 1) Push successors via outgoing dependencies
+    const outgoing = connections.filter(c => String(c.source) === String(currentId));
+    for (const conn of outgoing) {
+      const targetId = String(conn.target);
+      const tp = pos[targetId];
+      if (!tp) continue;
+
+      // Successor must start AFTER current end (curEnd + 1 at minimum)
+      if (curEnd >= tp.startIndex) {
+        const newStart = curEnd + 1;
+        tp.startIndex = newStart;
+
+        if (!originSet.has(targetId)) {
+          pushes[targetId] = newStart;
+        }
+
+        // Deadline check
+        const targetMs = milestones[targetId];
+        if (targetMs) {
+          const task = tasks[targetMs.task];
+          if (task && task.hard_deadline !== null && task.hard_deadline !== undefined) {
+            const newEnd = newStart + tp.duration - 1;
+            if (newEnd > task.hard_deadline) {
+              return { valid: false, reason: 'hard_deadline', milestoneId: targetId };
+            }
+          }
+        }
+
+        queue.push(targetId);
+      }
+    }
+
+    // 2) Push same-task milestones that overlap with current
+    const currentMs = milestones[currentId];
+    if (currentMs) {
+      const taskId = currentMs.task;
+      const task = tasks[taskId];
+      if (task && task.milestones) {
+        for (const mRef of task.milestones) {
+          const otherId = String(mRef.id);
+          if (otherId === String(currentId)) continue;
+          const op = pos[otherId];
+          if (!op) continue;
+
+          // Does current overlap with other?
+          if (curEnd >= op.startIndex && cur.startIndex <= (op.startIndex + op.duration - 1)) {
+            // Push the other milestone to just after current ends
+            const newStart = curEnd + 1;
+            if (newStart > op.startIndex) {
+              op.startIndex = newStart;
+
+              if (!originSet.has(otherId)) {
+                pushes[otherId] = newStart;
+              }
+
+              // Deadline check
+              const otherMs = milestones[otherId];
+              if (otherMs) {
+                const otherTask = tasks[otherMs.task];
+                if (otherTask && otherTask.hard_deadline !== null && otherTask.hard_deadline !== undefined) {
+                  const newEnd = newStart + op.duration - 1;
+                  if (newEnd > otherTask.hard_deadline) {
+                    return { valid: false, reason: 'hard_deadline', milestoneId: otherId };
+                  }
+                }
+              }
+
+              queue.push(otherId);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return { valid: true, pushes };
+}
+
+/**
  * Check if a milestone would overlap with other milestones in the same task.
  * Returns { valid: true } or { valid: false, overlapping: [...milestoneIds] }
  *

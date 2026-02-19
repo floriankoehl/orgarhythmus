@@ -1077,6 +1077,7 @@ export default function DependencyToolbar({
                   { keys: 'Ctrl+Shift+D', label: 'Select Visible Dependencies' },
                   { keys: '← →', label: 'Move Milestone Left/Right' },
                   { keys: '↑ ↓', label: 'Move to Task Above/Below (R)' },
+                  { keys: 'Alt + Resize', label: 'Cascade Push Blocking' },
                   { keys: 'Q→W→E→R', label: 'Quick-Save Snapshot' },
                 ].map(s => (
                   <div key={s.keys} className="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-50">

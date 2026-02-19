@@ -16,6 +16,7 @@ import {
   validateMultiMilestoneMove,
   checkDeadlineViolation,
   checkMultiDeadlineViolation,
+  computeCascadePush,
 } from './depValidation';
 
 /**
@@ -449,10 +450,12 @@ export function useDependencyMilestones({
       });
     };
 
-    const onMouseUp = async () => {
+    const onMouseUp = async (upEvent) => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
       stopLoopSound('dragLoop');
+
+      const altHeld = upEvent && upEvent.altKey;
 
       // Validate ALL milestones being resized using tracked delta
       const allResizeBlocking = [];
@@ -475,6 +478,135 @@ export function useDependencyMilestones({
           currentDuration = Math.max(1, initial.duration + durationChange);
         }
         resizedPositions[mId] = { startIndex: currentStartIndex, duration: currentDuration };
+      }
+
+      // ── Alt+Resize: cascade push blocking milestones forward ──
+      if (altHeld) {
+        const cascadeResult = computeCascadePush(milestones, tasks, connections, resizedPositions);
+
+        if (!cascadeResult.valid) {
+          // Hard deadline blocks the cascade — revert
+          setMilestones(prev => {
+            const updated = { ...prev };
+            for (const mId of milestonesToResize) {
+              const initial = initialStates[mId];
+              if (initial) {
+                updated[mId] = { ...updated[mId], start_index: initial.startIndex, duration: initial.duration };
+              }
+            }
+            return updated;
+          });
+          addWarning("Cascade blocked: hard deadline", "Pushing milestones forward would exceed a task's hard deadline.");
+          return;
+        }
+
+        // Cascade is valid — apply resized positions + all pushes
+        const pushedIds = Object.keys(cascadeResult.pushes);
+
+        // Capture before-state for undo
+        const allBefore = {};
+        const allAfter = {};
+        for (const mId of milestonesToResize) {
+          const initial = initialStates[mId];
+          const rp = resizedPositions[mId];
+          if (!initial || !rp) continue;
+          allBefore[mId] = { startIndex: initial.startIndex, duration: initial.duration };
+          allAfter[mId] = { startIndex: rp.startIndex, duration: rp.duration, resized: true };
+        }
+        for (const pId of pushedIds) {
+          const m = milestones[pId];
+          if (!m) continue;
+          allBefore[pId] = { startIndex: m.start_index, duration: m.duration || 1 };
+          allAfter[pId] = { startIndex: cascadeResult.pushes[pId], duration: m.duration || 1, resized: false };
+        }
+
+        // Apply to UI
+        setMilestones(prev => {
+          const updated = { ...prev };
+          for (const mId of milestonesToResize) {
+            const rp = resizedPositions[mId];
+            if (rp) {
+              updated[mId] = { ...updated[mId], start_index: rp.startIndex, duration: rp.duration };
+            }
+          }
+          for (const pId of pushedIds) {
+            if (updated[pId]) {
+              updated[pId] = { ...updated[pId], start_index: cascadeResult.pushes[pId] };
+            }
+          }
+          return updated;
+        });
+
+        // Show brief visual feedback for pushed milestones (don't add to selection
+        // — that would contaminate the next resize and cause pushed milestones to
+        // be resized instead of just moved on subsequent Alt+resize operations)
+        if (pushedIds.length > 0) {
+          for (const pId of pushedIds) {
+            showBlockingFeedback(pId, null);
+          }
+          // Keep only the resized milestone(s) selected
+          setSelectedMilestones(new Set(milestonesToResize));
+        }
+
+        playSound('milestoneResize');
+
+        // Save to backend
+        for (const id of Object.keys(allAfter)) {
+          const before = allBefore[id];
+          const after = allAfter[id];
+          if (!before || !after) continue;
+
+          if (after.resized) {
+            const durationChange = after.duration - before.duration;
+            if (durationChange !== 0) {
+              try { await change_duration(projectId, id, durationChange); } catch (err) { console.error("Failed to change duration:", err); }
+            }
+            if (edge === "left" && after.startIndex !== before.startIndex) {
+              try { await update_start_index(projectId, id, after.startIndex); } catch (err) { console.error("Failed to update start index:", err); }
+            }
+          } else {
+            // Pushed milestone — only start_index changed
+            if (after.startIndex !== before.startIndex) {
+              try { await update_start_index(projectId, id, after.startIndex); } catch (err) { console.error("Failed to update start index:", err); }
+            }
+          }
+        }
+
+        pushAction({
+          description: `Alt+Resize: cascade ${milestonesToResize.length} + push ${pushedIds.length} milestone(s)`,
+          undo: async () => {
+            for (const id of Object.keys(allAfter)) {
+              const before = allBefore[id];
+              const after = allAfter[id];
+              if (!before || !after) continue;
+              if (after.resized) {
+                const durationDelta = before.duration - after.duration;
+                if (durationDelta !== 0) await change_duration(projectId, id, durationDelta);
+                if (before.startIndex !== after.startIndex) await update_start_index(projectId, id, before.startIndex);
+              } else {
+                if (before.startIndex !== after.startIndex) await update_start_index(projectId, id, before.startIndex);
+              }
+              setMilestones(prev => ({ ...prev, [id]: { ...prev[id], start_index: before.startIndex, duration: before.duration } }));
+            }
+          },
+          redo: async () => {
+            for (const id of Object.keys(allAfter)) {
+              const before = allBefore[id];
+              const after = allAfter[id];
+              if (!before || !after) continue;
+              if (after.resized) {
+                const durationDelta = after.duration - before.duration;
+                if (durationDelta !== 0) await change_duration(projectId, id, durationDelta);
+                if (before.startIndex !== after.startIndex) await update_start_index(projectId, id, after.startIndex);
+              } else {
+                if (before.startIndex !== after.startIndex) await update_start_index(projectId, id, after.startIndex);
+              }
+              setMilestones(prev => ({ ...prev, [id]: { ...prev[id], start_index: after.startIndex, duration: after.duration } }));
+            }
+          },
+        });
+
+        return; // Alt cascade handled — skip normal validation
       }
 
       for (const mId of milestonesToResize) {
