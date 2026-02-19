@@ -71,6 +71,12 @@ export default function ProjectHeader({}) {
       label: '3D Sandbox',
       icon: <ViewInArIcon fontSize="small" />,
     },
+    {
+      key: 'sandbox2',
+      to: projectId ? `/projects/${projectId}/sandbox2` : '/projects',
+      label: '2D Board',
+      icon: <ViewInArIcon fontSize="small" />,
+    },
   ];
 
   const linkBaseClasses =
