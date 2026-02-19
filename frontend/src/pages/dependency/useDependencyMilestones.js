@@ -638,13 +638,13 @@ export function useDependencyMilestones({
         const initial = initialStates[mId];
         if (!initial) continue;
 
-        const currentM = milestones[mId];
-        if (!currentM) continue;
+        const rp = resizedPositions[mId];
+        if (!rp) continue;
 
         resizeBefore[mId] = { startIndex: initial.startIndex, duration: initial.duration };
-        resizeAfter[mId] = { startIndex: currentM.start_index, duration: currentM.duration };
+        resizeAfter[mId] = { startIndex: rp.startIndex, duration: rp.duration };
 
-        const durationChange = currentM.duration - initial.duration;
+        const durationChange = rp.duration - initial.duration;
         if (durationChange !== 0) {
           try {
             await change_duration(projectId, mId, durationChange);
@@ -653,9 +653,9 @@ export function useDependencyMilestones({
           }
         }
 
-        if (edge === "left" && currentM.start_index !== initial.startIndex) {
+        if (edge === "left" && rp.startIndex !== initial.startIndex) {
           try {
-            await update_start_index(projectId, mId, currentM.start_index);
+            await update_start_index(projectId, mId, rp.startIndex);
           } catch (err) {
             console.error("Failed to update start index:", err);
           }
