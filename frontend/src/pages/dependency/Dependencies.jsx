@@ -361,7 +361,16 @@ function DependenciesContent() {
     } else if (!wantFs && document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps — all deps are stable React state setters
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // All dependencies are stable React state setters (setTaskDisplaySettings,
+  // setTeamDisplaySettings, setViewMode, setMode, setCollapsedDays, setSelectedDays,
+  // setDepSettings, setShowPhaseColorsInGrid, setExpandedTaskView, setHideAllDependencies,
+  // setHideCollapsedDependencies, setHideCollapsedMilestones, setShowEmptyTeams,
+  // setCustomDayWidth, setCustomTaskHeightNormal, setCustomTaskHeightSmall,
+  // setTeamColumnWidth, setTaskColumnWidth, setCollapsedTeamPhaseRows,
+  // setCollapseAllTeamPhases, setAutoSelectBlocking, setWarningDuration,
+  // setRefactorMode, setHideGlobalPhases, setToolbarCollapsed, setHeaderCollapsed,
+  // setSoundEnabled, setHideDayHeader) — guaranteed not to change between renders.
 
   // __ View Management __
   const {
@@ -864,7 +873,7 @@ function DependenciesContent() {
               const mEnd = dayIndex + duration - 1;
               if (dayIndex <= otherEnd && mEnd >= other.start_index) {
                 playSound('error');
-                addWarning('Overlap', 'Cannot move \u2014 milestone would overlap on target task');
+                addWarning('Overlap', 'Cannot move — milestone would overlap on target task');
                 setRefactorGhost(null);
                 return;
               }
@@ -1535,8 +1544,8 @@ function DependenciesContent() {
           style={{ position: "fixed", bottom: 16, left: "50%", transform: "translateX(-50%)", zIndex: 99998 }}
           className="px-4 py-2 rounded-full bg-orange-500 text-white text-xs font-bold shadow-lg animate-pulse flex items-center gap-2"
         >
-          <span>\uD83D\uDD27 Refactor Mode</span>
-          <span className="font-normal opacity-80">\u2014 drag items to IdeaBin or cells</span>
+          <span>🔧 Refactor Mode</span>
+          <span className="font-normal opacity-80">— drag items to IdeaBin or cells</span>
           <button
             onClick={() => { setRefactorMode(false); playSound('refactorToggle'); }}
             className="ml-2 px-2 py-0.5 rounded bg-orange-700 hover:bg-orange-800 text-white text-[10px] font-semibold"

@@ -50,8 +50,10 @@ export function useViewManagement({ projectId, collectViewState, applyViewState 
       })
       .catch(err => console.error('Failed to load views:', err));
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
-  // applyViewState intentionally omitted — it is defined via useCallback in the
-  // parent and is stable; including it would cause an unnecessary second fetch.
+  // `applyViewState` is created with useCallback in the parent (Dependencies.jsx) and
+  // is guaranteed stable for the lifetime of DependenciesContent. Re-running this
+  // effect when it changes would trigger an unnecessary second network request on
+  // every render cycle where the parent rebuilds the callback reference.
 
   // ── Load / switch ──
 

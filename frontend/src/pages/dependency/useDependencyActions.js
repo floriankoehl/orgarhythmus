@@ -694,6 +694,8 @@ export function useDependencyActions({
         const newStart = initial.startIndex + currentDeltaIndex;
         afterPositions[mId] = newStart;
         setMilestones(prev => {
+          // Destructure out `x` — a stale computed display property — so it is
+          // not carried forward to the repositioned milestone.
           const { x, ...rest } = prev[mId]; // eslint-disable-line no-unused-vars
           return { ...prev, [mId]: { ...rest, start_index: newStart } };
         });
