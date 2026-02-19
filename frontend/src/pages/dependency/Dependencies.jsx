@@ -257,7 +257,7 @@ function DependenciesContent() {
     const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', onFsChange);
     return () => document.removeEventListener('fullscreenchange', onFsChange);
-  }, [setIsFullscreen]);
+  }, []);
 
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) {
