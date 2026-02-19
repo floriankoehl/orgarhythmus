@@ -29,6 +29,8 @@ import {
   checkMultiMilestoneOverlap as _checkMultiMilestoneOverlap,
   validateMilestoneMove as _validateMilestoneMove,
   validateMultiMilestoneMove as _validateMultiMilestoneMove,
+  computeCascadePush,
+  checkDeadlineViolation,
 } from './depValidation';
 
 /**
@@ -698,6 +700,129 @@ export function useDependencyInteraction({
     });
   }, [selectedMilestones, milestones, tasks, connections, setMilestones, pushAction, projectId, addWarning, showBlockingFeedback, autoSelectBlocking, setSelectedMilestones, setSelectedConnections, setWeakDepModal]);
 
+  // ── Spread selected milestones: insert 1-day gaps between consecutive ones ──
+  const handleSpreadMilestones = useCallback(async () => {
+    if (selectedMilestones.size < 2) {
+      addWarning('Spread needs selection', 'Select at least 2 milestones to spread.');
+      return;
+    }
+
+    // Gather selected milestones sorted by start_index (ties broken by id)
+    const selected = [];
+    for (const mId of selectedMilestones) {
+      const m = milestones[mId];
+      if (m) selected.push({ id: mId, start_index: m.start_index, duration: m.duration || 1 });
+    }
+    selected.sort((a, b) => a.start_index - b.start_index || a.id - b.id);
+
+    // Compute proposed positions: first milestone stays, each subsequent one
+    // is pushed 1 day further from where it currently sits relative to the
+    // previous milestone.  This allows pressing "+" repeatedly to widen gaps
+    // (1-day, 2-day, 3-day, ...).
+    const proposedPositions = {};
+    proposedPositions[selected[0].id] = { startIndex: selected[0].start_index, duration: selected[0].duration };
+
+    for (let i = 1; i < selected.length; i++) {
+      const prev = selected[i - 1];
+      const ms = selected[i];
+      const prevEnd = (proposedPositions[prev.id]?.startIndex ?? prev.start_index)
+                    + (prev.duration || 1);
+      // Push this milestone so it starts at least 1 day after the (possibly
+      // already-pushed) previous one ends.
+      const newStart = Math.max(ms.start_index + 1, prevEnd + 1);
+      proposedPositions[ms.id] = { startIndex: newStart, duration: ms.duration };
+    }
+
+    // Validate: check deadlines for the moved milestones
+    for (const ms of selected) {
+      const pp = proposedPositions[ms.id];
+      const deadlineResult = checkDeadlineViolation(milestones, tasks, ms.id, pp.startIndex, pp.duration);
+      if (!deadlineResult.valid) {
+        addWarning('Spread blocked: hard deadline', 'Spreading would push a milestone past its task\'s hard deadline.');
+        playSound('blocked');
+        return;
+      }
+    }
+
+    // Use cascade to check if pushing these milestones would violate
+    // any non-selected milestones (deps, overlaps)
+    const cascadeResult = computeCascadePush(milestones, tasks, connections, proposedPositions);
+    if (!cascadeResult.valid) {
+      addWarning('Spread blocked: hard deadline', 'Cascading the spread would exceed a task\'s hard deadline.');
+      playSound('blocked');
+      return;
+    }
+
+    // Check if cascade pushes any non-selected milestones — if so, block
+    const externalPushes = Object.keys(cascadeResult.pushes).filter(id => !selectedMilestones.has(id) && !selectedMilestones.has(Number(id)));
+    if (externalPushes.length > 0) {
+      addWarning('Spread blocked', 'Spreading would push non-selected milestones. Use Alt+Resize for cascade behaviour.');
+      playSound('blocked');
+      return;
+    }
+
+    // Check overlap for each moved milestone against non-selected milestones
+    const excludeIds = new Set(selected.map(s => s.id));
+    for (const ms of selected) {
+      const pp = proposedPositions[ms.id];
+      const overlapResult = _checkMilestoneOverlap(milestones, tasks, ms.id, pp.startIndex, pp.duration, excludeIds);
+      if (!overlapResult.valid) {
+        addWarning('Spread blocked: overlap', 'Spreading would cause milestones to overlap within a task.');
+        playSound('blocked');
+        return;
+      }
+    }
+
+    // All valid — apply
+    const beforePositions = {};
+    const afterPositions = {};
+    for (const ms of selected) {
+      beforePositions[ms.id] = ms.start_index;
+      afterPositions[ms.id] = proposedPositions[ms.id].startIndex;
+    }
+
+    setMilestones(prev => {
+      const updated = { ...prev };
+      for (const ms of selected) {
+        const newStart = afterPositions[ms.id];
+        updated[ms.id] = { ...updated[ms.id], start_index: newStart };
+      }
+      return updated;
+    });
+
+    playSound('milestoneMove');
+
+    // Save to backend
+    for (const ms of selected) {
+      const newStart = afterPositions[ms.id];
+      if (newStart !== beforePositions[ms.id]) {
+        try {
+          await update_start_index(projectId, ms.id, newStart);
+        } catch (err) {
+          console.error('Spread save failed:', err);
+        }
+      }
+    }
+
+    pushAction({
+      description: `Spread ${selected.length} milestone(s)`,
+      undo: async () => {
+        for (const ms of selected) {
+          const oldStart = beforePositions[ms.id];
+          setMilestones(prev => ({ ...prev, [ms.id]: { ...prev[ms.id], start_index: oldStart } }));
+          await update_start_index(projectId, ms.id, oldStart);
+        }
+      },
+      redo: async () => {
+        for (const ms of selected) {
+          const newStart = afterPositions[ms.id];
+          setMilestones(prev => ({ ...prev, [ms.id]: { ...prev[ms.id], start_index: newStart } }));
+          await update_start_index(projectId, ms.id, newStart);
+        }
+      },
+    });
+  }, [selectedMilestones, milestones, tasks, connections, setMilestones, pushAction, projectId, addWarning]);
+
   const handleArrowMoveVertical = useCallback(async (direction) => {
     // direction: -1 (up) or +1 (down) — move milestone to adjacent task
     // Only works in refactor mode, only for a single selected milestone
@@ -1092,6 +1217,12 @@ export function useDependencyInteraction({
         setToolbarCollapsed(prev => !prev);
         toggleFullscreen();
         playSound('uiClick');
+      } else if (e.key === '+' || e.key === '=') {
+        // Spread selected milestones (insert 1-day gaps)
+        if (selectedMilestones.size >= 2) {
+          e.preventDefault();
+          handleSpreadMilestones();
+        }
       }
     };
     const handleKeyUp = (e) => {
@@ -1106,7 +1237,7 @@ export function useDependencyInteraction({
       if (xKeyPendingRef.current) clearTimeout(xKeyPendingRef.current);
       if (qwChordTimerRef.current) clearTimeout(qwChordTimerRef.current);
     };
-  }, [setMode, setViewMode, handleCopy, handlePaste, undo, redo, savedViews, onLoadView, onSaveView, onNextView, onPrevView, setRefactorMode, setToolbarCollapsed, setHeaderCollapsed, toggleFullscreen, userShortcuts, executeShortcutAction, selectedMilestones, selectedConnections, setDeleteConfirmModal, milestones, connections, setSelectedMilestones, setSelectedConnections, onQuickSaveSnapshot, handleArrowMoveHorizontal, handleArrowMoveVertical, refactorMode]);
+  }, [setMode, setViewMode, handleCopy, handlePaste, undo, redo, savedViews, onLoadView, onSaveView, onNextView, onPrevView, setRefactorMode, setToolbarCollapsed, setHeaderCollapsed, toggleFullscreen, userShortcuts, executeShortcutAction, selectedMilestones, selectedConnections, setDeleteConfirmModal, milestones, connections, setSelectedMilestones, setSelectedConnections, onQuickSaveSnapshot, handleArrowMoveHorizontal, handleArrowMoveVertical, refactorMode, handleSpreadMilestones]);
 
   // Close team settings when clicking outside
   useEffect(() => {

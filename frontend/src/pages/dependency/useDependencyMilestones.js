@@ -59,6 +59,7 @@ export function useDependencyMilestones({
     selectedConnections,
     setSelectedConnections,
     autoSelectBlocking,
+    resizeAllSelected,
     setEditingMilestoneId,
     setEditingMilestoneName,
     pushAction,
@@ -403,8 +404,9 @@ export function useDependencyMilestones({
     if (!milestone) return;
 
     // Determine which milestones to resize
+    // Only resize all selected when the setting is enabled
     let milestonesToResize;
-    if (selectedMilestones.has(milestoneId) && selectedMilestones.size > 1) {
+    if (resizeAllSelected && selectedMilestones.has(milestoneId) && selectedMilestones.size > 1) {
       milestonesToResize = Array.from(selectedMilestones);
     } else {
       milestonesToResize = [milestoneId];
@@ -481,14 +483,40 @@ export function useDependencyMilestones({
       }
 
       // ── Alt+Resize: cascade push blocking milestones forward ──
+      // When Alt is held, ONLY resize the single milestone being dragged,
+      // even if multiple milestones are selected.  This prevents co-selected
+      // milestones from having their duration changed and avoids the
+      // "resize-all-simultaneously" bug.
       if (altHeld) {
-        const cascadeResult = computeCascadePush(milestones, tasks, connections, resizedPositions);
+        // Narrow to only the one milestone the user is actually dragging
+        const altResizeIds = [milestoneId];
+        const altResizedPositions = { [milestoneId]: resizedPositions[milestoneId] };
 
-        if (!cascadeResult.valid) {
-          // Hard deadline blocks the cascade — revert
+        // Revert any other co-selected milestones that were moved during
+        // the live mousemove preview back to their original state
+        if (milestonesToResize.length > 1) {
           setMilestones(prev => {
             const updated = { ...prev };
             for (const mId of milestonesToResize) {
+              if (mId === milestoneId) continue;
+              const initial = initialStates[mId];
+              if (initial) {
+                updated[mId] = { ...updated[mId], start_index: initial.startIndex, duration: initial.duration };
+              }
+            }
+            return updated;
+          });
+          // Deselect all others — keep only the resized milestone
+          setSelectedMilestones(new Set([milestoneId]));
+        }
+
+        const cascadeResult = computeCascadePush(milestones, tasks, connections, altResizedPositions);
+
+        if (!cascadeResult.valid) {
+          // Hard deadline blocks the cascade — revert the single resized milestone
+          setMilestones(prev => {
+            const updated = { ...prev };
+            for (const mId of altResizeIds) {
               const initial = initialStates[mId];
               if (initial) {
                 updated[mId] = { ...updated[mId], start_index: initial.startIndex, duration: initial.duration };
@@ -506,9 +534,9 @@ export function useDependencyMilestones({
         // Capture before-state for undo
         const allBefore = {};
         const allAfter = {};
-        for (const mId of milestonesToResize) {
+        for (const mId of altResizeIds) {
           const initial = initialStates[mId];
-          const rp = resizedPositions[mId];
+          const rp = altResizedPositions[mId];
           if (!initial || !rp) continue;
           allBefore[mId] = { startIndex: initial.startIndex, duration: initial.duration };
           allAfter[mId] = { startIndex: rp.startIndex, duration: rp.duration, resized: true };
@@ -523,8 +551,8 @@ export function useDependencyMilestones({
         // Apply to UI
         setMilestones(prev => {
           const updated = { ...prev };
-          for (const mId of milestonesToResize) {
-            const rp = resizedPositions[mId];
+          for (const mId of altResizeIds) {
+            const rp = altResizedPositions[mId];
             if (rp) {
               updated[mId] = { ...updated[mId], start_index: rp.startIndex, duration: rp.duration };
             }
@@ -544,8 +572,8 @@ export function useDependencyMilestones({
           for (const pId of pushedIds) {
             showBlockingFeedback(pId, null);
           }
-          // Keep only the resized milestone(s) selected
-          setSelectedMilestones(new Set(milestonesToResize));
+          // Keep only the resized milestone selected
+          setSelectedMilestones(new Set(altResizeIds));
         }
 
         playSound('milestoneResize');
@@ -573,7 +601,7 @@ export function useDependencyMilestones({
         }
 
         pushAction({
-          description: `Alt+Resize: cascade ${milestonesToResize.length} + push ${pushedIds.length} milestone(s)`,
+          description: `Alt+Resize: cascade ${altResizeIds.length} + push ${pushedIds.length} milestone(s)`,
           undo: async () => {
             for (const id of Object.keys(allAfter)) {
               const before = allBefore[id];

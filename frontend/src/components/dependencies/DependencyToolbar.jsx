@@ -50,6 +50,9 @@ export default function DependencyToolbar({
   // Auto-select
   autoSelectBlocking,
   setAutoSelectBlocking,
+  // Resize behavior
+  resizeAllSelected,
+  setResizeAllSelected,
   // Warning settings
   warningDuration,
   setWarningDuration,
@@ -699,6 +702,10 @@ export default function DependencyToolbar({
                           <span>Auto-select blocking milestones</span>
                         </label>
                         <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input type="checkbox" checked={resizeAllSelected} onChange={(e) => { setResizeAllSelected(e.target.checked); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                          <span>Resize all selected milestones</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                           <input type="checkbox" checked={depSettings.weakDepPrompt !== false} onChange={(e) => { setDepSettings(prev => ({ ...prev, weakDepPrompt: e.target.checked })); playSound('settingToggle'); }} className="rounded border-slate-300" />
                           <span>Ask before blocking weak deps</span>
                         </label>
@@ -1078,6 +1085,7 @@ export default function DependencyToolbar({
                   { keys: '← →', label: 'Move Milestone Left/Right' },
                   { keys: '↑ ↓', label: 'Move to Task Above/Below (R)' },
                   { keys: 'Alt + Resize', label: 'Cascade Push Blocking' },
+                  { keys: '+', label: 'Spread Selected (1-day gap)' },
                   { keys: 'Q→W→E→R', label: 'Quick-Save Snapshot' },
                 ].map(s => (
                   <div key={s.keys} className="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-50">

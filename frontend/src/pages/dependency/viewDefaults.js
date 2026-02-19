@@ -43,6 +43,7 @@ export const DEFAULT_HIDE_COLLAPSED_DEPS       = false;  // hide deps for collap
 export const DEFAULT_HIDE_COLLAPSED_MILESTONES = false;  // hide deps+milestones for collapsed tasks
 export const DEFAULT_SHOW_EMPTY_TEAMS          = true;   // show teams with no tasks
 export const DEFAULT_AUTO_SELECT_BLOCKING      = true;   // auto-select blocking milestones on warning
+export const DEFAULT_RESIZE_ALL_SELECTED        = true;   // resize all selected milestones when one is resized
 export const DEFAULT_REFACTOR_MODE             = false;  // refactor mode off by default
 export const DEFAULT_COLLAPSE_ALL_TEAM_PHASES  = false;  // don't hide team phase rows
 export const DEFAULT_HIDE_GLOBAL_PHASES        = false;  // show global phase header row
@@ -95,6 +96,7 @@ export function getDefaultViewState() {
     collapseAllTeamPhases:   DEFAULT_COLLAPSE_ALL_TEAM_PHASES,
     // Advanced
     autoSelectBlocking:      DEFAULT_AUTO_SELECT_BLOCKING,
+    resizeAllSelected:        DEFAULT_RESIZE_ALL_SELECTED,
     warningDuration:         DEFAULT_WARNING_DURATION,
     refactorMode:            DEFAULT_REFACTOR_MODE,
     // Layout visibility

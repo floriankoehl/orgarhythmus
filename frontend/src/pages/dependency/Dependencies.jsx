@@ -113,6 +113,8 @@ function DependenciesContent() {
     baseViewModeRef,
     autoSelectBlocking,
     setAutoSelectBlocking,
+    resizeAllSelected,
+    setResizeAllSelected,
     warningDuration,
     setWarningDuration,
     editingMilestoneId,
@@ -298,6 +300,7 @@ function DependenciesContent() {
     teamColumnWidth,
     taskColumnWidth,
     autoSelectBlocking,
+    resizeAllSelected,
     warningDuration,
     refactorMode,
     hideGlobalPhases,
@@ -313,7 +316,7 @@ function DependenciesContent() {
     hideCollapsedMilestones, showEmptyTeams, customDayWidth,
     customTaskHeightNormal, customTaskHeightSmall, collapsedTeamPhaseRows,
     collapseAllTeamPhases, teamColumnWidth, taskColumnWidth,
-    autoSelectBlocking, warningDuration, refactorMode,
+    autoSelectBlocking, warningDuration, resizeAllSelected, refactorMode,
     hideGlobalPhases, toolbarCollapsed, headerCollapsed,
     soundEnabled, hideDayHeader, isFullscreen,
   ]);
@@ -321,6 +324,16 @@ function DependenciesContent() {
   const applyViewState = useCallback((state) => {
     if (!state) return;
     const d = getDefaultViewState();
+
+    // Clear transient UI state so view switch starts clean
+    setSelectedMilestones(new Set());
+    setSelectedConnections([]);
+    setIsAddingMilestone(false);
+    setShowFilterDropdown(false);
+    setShowSettingsDropdown(false);
+    setOpenTeamSettings(null);
+    setPopupCloseSignal(c => c + 1);
+
     // Replace (not merge) display settings so that loading a view fully
     // restores the filter/collapse state it was saved with.
     // Teams/tasks that exist now but weren't in the saved view default to
@@ -346,7 +359,7 @@ function DependenciesContent() {
       for (const id of Object.keys(prev)) {
         next[id] = savedTeam[id]
           ? { ...savedTeam[id] }
-          : { hidden: false };
+          : { hidden: false, collapsed: false };
       }
       for (const id of Object.keys(savedTeam)) {
         if (!(id in next)) next[id] = { ...savedTeam[id] };
@@ -374,6 +387,7 @@ function DependenciesContent() {
     setCollapsedTeamPhaseRows(new Set(state.collapsedTeamPhaseRows ?? d.collapsedTeamPhaseRows));
     setCollapseAllTeamPhases(state.collapseAllTeamPhases ?? d.collapseAllTeamPhases);
     setAutoSelectBlocking(state.autoSelectBlocking ?? d.autoSelectBlocking);
+    setResizeAllSelected(state.resizeAllSelected ?? d.resizeAllSelected);
     setWarningDuration(state.warningDuration ?? d.warningDuration);
     setRefactorMode(state.refactorMode ?? d.refactorMode);
     setHideGlobalPhases(state.hideGlobalPhases ?? d.hideGlobalPhases);
@@ -388,13 +402,16 @@ function DependenciesContent() {
       document.exitFullscreen().catch(() => {});
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  // All dependencies are stable React state setters (setTaskDisplaySettings,
-  // setTeamDisplaySettings, setViewMode, setMode, setCollapsedDays, setSelectedDays,
-  // setDepSettings, setShowPhaseColorsInGrid, setExpandedTaskView, setHideAllDependencies,
-  // setHideCollapsedDependencies, setHideCollapsedMilestones, setShowEmptyTeams,
-  // setCustomDayWidth, setCustomTaskHeightNormal, setCustomTaskHeightSmall,
-  // setTeamColumnWidth, setTaskColumnWidth, setCollapsedTeamPhaseRows,
-  // setCollapseAllTeamPhases, setAutoSelectBlocking, setWarningDuration,
+  // All dependencies are stable React state setters (setSelectedMilestones,
+  // setSelectedConnections, setIsAddingMilestone, setShowFilterDropdown,
+  // setShowSettingsDropdown, setOpenTeamSettings, setPopupCloseSignal,
+  // setTaskDisplaySettings, setTeamDisplaySettings, setViewMode, setMode,
+  // setCollapsedDays, setSelectedDays, setDepSettings, setShowPhaseColorsInGrid,
+  // setExpandedTaskView, setHideAllDependencies, setHideCollapsedDependencies,
+  // setHideCollapsedMilestones, setShowEmptyTeams, setCustomDayWidth,
+  // setCustomTaskHeightNormal, setCustomTaskHeightSmall, setTeamColumnWidth,
+  // setTaskColumnWidth, setCollapsedTeamPhaseRows, setCollapseAllTeamPhases,
+  // setAutoSelectBlocking, setResizeAllSelected, setWarningDuration,
   // setRefactorMode, setHideGlobalPhases, setToolbarCollapsed, setHeaderCollapsed,
   // setSoundEnabled, setHideDayHeader) — guaranteed not to change between renders.
 
@@ -1423,6 +1440,8 @@ function DependenciesContent() {
               baseViewModeRef={baseViewModeRef}
               autoSelectBlocking={autoSelectBlocking}
               setAutoSelectBlocking={setAutoSelectBlocking}
+              resizeAllSelected={resizeAllSelected}
+              setResizeAllSelected={setResizeAllSelected}
               warningDuration={warningDuration}
               setWarningDuration={setWarningDuration}
               showSettingsDropdown={showSettingsDropdown}
