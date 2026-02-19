@@ -423,9 +423,153 @@ function SideLabels({ laneLayout, halfLength }) {
   return <>{labels}</>;
 }
 
+// ── Easing helpers ───────────────────────────────────────────────────
+function easeInOutQuart(t) {
+  return t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2;
+}
+
+// ── 2D Dependency-page layout constants (mirrored from layoutMath.js) ─
+const DEP_SIDEBAR_PX = 350;   // TEAMWIDTH(150) + TASKWIDTH(200)
+const DEP_DAY_PX     = 60;    // DEFAULT_DAYWIDTH
+const DEP_ROW_PX     = 32;    // DEFAULT_TASKHEIGHT_NORMAL
+const DEP_HEADER_PX  = 48;    // HEADER_HEIGHT
+
+// ── Intro camera flight ──────────────────────────────────────────────
+//
+// Goal: bird's-eye starting frame has the *exact same proportions*
+// (width × height rectangle) as the 2D Dependency Gantt chart.
+//
+//  1. Compute the 2D chart pixel dimensions (deterministic).
+//  2. Clip to the canvas viewport (handle overflow).
+//  3. Map those proportions to 3D world-space.
+//  4. Derive camera height + XZ offset from perspective math.
+//  5. Sweep to the final 3D angle with easeInOutQuart.
+//
+const INTRO_DURATION = 2.5; // seconds
+
+function CameraIntro({ targetPos, totalDays, laneCount, controlsRef }) {
+  const { camera, size } = useThree();
+  const progress    = useRef(0);
+  const startPos    = useRef(new THREE.Vector3());
+  const startTarget = useRef(new THREE.Vector3());
+  const endPos      = useRef(new THREE.Vector3());
+  const endTarget   = useRef(new THREE.Vector3(0, 0, 0));
+  const done        = useRef(false);
+  const started     = useRef(false);
+
+  useEffect(() => {
+    const canvasW = size.width;
+    const canvasH = size.height;
+    const aspect  = canvasW / canvasH;
+    const FOV     = 45;
+    const tanHalf = Math.tan((FOV * Math.PI) / 360); // tan(fov/2)
+
+    // ── 1. Full 2D chart dimensions (px) ─────────────────────────
+    const chart2dW = DEP_SIDEBAR_PX + totalDays * DEP_DAY_PX;
+    const chart2dH = DEP_HEADER_PX  + laneCount * DEP_ROW_PX;
+
+    // ── 2. Visible portion (clipped to viewport like scroll=0) ───
+    const visW = Math.min(chart2dW, canvasW);
+    const visH = Math.min(chart2dH, canvasH);
+
+    // What fraction of the canvas does the visible chart occupy?
+    const fillX = visW / canvasW;   // 0..1
+    const fillY = visH / canvasH;   // 0..1
+
+    // ── 3. 3D board world-space dimensions ───────────────────────
+    // The board (lanes) maps to the *grid area* of the 2D chart
+    // (everything right of the sidebar and below the header).
+    const boardW = totalDays * UNIT_SIZE;
+    const boardD = laneCount * (LANE_DEPTH + LANE_GAP);
+
+    // Include the 3D side-labels region (≈ sidebar in 2D)
+    const labelsW     = LABEL_OFFSET + 1.0;        // world units for labels
+    const totalWorldW = labelsW + boardW;           // full 3D "chart" width
+    const totalWorldH = boardD + 1.0;               // +1 for day header labels
+
+    // ── 4. Camera height so the visible area matches ─────────────
+    // Perspective camera looking down at height h:
+    //   visibleWorldH = 2·h·tan(fov/2)
+    //   visibleWorldW = visibleWorldH · aspect
+    //
+    // We want: totalWorldW = fillX · visibleWorldW
+    //          totalWorldH = fillY · visibleWorldH
+    //
+    //   h_from_height = totalWorldH / (fillY · 2 · tanHalf)
+    //   h_from_width  = totalWorldW / (fillX · 2 · tanHalf · aspect)
+    //
+    // Use max so both axes fit:
+    const hFromH = totalWorldH / (fillY * 2 * tanHalf);
+    const hFromW = totalWorldW / (fillX * 2 * tanHalf * aspect);
+    const birdH  = Math.max(hFromH, hFromW);
+
+    // ── 5. Camera XZ offset for overflow ─────────────────────────
+    // If the 2D chart overflows, we show from the top-left corner
+    // (equivalent to scroll position = 0).
+    const visWorldH = 2 * birdH * tanHalf;
+    const visWorldW = visWorldH * aspect;
+
+    // Board is centered at (0, 0). Offset to align top-left edge.
+    const boardLeft = -boardW / 2 - labelsW;   // left edge with labels
+    const boardTop  =  boardD / 2 + 0.5;       // front edge (positive Z)
+
+    const overflowX = chart2dW > canvasW;
+    const overflowY = chart2dH > canvasH;
+
+    const camX = overflowX ? (boardLeft + visWorldW / 2) : 0;
+    const camZ = overflowY ? (boardTop  - visWorldH / 2) : 0;
+
+    // ── Set start / end ──────────────────────────────────────────
+    startPos.current.set(camX, birdH, camZ + 0.001);
+    startTarget.current.set(camX, 0, camZ);
+
+    endPos.current.set(targetPos[0], targetPos[1], targetPos[2]);
+    endTarget.current.set(0, 0, 0);
+
+    camera.position.copy(startPos.current);
+    camera.fov = FOV;
+    camera.updateProjectionMatrix();
+    camera.lookAt(startTarget.current.x, 0, startTarget.current.z);
+
+    if (controlsRef.current) {
+      controlsRef.current.target.copy(startTarget.current);
+      controlsRef.current.enabled = false;
+      controlsRef.current.update();
+    }
+
+    started.current = true;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useFrame((_, delta) => {
+    if (done.current || !started.current) return;
+
+    progress.current += delta / INTRO_DURATION;
+    const t = Math.min(progress.current, 1);
+    const e = easeInOutQuart(t);
+
+    // Lerp position
+    camera.position.lerpVectors(startPos.current, endPos.current, e);
+
+    // Lerp look-at target (offset → origin)
+    if (controlsRef.current) {
+      controlsRef.current.target.lerpVectors(startTarget.current, endTarget.current, e);
+      controlsRef.current.update();
+    }
+
+    if (t >= 1) {
+      done.current = true;
+      if (controlsRef.current) {
+        controlsRef.current.enabled = true;
+      }
+    }
+  });
+
+  return null;
+}
+
 // ── Scene ────────────────────────────────────────────────────────────
 
-function Scene({ laneLayout, totalDays, daysList, personas, onMovePersona, cameraMode }) {
+function Scene({ laneLayout, totalDays, daysList, personas, onMovePersona, cameraMode, cameraTarget }) {
   const controlsRef = useRef();
   const { camera, gl } = useThree();
   const ray = useRef(new THREE.Raycaster());
@@ -540,6 +684,14 @@ function Scene({ laneLayout, totalDays, daysList, personas, onMovePersona, camer
         minPolarAngle={0.15}
         minDistance={5}
         maxDistance={120}
+      />
+
+      {/* Intro fly-in animation */}
+      <CameraIntro
+        targetPos={cameraTarget}
+        totalDays={totalDays}
+        laneCount={laneLayout.length}
+        controlsRef={controlsRef}
       />
 
       {lanes}
@@ -836,6 +988,7 @@ export default function Assignment() {
             personas={personas}
             onMovePersona={movePersona}
             cameraMode={cameraMode}
+            cameraTarget={[0, camY, camZ]}
           />
         </Canvas>
       </div>
