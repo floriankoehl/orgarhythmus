@@ -443,6 +443,33 @@ class Idea(models.Model):
         ordering = ["order_index"]
 
 
+# ═══════════════════════════════════════════════
+#  PROTO PERSONA (3D assignment board tokens)
+# ═══════════════════════════════════════════════
+
+class ProtoPersona(models.Model):
+    """
+    A protopersona token placed on the 3D assignment board.
+    Optionally snapped to a milestone.
+    """
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="protopersonas")
+    name = models.CharField(max_length=200)
+    color = models.CharField(max_length=20, default="#f87171")
+    milestone = models.ForeignKey(
+        Milestone, on_delete=models.SET_NULL, null=True, blank=True, related_name="protopersonas"
+    )
+    x = models.FloatField(default=0)
+    z = models.FloatField(default=0)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_protopersonas")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.project.name})"
+
+
 
 
 

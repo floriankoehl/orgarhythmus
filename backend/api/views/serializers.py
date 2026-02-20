@@ -14,6 +14,7 @@ from ..models import (
     Day,
     Phase,
     DependencyView,
+    ProtoPersona,
 )
 
 
@@ -240,6 +241,21 @@ class DependencyViewSerializer(serializers.ModelSerializer):
     def get_created_by_name(self, obj):
         if obj.created_by:
             return obj.created_by.username
+        return None
+
+
+# ProtoPersonaSerializer
+class ProtoPersonaSerializer(serializers.ModelSerializer):
+    milestone_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProtoPersona
+        fields = ["id", "project", "name", "color", "milestone", "milestone_name", "x", "z", "created_by", "created_at"]
+        read_only_fields = ["id", "project", "created_by", "created_at"]
+
+    def get_milestone_name(self, obj):
+        if obj.milestone:
+            return obj.milestone.name
         return None
 
 

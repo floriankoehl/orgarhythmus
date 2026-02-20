@@ -15,6 +15,10 @@ import {
   get_all_milestones,
   get_project_days,
   get_all_phases,
+  get_all_protopersonas,
+  create_protopersona,
+  update_protopersona,
+  delete_protopersona,
 } from '../../api/dependencies_api.js';
 import { useViewManagement } from '../dependency/useViewManagement.js';
 import { getDefaultViewState } from '../dependency/viewDefaults.js';
@@ -393,11 +397,30 @@ export default function AssignmentSecond() {
   useEffect(() => { panYRef.current = panY; }, [panY]);
 
   // ── Protopersonas ──────────────────────────────────────────────
-  // Simple client-side-only persona tokens on the XZ floor.
-  // Each has { id, name, color, x (world X), z (world Z), milestoneId? }.
+  // DB-persisted persona tokens on the XZ floor.
+  // Each has { id (DB id), name, color, x (world X), z (world Z), milestoneId? }.
   const [personas, setPersonas] = useState([]);
+  const [allPersonas, setAllPersonas] = useState([]);  // full DB list (unfiltered)
   const draggingPersona = useRef(null);  // id of persona being dragged
-  const nextPersonaId   = useRef(1);
+
+  // Load protopersonas from DB on mount
+  useEffect(() => {
+    if (!projectId) return;
+    get_all_protopersonas(projectId)
+      .then((data) => {
+        const loaded = (data || []).map((p) => ({
+          id: p.id,
+          name: p.name,
+          color: p.color,
+          x: p.x,
+          z: p.z,
+          milestoneId: p.milestone || null,
+        }));
+        setAllPersonas(loaded);
+        setPersonas(loaded);
+      })
+      .catch((err) => console.error('Failed to load protopersonas:', err));
+  }, [projectId]);
 
   // Board element dimensions (for milestone coordinate mapping)
   // Walk offsetTop/offsetLeft from containerRef up to boardRef to get
@@ -485,19 +508,43 @@ export default function AssignmentSecond() {
   const milestone3DRef = useRef(milestone3D);
   useEffect(() => { milestone3DRef.current = milestone3D; }, [milestone3D]);
 
-  /** Spawn a new persona near the origin */
-  const addPersona = () => {
-    const id = nextPersonaId.current++;
-    const color = PERSONA_COLORS[(id - 1) % PERSONA_COLORS.length];
-    setPersonas((prev) => [
-      ...prev,
-      { id, name: `P${id}`, color, x: (id - 1) * 40 - 60, z: -100, milestoneId: null },
-    ]);
+  /** Spawn a new persona near the origin and persist to DB */
+  const addPersona = async () => {
+    const tempId = Date.now(); // temporary id until DB responds
+    const idx = allPersonas.length;
+    const color = PERSONA_COLORS[idx % PERSONA_COLORS.length];
+    const name = `P${idx + 1}`;
+    const x = idx * 40 - 60;
+    const z = -100;
+
+    // Optimistic local add
+    const tempPersona = { id: tempId, name, color, x, z, milestoneId: null };
+    setPersonas((prev) => [...prev, tempPersona]);
+    setAllPersonas((prev) => [...prev, tempPersona]);
+
+    try {
+      const created = await create_protopersona(projectId, { name, color, x, z, milestone: null });
+      // Replace temp with DB record
+      const dbPersona = { id: created.id, name: created.name, color: created.color, x: created.x, z: created.z, milestoneId: created.milestone || null };
+      setPersonas((prev) => prev.map((p) => (p.id === tempId ? dbPersona : p)));
+      setAllPersonas((prev) => prev.map((p) => (p.id === tempId ? dbPersona : p)));
+    } catch (err) {
+      console.error('Failed to create persona:', err);
+      // Rollback
+      setPersonas((prev) => prev.filter((p) => p.id !== tempId));
+      setAllPersonas((prev) => prev.filter((p) => p.id !== tempId));
+    }
   };
 
-  /** Delete a persona by id */
-  const removePersona = (id) => {
+  /** Delete a persona by id and remove from DB */
+  const removePersona = async (id) => {
     setPersonas((prev) => prev.filter((p) => p.id !== id));
+    setAllPersonas((prev) => prev.filter((p) => p.id !== id));
+    try {
+      await delete_protopersona(projectId, id);
+    } catch (err) {
+      console.error('Failed to delete persona:', err);
+    }
   };
 
   // Perspective-correct screen-to-floor unprojection.
@@ -653,9 +700,22 @@ export default function AssignmentSecond() {
               const idx = countOnMs[nearest.id] || 0;
               const spacing = PERSONA_SIZE + 4;
               const zOffset = idx * spacing;
-              return { ...p, x: nearest.worldX, z: nearest.worldZ + zOffset, milestoneId: nearest.id };
+              const newX = nearest.worldX;
+              const newZ = nearest.worldZ + zOffset;
+              // Persist position + milestone link to DB
+              update_protopersona(projectId, p.id, { x: newX, z: newZ, milestone: nearest.id })
+                .catch((err) => console.error('Failed to update persona:', err));
+              const updated = { ...p, x: newX, z: newZ, milestoneId: nearest.id };
+              // Also update allPersonas to keep them in sync
+              setAllPersonas((all) => all.map((a) => (a.id === pid ? updated : a)));
+              return updated;
             }
-            return { ...p, milestoneId: null };
+            // Unsnapped — persist position with no milestone
+            update_protopersona(projectId, p.id, { x: p.x, z: p.z, milestone: null })
+              .catch((err) => console.error('Failed to update persona:', err));
+            const updated = { ...p, milestoneId: null };
+            setAllPersonas((all) => all.map((a) => (a.id === pid ? updated : a)));
+            return updated;
           });
         });
         return;
