@@ -187,13 +187,25 @@ export function useCamera3D({
         if (!e.shiftKey) {
           const floorPt = screenToFloor(e.clientX, e.clientY);
           const dist = floorPt ? Math.sqrt(floorPt.x * floorPt.x + floorPt.z * floorPt.z) : Infinity;
-          if (floorPt && dist < 5000) {
-            // Store just the world-space pivot and its target screen position.
-            // The orbit handler uses a forward transform (no inverse, no division
-            // by cos(yaw)) to compute pan, so there is no singularity.
+          if (floorPt && dist < 2000) {
+            // Compute initial z4 (depth after rotations) for this anchor.
+            // During orbit we adjust zoom to keep z4 constant, which keeps
+            // the perspective magnification factor f = P/(P-z4) constant,
+            // i.e. the anchor stays the same apparent size (true orbit).
+            const P0  = PERSPECTIVE_DEPTH;
+            const p0  = orbitXRef.current * Math.PI / 180;
+            const y0  = orbitYRef.current * Math.PI / 180;
+            const s0  = cameraScaleRef.current;
+            const zOff0 = zoomRef.current - CAMERA_BASE_DISTANCE + panZRef.current;
+            const sxW0  = floorPt.x * s0;
+            const szW0  = floorPt.z * s0 + zOff0;
+            const z3_0  = sxW0 * Math.sin(y0) + szW0 * Math.cos(y0);
+            const z4_0  = z3_0 * Math.cos(p0);
+
             orbitAnchor.current = {
               worldX: floorPt.x, worldZ: floorPt.z,
               screenX: e.clientX, screenY: e.clientY,
+              z4Init: z4_0,
             };
           } else {
             orbitAnchor.current = null;
@@ -219,8 +231,8 @@ export function useCamera3D({
       lastMouse.current = { x: e.clientX, y: e.clientY };
 
       if (isPanning.current) {
-        panXRef.current += dx;
-        panYRef.current += dy;
+        panXRef.current = Math.max(-3000, Math.min(3000, panXRef.current + dx));
+        panYRef.current = Math.max(-3000, Math.min(3000, panYRef.current + dy));
         setPanX(panXRef.current);
         setPanY(panYRef.current);
       } else {
@@ -234,35 +246,53 @@ export function useCamera3D({
         orbitYRef.current = newOrbitY;
 
         if (anchor) {
-          // ── Pivot-based orbit (singularity-free) ──
-          // Forward-transform the pivot point at the NEW angles to find where
-          // it would appear on screen without pan compensation.  Then set
-          // panX/panY so it lands at its original screen position.
-          //
-          // This uses only multiplication & addition (no 1/cos(yaw) division),
-          // so it is geometrically stable at every yaw including ±90°.
-          // Zoom stays constant — only pan changes during orbit.
-          const { worldX: ax, worldZ: az, screenX: anchorSX, screenY: anchorSY } = anchor;
+          // ── True-distance orbit ──
+          // 1) Adjust zoom so the anchor stays at the SAME depth (z4),
+          //    keeping the perspective magnification factor f constant.
+          // 2) Then compute panX/panY so the anchor stays at its screen position.
+          const { worldX: ax, worldZ: az, screenX: anchorSX, screenY: anchorSY, z4Init } = anchor;
           const P = PERSPECTIVE_DEPTH;
           const pitch = newOrbitX * Math.PI / 180;
           const yaw   = newOrbitY * Math.PI / 180;
           const s   = cameraScaleRef.current;
           const cp  = Math.cos(pitch), sp = Math.sin(pitch);
           const cyw = Math.cos(yaw),  syw = Math.sin(yaw);
-          const zOff = zoomRef.current - CAMERA_BASE_DISTANCE + panZRef.current;
 
-          // World → post-rotation coordinates (stable everywhere)
+          // ── Step 1: zoom compensation ──
+          // z4 = cp * (ax*s*syw + (az*s + zOff)*cyw)
+          // Solve for zOff that keeps z4 = z4Init:
+          //   zOff = (z4Init - cp*s*(ax*syw + az*cyw)) / (cp*cyw)
+          // This has a singularity when |cp*cyw| → 0 (yaw ≈ ±90° or pitch ≈ 90°).
+          // We smoothly fade out the compensation near the singularity.
+          let zOff = zoomRef.current - CAMERA_BASE_DISTANCE + panZRef.current;
+          const cpCyw = cp * cyw;
+          if (Math.abs(cpCyw) > 0.08) {
+            const targetZOff = (z4Init - cp * s * (ax * syw + az * cyw)) / cpCyw;
+            // Smooth blend: full compensation when |cpCyw| > 0.25, zero at 0.08
+            const blend = Math.min(1, (Math.abs(cpCyw) - 0.08) / 0.17);
+            const candidateZOff = zOff * (1 - blend) + targetZOff * blend;
+            // Only apply if the result is reasonable
+            if (Math.abs(candidateZOff) < 3000) {
+              zOff = candidateZOff;
+              zoomRef.current = Math.max(-500, Math.min(3000, zOff + CAMERA_BASE_DISTANCE - panZRef.current));
+              // Recalculate zOff after clamping
+              zOff = zoomRef.current - CAMERA_BASE_DISTANCE + panZRef.current;
+            }
+          }
+
+          // ── Step 2: pan compensation ──
+          // Forward-transform the pivot at the new angles + adjusted zoom
+          // to find where it lands, then set panX/panY to pin it.
           const sxW = ax * s;
           const szW = az * s + zOff;
-          const x4  = sxW * cyw - szW * syw;           // after rotateY
+          const x4  = sxW * cyw - szW * syw;
           const z3  = sxW * syw + szW * cyw;
-          const y4  = z3 * sp;                          // after rotateX
+          const y4  = z3 * sp;
           const z4  = z3 * cp;
 
           const denom = P - z4;
           if (Math.abs(denom) > 1 && denom > 0) {
             const f = P / denom;
-            // Clamp f to avoid pan blow-up when pivot is very close to camera
             if (f < 50) {
               const el = viewportRef.current;
               if (el) {
@@ -276,7 +306,7 @@ export function useCamera3D({
           }
 
           // Hard safety clamps
-          const PAN_LIMIT = 5000;
+          const PAN_LIMIT = 3000;
           panXRef.current = Math.max(-PAN_LIMIT, Math.min(PAN_LIMIT, panXRef.current));
           panYRef.current = Math.max(-PAN_LIMIT, Math.min(PAN_LIMIT, panYRef.current));
         }
@@ -285,6 +315,7 @@ export function useCamera3D({
         setOrbitX(newOrbitX);
         setPanX(panXRef.current);
         setPanY(panYRef.current);
+        setZoom(zoomRef.current);
       }
     };
 
@@ -309,7 +340,7 @@ export function useCamera3D({
       e.preventDefault();
       if (e.shiftKey) {
         // Shift+wheel → navigate along the world Z-axis
-        panZRef.current += e.deltaY * 0.8;
+        panZRef.current = Math.max(-1500, Math.min(1500, panZRef.current + e.deltaY * 0.8));
         setPanZ(panZRef.current);
       } else {
         // Plain wheel → scale zoom anchored at mouse cursor
@@ -322,21 +353,26 @@ export function useCamera3D({
         // Only use anchor if the floor point is at a reasonable distance
         // (avoids wild compensation when the ray grazes the floor at a shallow angle)
         const anchorDist = floorPt ? Math.sqrt(floorPt.x * floorPt.x + floorPt.z * floorPt.z) : Infinity;
-        const useAnchor = floorPt && anchorDist < 5000;
+        const useAnchor = floorPt && anchorDist < 2000;
 
         // Apply new scale
         cameraScaleRef.current = newScale;
 
-        // Compensate pan so the cursor-point stays fixed
+        // Compensate pan so the cursor-point stays fixed.
+        // Cap at f < 4 — at higher f the point is near the camera plane and
+        // the projection is too sensitive for reliable correction.
         if (useAnchor) {
           const projected = worldToScreen(floorPt.x, floorPt.z);
-          // Only compensate when the point is in front of the camera (f > 0)
-          // and at a reasonable perspective depth (f > 0.05)
-          if (projected && projected.f > 0.05) {
+          if (projected && projected.f > 0.1 && projected.f < 4) {
             panXRef.current += (e.clientX - projected.sx) / projected.f;
             panYRef.current += (e.clientY - projected.sy) / projected.f;
           }
         }
+
+        // Hard clamps on pan
+        const PAN_LIMIT = 3000;
+        panXRef.current = Math.max(-PAN_LIMIT, Math.min(PAN_LIMIT, panXRef.current));
+        panYRef.current = Math.max(-PAN_LIMIT, Math.min(PAN_LIMIT, panYRef.current));
 
         setCameraScale(newScale);
         setPanX(panXRef.current);
@@ -416,13 +452,25 @@ export function useCamera3D({
 
   const restoreCamera = useCallback((cam) => {
     if (!cam) return;
-    if (cam.orbitX != null) { orbitXRef.current = cam.orbitX; setOrbitX(cam.orbitX); }
-    if (cam.orbitY != null) { orbitYRef.current = cam.orbitY; setOrbitY(cam.orbitY); }
-    if (cam.panX != null)  { panXRef.current = cam.panX;  setPanX(cam.panX); }
-    if (cam.panY != null)  { panYRef.current = cam.panY;  setPanY(cam.panY); }
-    if (cam.panZ != null)  { panZRef.current = cam.panZ;  setPanZ(cam.panZ); }
-    if (cam.zoom != null)  { zoomRef.current = cam.zoom;  setZoom(cam.zoom); }
-    if (cam.cameraScale != null) { cameraScaleRef.current = cam.cameraScale; setCameraScale(cam.cameraScale); }
+    // Validate & clamp all values to prevent corrupt state from blowing up
+    const clamp = (v, min, max, def) => {
+      if (v == null || !Number.isFinite(v)) return def;
+      return Math.max(min, Math.min(max, v));
+    };
+    const ox = clamp(cam.orbitX, 5, 90, CAMERA_DEFAULT_TILT);
+    const oy = clamp(cam.orbitY, -720, 720, CAMERA_DEFAULT_YAW);
+    const px = clamp(cam.panX, -3000, 3000, 0);
+    const py = clamp(cam.panY, -3000, 3000, 0);
+    const pz = clamp(cam.panZ, -1500, 1500, 0);
+    const zm = clamp(cam.zoom, -500, 3000, CAMERA_DEFAULT_ZOOM);
+    const sc = clamp(cam.cameraScale, CAMERA_SCALE_MIN, CAMERA_SCALE_MAX, CAMERA_DEFAULT_SCALE);
+    orbitXRef.current = ox; setOrbitX(ox);
+    orbitYRef.current = oy; setOrbitY(oy);
+    panXRef.current = px;   setPanX(px);
+    panYRef.current = py;   setPanY(py);
+    panZRef.current = pz;   setPanZ(pz);
+    zoomRef.current = zm;   setZoom(zm);
+    cameraScaleRef.current = sc; setCameraScale(sc);
   }, []);
 
   return {
