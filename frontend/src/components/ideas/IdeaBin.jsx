@@ -52,7 +52,7 @@ function ConfirmModal({ message, onConfirm, onCancel, confirmLabel = "Delete", c
 // ═══════════════════════════════════════════════════════════
 // ═══════════════════  IDEA BIN COMPONENT  ═════════════════
 // ═══════════════════════════════════════════════════════════
-export default function IdeaBin() {
+export default function IdeaBin({ pinned = false }) {
   const { projectId } = useParams();
   const API = `${BASE_URL}/api/projects/${projectId}`;
 
@@ -134,6 +134,7 @@ export default function IdeaBin() {
   const [editingLegendId, setEditingLegendId] = useState(null);
   const [editingLegendName, setEditingLegendName] = useState("");
   const [globalTypeFilter, setGlobalTypeFilter] = useState([]);
+  const [filterMode, setFilterMode] = useState("include"); // "include" | "exclude"
   const [draggingLegend, setDraggingLegend] = useState(null);
   const [hoverIdeaForLegend, setHoverIdeaForLegend] = useState(null);
 
@@ -142,7 +143,17 @@ export default function IdeaBin() {
   const categoryRefs = useRef({});
   const ideaRefs = useRef({});
 
-  const showCategories = windowSize.w >= CATEGORY_THRESHOLD;
+  const showCategories = pinned || windowSize.w >= CATEGORY_THRESHOLD;
+
+  const ideaMatchesFilter = (ideaId) => {
+    if (globalTypeFilter.length === 0) return true;
+    const idea = ideas[ideaId];
+    if (!idea) return false;
+    const matches =
+      (globalTypeFilter.includes("unassigned") && !idea.legend_type_id) ||
+      (idea.legend_type_id && globalTypeFilter.includes(idea.legend_type_id));
+    return filterMode === "exclude" ? !matches : matches;
+  };
 
   // ═══════════════════════════════════════════════════════
   // ═══════════  WINDOW MANAGEMENT  ═══════════════════════
@@ -397,6 +408,10 @@ export default function IdeaBin() {
     });
     const data = await res.json();
     setCategories(prev => ({ ...prev, [id]: { ...prev[id], archived: data.archived } }));
+    if (!data.archived) {
+      // Restoring from archive → bring to front so it appears above all others
+      bring_to_front_category(id);
+    }
     playSound('ideaCategoryArchive');
   };
 
@@ -935,12 +950,12 @@ export default function IdeaBin() {
   // ═══════════════════════════════════════════════════════
 
   useEffect(() => {
-    if (projectId && isOpen) {
+    if (projectId && (isOpen || pinned)) {
       fetch_categories();
       fetch_all_ideas();
       fetch_legend_types();
     }
-  }, [projectId, isOpen]);
+  }, [projectId, isOpen, pinned]);
 
   // Fetch teams & tasks when transform modal opens
   useEffect(() => {
@@ -1277,7 +1292,7 @@ export default function IdeaBin() {
   return (
     <>
       {/* ───── COLLAPSED: Floating icon ───── */}
-      {!isOpen && (
+      {!isOpen && !pinned && (
         <div
           ref={iconRef}
           onMouseDown={handleIconDrag}
@@ -1302,28 +1317,37 @@ export default function IdeaBin() {
         </div>
       )}
 
-      {/* ───── EXPANDED: Floating window ───── */}
-      {isOpen && (
+      {/* ───── EXPANDED: Floating window (or pinned full-size panel) ───── */}
+      {(isOpen || pinned) && (
         <div
           ref={windowRef}
           data-ideabin-window
-          style={{
+          style={!pinned ? {
             position: "fixed",
             left: windowPos.x,
             top: windowPos.y,
             width: windowSize.w,
             height: windowSize.h,
             zIndex: 9980,
+          } : {
+            position: "relative",
+            width: "100%",
+            height: "100%",
           }}
           className="flex flex-col bg-white rounded-lg shadow-2xl border border-gray-300 overflow-hidden select-none"
         >
-          {/* ── Resize edges ── */}
-          <div onMouseDown={(e) => handleEdgeResize(e, "top")} className="absolute top-0 left-2 right-2 h-1.5 cursor-ns-resize z-10" />
-          <div onMouseDown={(e) => handleEdgeResize(e, "bottom")} className="absolute bottom-0 left-2 right-2 h-1.5 cursor-ns-resize z-10" />
-          <div onMouseDown={(e) => handleEdgeResize(e, "left")} className="absolute left-0 top-2 bottom-2 w-1.5 cursor-ew-resize z-10" />
-          <div onMouseDown={(e) => handleEdgeResize(e, "right")} className="absolute right-0 top-2 bottom-2 w-1.5 cursor-ew-resize z-10" />
+          {/* ── Resize edges (floating only) ── */}
+          {!pinned && (
+            <>
+              <div onMouseDown={(e) => handleEdgeResize(e, "top")} className="absolute top-0 left-2 right-2 h-1.5 cursor-ns-resize z-10" />
+              <div onMouseDown={(e) => handleEdgeResize(e, "bottom")} className="absolute bottom-0 left-2 right-2 h-1.5 cursor-ns-resize z-10" />
+              <div onMouseDown={(e) => handleEdgeResize(e, "left")} className="absolute left-0 top-2 bottom-2 w-1.5 cursor-ew-resize z-10" />
+              <div onMouseDown={(e) => handleEdgeResize(e, "right")} className="absolute right-0 top-2 bottom-2 w-1.5 cursor-ew-resize z-10" />
+            </>
+          )}
 
-          {/* ── Title bar ── */}
+          {/* ── Title bar (floating only) ── */}
+          {!pinned && (
           <div
             onMouseDown={handleWindowDrag}
             onDoubleClick={toggleMaximize}
@@ -1360,6 +1384,7 @@ export default function IdeaBin() {
               </button>
             </div>
           </div>
+          )}
 
           {/* ── Content area ── */}
           <div className="flex-1 flex overflow-hidden relative">
@@ -1691,24 +1716,10 @@ export default function IdeaBin() {
                 {/* Idea items for current filter */}
                 {listFilter === "unassigned"
                   ? unassignedOrder
-                      .filter(ideaId => {
-                        if (globalTypeFilter.length === 0) return true;
-                        const idea = ideas[ideaId];
-                        if (!idea) return false;
-                        if (globalTypeFilter.includes("unassigned") && !idea.legend_type_id) return true;
-                        if (idea.legend_type_id && globalTypeFilter.includes(idea.legend_type_id)) return true;
-                        return false;
-                      })
+                      .filter(ideaId => ideaMatchesFilter(ideaId))
                       .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "unassigned" }))
                   : (categoryOrders[listFilter] || [])
-                      .filter(ideaId => {
-                        if (globalTypeFilter.length === 0) return true;
-                        const idea = ideas[ideaId];
-                        if (!idea) return false;
-                        if (globalTypeFilter.includes("unassigned") && !idea.legend_type_id) return true;
-                        if (idea.legend_type_id && globalTypeFilter.includes(idea.legend_type_id)) return true;
-                        return false;
-                      })
+                      .filter(ideaId => ideaMatchesFilter(ideaId))
                       .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: listFilter }))
                 }              </div>
 
@@ -1718,8 +1729,17 @@ export default function IdeaBin() {
                   className="flex items-center justify-between cursor-pointer"
                   onClick={() => setLegendCollapsed(!legendCollapsed)}
                 >
-                  <h3 className="text-[10px] font-semibold text-gray-500">
-                    Legend {globalTypeFilter.length > 0 && <span className="text-blue-500">(filtered)</span>}
+                  <h3 className="text-[10px] font-semibold text-gray-500 flex items-center gap-1">
+                    Legend
+                    {globalTypeFilter.length > 0 && (
+                      <span
+                        onClick={(e) => { e.stopPropagation(); setFilterMode(m => m === "include" ? "exclude" : "include"); }}
+                        className={`cursor-pointer px-1 rounded text-[9px] font-medium ${filterMode === "exclude" ? "bg-red-100 text-red-600" : "bg-blue-100 text-blue-600"}`}
+                        title={filterMode === "exclude" ? "Mode: Exclude selected types — click to switch to Include" : "Mode: Include selected types — click to switch to Exclude"}
+                      >
+                        {filterMode === "exclude" ? "✕ excl." : "✓ incl."}
+                      </span>
+                    )}
                   </h3>
                   <span className="text-gray-400 text-[10px]">{legendCollapsed ? "▲" : "▼"}</span>
                 </div>
@@ -2022,14 +2042,7 @@ export default function IdeaBin() {
                         onMouseDown={e => e.stopPropagation()}
                       >
                         {catIdeas
-                          .filter(ideaId => {
-                            if (globalTypeFilter.length === 0) return true;
-                            const idea = ideas[ideaId];
-                            if (!idea) return false;
-                            if (globalTypeFilter.includes("unassigned") && !idea.legend_type_id) return true;
-                            if (idea.legend_type_id && globalTypeFilter.includes(idea.legend_type_id)) return true;
-                            return false;
-                          })
+                          .filter(ideaId => ideaMatchesFilter(ideaId))
                           .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: catKey }))
                         }
                       </div>
@@ -2048,8 +2061,8 @@ export default function IdeaBin() {
             )}
           </div>
 
-          {/* ── Window resize grip (bottom-right) ── */}
-          {!isMaximized && (
+          {/* ── Window resize grip (bottom-right, floating only) ── */}
+          {!isMaximized && !pinned && (
             <div
               onMouseDown={handleWindowResize}
               className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize z-20 flex items-center justify-center"
