@@ -471,16 +471,16 @@ export default function AssignmentSecond() {
               <div style={{ position: 'absolute', bottom: '8px', right: '8px', color: 'rgba(255,255,255,0.4)', fontSize: '12px', fontFamily: 'monospace' }}>XZ floor</div>
             </div>
 
-            {/* ── The board — HIDDEN for now, use floor + axes to decide placement ── */}
+            {/* ── The board — lies on XZ floor at Y=0, top→−X, bottom→+X ── */}
             <div
               style={{
                 position: 'absolute',
-                top: '50%',
-                left: '50%',
+                top: 0,
+                left: 0,
                 width: 'min(88vw, 1400px)',
-                transform: 'rotateX(90deg) translate(-50%, -50%)',
+                transform: 'rotateY(90deg) rotateX(90deg) translate(-50%, -50%)',
                 transformStyle: 'preserve-3d',
-                display: 'none', /* ← hidden, not deleted */
+                display: 'flex',
                 flexDirection: 'column',
                 borderRadius: '12px',
                 boxShadow: '0 5px 40px rgba(0,0,0,0.6)',
