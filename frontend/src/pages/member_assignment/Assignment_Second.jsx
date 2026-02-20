@@ -42,7 +42,7 @@ import {
   isTaskVisible,
 } from '../dependency/layoutMath.js';
 
-// Local modules
+// 3D engine module
 import {
   PHASE_HEADER_HEIGHT,
   CAMERA_BASE_DISTANCE,
@@ -60,10 +60,11 @@ import {
   getTaskYOffset,
   getTeamRowHeight,
   calcContentHeight,
-} from './assignment3DConstants.js';
-import { useCamera3D } from './useCamera3D.js';
-import { usePersonas } from './usePersonas.js';
-import { ViewsPanel, ToolbarPlaceholder, DayGrid, MilestoneLayer } from './Assignment3DComponents.jsx';
+} from '../../engine3d/constants.js';
+import { useCamera3D } from '../../engine3d/useCamera3D.js';
+import { usePersonas } from '../../engine3d/usePersonas.js';
+import { ViewsPanel, ToolbarPlaceholder, DayGrid, MilestoneLayer } from '../../engine3d/components.jsx';
+import { buildConnectionGeometry } from '../../engine3d/connectionGeometry.js';
 
 // ══════════════════════════════════════════════════════════════════
 // Component
@@ -974,97 +975,57 @@ export default function AssignmentSecond() {
               const tgtMs = milestone3D.find((m) => m.id === conn.target);
               if (!srcMs || !tgtMs) return null;
 
-              // Bezier control points — S-curve matching 2D view
-              const p0x = srcMs.worldX, p0z = srcMs.worldZ;
-              const p3x = tgtMs.worldX, p3z = tgtMs.worldZ;
-              const midZ = (p0z + p3z) / 2;
-              const p1x = p0x, p1z = midZ;
-              const p2x = p3x, p2z = midZ;
-
-              const SEGMENTS = 14;
-              // Ribbon dimensions — wide enough to see from above
-              const ribbonW = conn.weight === 'strong' ? 14 : conn.weight === 'weak' ? 10 : 8;
-              const beamH   = conn.weight === 'strong' ? 4  : conn.weight === 'weak' ? 3  : 2;
-              const liftY = 0.5;
-              const weightColor = conn.weight === 'strong' ? 'rgba(251,146,60,0.92)'
-                : conn.weight === 'weak' ? 'rgba(148,163,184,0.78)'
-                : 'rgba(134,239,172,0.68)';
-              const weightColorDark = conn.weight === 'strong' ? 'rgba(200,110,30,0.82)'
-                : conn.weight === 'weak' ? 'rgba(110,125,150,0.68)'
-                : 'rgba(90,190,120,0.58)';
-
-              // Sample bezier curve
-              const points = [];
-              for (let i = 0; i <= SEGMENTS; i++) {
-                const t = i / SEGMENTS;
-                const u = 1 - t;
-                points.push({
-                  x: u*u*u*p0x + 3*u*u*t*p1x + 3*u*t*t*p2x + t*t*t*p3x,
-                  z: u*u*u*p0z + 3*u*u*t*p1z + 3*u*t*t*p2z + t*t*t*p3z,
-                });
-              }
-
-              const arrowSize = 12;
-              const lastPt = points[points.length - 1];
-              const prevPt = points[points.length - 2];
-              const arrowAngle = Math.atan2(lastPt.z - prevPt.z, lastPt.x - prevPt.x) * (180 / Math.PI);
+              const { segments, lastPt, arrowAngle, arrowSize, ribbonW, beamH, liftY, weightColor, weightColorDark } =
+                buildConnectionGeometry(conn, srcMs, tgtMs);
 
               return (
                 <div key={`dep-${ci}`} style={{ position: 'absolute', top: 0, left: 0, transformStyle: 'preserve-3d', pointerEvents: 'none' }}>
                   {/* Each segment is a 3D plank: top face + 2 side walls (same technique as milestone boxes) */}
-                  {points.slice(0, -1).map((pt, si) => {
-                    const next = points[si + 1];
-                    const dx = next.x - pt.x, dz = next.z - pt.z;
-                    const segLen = Math.sqrt(dx*dx + dz*dz);
-                    if (segLen < 0.1) return null;
-                    const segAngle = Math.atan2(dz, dx) * (180 / Math.PI);
-                    const sw = segLen + 1; // slight overlap to avoid gaps
-                    return (
-                      <div
-                        key={si}
-                        style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          width: `${sw}px`,
-                          height: `${ribbonW}px`,
-                          transform: [
-                            `translateX(${pt.x}px)`,
-                            `translateZ(${pt.z}px)`,
-                            `translateY(-${liftY + beamH}px)`,
-                            'rotateX(-90deg)',
-                            `rotateZ(${-segAngle}deg)`,
-                            `translate(0px, -${ribbonW / 2}px)`,
-                          ].join(' '),
-                          transformOrigin: '0 0',
-                          transformStyle: 'preserve-3d',
-                        }}
-                      >
-                        {/* Top face — visible from above */}
-                        <div style={{
-                          position: 'absolute', left: 0, top: 0,
-                          width: `${sw}px`, height: `${ribbonW}px`,
-                          background: weightColor,
-                        }} />
-                        {/* Front wall — folds down from bottom edge */}
-                        <div style={{
-                          position: 'absolute', left: 0, top: `${ribbonW}px`,
-                          width: `${sw}px`, height: `${beamH}px`,
-                          background: weightColorDark,
-                          transform: 'rotateX(90deg)',
-                          transformOrigin: 'top left',
-                        }} />
-                        {/* Back wall — folds down from top edge */}
-                        <div style={{
-                          position: 'absolute', left: 0, top: 0,
-                          width: `${sw}px`, height: `${beamH}px`,
-                          background: `linear-gradient(180deg, ${weightColor}, ${weightColorDark})`,
-                          transform: 'rotateX(90deg)',
-                          transformOrigin: 'top left',
-                        }} />
-                      </div>
-                    );
-                  })}
+                  {segments.map(({ pt, segAngle, sw }, si) => (
+                    <div
+                      key={si}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: `${sw}px`,
+                        height: `${ribbonW}px`,
+                        transform: [
+                          `translateX(${pt.x}px)`,
+                          `translateZ(${pt.z}px)`,
+                          `translateY(-${liftY + beamH}px)`,
+                          'rotateX(-90deg)',
+                          `rotateZ(${-segAngle}deg)`,
+                          `translate(0px, -${ribbonW / 2}px)`,
+                        ].join(' '),
+                        transformOrigin: '0 0',
+                        transformStyle: 'preserve-3d',
+                      }}
+                    >
+                      {/* Top face — visible from above */}
+                      <div style={{
+                        position: 'absolute', left: 0, top: 0,
+                        width: `${sw}px`, height: `${ribbonW}px`,
+                        background: weightColor,
+                      }} />
+                      {/* Front wall — folds down from bottom edge */}
+                      <div style={{
+                        position: 'absolute', left: 0, top: `${ribbonW}px`,
+                        width: `${sw}px`, height: `${beamH}px`,
+                        background: weightColorDark,
+                        transform: 'rotateX(90deg)',
+                        transformOrigin: 'top left',
+                      }} />
+                      {/* Back wall — folds down from top edge */}
+                      <div style={{
+                        position: 'absolute', left: 0, top: 0,
+                        width: `${sw}px`, height: `${beamH}px`,
+                        background: `linear-gradient(180deg, ${weightColor}, ${weightColorDark})`,
+                        transform: 'rotateX(90deg)',
+                        transformOrigin: 'top left',
+                      }} />
+                    </div>
+                  ))}
                   {/* Arrowhead at target end */}
                   <div style={{
                     position: 'absolute',

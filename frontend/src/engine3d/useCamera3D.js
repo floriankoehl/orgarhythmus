@@ -1,4 +1,4 @@
-// useCamera3D.js — Camera state, input handlers, and screen-to-floor unprojection
+// engine3d/useCamera3D.js — Camera state, input handlers, and screen-to-floor unprojection
 // ═══════════════════════════════════════════════════════════════════
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -12,7 +12,7 @@ import {
   PERSPECTIVE_DEPTH,
   PERSONA_SIZE,
   PERSONA_DRAG_LIFT,
-} from './assignment3DConstants.js';
+} from './constants.js';
 
 /**
  * useCamera3D — manages orbit, pan, zoom/scale state + mouse/wheel input.

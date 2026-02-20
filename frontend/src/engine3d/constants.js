@@ -1,4 +1,4 @@
-// assignment3DConstants.js — Shared constants and layout helpers for the 3D assignment view
+// engine3d/constants.js — Shared constants and layout helpers for the 3D engine
 // ═══════════════════════════════════════════════════════════════════
 
 import {
@@ -16,7 +16,7 @@ import {
   getTaskYOffset as getTaskYOffsetBase,
   isTaskVisible,
   getRawTeamHeight,
-} from '../dependency/layoutMath.js';
+} from '../pages/dependency/layoutMath.js';
 
 // ── Phase header height ──────────────────────────────────────────
 export const PHASE_HEADER_HEIGHT = 26;

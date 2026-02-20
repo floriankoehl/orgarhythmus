@@ -1,9 +1,9 @@
-// Assignment3DComponents.jsx — Sub-components for the 3D assignment view
+// engine3d/components.jsx — Sub-components for the 3D assignment view
 // ═══════════════════════════════════════════════════════════════════
 //
 // Contains: ViewsPanel, ToolbarPlaceholder, DayGrid, MilestoneLayer
-// These are display-only components extracted from Assignment_Second.jsx
-// to reduce file size. No logic changes.
+// These are display-only components for the 3D Gantt scene.
+// No logic changes.
 //
 import { useState, useMemo } from 'react';
 import {
@@ -14,12 +14,12 @@ import {
   getVisibleTasks,
   computeMilestonePixelPositions,
   getContrastTextColor,
-} from '../dependency/layoutMath.js';
+} from '../pages/dependency/layoutMath.js';
 import {
   DEFAULT_DAYWIDTH,
   HEADER_HEIGHT,
-} from '../dependency/layoutMath.js';
-import { getTaskHeight, getTaskYOffset, getTeamRowHeight } from './assignment3DConstants.js';
+} from '../pages/dependency/layoutMath.js';
+import { getTaskHeight, getTaskYOffset, getTeamRowHeight } from './constants.js';
 
 // ══════════════════════════════════════════════════════════════════
 // ViewsPanel — floating view switcher outside the 3D scene

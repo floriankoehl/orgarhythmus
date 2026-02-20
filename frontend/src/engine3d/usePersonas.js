@@ -1,4 +1,4 @@
-// usePersonas.js — Protopersona state, DB CRUD, drag/snap, milestone 3D projection
+// engine3d/usePersonas.js — Protopersona state, DB CRUD, drag/snap, milestone 3D projection
 // ═══════════════════════════════════════════════════════════════════
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import {
@@ -6,18 +6,18 @@ import {
   create_protopersona,
   update_protopersona,
   delete_protopersona,
-} from '../../api/dependencies_api.js';
+} from '../api/dependencies_api.js';
 import {
   DEFAULT_TASKHEIGHT_NORMAL,
   DEFAULT_TASKHEIGHT_SMALL,
-} from '../dependency/layoutMath.js';
-import { computeMilestonePixelPositions } from '../dependency/layoutMath.js';
+} from '../pages/dependency/layoutMath.js';
+import { computeMilestonePixelPositions } from '../pages/dependency/layoutMath.js';
 import {
   PERSONA_SIZE,
   SNAP_RADIUS,
   SCROLL_Y_PAD,
   PERSONA_COLORS,
-} from './assignment3DConstants.js';
+} from './constants.js';
 
 /**
  * usePersonas — manages protopersona tokens: DB persistence, drag/snap,
