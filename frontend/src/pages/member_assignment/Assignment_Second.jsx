@@ -1329,6 +1329,120 @@ export default function AssignmentSecond() {
               );
             })}
 
+            {/* ── Sticky team labels (counteract panZ so names stay visible while scrolling days) ── */}
+            {floorLayout.teams.map((teamSlab) => {
+              const team = teamSlab.team;
+              const teamColor = team?.color || '#94a3b8';
+              const teamName = team?.name || '';
+              const slabXLen = Math.abs(teamSlab.worldXEnd - teamSlab.worldXStart);
+              const slabZLen = Math.abs(teamSlab.nameWorldZEnd - teamSlab.nameWorldZStart);
+              const slabXCenter = (teamSlab.worldXStart + teamSlab.worldXEnd) / 2;
+              const slabZCenter = (teamSlab.nameWorldZStart + teamSlab.nameWorldZEnd) / 2;
+              // Counteract panZ: the parent Layer 3 has translateZ(... + panZ) and scale(cs),
+              // so offsetting by -panZ/cs keeps this label at a fixed camera-Z regardless of panZ.
+              const stickyZ = slabZCenter - panZ / cameraScale;
+              const textColor = getContrastTextColor(teamColor);
+              const labelElevation = 45; // above team slabs (20), tasks (10), milestones (8)
+
+              if (slabXLen < 1 || slabZLen < 1) return null;
+              return (
+                <div
+                  key={`team-sticky-${teamSlab.teamId}`}
+                  style={{
+                    position: 'absolute', top: 0, left: 0,
+                    width: `${slabZLen}px`, height: `${slabXLen}px`,
+                    transform: [
+                      `translateX(${slabXCenter}px)`,
+                      `translateZ(${stickyZ}px)`,
+                      `translateY(-${labelElevation}px)`,
+                      'rotateX(-90deg)', 'rotateZ(-90deg)',
+                      `translate(-${slabZLen / 2}px, -${slabXLen / 2}px)`,
+                    ].join(' '),
+                    transformOrigin: '0 0',
+                    transformStyle: 'preserve-3d',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  <div style={{
+                    position: 'absolute', top: 0, left: 0,
+                    width: `${slabZLen}px`, height: `${slabXLen}px`,
+                    background: teamColor, opacity: 0.85,
+                    border: `2px solid ${teamColor}`,
+                    borderRadius: '3px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    overflow: 'hidden',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
+                  }}>
+                    <span style={{
+                      fontSize: '10px', fontWeight: 700, color: textColor,
+                      fontFamily: 'sans-serif', whiteSpace: 'nowrap',
+                      overflow: 'hidden', textOverflow: 'ellipsis',
+                      maxWidth: '100%', padding: '0 4px',
+                      transform: 'scaleX(-1)',
+                    }}>{teamName}</span>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* ── Sticky task labels (counteract panZ so names stay visible while scrolling days) ── */}
+            {floorLayout.teams.flatMap((teamSlab) =>
+              teamSlab.tasks.map((taskSlab) => {
+                const team = teamSlab.team;
+                const teamColor = team?.color || '#94a3b8';
+                const taskObj = tasks[taskSlab.taskId];
+                const taskName = taskObj?.name || '';
+                const slabXLen = Math.abs(taskSlab.worldXEnd - taskSlab.worldXStart);
+                const slabZLen = Math.abs(taskSlab.nameWorldZEnd - taskSlab.nameWorldZStart);
+                const slabXCenter = (taskSlab.worldXStart + taskSlab.worldXEnd) / 2;
+                const slabZCenter = (taskSlab.nameWorldZStart + taskSlab.nameWorldZEnd) / 2;
+                const stickyZ = slabZCenter - panZ / cameraScale;
+                const bgColor = lightenColor(teamColor, 0.35);
+                const textColor = getContrastTextColor(bgColor);
+                const labelElevation = 45;
+
+                if (slabXLen < 1 || slabZLen < 1) return null;
+                return (
+                  <div
+                    key={`task-sticky-${taskSlab.taskId}`}
+                    style={{
+                      position: 'absolute', top: 0, left: 0,
+                      width: `${slabZLen}px`, height: `${slabXLen}px`,
+                      transform: [
+                        `translateX(${slabXCenter}px)`,
+                        `translateZ(${stickyZ}px)`,
+                        `translateY(-${labelElevation}px)`,
+                        'rotateX(-90deg)', 'rotateZ(-90deg)',
+                        `translate(-${slabZLen / 2}px, -${slabXLen / 2}px)`,
+                      ].join(' '),
+                      transformOrigin: '0 0',
+                      transformStyle: 'preserve-3d',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    <div style={{
+                      position: 'absolute', top: 0, left: 0,
+                      width: `${slabZLen}px`, height: `${slabXLen}px`,
+                      background: bgColor, opacity: 0.85,
+                      border: `2px solid ${teamColor}`,
+                      borderRadius: '3px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      overflow: 'hidden',
+                      boxShadow: '0 1px 6px rgba(0,0,0,0.2)',
+                    }}>
+                      <span style={{
+                        fontSize: '8px', fontWeight: 600, color: textColor,
+                        fontFamily: 'sans-serif', whiteSpace: 'nowrap',
+                        overflow: 'hidden', textOverflow: 'ellipsis',
+                        maxWidth: '100%', padding: '0 3px',
+                        transform: 'scaleX(-1)',
+                      }}>{taskName}</span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+
             {/* ── Milestone dependency bezier curves (3D ribbon planks) ── */}
             {connections.map((conn, ci) => {
               const srcMs = milestone3D.find((m) => m.id === conn.source);
