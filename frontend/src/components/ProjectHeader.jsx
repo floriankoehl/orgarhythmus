@@ -11,6 +11,7 @@ import { useNotifications } from '../auth/NotificationContext';
 import NumbersIcon from '@mui/icons-material/Numbers';
 import { PanelsTopLeft, Bell } from 'lucide-react';
 import ScheduleIcon from '@mui/icons-material/Schedule';
+import ViewInArIcon from '@mui/icons-material/ViewInAr';
 import NotificationsPanel from './NotificationsPanel';
 import DemoDateDisplay from './DemoDateDisplay';
 import ModelTrainingIcon from '@mui/icons-material/ModelTraining';
@@ -63,6 +64,18 @@ export default function ProjectHeader({}) {
       to: projectId ? `/projects/${projectId}/calender` : '/projects', // fallback
       label: 'Calender',
       icon: <ScheduleIcon fontSize="small" />,
+    },
+    {
+      key: 'sandbox',
+      to: projectId ? `/projects/${projectId}/sandbox` : '/projects',
+      label: '3D Sandbox',
+      icon: <ViewInArIcon fontSize="small" />,
+    },
+    {
+      key: 'sandbox2',
+      to: projectId ? `/projects/${projectId}/sandbox2` : '/projects',
+      label: '2D Board',
+      icon: <ViewInArIcon fontSize="small" />,
     },
   ];
 

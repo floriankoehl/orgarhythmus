@@ -171,19 +171,6 @@ export function useViewManagement({ projectId, collectViewState, applyViewState 
     }
   }, [projectId]);
 
-  const handleUpdateViewShortcut = useCallback(async (viewId, key) => {
-    const view = savedViews.find(v => v.id === viewId);
-    if (!view) return;
-    try {
-      const newState = { ...(view.state || {}), viewShortcutKey: key || null };
-      const updated = await update_view(projectId, viewId, { state: newState });
-      setSavedViews(prev => prev.map(v => (v.id === viewId ? { ...v, ...updated } : v)));
-      playSound('uiClick');
-    } catch (err) {
-      console.error('Failed to update view shortcut:', err);
-    }
-  }, [projectId, savedViews]);
-
   return {
     savedViews,
     setSavedViews,
@@ -201,6 +188,5 @@ export function useViewManagement({ projectId, collectViewState, applyViewState 
     handleRenameView,
     handleDeleteView,
     handleSetDefaultView,
-    handleUpdateViewShortcut,
   };
 }

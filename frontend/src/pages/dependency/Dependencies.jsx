@@ -435,8 +435,31 @@ function DependenciesContent() {
     handleRenameView,
     handleDeleteView,
     handleSetDefaultView,
-    handleUpdateViewShortcut,
   } = useViewManagement({ projectId, collectViewState, applyViewState });
+
+  // __ Per-user view shortcuts (derived from userShortcuts._viewShortcuts) __
+  const viewShortcuts = useMemo(() => {
+    return userShortcuts?._viewShortcuts?.[projectId] || {};
+  }, [userShortcuts, projectId]);
+
+  const handleUpdateViewShortcut = useCallback((viewId, keys) => {
+    // keys = null (remove), ["a"] (one key), or ["a", "b"] (two keys)
+    setUserShortcuts(prev => {
+      const next = { ...prev };
+      const projectMap = { ...(next._viewShortcuts || {}) };
+      const viewMap = { ...(projectMap[projectId] || {}) };
+      if (!keys || keys.length === 0) {
+        delete viewMap[viewId];
+      } else {
+        viewMap[viewId] = keys;
+      }
+      projectMap[projectId] = viewMap;
+      next._viewShortcuts = projectMap;
+      save_user_shortcuts(next).catch(() => {});
+      return next;
+    });
+    playSound('uiClick');
+  }, [projectId]);
 
   // __ Snapshot Management __
   const {
@@ -737,6 +760,7 @@ function DependenciesContent() {
     getTeamPhaseRowHeight,
     layoutConstants,
     savedViews,
+    viewShortcuts,
     onLoadView: handleLoadView,
     onSaveView: handleSaveView,
     onNextView: handleNextView,
@@ -1521,6 +1545,7 @@ function DependenciesContent() {
               onDeleteView={handleDeleteView}
               onSetDefaultView={handleSetDefaultView}
               onUpdateViewShortcut={handleUpdateViewShortcut}
+              viewShortcuts={viewShortcuts}
               snapshots={snapshots}
               snapshotsLoading={snapshotsLoading}
               onCreateSnapshot={handleCreateSnapshot}

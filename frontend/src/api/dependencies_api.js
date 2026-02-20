@@ -505,3 +505,40 @@ export async function save_user_shortcuts(shortcuts) {
     if (!res.ok) throw new Error('Failed to save shortcuts');
     return await res.json();
 }
+
+
+// ──────────────────────────────────────────────
+// ProtoPersonas (3D Gantt figures)
+// ──────────────────────────────────────────────
+
+export async function get_all_protopersonas(projectId) {
+    const res = await authFetch(`/api/projects/${projectId}/protopersonas/`);
+    if (!res.ok) throw new Error('Failed to fetch protopersonas');
+    return await res.json();
+}
+
+export async function create_protopersona(projectId, data) {
+    const res = await authFetch(`/api/projects/${projectId}/protopersonas/create/`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Failed to create protopersona');
+    return await res.json();
+}
+
+export async function update_protopersona(projectId, personaId, data) {
+    const res = await authFetch(`/api/projects/${projectId}/protopersonas/${personaId}/`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Failed to update protopersona');
+    return await res.json();
+}
+
+export async function delete_protopersona(projectId, personaId) {
+    const res = await authFetch(`/api/projects/${projectId}/protopersonas/${personaId}/delete/`, {
+        method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to delete protopersona');
+    return await res.json();
+}

@@ -14,6 +14,7 @@ from ..models import (
     Day,
     Phase,
     DependencyView,
+    ProtoPersona,
 )
 
 
@@ -246,6 +247,14 @@ class DependencyViewSerializer(serializers.ModelSerializer):
 # _____________________________ END OF NEW ADDING ______________________________
 # _____________________________ END OF NEW ADDING ______________________________
 # _____________________________ END OF NEW ADDING ______________________________
+
+
+# ProtoPersonaSerializer
+class ProtoPersonaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProtoPersona
+        fields = ["id", "project", "task", "name", "color", "hair_color", "day_index", "order_index"]
+        read_only_fields = ["id", "project"]
 
 
 

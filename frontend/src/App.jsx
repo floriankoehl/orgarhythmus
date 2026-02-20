@@ -22,6 +22,8 @@ import TaskDetail from './pages/detail/TaskDetail.jsx';
 import Calendar from './pages/general/Calender.jsx';
 import Ideas from './pages/general/Ideas.jsx';
 import Dependencies from './pages/dependency/Dependencies';
+import Assignment from './pages/member_assignment/Assignment.jsx';
+import AssignmentSecond from './pages/member_assignment/Assignment_Second.jsx';
 
 const router = createBrowserRouter([
   {
@@ -48,6 +50,8 @@ const router = createBrowserRouter([
           { path: 'tasks/:taskId', element: <TaskDetail /> },
           { path: 'dependencies', element: <Dependencies /> },
           { path: 'calender', element: <Calendar /> },
+          { path: 'sandbox', element: <Assignment /> },
+          { path: 'sandbox2', element: <AssignmentSecond /> },
         ],
       },
     ],

@@ -95,6 +95,7 @@ export function useDependencyInteraction({
 
   // Views (for keyboard shortcuts: X + key)
   savedViews = [],
+  viewShortcuts = {},
   onLoadView,
   onSaveView,
   onNextView,
@@ -463,9 +464,11 @@ export function useDependencyInteraction({
   // ________Global Keyboard Listener___________
   // ________________________________________
 
-  // Ref for X-key chord: X + <key> = load view with that shortcut
+  // Ref for X-key chord: X + <key> (+ optional <key2>) = load view with that shortcut
   const xKeyPendingRef = useRef(null); // holds timeout ID when X is pressed
   const xKeyActiveRef = useRef(false); // true while waiting for the second key
+  const xChordFirstKeyRef = useRef(null); // stores first key for 2-key view shortcuts
+  const xChordTimerRef = useRef(null); // timeout for waiting for optional second key
 
   // Ref for Q+W chord: Q -> W -> <key> = trigger custom shortcut
   const qwChordStage = useRef(0); // 0=idle, 1=Q pressed, 2=Q+W pressed, 3=Q+W+E pressed (snapshot chord)
@@ -1048,6 +1051,39 @@ export function useDependencyInteraction({
         }
       }
 
+      // --- X-key chord: waiting for optional second key of a 2-key shortcut ---
+      if (xChordFirstKeyRef.current && !hasModifier && e.key !== 'x' && e.key !== 'X') {
+        const firstKey = xChordFirstKeyRef.current;
+        clearTimeout(xChordTimerRef.current);
+        xChordFirstKeyRef.current = null;
+        xChordTimerRef.current = null;
+
+        const secondKey = e.key.toLowerCase();
+        // Look for a 2-key shortcut matching [firstKey, secondKey]
+        for (const [viewId, keys] of Object.entries(viewShortcuts)) {
+          if (keys.length === 2 && keys[0] === firstKey && keys[1] === secondKey) {
+            const matchingView = savedViews.find(v => String(v.id) === String(viewId));
+            if (matchingView && onLoadView) {
+              e.preventDefault();
+              onLoadView(matchingView);
+            }
+            return;
+          }
+        }
+        // No 2-key match — try single-key match with firstKey (fallback)
+        for (const [viewId, keys] of Object.entries(viewShortcuts)) {
+          if (keys.length === 1 && keys[0] === firstKey) {
+            const matchingView = savedViews.find(v => String(v.id) === String(viewId));
+            if (matchingView && onLoadView) {
+              e.preventDefault();
+              onLoadView(matchingView);
+            }
+            return;
+          }
+        }
+        return;
+      }
+
       // --- X-key chord: second key pressed while X is pending ---
       if (xKeyActiveRef.current && !hasModifier && e.key !== 'x' && e.key !== 'X') {
         clearTimeout(xKeyPendingRef.current);
@@ -1082,11 +1118,45 @@ export function useDependencyInteraction({
           return;
         }
 
-        // Find a view whose shortcut matches
-        const matchingView = savedViews.find(v => v.state?.viewShortcutKey === pressedKey);
-        if (matchingView && onLoadView) {
+        // Check if any 2-key shortcut starts with this key
+        const hasTwoKeyMatch = Object.entries(viewShortcuts).some(
+          ([, keys]) => keys.length === 2 && keys[0] === pressedKey
+        );
+
+        if (hasTwoKeyMatch) {
+          // Wait for optional second key
           e.preventDefault();
-          onLoadView(matchingView);
+          xChordFirstKeyRef.current = pressedKey;
+          xChordTimerRef.current = setTimeout(() => {
+            // Timeout: check if there's a single-key match to fire
+            for (const [viewId, keys] of Object.entries(viewShortcuts)) {
+              if (keys.length === 1 && keys[0] === pressedKey) {
+                const matchingView = savedViews.find(v => String(v.id) === String(viewId));
+                if (matchingView && onLoadView) onLoadView(matchingView);
+                break;
+              }
+            }
+            xChordFirstKeyRef.current = null;
+            xChordTimerRef.current = null;
+          }, 500);
+          return;
+        }
+
+        // No 2-key shortcuts start with this key — try direct single-key match
+        for (const [viewId, keys] of Object.entries(viewShortcuts)) {
+          if (keys.length === 1 && keys[0] === pressedKey) {
+            const matchingView = savedViews.find(v => String(v.id) === String(viewId));
+            if (matchingView && onLoadView) {
+              e.preventDefault();
+              onLoadView(matchingView);
+            }
+            return;
+          }
+          // Also match 2-key shortcuts that have this as the only key typed
+          if (keys.length === 2 && keys[0] === pressedKey) {
+            // Already handled above (hasTwoKeyMatch branch)
+            return;
+          }
         }
         return;
       }
@@ -1235,9 +1305,10 @@ export function useDependencyInteraction({
       document.removeEventListener("keyup", handleKeyUp);
       // Cleanup pending X-key timer on unmount
       if (xKeyPendingRef.current) clearTimeout(xKeyPendingRef.current);
+      if (xChordTimerRef.current) clearTimeout(xChordTimerRef.current);
       if (qwChordTimerRef.current) clearTimeout(qwChordTimerRef.current);
     };
-  }, [setMode, setViewMode, handleCopy, handlePaste, undo, redo, savedViews, onLoadView, onSaveView, onNextView, onPrevView, setRefactorMode, setToolbarCollapsed, setHeaderCollapsed, toggleFullscreen, userShortcuts, executeShortcutAction, selectedMilestones, selectedConnections, setDeleteConfirmModal, milestones, connections, setSelectedMilestones, setSelectedConnections, onQuickSaveSnapshot, handleArrowMoveHorizontal, handleArrowMoveVertical, refactorMode, handleSpreadMilestones]);
+  }, [setMode, setViewMode, handleCopy, handlePaste, undo, redo, savedViews, viewShortcuts, onLoadView, onSaveView, onNextView, onPrevView, setRefactorMode, setToolbarCollapsed, setHeaderCollapsed, toggleFullscreen, userShortcuts, executeShortcutAction, selectedMilestones, selectedConnections, setDeleteConfirmModal, milestones, connections, setSelectedMilestones, setSelectedConnections, onQuickSaveSnapshot, handleArrowMoveHorizontal, handleArrowMoveVertical, refactorMode, handleSpreadMilestones]);
 
   // Close team settings when clicking outside
   useEffect(() => {
