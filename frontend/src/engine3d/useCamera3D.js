@@ -60,6 +60,11 @@ export function useCamera3D({
   const panYRef = useRef(panY);
   const panZRef = useRef(panZ);
 
+  // Orbit anchor — captured once when orbit drag starts (middle-click).
+  // Stores the world-space pivot point and its initial perspective depth
+  // so the camera orbits at constant distance (no zoom drift).
+  const orbitAnchor = useRef(null);
+
   // ── Screen-to-plane unprojection ────────────────────────────────
   /** Cast ray from camera through screen point (sx, sy) onto a horizontal
    *  plane at height planeY above Y=0.  Returns { x, z } in world space,
@@ -178,6 +183,29 @@ export function useCamera3D({
         isDragging.current = true;
         isPanning.current  = e.shiftKey;
         lastMouse.current  = { x: e.clientX, y: e.clientY };
+        // Capture orbit anchor at drag start (orbit mode only, not pan)
+        if (!e.shiftKey) {
+          const floorPt = screenToFloor(e.clientX, e.clientY);
+          const dist = floorPt ? Math.sqrt(floorPt.x * floorPt.x + floorPt.z * floorPt.z) : Infinity;
+          if (floorPt && dist < 5000) {
+            // Compute the anchor's post-transform z-depth (z4) at current angles
+            const pitch = orbitXRef.current * Math.PI / 180;
+            const yaw = orbitYRef.current * Math.PI / 180;
+            const s = cameraScaleRef.current;
+            const zOff = zoomRef.current - CAMERA_BASE_DISTANCE + panZRef.current;
+            const sxW = floorPt.x * s;
+            const szW = floorPt.z * s + zOff;
+            const z3 = sxW * Math.sin(yaw) + szW * Math.cos(yaw);
+            const z4 = z3 * Math.cos(pitch);
+            orbitAnchor.current = {
+              worldX: floorPt.x, worldZ: floorPt.z,
+              screenX: e.clientX, screenY: e.clientY,
+              z4,
+            };
+          } else {
+            orbitAnchor.current = null;
+          }
+        }
       } else if (e.button === 2) {
         e.preventDefault();
         isDragging.current = true;
@@ -203,33 +231,54 @@ export function useCamera3D({
         setPanX(panXRef.current);
         setPanY(panYRef.current);
       } else {
-        // ── Orbit with anchor compensation ──
-        // 1. Capture the world floor point at the mouse position before rotation
-        const anchorSX = e.clientX;
-        const anchorSY = e.clientY;
-        const floorPt = screenToFloor(anchorSX, anchorSY);
-        // Only use anchor if the floor point is at a reasonable distance
-        const anchorDist = floorPt ? Math.sqrt(floorPt.x * floorPt.x + floorPt.z * floorPt.z) : Infinity;
-        const useAnchor = floorPt && anchorDist < 5000;
-
-        // 2. Apply new orbit angles to refs immediately
+        // ── True orbit around fixed pivot ──
+        // The orbit anchor (captured at drag start) stays at a fixed screen
+        // position AND a fixed perspective depth → no zoom drift.
+        const anchor = orbitAnchor.current;
         const newOrbitY = orbitYRef.current - dx * 0.3;
         const newOrbitX = Math.max(5, Math.min(90, orbitXRef.current - dy * 0.3));
         orbitXRef.current = newOrbitX;
         orbitYRef.current = newOrbitY;
 
-        // 3. Compensate pan so the anchor world point stays under the mouse
-        if (useAnchor) {
-          const projected = worldToScreen(floorPt.x, floorPt.z);
-          if (projected && projected.f > 0.05) {
-            const dPanX = (anchorSX - projected.sx) / projected.f;
-            const dPanY = (anchorSY - projected.sy) / projected.f;
-            panXRef.current += dPanX;
-            panYRef.current += dPanY;
+        if (anchor) {
+          const { worldX: ax, worldZ: az, screenX: anchorSX, screenY: anchorSY, z4: z4Target } = anchor;
+          const P = PERSPECTIVE_DEPTH;
+          const pitch = newOrbitX * Math.PI / 180;
+          const yaw = newOrbitY * Math.PI / 180;
+          const s = cameraScaleRef.current;
+          const cp = Math.cos(pitch), sp = Math.sin(pitch);
+          const cyw = Math.cos(yaw), syw = Math.sin(yaw);
+
+          // Solve for zOff so the anchor's post-transform z4 stays constant.
+          // z4 = [ax*s*sin(yaw) + (az*s + zOff)*cos(yaw)] * cos(pitch) = z4Target
+          if (Math.abs(cp) > 0.05 && Math.abs(cyw) > 0.05) {
+            const zOff_new = (z4Target / cp - ax * s * syw) / cyw - az * s;
+
+            // Absorb depth change into zoom (panZ is reserved for shift+wheel nav)
+            zoomRef.current = zOff_new + CAMERA_BASE_DISTANCE - panZRef.current;
+
+            // Recompute anchor's post-rotation position with new zOff
+            const sxW = ax * s;
+            const szW = az * s + zOff_new;
+            const x4 = sxW * cyw - szW * syw;
+            const z3 = sxW * syw + szW * cyw;
+            const y4 = z3 * sp;
+
+            // Perspective factor is constant (z4 preserved by construction)
+            const f = P / (P - z4Target);
+
+            // Solve for pan so anchor projects to its original screen position
+            const el = viewportRef.current;
+            if (el) {
+              const rect = el.getBoundingClientRect();
+              panXRef.current = (anchorSX - (rect.left + rect.width / 2)) / f - x4;
+              panYRef.current = (anchorSY - (rect.top + rect.height / 2)) / f - y4;
+            }
+
+            setZoom(zoomRef.current);
           }
         }
 
-        // 4. Flush state
         setOrbitY(newOrbitY);
         setOrbitX(newOrbitX);
         setPanX(panXRef.current);
@@ -245,6 +294,7 @@ export function useCamera3D({
       if (e.button === 1 || e.button === 2) {
         isDragging.current = false;
         isPanning.current  = false;
+        orbitAnchor.current = null;
       }
     };
 
