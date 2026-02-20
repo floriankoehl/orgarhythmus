@@ -58,6 +58,13 @@ const CAMERA_ZOOM_MAX       = 600;   // px — maximum zoom (closest)
 const PERSPECTIVE_DEPTH     = 1800;  // px — CSS perspective value
 const FLOOR_SIZE            = 800;   // px — XZ grid floor side length
 
+// ── Protopersona defaults ────────────────────────────────────────
+const PERSONA_SIZE          = 50;    // px — cube side length
+const PERSONA_COLORS = [
+  '#f87171', '#fb923c', '#facc15', '#4ade80',
+  '#22d3ee', '#818cf8', '#e879f9', '#f472b6',
+];
+
 // ══════════════════════════════════════════════════════════════════
 // Helpers
 // ══════════════════════════════════════════════════════════════════
@@ -309,8 +316,58 @@ export default function AssignmentSecond() {
   const isPanning  = useRef(false);
   const lastMouse  = useRef({ x: 0, y: 0 });
 
+  // ── Protopersonas ──────────────────────────────────────────────
+  // Simple client-side-only persona tokens on the XZ floor.
+  // Each has { id, name, color, x (world X), z (world Z) }.
+  const [personas, setPersonas] = useState([]);
+  const draggingPersona = useRef(null);  // id of persona being dragged
+  const nextPersonaId   = useRef(1);
+
+  /** Spawn a new persona near the origin */
+  const addPersona = () => {
+    const id = nextPersonaId.current++;
+    const color = PERSONA_COLORS[(id - 1) % PERSONA_COLORS.length];
+    setPersonas((prev) => [
+      ...prev,
+      { id, name: `P${id}`, color, x: (id - 1) * 80 - 120, z: -150 },
+    ]);
+  };
+
+  /** Delete a persona by id */
+  const removePersona = (id) => {
+    setPersonas((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  /** Convert a screen-space delta (dx, dy) to world XZ movement.
+   *  We need to invert the camera rotation so mouse movement
+   *  maps to floor-plane movement regardless of orbit angle.
+   */
+  const screenToFloorDelta = (dx, dy) => {
+    const ax = (-orbitX * Math.PI) / 180; // pitch in radians
+    const ay = (-orbitY * Math.PI) / 180; // yaw in radians
+    const cosY = Math.cos(ay);
+    const sinY = Math.sin(ay);
+    const cosX = Math.cos(ax);
+    // Project screen delta onto XZ plane through inverse rotation
+    // Negated to match screen→world direction (screen-right = +X, screen-down = +Z at default yaw)
+    const worldX = -(dx * cosY + dy * sinY * cosX);
+    const worldZ = -(-dx * sinY + dy * cosY * cosX);
+    return { worldX, worldZ };
+  };
+
   useEffect(() => {
     const onDown = (e) => {
+      // Left click on a persona = start dragging it
+      if (e.button === 0) {
+        const personaEl = e.target.closest('[data-persona-id]');
+        if (personaEl) {
+          e.preventDefault();
+          e.stopPropagation();
+          draggingPersona.current = Number(personaEl.dataset.personaId);
+          lastMouse.current = { x: e.clientX, y: e.clientY };
+          return;
+        }
+      }
       // Middle mouse = orbit, Right mouse = pan
       if (e.button === 1) {
         e.preventDefault();
@@ -325,6 +382,20 @@ export default function AssignmentSecond() {
       }
     };
     const onMove = (e) => {
+      // Persona drag — left button
+      if (draggingPersona.current != null) {
+        const dx = e.clientX - lastMouse.current.x;
+        const dy = e.clientY - lastMouse.current.y;
+        lastMouse.current = { x: e.clientX, y: e.clientY };
+        const { worldX, worldZ } = screenToFloorDelta(dx, dy);
+        const pid = draggingPersona.current;
+        setPersonas((prev) =>
+          prev.map((p) =>
+            p.id === pid ? { ...p, x: p.x + worldX, z: p.z + worldZ } : p
+          )
+        );
+        return;
+      }
       if (!isDragging.current) return;
       const dx = e.clientX - lastMouse.current.x;
       const dy = e.clientY - lastMouse.current.y;
@@ -339,6 +410,10 @@ export default function AssignmentSecond() {
       }
     };
     const onUp = (e) => {
+      if (e.button === 0 && draggingPersona.current != null) {
+        draggingPersona.current = null;
+        return;
+      }
       if (e.button === 1 || e.button === 2) {
         isDragging.current = false;
         isPanning.current  = false;
@@ -552,6 +627,7 @@ export default function AssignmentSecond() {
                 flexDirection: 'column',
                 borderRadius: '12px',
                 boxShadow: '0 5px 40px rgba(0,0,0,0.6)',
+                pointerEvents: 'none',  // don't block persona clicks
               }}
             >
               <div
@@ -896,8 +972,168 @@ export default function AssignmentSecond() {
       </div>{/* scroll container */}
       </div>{/* canvas wrapper */}
       </div>{/* board */}
+
+            {/* ── Layer 4d: Protopersonas — tokens on the XZ floor ──
+                 Each persona stands upright (billboard-style) at world (x, 0, z).
+                 No rotateX(90) — they stay facing the camera so they're clickable.
+                 translateX = world X, translateZ = world Z positions them on the floor.
+            ── */}
+            {personas.map((p) => {
+              const S = PERSONA_SIZE;       // cube side length
+              const half = S / 2;           // half-side for face translations
+              // Shared face style — each face is an S×S square centered in the cube
+              const face = {
+                position: 'absolute',
+                width: `${S}px`,
+                height: `${S}px`,
+                backfaceVisibility: 'hidden',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '20px',
+                fontWeight: 'bold',
+                color: '#fff',
+                fontFamily: 'monospace',
+                textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+                border: '2px solid rgba(255,255,255,0.25)',
+                boxSizing: 'border-box',
+              };
+              return (
+                <div
+                  key={p.id}
+                  data-persona-id={p.id}
+                  onMouseDown={(e) => {
+                    if (e.button === 0) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      draggingPersona.current = p.id;
+                      lastMouse.current = { x: e.clientX, y: e.clientY };
+                    }
+                  }}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: `${S}px`,
+                    height: `${S}px`,
+                    // Position: world X & Z, then lift by half-side so cube sits ON the floor
+                    transform: [
+                      `translateX(${p.x}px)`,
+                      `translateZ(${p.z}px)`,
+                      `translateY(-${half}px)`,
+                    ].join(' '),
+                    transformStyle: 'preserve-3d',
+                    cursor: draggingPersona.current === p.id ? 'grabbing' : 'grab',
+                    userSelect: 'none',
+                    zIndex: 50,
+                    pointerEvents: 'auto',
+                  }}
+                >
+                  {/* Front face (+Z) */}
+                  <div style={{ ...face, background: p.color,
+                    transform: `translateZ(${half}px)` }}>
+                    {p.name.charAt(0).toUpperCase()}
+                  </div>
+                  {/* Back face (−Z) */}
+                  <div style={{ ...face, background: p.color,
+                    transform: `rotateY(180deg) translateZ(${half}px)` }}>
+                    {p.name.charAt(0).toUpperCase()}
+                  </div>
+                  {/* Left face (−X) */}
+                  <div style={{ ...face, background: p.color,
+                    filter: 'brightness(0.85)',
+                    transform: `rotateY(-90deg) translateZ(${half}px)` }} />
+                  {/* Right face (+X) */}
+                  <div style={{ ...face, background: p.color,
+                    filter: 'brightness(0.85)',
+                    transform: `rotateY(90deg) translateZ(${half}px)` }} />
+                  {/* Top face (+Y) */}
+                  <div style={{ ...face, background: p.color,
+                    filter: 'brightness(1.15)',
+                    transform: `rotateX(90deg) translateZ(${half}px)` }}>
+                    {p.name.charAt(0).toUpperCase()}
+                  </div>
+                  {/* Bottom face (−Y) — sits on the floor */}
+                  <div style={{ ...face, background: p.color,
+                    filter: 'brightness(0.7)',
+                    transform: `rotateX(-90deg) translateZ(${half}px)` }} />
+                  {/* Name label floating above the cube */}
+                  <div style={{
+                    position: 'absolute',
+                    top: `-20px`,
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    color: '#fff',
+                    fontSize: '11px',
+                    fontFamily: 'monospace',
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                    textShadow: '0 1px 4px rgba(0,0,0,0.7)',
+                    pointerEvents: 'none',
+                  }}>
+                    {p.name}
+                  </div>
+                </div>
+              );
+            })}
+
       </div>{/* distance wrapper */}
       </div>{/* orbit wrapper */}
+
+      {/* ── Persona controls panel (top-right) ── */}
+      <div style={{
+        position: 'absolute', top: '12px', right: '12px', zIndex: 999,
+        background: 'rgba(0,0,0,0.7)', padding: '10px 14px',
+        borderRadius: '10px', fontFamily: 'monospace', fontSize: '12px',
+        color: '#fff', minWidth: '160px',
+      }}>
+        <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '13px' }}>Protopersonas</div>
+        <button
+          onClick={addPersona}
+          style={{
+            width: '100%', padding: '6px 0', borderRadius: '6px',
+            background: '#4ade80', color: '#000', fontWeight: 'bold',
+            border: 'none', cursor: 'pointer', fontSize: '12px',
+            marginBottom: '8px',
+          }}
+        >
+          + Add Persona
+        </button>
+        {personas.length === 0 && (
+          <div style={{ color: '#94a3b8', fontSize: '10px', textAlign: 'center' }}>
+            No personas yet
+          </div>
+        )}
+        {personas.map((p) => (
+          <div
+            key={p.id}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '4px 0', borderTop: '1px solid rgba(255,255,255,0.1)',
+            }}
+          >
+            <div style={{
+              width: '14px', height: '14px', borderRadius: '50%',
+              background: p.color, flexShrink: 0,
+              border: '1.5px solid rgba(255,255,255,0.6)',
+            }} />
+            <span style={{ flex: 1, fontSize: '11px' }}>{p.name}</span>
+            <span style={{ fontSize: '9px', color: '#94a3b8' }}>
+              {Math.round(p.x)}, {Math.round(p.z)}
+            </span>
+            <button
+              onClick={() => removePersona(p.id)}
+              style={{
+                background: 'none', border: 'none', color: '#f87171',
+                cursor: 'pointer', fontSize: '14px', lineHeight: 1,
+                padding: '0 2px',
+              }}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
