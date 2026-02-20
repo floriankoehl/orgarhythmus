@@ -38,6 +38,26 @@ import {
 // ── Phase header height ──────────────────────────────────────────
 const PHASE_HEADER_HEIGHT = 26;
 
+// ── 3D Camera & Scene Constants ──────────────────────────────────
+//
+// Coordinate system (right-hand):
+//   +X → right,          −X → left
+//   +Y → up,             −Y → down
+//   +Z → toward viewer,  −Z → into screen
+//
+// The board lies flat on the XZ ground plane (Y = 0).
+// The camera orbits around the world origin on a spherical shell
+// defined by pitch (orbitX), yaw (orbitY), and a radial distance.
+//
+const CAMERA_BASE_DISTANCE  = 600;   // px — radial distance from origin when zoom = 0
+const CAMERA_DEFAULT_ZOOM   = 500;   // px — default zoom offset (reduces distance)
+const CAMERA_DEFAULT_TILT   = 30;    // deg — default vertical pitch (looking down)
+const CAMERA_DEFAULT_YAW    = 30;    // deg — default horizontal rotation
+const CAMERA_ZOOM_MIN       = -800;  // px — minimum zoom (farthest away)
+const CAMERA_ZOOM_MAX       = 600;   // px — maximum zoom (closest)
+const PERSPECTIVE_DEPTH     = 1800;  // px — CSS perspective value
+const FLOOR_SIZE            = 800;   // px — XZ grid floor side length
+
 // ══════════════════════════════════════════════════════════════════
 // Helpers
 // ══════════════════════════════════════════════════════════════════
@@ -280,11 +300,11 @@ export default function AssignmentSecond() {
   // Middle-mouse drag           = orbit (rotate scene)
   // Right-mouse drag            = pan   (translate scene)
   // Scroll wheel                = zoom  (move closer / farther)
-  const [orbitX, setOrbitX] = useState(30);   // vertical tilt  (5–90°)
-  const [orbitY, setOrbitY] = useState(30);    // horizontal spin
-  const [panX, setPanX]     = useState(0);     // translate left/right (px)
-  const [panY, setPanY]     = useState(0);     // translate up/down    (px)
-  const [zoom, setZoom]     = useState(500);   // translateZ depth     (px)  — closer to origin
+  const [orbitX, setOrbitX] = useState(CAMERA_DEFAULT_TILT);  // vertical pitch (5–90°)
+  const [orbitY, setOrbitY] = useState(CAMERA_DEFAULT_YAW);   // horizontal yaw
+  const [panX, setPanX]     = useState(0);                     // screen-space pan X (px)
+  const [panY, setPanY]     = useState(0);                     // screen-space pan Y (px)
+  const [zoom, setZoom]     = useState(CAMERA_DEFAULT_ZOOM);   // distance offset (px)
   const isDragging = useRef(false);
   const isPanning  = useRef(false);
   const lastMouse  = useRef({ x: 0, y: 0 });
@@ -332,7 +352,7 @@ export default function AssignmentSecond() {
       const inside = e.target.closest('[data-board-scroll]');
       if (inside) return;
       e.preventDefault();
-      setZoom((prev) => Math.max(-800, Math.min(600, prev - e.deltaY * 0.8)));
+      setZoom((prev) => Math.max(CAMERA_ZOOM_MIN, Math.min(CAMERA_ZOOM_MAX, prev - e.deltaY * 0.8)));
     };
 
     window.addEventListener('mousedown', onDown);
@@ -365,11 +385,29 @@ export default function AssignmentSecond() {
   // RENDER
   // ══════════════════════════════════════════════════════════════
   //
-  // Transform hierarchy (simulates orbit camera):
-  //   Perspective container
-  //     → Orbit wrapper     : rotateX(orbitX) rotateY(orbitY)  — camera on sphere
-  //     → Distance wrapper  : translateZ(-distance + zoom)     — camera distance
-  //     → Board             : translate(-50%,-50%) rotateX(-90deg) — world alignment (XZ plane)
+  // CSS 3D transform hierarchy (orbit camera simulation):
+  //
+  //   Layer 1 — Viewport (this div)
+  //     Sets perspective depth and centers the vanishing point.
+  //
+  //   Layer 2 — Camera orbit
+  //     Anchored at viewport center (top:50%, left:50%).
+  //     Pan:   translateX/Y — moves look-at point in screen space
+  //     Pitch: rotateX(−orbitX) — tilts camera down (negative = look down)
+  //     Yaw:   rotateY(−orbitY) — spins camera around vertical axis
+  //
+  //   Layer 3 — Camera distance
+  //     translateZ(zoom − BASE_DISTANCE) — pushes scene along view axis.
+  //     zoom = 0 → full distance; zoom = BASE_DISTANCE → at origin.
+  //
+  //   Layer 4 — World content (gizmo, floor, board)
+  //     Everything positioned at world origin (0,0,0).
+  //     Floor: rotateX(90°) to lie on XZ plane, centered via translate(-50%,-50%)
+  //     Board: rotateX(90°) rotateY(90°) — page top → −X, bottom → +X
+  //
+  //   Effective camera distance at defaults:
+  //     CAMERA_DEFAULT_ZOOM − CAMERA_BASE_DISTANCE = 500 − 600 = −100px
+  //     (camera is 100px in front of origin, looking at it)
   //
   return (
     <div
@@ -377,7 +415,7 @@ export default function AssignmentSecond() {
       style={{
         height: '100dvh',
         background: '#1a1a2e',
-        perspective: '1800px',
+        perspective: `${PERSPECTIVE_DEPTH}px`,
         perspectiveOrigin: '50% 50%',
         overflow: 'hidden',
         position: 'relative',
@@ -399,21 +437,33 @@ export default function AssignmentSecond() {
         </div>
       </div>
 
-      {/* ── Orbit wrapper — rotates the scene = camera orbits around the board ── */}
+      {/* ── Layer 2: Camera orbit ──
+           Anchored at viewport center. Rotations simulate the camera
+           orbiting on a sphere around the world origin.
+           Pan offsets translate the scene in screen space.
+      ── */}
       <div
         style={{
           position: 'absolute',
           top: '50%',
           left: '50%',
           transformStyle: 'preserve-3d',
-          transform: `translateX(${panX}px) translateY(${panY}px) rotateX(${-orbitX}deg) rotateY(${-orbitY}deg)`,
+          transform: [
+            `translateX(${panX}px)`,         // screen-space pan X
+            `translateY(${panY}px)`,         // screen-space pan Y
+            `rotateX(${-orbitX}deg)`,        // pitch (negative = look down)
+            `rotateY(${-orbitY}deg)`,        // yaw
+          ].join(' '),
         }}
       >
-        {/* ── Distance wrapper — translateZ = camera distance from center ── */}
+        {/* ── Layer 3: Camera distance ──
+             Pushes the scene along the (already rotated) Z axis.
+             Effective distance = CAMERA_BASE_DISTANCE − zoom.
+        ── */}
         <div
           style={{
             transformStyle: 'preserve-3d',
-            transform: `translateZ(${-600 + zoom}px)`,
+            transform: `translateZ(${zoom - CAMERA_BASE_DISTANCE}px)`,
             position: 'relative',
           }}
         >
@@ -447,14 +497,17 @@ export default function AssignmentSecond() {
               <div style={{ position: 'absolute', width: '8px', height: '8px', borderRadius: '50%', background: 'white', transform: 'translate(-4px, -4px)', boxShadow: '0 0 6px rgba(255,255,255,0.8)' }} />
             </div>
 
-            {/* ── Floor plane — lies flat in XZ, grid pattern ── */}
+            {/* ── Layer 4b: Floor plane — XZ grid at Y=0 ──
+                 An 800×800 div rotated 90° around X to lie flat on XZ.
+                 translate(-50%,-50%) centers it on the world origin.
+            ── */}
             <div
               style={{
                 position: 'absolute',
-                top: '50%',
-                left: '50%',
-                width: '800px',
-                height: '800px',
+                top: 0,
+                left: 0,
+                width: `${FLOOR_SIZE}px`,
+                height: `${FLOOR_SIZE}px`,
                 transform: 'translate(-50%, -50%) rotateX(90deg)',
                 transformOrigin: 'center center',
                 background: 'rgba(255,255,255,0.08)',
@@ -471,14 +524,28 @@ export default function AssignmentSecond() {
               <div style={{ position: 'absolute', bottom: '8px', right: '8px', color: 'rgba(255,255,255,0.4)', fontSize: '12px', fontFamily: 'monospace' }}>XZ floor</div>
             </div>
 
-            {/* ── The board — lies on XZ floor at Y=0, top→−X, bottom→+X ── */}
+            {/* ── Layer 4c: Board — the 2D Gantt page on the XZ floor ──
+                 Transform breakdown (CSS applies right-to-left):
+                   1. translate(-50%,-50%)  — center the board at origin
+                   2. rotateX(90°)          — tilt from XY plane into XZ
+                   3. rotateY(90°)          — rotate so page-top → −X
+                 Result mapping (2D page axis → 3D world axis):
+                   page left   → +Z (toward viewer)
+                   page right  → −Z (into screen)
+                   page top    → −X (world left)
+                   page bottom → +X (world right)
+            ── */}
             <div
               style={{
                 position: 'absolute',
                 top: 0,
                 left: 0,
                 width: 'min(88vw, 1400px)',
-                transform: 'rotateY(90deg) rotateX(90deg) translate(-50%, -50%)',
+                transform: [
+                  'rotateY(90deg)',            // step 3: page-top → −X
+                  'rotateX(90deg)',            // step 2: XY plane → XZ plane
+                  'translate(-50%, -50%)',     // step 1: center on origin
+                ].join(' '),
                 transformOrigin: '0 0',
                 transformStyle: 'preserve-3d',
                 display: 'flex',
