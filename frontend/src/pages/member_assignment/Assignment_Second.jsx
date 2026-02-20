@@ -66,7 +66,7 @@ const PERSPECTIVE_DEPTH     = 1800;  // px — CSS perspective value
 // ── Protopersona defaults ────────────────────────────────────────
 const PERSONA_SIZE          = 25;    // px — cube side length
 const SNAP_RADIUS           = 40;    // px — max distance to snap to a milestone
-const MILESTONE_3D_HEIGHT   = 25;   // px — how far milestone pedestals rise above the XZ floor (+Y)
+const MILESTONE_3D_HEIGHT   = 8;    // px — how far milestone pedestals rise above the XZ floor (+Y)
 const SCROLL_Y_PAD          = 16;   // px — extra height on the scroll container (contentHeight + 16) that
                                      //      causes a visual Y-offset due to the double scaleY(-1) flip
 const PERSONA_COLORS = [
@@ -1149,9 +1149,9 @@ export default function AssignmentSecond() {
               const slotH = PERSONA_SIZE + 10;
               const depth = MILESTONE_3D_HEIGHT;
               const baseColor = m.color || m.teamColor || '#facc15';
-              const borderColor = occupied ? 'rgba(74,222,128,0.8)' : `${baseColor}99`;
-              const topBg = occupied ? 'rgba(74,222,128,0.25)' : `${baseColor}55`;
-              const sideBg = occupied ? 'rgba(74,222,128,0.12)' : `${baseColor}30`;
+              const borderColor = occupied ? 'rgba(74,222,128,1)' : baseColor;
+              const topBg = occupied ? 'rgba(74,222,128,0.85)' : baseColor;
+              const sideBg = occupied ? 'rgba(50,180,80,0.9)' : `${baseColor}dd`;
               return (
                 <div
                   key={`ms-${m.id}`}
@@ -1225,7 +1225,7 @@ export default function AssignmentSecond() {
                     top: 0,
                     width: `${slotW}px`,
                     height: `${depth}px`,
-                    transform: 'rotateX(-90deg)',
+                    transform: 'rotateX(90deg)',
                     transformOrigin: 'top left',
                     background: sideBg,
                     borderLeft: `1px solid ${borderColor}`,
@@ -1253,7 +1253,7 @@ export default function AssignmentSecond() {
                     top: 0,
                     width: `${depth}px`,
                     height: `${slotH}px`,
-                    transform: 'rotateY(-90deg)',
+                    transform: 'rotateY(90deg)',
                     transformOrigin: 'top left',
                     background: sideBg,
                     borderTop: `1px solid ${borderColor}`,
@@ -1301,9 +1301,10 @@ export default function AssignmentSecond() {
                     // Position: world X & Z, then lift by full side so cube sits ON the floor.
                     // When snapped to a milestone, add MILESTONE_3D_HEIGHT so the cube
                     // sits on top of the raised milestone pedestal instead of on the floor.
+                    // Also center the cube on the milestone slot (half cube offset).
                     transform: [
-                      `translateX(${p.x}px)`,
-                      `translateZ(${p.z}px)`,
+                      `translateX(${p.x - S / 2}px)`,
+                      `translateZ(${p.z + S / 2}px)`,
                       `translateY(-${S + (p.milestoneId != null ? MILESTONE_3D_HEIGHT : 0)}px)`,
                     ].join(' '),
                     transformStyle: 'preserve-3d',
