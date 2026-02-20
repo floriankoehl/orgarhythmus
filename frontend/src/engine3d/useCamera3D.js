@@ -335,8 +335,6 @@ export function useCamera3D({
 
     // Scroll wheel = scale zoom (toward cursor), Shift+wheel = navigate along Z-axis
     const onWheel = (e) => {
-      const inside = e.target.closest('[data-board-scroll]');
-      if (inside) return;
       e.preventDefault();
       if (e.shiftKey) {
         // Shift+wheel → navigate along the world Z-axis

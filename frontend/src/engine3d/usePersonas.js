@@ -14,6 +14,7 @@ import {
 import { computeMilestonePixelPositions } from '../pages/dependency/layoutMath.js';
 import {
   PERSONA_SIZE,
+  PERSONA_DRAG_LIFT,
   SNAP_RADIUS,
   SCROLL_Y_PAD,
   PERSONA_COLORS,
@@ -28,9 +29,9 @@ import {
  * Persona state shape:
  *   { id, name, color, x, z, milestoneIds: [int], teamIds: [int], taskIds: [int] }
  *
- * All relationships are many-to-many. For now, drag-drop replaces assignments
- * (sets the array to [id]) rather than accumulating. The "train" feature will
- * add accumulation logic later.
+ * Assignments are additive: assigning to a milestone keeps team/task assignments,
+ * and vice versa. Ghost personas are rendered for team/task slab assignments.
+ * Clicking a ghost spawns a draggable copy that can be dropped on a milestone.
  */
 export function usePersonas({
   projectId,
@@ -55,6 +56,14 @@ export function usePersonas({
   const [allPersonas, setAllPersonas] = useState([]);
   const draggingPersona = useRef(null);
   const [draggingId, setDraggingId] = useState(null);
+
+  // Stable ref for screenToFloor (the fn prop changes reference each render)
+  const screenToFloorFnRef = useRef(screenToFloor);
+  useEffect(() => { screenToFloorFnRef.current = screenToFloor; }, [screenToFloor]);
+
+  // Spawn drag: clicking a ghost creates a draggable copy to assign to a milestone
+  const [spawnDrag, setSpawnDrag] = useState(null); // { personaId, x, z } | null
+  const spawnDragRef = useRef(null);
 
   /** Map raw API record to internal shape */
   const apiToLocal = (p) => ({
@@ -184,6 +193,9 @@ export function usePersonas({
   };
 
   // ── Filter personas by visible milestones AND re-snap positions ─
+  // Personas with only team/task assignments are shown as ghosts (not in draggable list).
+  // Personas with milestone assignments → snap to milestone.
+  // Personas with no assignments → keep x/z (free-floating).
   useEffect(() => {
     if (!allPersonas.length) { setPersonas([]); return; }
     const msMap = new Map(milestone3D.map((m) => [m.id, m]));
@@ -191,27 +203,75 @@ export function usePersonas({
     // Count how many personas sit on each milestone (for stacking offset)
     const countOnMs = {};
 
-    const repositioned = allPersonas.map((p) => {
-      // If persona has milestones, snap to the first visible one
-      if (p.milestoneIds.length > 0) {
-        const firstVisibleMsId = p.milestoneIds.find((mid) => msMap.has(mid));
-        if (firstVisibleMsId != null) {
-          const ms = msMap.get(firstVisibleMsId);
-          const idx = countOnMs[firstVisibleMsId] || 0;
-          countOnMs[firstVisibleMsId] = idx + 1;
-          const spacing = PERSONA_SIZE + 4;
-          return { ...p, x: ms.worldX, z: ms.worldZ + idx * spacing };
+    const repositioned = allPersonas
+      // Only render as draggable if on milestone OR free-floating (no team/task)
+      .filter((p) => p.milestoneIds.length > 0 || (p.teamIds.length === 0 && p.taskIds.length === 0))
+      .map((p) => {
+        // If persona has milestones, snap to the first visible one
+        if (p.milestoneIds.length > 0) {
+          const firstVisibleMsId = p.milestoneIds.find((mid) => msMap.has(mid));
+          if (firstVisibleMsId != null) {
+            const ms = msMap.get(firstVisibleMsId);
+            const idx = countOnMs[firstVisibleMsId] || 0;
+            countOnMs[firstVisibleMsId] = idx + 1;
+            const spacing = PERSONA_SIZE + 4;
+            return { ...p, x: ms.worldX, z: ms.worldZ + idx * spacing };
+          }
         }
-      }
-      // For slab-bound personas, re-check if they're still on a slab
-      if (p.teamIds.length > 0 || p.taskIds.length > 0) {
-        const slab = findSlabAt(p.x, p.z, 15);
-        if (slab) return p; // still on slab, keep position
-      }
-      return p;
-    });
+        return p;
+      });
     setPersonas(repositioned);
   }, [milestone3D, allPersonas, floorLayout]);
+
+  // ── Ghost personas: static visual on team/task slabs ──────────
+  // One ghost per team/task assignment per persona, positioned at slab center.
+  const ghostPersonas = useMemo(() => {
+    if (!floorLayout || !floorLayout.teams) return [];
+
+    // Build O(1) lookup maps to avoid nested linear searches
+    const teamSlabMap = new Map(
+      floorLayout.teams.map((ts) => [String(ts.teamId), ts])
+    );
+    const taskSlabMap = new Map();
+    for (const ts of floorLayout.teams) {
+      for (const tk of ts.tasks) {
+        taskSlabMap.set(String(tk.taskId), tk);
+      }
+    }
+
+    const ghosts = [];
+    for (const p of allPersonas) {
+      // Ghost for each team assignment
+      for (const teamId of p.teamIds) {
+        const teamSlab = teamSlabMap.get(String(teamId));
+        if (teamSlab) {
+          ghosts.push({
+            id: `ghost-team-${p.id}-${teamId}`,
+            personaId: p.id,
+            persona: p,
+            x: (teamSlab.worldXStart + teamSlab.worldXEnd) / 2,
+            z: (teamSlab.nameWorldZStart + teamSlab.nameWorldZEnd) / 2,
+            standOnH: TEAM_3D_HEIGHT,
+          });
+        }
+      }
+      // Ghost for each task assignment
+      for (const taskId of p.taskIds) {
+        const taskSlab = taskSlabMap.get(String(taskId));
+        if (taskSlab) {
+          ghosts.push({
+            id: `ghost-task-${p.id}-${taskId}`,
+            personaId: p.id,
+            persona: p,
+            x: (taskSlab.worldXStart + taskSlab.worldXEnd) / 2,
+            z: (taskSlab.nameWorldZStart + taskSlab.nameWorldZEnd) / 2,
+            standOnH: TASK_3D_HEIGHT,
+          });
+        }
+      }
+    }
+    return ghosts;
+  }, [allPersonas, floorLayout]);
 
   // ── Drag anchor ────────────────────────────────────────────────
   const dragAnchor = useRef(null);
@@ -240,7 +300,9 @@ export function usePersonas({
     }
   }, [screenToFloor]);
 
-  /** Called by camera hook on mouseup while dragging a persona. */
+  /** Called by camera hook on mouseup while dragging a persona.
+   *  Assignments are now ADDITIVE: dropping on milestone adds to milestoneIds
+   *  (keeps team/task); dropping on slab adds team/task (keeps milestones). */
   const onPersonaDragEnd = useCallback((e) => {
     const pid = draggingPersona.current;
     draggingPersona.current = null;
@@ -263,53 +325,118 @@ export function usePersonas({
         const hitX = p.x;
         const hitZ = p.z;
 
-        // 1) Try milestone snap first
+        // 1) Try milestone snap first — ADD to existing milestoneIds, keep team/task
         const nearest = findNearestMilestone(hitX, hitZ);
         if (nearest) {
           const idx = countOnMs[nearest.id] || 0;
           const spacing = PERSONA_SIZE + 4;
           const newX = nearest.worldX;
           const newZ = nearest.worldZ + idx * spacing;
+          const newMilestoneIds = [...new Set([...p.milestoneIds, nearest.id])];
           update_protopersona(projectId, p.id, {
             x: newX, z: newZ,
-            milestones: [nearest.id],
-            teams: [],
-            tasks: [],
+            milestones: newMilestoneIds,
+            teams: p.teamIds,
+            tasks: p.taskIds,
           }).catch((err) => console.error('Failed to update persona:', err));
-          const updated = { ...p, x: newX, z: newZ, milestoneIds: [nearest.id], teamIds: [], taskIds: [] };
+          const updated = { ...p, x: newX, z: newZ, milestoneIds: newMilestoneIds };
           setAllPersonas((all) => all.map((a) => (a.id === pid ? updated : a)));
           return updated;
         }
 
-        // 2) Try team/task slab snap
+        // 2) Try team/task slab snap — ADD team/task, keep milestones
+        //    Also auto-assign team when assigning to a task.
         const SLAB_SNAP_PAD = 25;
         const slab = findSlabAt(hitX, hitZ, SLAB_SNAP_PAD);
         if (slab) {
-          const newTeamIds = slab.teamId ? [slab.teamId] : [];
-          const newTaskIds = slab.taskId ? [slab.taskId] : [];
+          const newTeamIds = [...new Set([...p.teamIds, ...(slab.teamId ? [slab.teamId] : [])])];
+          const newTaskIds = [...new Set([...p.taskIds, ...(slab.taskId ? [slab.taskId] : [])])];
           update_protopersona(projectId, p.id, {
             x: hitX, z: hitZ,
-            milestones: [],
+            milestones: p.milestoneIds,
             teams: newTeamIds,
             tasks: newTaskIds,
           }).catch((err) => console.error('Failed to update persona:', err));
-          const updated = { ...p, x: hitX, z: hitZ, milestoneIds: [], teamIds: newTeamIds, taskIds: newTaskIds };
+          const updated = { ...p, x: hitX, z: hitZ, teamIds: newTeamIds, taskIds: newTaskIds };
           setAllPersonas((all) => all.map((a) => (a.id === pid ? updated : a)));
           return updated;
         }
 
-        // 3) Free placement — clear all assignments
+        // 3) Free placement — keep existing assignments, just update position
         update_protopersona(projectId, p.id, {
           x: p.x, z: p.z,
-          milestones: [],
-          teams: [],
-          tasks: [],
+          milestones: p.milestoneIds,
+          teams: p.teamIds,
+          tasks: p.taskIds,
         }).catch((err) => console.error('Failed to update persona:', err));
-        const updated = { ...p, milestoneIds: [], teamIds: [], taskIds: [] };
+        const updated = { ...p };
         setAllPersonas((all) => all.map((a) => (a.id === pid ? updated : a)));
         return updated;
       });
     });
+  }, [projectId]);
+
+  // ── Ghost spawn drag ───────────────────────────────────────────
+  /** Called when user clicks a ghost persona on a slab.
+   *  Starts a drag that, when dropped on a milestone, adds that milestone
+   *  to the persona's assignments without removing team/task. */
+  const startGhostSpawn = useCallback((personaId, clientX, clientY) => {
+    const hit = screenToFloorFnRef.current
+      ? screenToFloorFnRef.current(clientX, clientY, PERSONA_SIZE * 0.5)
+      : null;
+    const drag = {
+      personaId,
+      x: hit ? hit.x : 0,
+      z: hit ? hit.z : 0,
+    };
+    spawnDragRef.current = drag;
+    setSpawnDrag({ ...drag });
+  }, []);
+
+  // Window listeners for spawn drag mouse move / up
+  useEffect(() => {
+    const onMove = (e) => {
+      if (!spawnDragRef.current) return;
+      const hit = screenToFloorFnRef.current
+        ? screenToFloorFnRef.current(e.clientX, e.clientY, PERSONA_SIZE * 0.5)
+        : null;
+      if (!hit) return;
+      const drag = { ...spawnDragRef.current, x: hit.x, z: hit.z };
+      spawnDragRef.current = drag;
+      setSpawnDrag({ ...drag });
+    };
+
+    const onUp = () => {
+      const drag = spawnDragRef.current;
+      spawnDragRef.current = null;
+      setSpawnDrag(null);
+      if (!drag) return;
+
+      // Find nearest milestone and ADD it (keep team/task)
+      const nearest = findNearestMilestone(drag.x, drag.z);
+      if (!nearest) return;
+
+      setAllPersonas((all) => {
+        const persona = all.find((p) => p.id === drag.personaId);
+        if (!persona) return all;
+        const newMilestoneIds = [...new Set([...persona.milestoneIds, nearest.id])];
+        update_protopersona(projectId, drag.personaId, {
+          milestones: newMilestoneIds,
+          teams: persona.teamIds,
+          tasks: persona.taskIds,
+          x: nearest.worldX,
+          z: nearest.worldZ,
+        }).catch((err) => console.error('Failed to update persona from ghost spawn:', err));
+        return all.map((p) => (p.id === drag.personaId ? { ...persona, milestoneIds: newMilestoneIds, x: nearest.worldX, z: nearest.worldZ } : p));
+      });
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
   }, [projectId]);
 
   /** Spawn a new persona near the origin and persist to DB */
@@ -351,6 +478,9 @@ export function usePersonas({
   return {
     personas,
     allPersonas,
+    ghostPersonas,
+    spawnDrag,
+    startGhostSpawn,
     draggingPersona,
     draggingId,
     setDraggingId,
