@@ -145,3 +145,10 @@ from .shortcuts import (
     get_user_shortcuts,
     save_user_shortcuts,
 )
+
+from .protopersonas import (
+    get_all_protopersonas,
+    create_protopersona,
+    update_protopersona,
+    delete_protopersona,
+)
