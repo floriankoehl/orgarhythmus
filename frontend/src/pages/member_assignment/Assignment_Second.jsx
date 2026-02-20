@@ -67,6 +67,7 @@ const PERSPECTIVE_DEPTH     = 1800;  // px — CSS perspective value
 const PERSONA_SIZE          = 25;    // px — cube side length
 const SNAP_RADIUS           = 40;    // px — max distance to snap to a milestone
 const MILESTONE_3D_HEIGHT   = 8;    // px — how far milestone pedestals rise above the XZ floor (+Y)
+const BOARD_3D_HEIGHT       = 14;   // px — thickness of the board/floor slab
 const SCROLL_Y_PAD          = 16;   // px — extra height on the scroll container (contentHeight + 16) that
                                      //      causes a visual Y-offset due to the double scaleY(-1) flip
 const PERSONA_COLORS = [
@@ -659,7 +660,7 @@ export default function AssignmentSecond() {
       className="w-full select-none"
       style={{
         height: '100dvh',
-        background: '#1a1a2e',
+        background: '#ffffff',
         perspective: `${PERSPECTIVE_DEPTH}px`,
         perspectiveOrigin: '50% 50%',
         overflow: 'hidden',
@@ -761,18 +762,69 @@ export default function AssignmentSecond() {
                 height: `${floorH}px`,
                 transform: 'translate(-50%, -50%) rotateX(90deg)',
                 transformOrigin: 'center center',
-                background: 'rgba(255,255,255,0.08)',
+                transformStyle: 'preserve-3d',
+                background: '#f8f9fb',
                 backgroundImage: `
-                  linear-gradient(rgba(255,255,255,0.15) 1px, transparent 1px),
-                  linear-gradient(90deg, rgba(255,255,255,0.15) 1px, transparent 1px)
+                  linear-gradient(rgba(0,0,0,0.06) 1px, transparent 1px),
+                  linear-gradient(90deg, rgba(0,0,0,0.06) 1px, transparent 1px)
                 `,
                 backgroundSize: '50px 50px',
-                border: '2px solid rgba(255,255,255,0.25)',
+                border: '1px solid rgba(0,0,0,0.1)',
                 pointerEvents: 'none',
               }}
             >
               {/* Floor label */}
-              <div style={{ position: 'absolute', bottom: '8px', right: '8px', color: 'rgba(255,255,255,0.4)', fontSize: '12px', fontFamily: 'monospace' }}>XZ floor</div>
+              <div style={{ position: 'absolute', bottom: '8px', right: '8px', color: 'rgba(0,0,0,0.2)', fontSize: '12px', fontFamily: 'monospace' }}>XZ floor</div>
+
+              {/* Floor side faces — give the board slab visual thickness */}
+              {/* Bottom edge (local Y = floorH) */}
+              <div style={{
+                position: 'absolute',
+                left: 0,
+                top: `${floorH}px`,
+                width: `${floorW}px`,
+                height: `${BOARD_3D_HEIGHT}px`,
+                transform: 'rotateX(90deg)',
+                transformOrigin: 'top left',
+                background: 'linear-gradient(180deg, #e2e4e8, #d1d3d8)',
+                borderBottom: '1px solid rgba(0,0,0,0.12)',
+              }} />
+              {/* Top edge (local Y = 0) */}
+              <div style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: `${floorW}px`,
+                height: `${BOARD_3D_HEIGHT}px`,
+                transform: 'rotateX(90deg)',
+                transformOrigin: 'top left',
+                background: 'linear-gradient(180deg, #e8eaee, #dcdee3)',
+                borderBottom: '1px solid rgba(0,0,0,0.1)',
+              }} />
+              {/* Right edge (local X = floorW) */}
+              <div style={{
+                position: 'absolute',
+                left: `${floorW}px`,
+                top: 0,
+                width: `${BOARD_3D_HEIGHT}px`,
+                height: `${floorH}px`,
+                transform: 'rotateY(-90deg)',
+                transformOrigin: 'top left',
+                background: 'linear-gradient(180deg, #dfe1e6, #cfd1d6)',
+                borderRight: '1px solid rgba(0,0,0,0.12)',
+              }} />
+              {/* Left edge (local X = 0) */}
+              <div style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: `${BOARD_3D_HEIGHT}px`,
+                height: `${floorH}px`,
+                transform: 'rotateY(-90deg)',
+                transformOrigin: 'top left',
+                background: 'linear-gradient(180deg, #e5e7ec, #d5d7dc)',
+                borderRight: '1px solid rgba(0,0,0,0.1)',
+              }} />
             </div>
 
             {/* ── Layer 4c: Board — the 2D Gantt page on the XZ floor ──
@@ -1162,7 +1214,11 @@ export default function AssignmentSecond() {
               const baseColor = m.color || m.teamColor || '#facc15';
               const borderColor = occupied ? 'rgba(74,222,128,1)' : baseColor;
               const topBg = occupied ? 'rgba(74,222,128,0.85)' : baseColor;
-              const sideBg = occupied ? 'rgba(50,180,80,0.9)' : `${baseColor}dd`;
+              // Directional shading: each wall gets a different brightness to simulate light from +Y/+Z
+              const sideA = occupied ? 'linear-gradient(180deg, rgba(50,180,80,0.95), rgba(40,150,65,0.85))' : `linear-gradient(180deg, ${baseColor}ee, ${baseColor}bb)`;
+              const sideB = occupied ? 'linear-gradient(180deg, rgba(45,160,72,0.9), rgba(35,135,58,0.8))' : `linear-gradient(180deg, ${baseColor}cc, ${baseColor}99)`;
+              const sideC = occupied ? 'linear-gradient(180deg, rgba(55,190,85,0.95), rgba(45,165,70,0.88))' : `linear-gradient(180deg, ${baseColor}dd, ${baseColor}aa)`;
+              const sideD = occupied ? 'linear-gradient(180deg, rgba(40,150,65,0.85), rgba(30,120,50,0.75))' : `linear-gradient(180deg, ${baseColor}bb, ${baseColor}88)`;
               return (
                 <div
                   key={`ms-${m.id}`}
@@ -1224,7 +1280,7 @@ export default function AssignmentSecond() {
                     height: `${depth}px`,
                     transform: 'rotateX(90deg)',
                     transformOrigin: 'top left',
-                    background: sideBg,
+                    background: sideA,
                     borderLeft: `1px solid ${borderColor}`,
                     borderRight: `1px solid ${borderColor}`,
                     borderBottom: `1px solid ${borderColor}`,
@@ -1238,7 +1294,7 @@ export default function AssignmentSecond() {
                     height: `${depth}px`,
                     transform: 'rotateX(90deg)',
                     transformOrigin: 'top left',
-                    background: sideBg,
+                    background: sideB,
                     borderLeft: `1px solid ${borderColor}`,
                     borderRight: `1px solid ${borderColor}`,
                     borderBottom: `1px solid ${borderColor}`,
@@ -1252,7 +1308,7 @@ export default function AssignmentSecond() {
                     height: `${slotH}px`,
                     transform: 'rotateY(-90deg)',
                     transformOrigin: 'top left',
-                    background: sideBg,
+                    background: sideC,
                     borderTop: `1px solid ${borderColor}`,
                     borderBottom: `1px solid ${borderColor}`,
                     borderRight: `1px solid ${borderColor}`,
@@ -1266,7 +1322,7 @@ export default function AssignmentSecond() {
                     height: `${slotH}px`,
                     transform: 'rotateY(-90deg)',
                     transformOrigin: 'top left',
-                    background: sideBg,
+                    background: sideD,
                     borderTop: `1px solid ${borderColor}`,
                     borderBottom: `1px solid ${borderColor}`,
                     borderRight: `1px solid ${borderColor}`,
