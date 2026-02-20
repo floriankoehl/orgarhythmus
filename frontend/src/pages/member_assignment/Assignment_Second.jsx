@@ -7,7 +7,7 @@
 // interactions are NOT wired up; this is a display-only surface.
 //
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   fetch_project_details,
   fetch_project_teams,
@@ -157,6 +157,7 @@ function calcContentHeight(teamOrder, teams, taskDisplaySettings, effectiveHeade
 
 export default function AssignmentSecond() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const containerRef = useRef(null);
   const boardRef = useRef(null);
 
@@ -346,10 +347,22 @@ export default function AssignmentSecond() {
   const totalDaysWidth = (days || 0) * DAYWIDTH;
   const totalWidth = TEAMWIDTH + TASKWIDTH + totalDaysWidth;
 
+  // In the 3D view, force ALL tasks to uniform 'normal' height regardless of
+  // what the loaded view says. This keeps milestone pedestals at consistent
+  // positions and avoids layout jumps when switching views.
+  const taskDisplaySettings3D = useMemo(() => {
+    const out = {};
+    for (const id of Object.keys(taskDisplaySettings)) {
+      const s = taskDisplaySettings[id];
+      out[id] = { ...s, size: 'normal', hidden: s?.hidden || false };
+    }
+    return out;
+  }, [taskDisplaySettings]);
+
   const contentHeight = useMemo(() => {
     if (!days) return 400;
-    return calcContentHeight(teamOrder, teams, taskDisplaySettings, effectiveHeaderH, teamPhasesMap, teamDisplaySettings, customTaskHeightSmall, customTaskHeightNormal);
-  }, [teamOrder, teams, taskDisplaySettings, effectiveHeaderH, teamPhasesMap, days, teamDisplaySettings, customTaskHeightSmall, customTaskHeightNormal]);
+    return calcContentHeight(teamOrder, teams, taskDisplaySettings3D, effectiveHeaderH, teamPhasesMap, teamDisplaySettings, DEFAULT_TASKHEIGHT_SMALL, DEFAULT_TASKHEIGHT_NORMAL);
+  }, [teamOrder, teams, taskDisplaySettings3D, effectiveHeaderH, teamPhasesMap, days, teamDisplaySettings]);
 
   // Board width now matches the full chart (no overflow scroll)
   const boardW = totalWidth + 48;  // content + left/right padding (24+24)
@@ -442,7 +455,7 @@ export default function AssignmentSecond() {
         offsetY: top,
       });
     }
-  }, [days, teamOrder, teams, taskDisplaySettings, teamPhasesMap, teamDisplaySettings, TEAMWIDTH, TASKWIDTH, DAYWIDTH, customTaskHeightNormal, customTaskHeightSmall]);
+  }, [days, teamOrder, teams, taskDisplaySettings3D, teamPhasesMap, teamDisplaySettings, TEAMWIDTH, TASKWIDTH, DAYWIDTH]);
 
   // Floor dimensions — match the board so the floor represents the whole chart.
   // The board transform Ry(90)·Rx(90) maps:  board height → world X,  board width → world Z.
@@ -469,13 +482,15 @@ export default function AssignmentSecond() {
     const oX = boardDims.offsetX;
     const oY = boardDims.offsetY;
     // Get 2D positions from the canonical layout module
+    // Use uniform-height task display settings for consistent milestone positions
     const positioned = computeMilestonePixelPositions({
-      teamOrder, teams, milestones, taskDisplaySettings,
+      teamOrder, teams, milestones,
+      taskDisplaySettings: taskDisplaySettings3D,
       teamDisplaySettings,
       teamPhasesMap, effectiveHeaderH,
       TEAMWIDTH, TASKWIDTH, DAYWIDTH,
-      TASKHEIGHT_SMALL: customTaskHeightSmall,
-      TASKHEIGHT_NORMAL: customTaskHeightNormal,
+      TASKHEIGHT_SMALL: DEFAULT_TASKHEIGHT_SMALL,
+      TASKHEIGHT_NORMAL: DEFAULT_TASKHEIGHT_NORMAL,
     });
     // Apply coordinate transformation: 2D content-space → 3D world-space
     // The double scaleY(-1) (scroll container + inner container) with the
@@ -486,7 +501,7 @@ export default function AssignmentSecond() {
       worldX: (m.y + m.h / 2 + oY + SCROLL_Y_PAD) - H / 2,
       worldZ: W / 2 - (m.x + m.w / 2 + oX),
     }));
-  }, [days, teamOrder, teams, milestones, taskDisplaySettings, teamDisplaySettings, teamPhasesMap, effectiveHeaderH, boardDims, TEAMWIDTH, TASKWIDTH, DAYWIDTH, customTaskHeightSmall, customTaskHeightNormal]);
+  }, [days, teamOrder, teams, milestones, taskDisplaySettings3D, teamDisplaySettings, teamPhasesMap, effectiveHeaderH, boardDims, TEAMWIDTH, TASKWIDTH, DAYWIDTH]);
 
   /** Find closest milestone within SNAP_RADIUS */
   const findNearestMilestone = (x, z) => {
@@ -507,6 +522,17 @@ export default function AssignmentSecond() {
   // Keep milestone3D in a ref so onUp handler always sees current positions
   const milestone3DRef = useRef(milestone3D);
   useEffect(() => { milestone3DRef.current = milestone3D; }, [milestone3D]);
+
+  // ── Filter personas by visible milestones (view-aware) ────────
+  // When the view changes, only show personas attached to milestones
+  // that are currently visible, plus any unattached personas.
+  useEffect(() => {
+    if (!allPersonas.length) { setPersonas([]); return; }
+    const visibleMsIds = new Set(milestone3D.map((m) => m.id));
+    setPersonas(
+      allPersonas.filter((p) => p.milestoneId == null || visibleMsIds.has(p.milestoneId))
+    );
+  }, [milestone3D, allPersonas]);
 
   /** Spawn a new persona near the origin and persist to DB */
   const addPersona = async () => {
@@ -753,6 +779,32 @@ export default function AssignmentSecond() {
     };
   }, []);
 
+  // ── Keyboard shortcuts: X = cycle views, ←/→ = prev/next ─────
+  const handleNextViewRef = useRef(handleNextView);
+  const handlePrevViewRef = useRef(handlePrevView);
+  useEffect(() => { handleNextViewRef.current = handleNextView; }, [handleNextView]);
+  useEffect(() => { handlePrevViewRef.current = handlePrevView; }, [handlePrevView]);
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      // Don't intercept when typing in an input/textarea
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+
+      if (e.key === 'x' || e.key === 'X') {
+        e.preventDefault();
+        handleNextViewRef.current();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleNextViewRef.current();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handlePrevViewRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   // ── Loading state ──────────────────────────────────────────────
   if (loading || !days) {
     return (
@@ -803,9 +855,23 @@ export default function AssignmentSecond() {
         position: 'relative',
       }}
     >
+      {/* ── Back button ── */}
+      <button
+        onClick={() => navigate(`/projects/${projectId}/dependencies`)}
+        style={{
+          position: 'absolute', top: '12px', left: '12px', zIndex: 1000,
+          background: 'rgba(0,0,0,0.7)', color: '#fff', border: 'none',
+          borderRadius: '8px', padding: '8px 14px', cursor: 'pointer',
+          fontFamily: 'monospace', fontSize: '12px', fontWeight: 'bold',
+          display: 'flex', alignItems: 'center', gap: '6px',
+        }}
+      >
+        <span style={{ fontSize: '16px' }}>←</span> Dependencies
+      </button>
+
       {/* ── Debug HUD — orbit/pan/zoom values ── */}
       <div style={{
-        position: 'absolute', top: '12px', left: '12px', zIndex: 999,
+        position: 'absolute', top: '50px', left: '12px', zIndex: 999,
         background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '8px 12px',
         borderRadius: '8px', fontFamily: 'monospace', fontSize: '12px', lineHeight: '1.6',
         pointerEvents: 'none',
@@ -1152,11 +1218,11 @@ export default function AssignmentSecond() {
             const isCollapsed = teamDisplaySettings[teamId]?.collapsed;
             const teamColor = team.color || '#94a3b8';
             const isVirtual = team._virtual;
-            const visibleTasks_ = isCollapsed ? [] : getVisibleTasks(team, taskDisplaySettings);
+            const visibleTasks_ = isCollapsed ? [] : getVisibleTasks(team, taskDisplaySettings3D);
             const teamPhases = teamPhasesMap[teamId] || [];
             const hasTeamPhases = !isCollapsed && teamPhases.length > 0;
             const phaseRowH = hasTeamPhases ? TEAM_PHASE_ROW_HEIGHT : 0;
-            const teamRowH = getTeamRowHeight(team, taskDisplaySettings, phaseRowH, isCollapsed, customTaskHeightSmall, customTaskHeightNormal);
+            const teamRowH = getTeamRowHeight(team, taskDisplaySettings3D, phaseRowH, isCollapsed, DEFAULT_TASKHEIGHT_SMALL, DEFAULT_TASKHEIGHT_NORMAL);
 
             return (
               <div key={teamId}>
@@ -1273,7 +1339,7 @@ export default function AssignmentSecond() {
                       {visibleTasks_.map((taskId, idx) => {
                         const task = tasks[taskId];
                         if (!task) return null;
-                        const th = getTaskHeight(taskId, taskDisplaySettings, customTaskHeightSmall, customTaskHeightNormal);
+                        const th = getTaskHeight(taskId, taskDisplaySettings3D, DEFAULT_TASKHEIGHT_SMALL, DEFAULT_TASKHEIGHT_NORMAL);
                         return (
                           <div
                             key={taskId}
@@ -1319,13 +1385,13 @@ export default function AssignmentSecond() {
                     tasks={tasks}
                     days={days}
                     DAYWIDTH={DAYWIDTH}
-                    taskDisplaySettings={taskDisplaySettings}
+                    taskDisplaySettings={taskDisplaySettings3D}
                     teamPhasesMap={teamPhasesMap}
                     phases={phases}
                     teamColor={teamColor}
                     totalDaysWidth={totalDaysWidth}
-                    thSmall={customTaskHeightSmall}
-                    thNormal={customTaskHeightNormal}
+                    thSmall={DEFAULT_TASKHEIGHT_SMALL}
+                    thNormal={DEFAULT_TASKHEIGHT_NORMAL}
                     isCollapsed={isCollapsed}
                   />
                 </div>
@@ -1341,15 +1407,15 @@ export default function AssignmentSecond() {
             teamOrder={teamOrder}
             teams={teams}
             milestones={milestones}
-            taskDisplaySettings={taskDisplaySettings}
+            taskDisplaySettings={taskDisplaySettings3D}
             teamDisplaySettings={teamDisplaySettings}
             teamPhasesMap={teamPhasesMap}
             effectiveHeaderH={effectiveHeaderH}
             TEAMWIDTH={TEAMWIDTH}
             TASKWIDTH={TASKWIDTH}
             DAYWIDTH={DAYWIDTH}
-            TASKHEIGHT_SMALL={customTaskHeightSmall}
-            TASKHEIGHT_NORMAL={customTaskHeightNormal}
+            TASKHEIGHT_SMALL={DEFAULT_TASKHEIGHT_SMALL}
+            TASKHEIGHT_NORMAL={DEFAULT_TASKHEIGHT_NORMAL}
           />
         </div>{/* inner container */}
       </div>{/* scroll container */}
@@ -1677,7 +1743,7 @@ function ViewsPanel({
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const panelStyle = {
-    position: 'absolute', top: '12px', left: '12px', zIndex: 999,
+    position: 'absolute', top: '210px', left: '12px', zIndex: 999,
     background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
     padding: '10px 14px', borderRadius: '10px',
     fontFamily: 'monospace', fontSize: '12px',
