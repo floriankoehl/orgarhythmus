@@ -60,6 +60,7 @@ export function usePersonas({
   containerRef,
   screenToFloor,
   floorLayout,
+  stickyOffsetRef,
 }) {
   // ── Persona state ──────────────────────────────────────────────
   const [personas, setPersonas] = useState([]);
@@ -163,44 +164,56 @@ export function usePersonas({
   /**
    * Find the team or task slab that contains the world point (x, z).
    * Only checks the name-column Z extents (where the 3D boxes are).
-   * Returns { teamId, taskId } or null.
+   * Returns { teamId, taskId, viaSticky } or null.
    *
-   * Note: team and task name columns occupy different Z ranges
-   * (team col: boardX 0→TEAMWIDTH, task col: boardX TEAMWIDTH→TEAMWIDTH+TASKWIDTH)
-   * so we check them independently — task slabs first (more specific), then team slabs.
+   * When checkSticky=true, also tests z + stickyOffset against slab bounds
+   * to detect drops on the floating sticky labels.
    *
-   * @param {number} x      — world X
-   * @param {number} z      — world Z
-   * @param {number} [pad]  — extra padding (px) added to all slab edges for hit-testing
+   * @param {number}  x            — world X
+   * @param {number}  z            — world Z
+   * @param {number}  [pad]        — extra padding (px)
+   * @param {boolean} [checkSticky] — also match against sticky label Z
    */
-  const findSlabAt = (x, z, pad = 0) => {
+  const findSlabAt = (x, z, pad = 0, checkSticky = false) => {
     const layout = floorLayoutRef.current;
     if (!layout || !layout.teams) return null;
 
-    // 1) Check task slabs first (more specific match)
-    for (const teamSlab of layout.teams) {
-      const inX = x >= Math.min(teamSlab.worldXStart, teamSlab.worldXEnd) - pad &&
-                  x <= Math.max(teamSlab.worldXStart, teamSlab.worldXEnd) + pad;
-      if (!inX) continue;
-      for (const taskSlab of teamSlab.tasks) {
-        const inTX = x >= Math.min(taskSlab.worldXStart, taskSlab.worldXEnd) - pad &&
-                     x <= Math.max(taskSlab.worldXStart, taskSlab.worldXEnd) + pad;
-        const inTZ = z >= Math.min(taskSlab.nameWorldZStart, taskSlab.nameWorldZEnd) - pad &&
-                     z <= Math.max(taskSlab.nameWorldZStart, taskSlab.nameWorldZEnd) + pad;
-        if (inTX && inTZ) {
-          return { teamId: teamSlab.teamId, taskId: taskSlab.taskId };
+    // Inner check against a single Z value
+    const checkZ = (zVal) => {
+      // 1) task slabs first (more specific)
+      for (const teamSlab of layout.teams) {
+        const inX = x >= Math.min(teamSlab.worldXStart, teamSlab.worldXEnd) - pad &&
+                    x <= Math.max(teamSlab.worldXStart, teamSlab.worldXEnd) + pad;
+        if (!inX) continue;
+        for (const taskSlab of teamSlab.tasks) {
+          const inTX = x >= Math.min(taskSlab.worldXStart, taskSlab.worldXEnd) - pad &&
+                       x <= Math.max(taskSlab.worldXStart, taskSlab.worldXEnd) + pad;
+          const inTZ = zVal >= Math.min(taskSlab.nameWorldZStart, taskSlab.nameWorldZEnd) - pad &&
+                       zVal <= Math.max(taskSlab.nameWorldZStart, taskSlab.nameWorldZEnd) + pad;
+          if (inTX && inTZ) return { teamId: teamSlab.teamId, taskId: taskSlab.taskId };
         }
       }
-    }
+      // 2) team slabs
+      for (const teamSlab of layout.teams) {
+        const inX = x >= Math.min(teamSlab.worldXStart, teamSlab.worldXEnd) - pad &&
+                    x <= Math.max(teamSlab.worldXStart, teamSlab.worldXEnd) + pad;
+        const inZ = zVal >= Math.min(teamSlab.nameWorldZStart, teamSlab.nameWorldZEnd) - pad &&
+                    zVal <= Math.max(teamSlab.nameWorldZStart, teamSlab.nameWorldZEnd) + pad;
+        if (inX && inZ) return { teamId: teamSlab.teamId, taskId: null };
+      }
+      return null;
+    };
 
-    // 2) Check team slabs (team name column has its own Z range)
-    for (const teamSlab of layout.teams) {
-      const inX = x >= Math.min(teamSlab.worldXStart, teamSlab.worldXEnd) - pad &&
-                  x <= Math.max(teamSlab.worldXStart, teamSlab.worldXEnd) + pad;
-      const inZ = z >= Math.min(teamSlab.nameWorldZStart, teamSlab.nameWorldZEnd) - pad &&
-                  z <= Math.max(teamSlab.nameWorldZStart, teamSlab.nameWorldZEnd) + pad;
-      if (inX && inZ) {
-        return { teamId: teamSlab.teamId, taskId: null };
+    // Try real slab position first
+    const real = checkZ(z);
+    if (real) return { ...real, viaSticky: false };
+
+    // Try sticky label position (z + offset converts sticky→real)
+    if (checkSticky) {
+      const stickyOff = stickyOffsetRef?.current || 0;
+      if (stickyOff !== 0) {
+        const sticky = checkZ(z + stickyOff);
+        if (sticky) return { ...sticky, viaSticky: true };
       }
     }
 
@@ -318,13 +331,15 @@ export function usePersonas({
           return updated;
         }
 
-        // 2) Try team/task slab snap (with generous padding for perspective-forgiving hit-testing)
+        // 2) Try team/task slab snap — also checks sticky labels (checkSticky=true)
         const SLAB_SNAP_PAD = 25;
-        const slab = findSlabAt(hitX, hitZ, SLAB_SNAP_PAD);
+        const slab = findSlabAt(hitX, hitZ, SLAB_SNAP_PAD, true);
         if (slab) {
-          update_protopersona(projectId, p.id, { x: hitX, z: hitZ, milestone: null })
+          // If matched via sticky label, convert to real-world Z for DB storage
+          const storeZ = slab.viaSticky ? hitZ + (stickyOffsetRef?.current || 0) : hitZ;
+          update_protopersona(projectId, p.id, { x: hitX, z: storeZ, milestone: null })
             .catch((err) => console.error('Failed to update persona:', err));
-          const updated = { ...p, x: hitX, z: hitZ, milestoneId: null, onTeamId: slab.teamId, onTaskId: slab.taskId };
+          const updated = { ...p, x: hitX, z: storeZ, milestoneId: null, onTeamId: slab.teamId, onTaskId: slab.taskId };
           setAllPersonas((all) => all.map((a) => (a.id === pid ? updated : a)));
           return updated;
         }

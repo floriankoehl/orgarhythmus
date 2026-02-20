@@ -323,6 +323,7 @@ export default function AssignmentSecond() {
 
   // ── Persona hook ───────────────────────────────────────────────
   const screenToFloorRef = useRef(null);
+  const stickyOffsetRef = useRef(0);
 
   const {
     personas, draggingId, boardDims, milestone3D,
@@ -336,6 +337,7 @@ export default function AssignmentSecond() {
     boardRef, containerRef,
     screenToFloor: (...args) => screenToFloorRef.current?.(...args),
     floorLayout,
+    stickyOffsetRef,
   });
 
   // ── Camera hook ────────────────────────────────────────────────
@@ -355,6 +357,9 @@ export default function AssignmentSecond() {
   });
 
   useEffect(() => { screenToFloorRef.current = screenToFloor; }, [screenToFloor]);
+
+  // Keep stickyOffsetRef in sync for persona snap logic
+  stickyOffsetRef.current = cameraScale !== 0 ? panZ / cameraScale : 0;
 
   useEffect(() => {
     getCameraStateRef.current = getCameraState;
@@ -1341,7 +1346,10 @@ export default function AssignmentSecond() {
               // Counteract panZ: the parent Layer 3 has translateZ(... + panZ) and scale(cs),
               // so offsetting by -panZ/cs keeps this label at a fixed camera-Z regardless of panZ.
               const stickyZ = slabZCenter - panZ / cameraScale;
-              const textColor = getContrastTextColor(teamColor);
+              const occupied = personas.some((p) => p.onTeamId === teamSlab.teamId);
+              const bgColor = occupied ? 'rgba(74,222,128,0.85)' : teamColor;
+              const borderColor = occupied ? 'rgba(74,222,128,1)' : teamColor;
+              const textColor = getContrastTextColor(occupied ? '#4ade80' : teamColor);
               const labelElevation = 45; // above team slabs (20), tasks (10), milestones (8)
 
               if (slabXLen < 1 || slabZLen < 1) return null;
@@ -1366,8 +1374,8 @@ export default function AssignmentSecond() {
                   <div style={{
                     position: 'absolute', top: 0, left: 0,
                     width: `${slabZLen}px`, height: `${slabXLen}px`,
-                    background: teamColor, opacity: 0.85,
-                    border: `2px solid ${teamColor}`,
+                    background: bgColor, opacity: 0.85,
+                    border: `2px solid ${borderColor}`,
                     borderRadius: '3px',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     overflow: 'hidden',
@@ -1397,9 +1405,13 @@ export default function AssignmentSecond() {
                 const slabXCenter = (taskSlab.worldXStart + taskSlab.worldXEnd) / 2;
                 const slabZCenter = (taskSlab.nameWorldZStart + taskSlab.nameWorldZEnd) / 2;
                 const stickyZ = slabZCenter - panZ / cameraScale;
-                const bgColor = lightenColor(teamColor, 0.35);
-                const textColor = getContrastTextColor(bgColor);
+                const occupied = personas.some((p) => p.onTaskId === taskSlab.taskId);
+                const baseBg = lightenColor(teamColor, 0.35);
+                const bgColor = occupied ? 'rgba(74,222,128,0.85)' : baseBg;
+                const borderColor = occupied ? 'rgba(74,222,128,1)' : teamColor;
+                const textColor = getContrastTextColor(occupied ? '#4ade80' : baseBg);
                 const labelElevation = 45;
+                const stickyH = 5;
 
                 if (slabXLen < 1 || slabZLen < 1) return null;
                 return (
@@ -1420,15 +1432,15 @@ export default function AssignmentSecond() {
                       pointerEvents: 'none',
                     }}
                   >
+                    {/* Top face */}
                     <div style={{
                       position: 'absolute', top: 0, left: 0,
                       width: `${slabZLen}px`, height: `${slabXLen}px`,
-                      background: bgColor, opacity: 0.85,
-                      border: `2px solid ${teamColor}`,
+                      background: bgColor,
+                      border: `2px solid ${borderColor}`,
                       borderRadius: '3px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       overflow: 'hidden',
-                      boxShadow: '0 1px 6px rgba(0,0,0,0.2)',
                     }}>
                       <span style={{
                         fontSize: '8px', fontWeight: 600, color: textColor,
@@ -1438,6 +1450,34 @@ export default function AssignmentSecond() {
                         transform: 'scaleX(-1)',
                       }}>{taskName}</span>
                     </div>
+                    {/* Front wall */}
+                    <div style={{
+                      position: 'absolute', left: 0, top: `${slabXLen}px`,
+                      width: `${slabZLen}px`, height: `${stickyH}px`,
+                      transform: 'rotateX(90deg)', transformOrigin: 'top left',
+                      background: `color-mix(in srgb, ${borderColor} 80%, #000)`,
+                    }} />
+                    {/* Back wall */}
+                    <div style={{
+                      position: 'absolute', left: 0, top: 0,
+                      width: `${slabZLen}px`, height: `${stickyH}px`,
+                      transform: 'rotateX(90deg)', transformOrigin: 'top left',
+                      background: `color-mix(in srgb, ${borderColor} 70%, #000)`,
+                    }} />
+                    {/* Left wall */}
+                    <div style={{
+                      position: 'absolute', left: 0, top: 0,
+                      width: `${stickyH}px`, height: `${slabXLen}px`,
+                      transform: 'rotateY(-90deg)', transformOrigin: 'top left',
+                      background: `color-mix(in srgb, ${borderColor} 75%, #000)`,
+                    }} />
+                    {/* Right wall */}
+                    <div style={{
+                      position: 'absolute', left: `${slabZLen}px`, top: 0,
+                      width: `${stickyH}px`, height: `${slabXLen}px`,
+                      transform: 'rotateY(-90deg)', transformOrigin: 'top left',
+                      background: `color-mix(in srgb, ${borderColor} 65%, #000)`,
+                    }} />
                   </div>
                 );
               })
@@ -1513,6 +1553,8 @@ export default function AssignmentSecond() {
               const totalH = headH + bodyH + legH;
               // Lift persona above whatever it's standing on (or hovering over)
               let standOnH = 0;
+              const STICKY_H = 45; // sticky label elevation
+              const stickyOff = cameraScale !== 0 ? panZ / cameraScale : 0;
               if (isBeingDragged) {
                 // While dragging, dynamically detect what's underneath and float above it
                 // Check milestones first
@@ -1523,35 +1565,51 @@ export default function AssignmentSecond() {
                   if (dx < 1 && dz < 1) { standOnH = MILESTONE_3D_HEIGHT; overMs = true; break; }
                 }
                 if (!overMs) {
-                  // Check team/task slabs (with padding matching snap tolerance)
+                  // Check team/task slabs + sticky labels (with padding matching snap tolerance)
                   const PAD = 15;
-                  // Task slabs first (more specific)
                   let foundSlab = false;
+                  // Task slabs first (more specific) — check real Z, then sticky Z
                   for (const ts of floorLayout.teams) {
                     const inX = p.x >= Math.min(ts.worldXStart, ts.worldXEnd) - PAD && p.x <= Math.max(ts.worldXStart, ts.worldXEnd) + PAD;
                     if (!inX) continue;
                     for (const tk of ts.tasks) {
                       const tInX = p.x >= Math.min(tk.worldXStart, tk.worldXEnd) - PAD && p.x <= Math.max(tk.worldXStart, tk.worldXEnd) + PAD;
+                      if (!tInX) continue;
                       const tInZ = p.z >= Math.min(tk.nameWorldZStart, tk.nameWorldZEnd) - PAD && p.z <= Math.max(tk.nameWorldZStart, tk.nameWorldZEnd) + PAD;
-                      if (tInX && tInZ) { standOnH = TASK_3D_HEIGHT; foundSlab = true; break; }
+                      if (tInZ) { standOnH = TASK_3D_HEIGHT; foundSlab = true; break; }
+                      // Sticky label zone
+                      if (stickyOff !== 0) {
+                        const sZ = p.z + stickyOff;
+                        const sInZ = sZ >= Math.min(tk.nameWorldZStart, tk.nameWorldZEnd) - PAD && sZ <= Math.max(tk.nameWorldZStart, tk.nameWorldZEnd) + PAD;
+                        if (sInZ) { standOnH = STICKY_H; foundSlab = true; break; }
+                      }
                     }
                     if (foundSlab) break;
                   }
                   if (!foundSlab) {
-                    // Team slabs
+                    // Team slabs — check real Z, then sticky Z
                     for (const ts of floorLayout.teams) {
                       const inX = p.x >= Math.min(ts.worldXStart, ts.worldXEnd) - PAD && p.x <= Math.max(ts.worldXStart, ts.worldXEnd) + PAD;
+                      if (!inX) continue;
                       const inZ = p.z >= Math.min(ts.nameWorldZStart, ts.nameWorldZEnd) - PAD && p.z <= Math.max(ts.nameWorldZStart, ts.nameWorldZEnd) + PAD;
-                      if (inX && inZ) { standOnH = TEAM_3D_HEIGHT; foundSlab = true; break; }
+                      if (inZ) { standOnH = TEAM_3D_HEIGHT; foundSlab = true; break; }
+                      if (stickyOff !== 0) {
+                        const sZ = p.z + stickyOff;
+                        const sInZ = sZ >= Math.min(ts.nameWorldZStart, ts.nameWorldZEnd) - PAD && sZ <= Math.max(ts.nameWorldZStart, ts.nameWorldZEnd) + PAD;
+                        if (sInZ) { standOnH = STICKY_H; foundSlab = true; break; }
+                      }
                     }
                   }
                 }
                 standOnH += PERSONA_DRAG_LIFT;
               } else {
                 if (p.milestoneId != null) standOnH = MILESTONE_3D_HEIGHT;
-                else if (p.onTaskId) standOnH = TASK_3D_HEIGHT;
-                else if (p.onTeamId) standOnH = TEAM_3D_HEIGHT;
+                else if (p.onTaskId) standOnH = STICKY_H;
+                else if (p.onTeamId) standOnH = STICKY_H;
               }
+              // Slab-bound personas follow the sticky label Z position
+              const onSlab = !isBeingDragged && p.milestoneId == null && (p.onTeamId || p.onTaskId);
+              const renderZ = onSlab ? p.z - stickyOff : p.z;
               const baseY = totalH + standOnH;
               return (
                 <div
@@ -1565,7 +1623,7 @@ export default function AssignmentSecond() {
                     height: `${S}px`,
                     transform: [
                       `translateX(${p.x - S / 2}px)`,
-                      `translateZ(${p.z + S / 2}px)`,
+                      `translateZ(${renderZ + S / 2}px)`,
                       `translateY(-${baseY}px)`,
                     ].join(' '),
                     transition: isBeingDragged ? 'none' : 'transform 0.25s ease-out',
