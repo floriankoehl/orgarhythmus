@@ -208,6 +208,9 @@ export function useCamera3D({
         const anchorSX = e.clientX;
         const anchorSY = e.clientY;
         const floorPt = screenToFloor(anchorSX, anchorSY);
+        // Only use anchor if the floor point is at a reasonable distance
+        const anchorDist = floorPt ? Math.sqrt(floorPt.x * floorPt.x + floorPt.z * floorPt.z) : Infinity;
+        const useAnchor = floorPt && anchorDist < 5000;
 
         // 2. Apply new orbit angles to refs immediately
         const newOrbitY = orbitYRef.current - dx * 0.3;
@@ -216,9 +219,9 @@ export function useCamera3D({
         orbitYRef.current = newOrbitY;
 
         // 3. Compensate pan so the anchor world point stays under the mouse
-        if (floorPt) {
+        if (useAnchor) {
           const projected = worldToScreen(floorPt.x, floorPt.z);
-          if (projected && Math.abs(projected.f) > 1e-6) {
+          if (projected && projected.f > 0.05) {
             const dPanX = (anchorSX - projected.sx) / projected.f;
             const dPanY = (anchorSY - projected.sy) / projected.f;
             panXRef.current += dPanX;
@@ -264,14 +267,20 @@ export function useCamera3D({
 
         // Capture the floor point under the cursor before scaling
         const floorPt = screenToFloor(e.clientX, e.clientY);
+        // Only use anchor if the floor point is at a reasonable distance
+        // (avoids wild compensation when the ray grazes the floor at a shallow angle)
+        const anchorDist = floorPt ? Math.sqrt(floorPt.x * floorPt.x + floorPt.z * floorPt.z) : Infinity;
+        const useAnchor = floorPt && anchorDist < 5000;
 
         // Apply new scale
         cameraScaleRef.current = newScale;
 
         // Compensate pan so the cursor-point stays fixed
-        if (floorPt) {
+        if (useAnchor) {
           const projected = worldToScreen(floorPt.x, floorPt.z);
-          if (projected && Math.abs(projected.f) > 1e-6) {
+          // Only compensate when the point is in front of the camera (f > 0)
+          // and at a reasonable perspective depth (f > 0.05)
+          if (projected && projected.f > 0.05) {
             panXRef.current += (e.clientX - projected.sx) / projected.f;
             panYRef.current += (e.clientY - projected.sy) / projected.f;
           }
