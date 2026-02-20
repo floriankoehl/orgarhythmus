@@ -273,10 +273,10 @@ export function usePersonas({
           update_protopersona(projectId, p.id, {
             x: newX, z: newZ,
             milestones: [nearest.id],
-            teams: [],
-            tasks: [],
+            teams: p.teamIds,
+            tasks: p.taskIds,
           }).catch((err) => console.error('Failed to update persona:', err));
-          const updated = { ...p, x: newX, z: newZ, milestoneIds: [nearest.id], teamIds: [], taskIds: [] };
+          const updated = { ...p, x: newX, z: newZ, milestoneIds: [nearest.id], teamIds: p.teamIds, taskIds: p.taskIds };
           setAllPersonas((all) => all.map((a) => (a.id === pid ? updated : a)));
           return updated;
         }
@@ -348,6 +348,56 @@ export function usePersonas({
     }
   }, [projectId]);
 
+  /**
+   * Assign an existing persona (by id) to a milestone.
+   * Keeps any existing team/task assignments — personas are NOT removed from their team/task.
+   * Called from ghost-drag drops on milestones.
+   */
+  const assignPersonaToMilestone = useCallback((personaId, milestoneId) => {
+    const ms = milestone3DRef.current.find((m) => m.id === milestoneId);
+    if (!ms) return;
+
+    setAllPersonas((all) => {
+      const persona = all.find((p) => p.id === personaId);
+      if (!persona) return all;
+
+      // Count existing occupants for stacking offset
+      const countOnMs = {};
+      for (const pp of all) {
+        if (pp.id !== personaId) {
+          for (const mid of pp.milestoneIds) {
+            countOnMs[mid] = (countOnMs[mid] || 0) + 1;
+          }
+        }
+      }
+      const idx = countOnMs[milestoneId] || 0;
+      const newX = ms.worldX;
+      const newZ = ms.worldZ + idx * (PERSONA_SIZE + 4);
+      const updated = { ...persona, x: newX, z: newZ, milestoneIds: [milestoneId] };
+
+      update_protopersona(projectId, personaId, {
+        x: newX, z: newZ,
+        milestones: [milestoneId],
+        teams: persona.teamIds,
+        tasks: persona.taskIds,
+      }).catch((err) => console.error('Failed to assign persona to milestone:', err));
+
+      return all.map((a) => (a.id === personaId ? updated : a));
+    });
+  }, [projectId]);
+
+  /** Stable public wrapper — reads from milestone3DRef so no stale-closure issues */
+  const findNearestMilestonePublic = useCallback((x, z) => {
+    let best = null, bestDist = SNAP_RADIUS;
+    for (const m of milestone3DRef.current) {
+      const dx = Math.max(0, Math.abs(m.worldX - x) - (m.halfX || 0));
+      const dz = Math.max(0, Math.abs(m.worldZ - z) - (m.halfZ || 0));
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist < bestDist) { bestDist = dist; best = m; }
+    }
+    return best;
+  }, []);
+
   return {
     personas,
     allPersonas,
@@ -361,5 +411,7 @@ export function usePersonas({
     removePersona,
     onPersonaDragMove,
     onPersonaDragEnd,
+    assignPersonaToMilestone,
+    findNearestMilestone: findNearestMilestonePublic,
   };
 }

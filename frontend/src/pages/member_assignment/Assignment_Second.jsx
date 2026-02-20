@@ -325,10 +325,11 @@ export default function AssignmentSecond() {
   const screenToFloorRef = useRef(null);
 
   const {
-    personas, draggingId, boardDims, milestone3D,
+    personas, allPersonas, draggingId, boardDims, milestone3D,
     addPersona, removePersona,
     onPersonaDragMove, onPersonaDragEnd,
     draggingPersona, dragAnchor,
+    assignPersonaToMilestone, findNearestMilestone,
   } = usePersonas({
     projectId, days, teamOrder, teams, milestones,
     taskDisplaySettings3D, teamDisplaySettings, teamPhasesMap,
@@ -355,6 +356,51 @@ export default function AssignmentSecond() {
   });
 
   useEffect(() => { screenToFloorRef.current = screenToFloor; }, [screenToFloor]);
+
+  // ── Ghost drag — "pick a persona from team/task slab → drop on milestone" ──
+  // When a persona badge on a team/task slab is clicked, a floating copy tracks
+  // the cursor. Releasing over a milestone saves that milestone assignment while
+  // keeping the persona baked into the team/task.
+  const [ghostDrag, setGhostDrag] = useState(null);
+  const ghostDragRef = useRef(null);
+  const findNearestMilestoneRef = useRef(findNearestMilestone);
+  const assignPersonaToMilestoneRef = useRef(assignPersonaToMilestone);
+  useEffect(() => { ghostDragRef.current = ghostDrag; }, [ghostDrag]);
+  useEffect(() => {
+    findNearestMilestoneRef.current = findNearestMilestone;
+    assignPersonaToMilestoneRef.current = assignPersonaToMilestone;
+  }, [findNearestMilestone, assignPersonaToMilestone]);
+
+  const startGhostDrag = useCallback((personaId, color, name, e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setGhostDrag({ personaId, color, name, clientX: e.clientX, clientY: e.clientY });
+  }, []);
+
+  useEffect(() => {
+    const onMove = (e) => {
+      if (!ghostDragRef.current) return;
+      setGhostDrag((prev) => prev ? { ...prev, clientX: e.clientX, clientY: e.clientY } : null);
+    };
+    const onUp = (e) => {
+      if (!ghostDragRef.current) return;
+      const { personaId } = ghostDragRef.current;
+      const floor = screenToFloorRef.current?.(e.clientX, e.clientY);
+      if (floor) {
+        const nearest = findNearestMilestoneRef.current?.(floor.x, floor.z);
+        if (nearest) {
+          assignPersonaToMilestoneRef.current?.(personaId, nearest.id);
+        }
+      }
+      setGhostDrag(null);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
 
   useEffect(() => {
     getCameraStateRef.current = getCameraState;
@@ -556,7 +602,7 @@ export default function AssignmentSecond() {
               <div>scale: <span style={{ color: '#60a5fa' }}>{cameraScale.toFixed(2)}x</span></div>
               <div>pan: <span style={{ color: '#fbbf24' }}>{panX.toFixed(0)}, {panY.toFixed(0)} | Z: {panZ.toFixed(0)}</span></div>
               <div style={{ marginTop: '4px', fontSize: '10px', color: '#94a3b8' }}>
-                Middle = orbit | Right = pan | Scroll = zoom
+                Middle = orbit | Right = pan | Shift+Scroll = zoom
               </div>
               <div style={{ fontSize: '10px', color: '#c084fc' }}>
                 board: {boardDims.w}×{boardDims.h}
@@ -1094,10 +1140,11 @@ export default function AssignmentSecond() {
               const slabZLen = Math.abs(teamSlab.nameWorldZEnd - teamSlab.nameWorldZStart);
               const slabXCenter = (teamSlab.worldXStart + teamSlab.worldXEnd) / 2;
               const slabZCenter = (teamSlab.nameWorldZStart + teamSlab.nameWorldZEnd) / 2;
-              const occupied = personas.some((p) => p.teamIds?.includes(teamSlab.teamId));
+              const occupied = allPersonas.some((p) => p.teamIds?.includes(teamSlab.teamId));
               const borderColor = occupied ? 'rgba(74,222,128,1)' : teamColor;
               const topBg = occupied ? 'rgba(74,222,128,0.85)' : teamColor;
               const textColor = getContrastTextColor(occupied ? '#4ade80' : teamColor);
+              const slabPersonas = allPersonas.filter((p) => p.teamIds?.includes(teamSlab.teamId));
 
               if (slabXLen < 1 || slabZLen < 1) return null;
 
@@ -1132,6 +1179,7 @@ export default function AssignmentSecond() {
                     borderRadius: '2px',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     overflow: 'hidden',
+                    pointerEvents: slabPersonas.length > 0 ? 'auto' : 'none',
                   }}>
                     <span style={{
                       fontSize: '10px', fontWeight: 700, color: textColor,
@@ -1140,6 +1188,27 @@ export default function AssignmentSecond() {
                       maxWidth: '100%', padding: '0 4px',
                       transform: 'scaleX(-1)',
                     }}>{teamName}</span>
+                    {/* Ghost persona badges — click to assign to a milestone */}
+                    {slabPersonas.map((gp, gi) => (
+                      <div
+                        key={gp.id}
+                        title={`${gp.name} — drag to milestone`}
+                        onMouseDown={(e) => startGhostDrag(gp.id, gp.color, gp.name, e)}
+                        style={{
+                          position: 'absolute',
+                          right: `${4 + gi * 16}px`,
+                          top: '50%',
+                          transform: 'translateY(-50%) scaleX(-1)',
+                          width: '12px', height: '12px', borderRadius: '50%',
+                          background: gp.color,
+                          border: '1.5px solid rgba(255,255,255,0.9)',
+                          cursor: 'grab',
+                          pointerEvents: 'auto',
+                          boxShadow: '0 0 4px rgba(0,0,0,0.4)',
+                          flexShrink: 0,
+                        }}
+                      />
+                    ))}
                   </div>
                   {/* Front wall */}
                   <div style={{
@@ -1188,10 +1257,11 @@ export default function AssignmentSecond() {
                 const slabXCenter = (taskSlab.worldXStart + taskSlab.worldXEnd) / 2;
                 const slabZCenter = (taskSlab.nameWorldZStart + taskSlab.nameWorldZEnd) / 2;
                 const bgColor = lightenColor(teamColor, 0.35);
-                const occupied = personas.some((p) => p.taskIds?.includes(taskSlab.taskId));
+                const occupied = allPersonas.some((p) => p.taskIds?.includes(taskSlab.taskId));
                 const borderColor = occupied ? 'rgba(74,222,128,1)' : teamColor;
                 const topBg = occupied ? 'rgba(74,222,128,0.85)' : bgColor;
                 const textColor = getContrastTextColor(occupied ? '#4ade80' : bgColor);
+                const slabTaskPersonas = allPersonas.filter((p) => p.taskIds?.includes(taskSlab.taskId));
 
                 if (slabXLen < 1 || slabZLen < 1) return null;
 
@@ -1225,6 +1295,7 @@ export default function AssignmentSecond() {
                       border: `2px solid ${borderColor}`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       overflow: 'hidden',
+                      pointerEvents: slabTaskPersonas.length > 0 ? 'auto' : 'none',
                     }}>
                       <span style={{
                         fontSize: '8px', fontWeight: 600, color: textColor,
@@ -1233,6 +1304,27 @@ export default function AssignmentSecond() {
                         maxWidth: '100%', padding: '0 3px',
                         transform: 'scaleX(-1)',
                       }}>{taskName}</span>
+                      {/* Ghost persona badges — click to assign to a milestone */}
+                      {slabTaskPersonas.map((gp, gi) => (
+                        <div
+                          key={gp.id}
+                          title={`${gp.name} — drag to milestone`}
+                          onMouseDown={(e) => startGhostDrag(gp.id, gp.color, gp.name, e)}
+                          style={{
+                            position: 'absolute',
+                            right: `${2 + gi * 12}px`,
+                            top: '50%',
+                            transform: 'translateY(-50%) scaleX(-1)',
+                            width: '9px', height: '9px', borderRadius: '50%',
+                            background: gp.color,
+                            border: '1px solid rgba(255,255,255,0.9)',
+                            cursor: 'grab',
+                            pointerEvents: 'auto',
+                            boxShadow: '0 0 3px rgba(0,0,0,0.4)',
+                            flexShrink: 0,
+                          }}
+                        />
+                      ))}
                     </div>
                     {/* Front wall */}
                     <div style={{
@@ -1393,7 +1485,11 @@ export default function AssignmentSecond() {
             })}
 
             {/* ── Protopersona figures (blocky box style) ── */}
+            {/* Personas that are on a team/task but NOT on a milestone are shown
+                as ghost badges on the slabs above — skip full 3D figure for them. */}
             {personas.map((p) => {
+              const isSlabOnly = (p.teamIds?.length || p.taskIds?.length) && !p.milestoneIds?.length;
+              if (isSlabOnly) return null;
               const S = PERSONA_SIZE;
               const isBeingDragged = p.id === draggingId;
               const headW = S * 0.44, headH = S * 0.40, headD = S * 0.40;
@@ -1528,6 +1624,38 @@ export default function AssignmentSecond() {
 
       </div>{/* distance wrapper */}
       </div>{/* orbit wrapper */}
+
+      {/* ── Ghost drag floating indicator ─────────────────────────── */}
+      {/* Appears when user clicks a persona badge on a team/task slab.
+          Follows the cursor until released over a milestone. */}
+      {ghostDrag && (
+        <div
+          style={{
+            position: 'fixed',
+            left: ghostDrag.clientX - 18,
+            top: ghostDrag.clientY - 18,
+            width: '36px',
+            height: '36px',
+            borderRadius: '50%',
+            background: ghostDrag.color,
+            border: '3px solid rgba(255,255,255,0.95)',
+            boxShadow: '0 4px 18px rgba(0,0,0,0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff',
+            fontSize: '13px',
+            fontWeight: 'bold',
+            fontFamily: 'sans-serif',
+            pointerEvents: 'none',
+            zIndex: 9999,
+            cursor: 'grabbing',
+            userSelect: 'none',
+          }}
+        >
+          {ghostDrag.name.charAt(0).toUpperCase()}
+        </div>
+      )}
     </div>
   );
 }
