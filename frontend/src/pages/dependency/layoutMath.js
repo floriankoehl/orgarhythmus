@@ -27,6 +27,20 @@ export const MAX_TASKWIDTH = 500;
 // Pure Utility Functions
 // ==========================================
 
+// Helper to determine high-contrast text color (black or white) for a given background hex color
+export const getContrastTextColor = (hex) => {
+  if (!hex || !hex.startsWith('#')) return '#000';
+  let color = hex.replace('#', '');
+  if (color.length === 3) {
+    color = color[0] + color[0] + color[1] + color[1] + color[2] + color[2];
+  }
+  const r = parseInt(color.substring(0, 2), 16);
+  const g = parseInt(color.substring(2, 4), 16);
+  const b = parseInt(color.substring(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5 ? '#000' : '#fff';
+};
+
 // Helper function to lighten a hex color while keeping high opacity
 export const lightenColor = (hex, amount = 0.9) => {
   const color = hex.replace('#', '');
@@ -210,3 +224,98 @@ export const getConnectionPath = (x1, y1, x2, y2) => {
 export const getStraightPath = (x1, y1, x2, y2) => {
     return `M ${x1} ${y1} L ${x2} ${y2}`;
 };
+
+// ==========================================
+// Milestone Position Computation
+// ==========================================
+
+/**
+ * Compute the 2D pixel position of every milestone in the layout.
+ *
+ * Returns an array of milestone objects enriched with:
+ *   x         — left edge (px) in content-space (includes TEAMWIDTH + TASKWIDTH offset)
+ *   y         — top edge (px) aligned to the task's top
+ *   w         — pixel width of the milestone block
+ *   h         — pixel height (equals the full task row height)
+ *   teamColor — color of the owning team
+ *
+ * Callers convert (x, y, w, h) to whatever coordinate space they need:
+ *   2D rendering : use x, y + 2, w, h - 4  (standard 2px margin)
+ *   3D projection: center = (x + w/2, y + h/2), then apply board transform
+ *
+ * This is the single source of truth for milestone layout coordinates.
+ * Both the 2D milestone overlay and the 3D projection layer must call this
+ * function instead of re-deriving positions independently.
+ */
+export function computeMilestonePixelPositions({
+    teamOrder,
+    teams,
+    milestones,
+    taskDisplaySettings,
+    teamDisplaySettings = {},
+    teamPhasesMap,
+    effectiveHeaderH,
+    TEAMWIDTH,
+    TASKWIDTH,
+    DAYWIDTH,
+    TASKHEIGHT_SMALL = DEFAULT_TASKHEIGHT_SMALL,
+    TASKHEIGHT_NORMAL = DEFAULT_TASKHEIGHT_NORMAL,
+}) {
+    const result = [];
+    let yOffset = effectiveHeaderH;
+
+    for (const teamId of teamOrder) {
+        const team = teams[teamId];
+        if (!team) continue;
+
+        // Skip hidden teams entirely
+        const teamSettings = teamDisplaySettings[teamId];
+        if (teamSettings?.hidden) continue;
+
+        yOffset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+        yOffset += TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
+
+        const teamPhases = teamPhasesMap ? (teamPhasesMap[teamId] || []) : [];
+        const phaseRowH = teamPhases.length > 0 ? TEAM_PHASE_ROW_HEIGHT : 0;
+
+        // Collapsed teams: accumulate collapsed height, skip milestone rendering
+        if (teamSettings?.collapsed) {
+            yOffset += phaseRowH + TEAM_COLLAPSED_HEIGHT;
+            continue;
+        }
+
+        const tasksStartY = yOffset + phaseRowH;
+
+        const visibleTaskIds = getVisibleTasks(team, taskDisplaySettings);
+        for (const taskId of visibleTaskIds) {
+            const th = getTaskHeight(taskId, taskDisplaySettings, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL);
+            const taskYOff = getTaskYOffset(
+                taskId,
+                team,
+                isTaskVisible,
+                (id, ds) => getTaskHeight(id, ds, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL),
+                taskDisplaySettings,
+            );
+            const taskY = tasksStartY + taskYOff;
+
+            const taskMilestones = Object.values(milestones).filter(
+                (ms) => String(ms.task) === String(taskId),
+            );
+            for (const m of taskMilestones) {
+                result.push({
+                    ...m,
+                    x: TEAMWIDTH + TASKWIDTH + m.start_index * DAYWIDTH,
+                    y: taskY,
+                    w: (m.duration || 1) * DAYWIDTH,
+                    h: th,
+                    teamColor: team.color || '#94a3b8',
+                });
+            }
+        }
+
+        const rawH = getRawTeamHeight(team, taskDisplaySettings, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL);
+        yOffset += phaseRowH + Math.max(rawH, TEAM_COLLAPSED_HEIGHT);
+    }
+
+    return result;
+}

@@ -444,24 +444,25 @@ class Idea(models.Model):
 
 
 # ═══════════════════════════════════════════════
-#  PROTOPERSONA (3D Gantt assignment figures)
+#  PROTO-PERSONA
 # ═══════════════════════════════════════════════
 
 class ProtoPersona(models.Model):
-    """
-    A draggable human figure on the 3D Gantt (Assignment page).
-    Persists name, colours, and board position (task lane + day index).
-    """
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="protopersonas")
-    task = models.ForeignKey(Task, on_delete=models.SET_NULL, null=True, blank=True, related_name="protopersonas")
-    name = models.CharField(max_length=200, default="New Persona")
-    color = models.CharField(max_length=20, default="#3b82f6")       # clothing / chip colour
-    hair_color = models.CharField(max_length=20, default="#4a3728")
-    day_index = models.IntegerField(default=0)                       # 0-based X position
-    order_index = models.IntegerField(default=0)
+    name = models.CharField(max_length=200)
+    color = models.CharField(max_length=20, default="#f87171")
+    x = models.FloatField(default=0)
+    z = models.FloatField(default=0)
+    milestone = models.ForeignKey(
+        Milestone, on_delete=models.SET_NULL, null=True, blank=True, related_name="protopersonas"
+    )
+    created_by = models.ForeignKey(
+        "auth.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="created_protopersonas"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["project", "order_index"]
+        ordering = ["created_at"]
 
     def __str__(self):
         return f"{self.name} ({self.project.name})"

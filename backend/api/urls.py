@@ -145,6 +145,12 @@ urlpatterns = [
     path("projects/<int:project_id>/snapshots/<int:snapshot_id>/rename/", views.rename_snapshot),
     # _____________________________ END OF NEW ADDING ______________________________
 
+    # Proto-Personas
+    path("projects/<int:project_id>/protopersonas/", views.get_all_protopersonas),
+    path("projects/<int:project_id>/protopersonas/create/", views.create_protopersona),
+    path("projects/<int:project_id>/protopersonas/<int:persona_id>/", views.update_protopersona),
+    path("projects/<int:project_id>/protopersonas/<int:persona_id>/delete/", views.delete_protopersona),
+
     # User Shortcuts (per-user keyboard shortcut configuration)
     path("user/shortcuts/", views.get_user_shortcuts, name="get_user_shortcuts"),
     path("user/shortcuts/save/", views.save_user_shortcuts, name="save_user_shortcuts"),

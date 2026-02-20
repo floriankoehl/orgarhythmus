@@ -1,14 +1,16 @@
-// ═══════════════════════════════════════════════════════════════════
-// Assignment_Second.jsx — Visual replica of the Dependencies page
+// Assignment_Second.jsx — 3D Assignment view orchestrator
 // ═══════════════════════════════════════════════════════════════════
 //
-// This renders an exact visual copy of the 2D Dependencies Gantt chart
-// surface: scroll container, day header, team/task sidebar, day grid,
-// milestones — all using the same layout constants. Buttons and
-// interactions are NOT wired up; this is a display-only surface.
+// This is the orchestration layer that wires together:
+//   - Data fetching (project, teams, tasks, milestones, phases)
+//   - View management (useViewManagement)
+//   - Camera controls (useCamera3D)
+//   - Persona logic (usePersonas)
+//   - Floor representation (useFloor3D) — for hit-testing and team/task height slabs
+//   - Sub-components (ViewsPanel, ToolbarPlaceholder, DayGrid, MilestoneLayer)
 //
-import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   fetch_project_details,
   fetch_project_teams,
@@ -16,7 +18,10 @@ import {
   get_all_milestones,
   get_project_days,
   get_all_phases,
+  get_all_dependencies,
 } from '../../api/dependencies_api.js';
+import { useViewManagement } from '../dependency/useViewManagement.js';
+import { getDefaultViewState } from '../dependency/viewDefaults.js';
 import {
   DEFAULT_TASKHEIGHT_NORMAL,
   DEFAULT_TASKHEIGHT_SMALL,
@@ -33,127 +38,37 @@ import {
   DAY_NAME_WIDTH_THRESHOLD,
   daysBetween,
   lightenColor,
+  getContrastTextColor,
+  getVisibleTasks,
+  isTaskVisible,
 } from '../dependency/layoutMath.js';
 
-// ── Phase header height ──────────────────────────────────────────
-const PHASE_HEADER_HEIGHT = 26;
-
-// ── 3D Camera & Scene Constants ──────────────────────────────────
-//
-// Coordinate system (right-hand):
-//   +X → right,          −X → left
-//   +Y → up,             −Y → down
-//   +Z → toward viewer,  −Z → into screen
-//
-// The board lies flat on the XZ ground plane (Y = 0).
-// The camera orbits around the world origin on a spherical shell
-// defined by pitch (orbitX), yaw (orbitY), and a radial distance.
-//
-const CAMERA_BASE_DISTANCE  = 600;   // px — radial distance from origin when zoom = 0
-const CAMERA_DEFAULT_ZOOM   = 500;   // px — default zoom offset (reduces distance)
-const CAMERA_DEFAULT_TILT   = 30;    // deg — default vertical pitch (looking down)
-const CAMERA_DEFAULT_YAW    = 30;    // deg — default horizontal rotation
-const CAMERA_ZOOM_MIN       = -800;  // px — minimum zoom (farthest away)
-const CAMERA_ZOOM_MAX       = 600;   // px — maximum zoom (closest)
-const PERSPECTIVE_DEPTH     = 1800;  // px — CSS perspective value
-const FLOOR_SIZE            = 2400;  // px — XZ grid floor side length
-
-// ── Protopersona defaults ────────────────────────────────────────
-const PERSONA_SIZE          = 25;    // px — cube side length
-const SNAP_RADIUS           = 40;    // px — max distance to snap to a milestone
-const PERSONA_COLORS = [
-  '#f87171', '#fb923c', '#facc15', '#4ade80',
-  '#22d3ee', '#818cf8', '#e879f9', '#f472b6',
-];
-
-// ══════════════════════════════════════════════════════════════════
-// Helpers
-// ══════════════════════════════════════════════════════════════════
-
-/** Build day labels from project start date + day metadata */
-function buildDayLabels(numDays, startDate, projectDays) {
-  const labels = [];
-  const d = new Date(startDate);
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  for (let i = 0; i < numDays; i++) {
-    const curr = new Date(d);
-    curr.setDate(curr.getDate() + i);
-    const dayOfWeek = curr.getDay();
-    const meta = projectDays[i] || {};
-    labels.push({
-      dateStr: `${curr.getDate()}.${curr.getMonth() + 1}`,
-      dayNameShort: dayNames[dayOfWeek],
-      isSunday: dayOfWeek === 0,
-      purpose: meta.purpose || null,
-      purposeTeams: meta.purpose_teams || null,
-    });
-  }
-  return labels;
-}
-
-/** Get task height from display settings */
-function getTaskHeight(taskId, taskDisplaySettings) {
-  const s = taskDisplaySettings[taskId];
-  if (!s || s.hidden) return 0;
-  return s.size === 'small' ? DEFAULT_TASKHEIGHT_SMALL : DEFAULT_TASKHEIGHT_NORMAL;
-}
-
-/** Get visible tasks for a team */
-function getVisibleTasks(team, taskDisplaySettings) {
-  if (!team) return [];
-  return team.tasks.filter((tid) => {
-    const s = taskDisplaySettings[tid];
-    return s ? !s.hidden : true;
-  });
-}
-
-/** Get team row height */
-function getTeamRowHeight(team, taskDisplaySettings, teamPhaseRowH = 0) {
-  if (!team) return TEAM_COLLAPSED_HEIGHT;
-  let h = 0;
-  for (const tid of team.tasks) {
-    h += getTaskHeight(tid, taskDisplaySettings);
-  }
-  return Math.max(h, TEAM_COLLAPSED_HEIGHT) + teamPhaseRowH;
-}
-
-/** Get Y offset for a team */
-function getTeamYOffset(teamId, teamOrder, teams, taskDisplaySettings, effectiveHeaderH, teamPhasesMap) {
-  let offset = effectiveHeaderH;
-  for (const tid of teamOrder) {
-    if (tid === teamId) break;
-    offset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-    offset += TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
-    const phaseH = (teamPhasesMap[tid] && teamPhasesMap[tid].length > 0) ? TEAM_PHASE_ROW_HEIGHT : 0;
-    offset += getTeamRowHeight(teams[tid], taskDisplaySettings, phaseH);
-  }
-  return offset;
-}
-
-/** Get Y offset for a task within its team */
-function getTaskYOffset(taskId, team, taskDisplaySettings) {
-  if (!team) return 0;
-  let offset = 0;
-  for (const tid of team.tasks) {
-    if (tid === taskId) break;
-    offset += getTaskHeight(tid, taskDisplaySettings);
-  }
-  return offset;
-}
-
-/** Calculate total content height */
-function calcContentHeight(teamOrder, teams, taskDisplaySettings, effectiveHeaderH, teamPhasesMap) {
-  let h = effectiveHeaderH;
-  for (const tid of teamOrder) {
-    h += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-    h += TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
-    const phaseH = (teamPhasesMap[tid] && teamPhasesMap[tid].length > 0) ? TEAM_PHASE_ROW_HEIGHT : 0;
-    h += getTeamRowHeight(teams[tid], taskDisplaySettings, phaseH);
-  }
-  // Final drop indicator area
-  h += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-  return h;
-}
+// 3D engine module
+import {
+  PHASE_HEADER_HEIGHT,
+  CAMERA_BASE_DISTANCE,
+  CAMERA_DEFAULT_TILT,
+  CAMERA_DEFAULT_YAW,
+  CAMERA_DEFAULT_ZOOM,
+  CAMERA_DEFAULT_SCALE,
+  PERSPECTIVE_DEPTH,
+  PERSONA_SIZE,
+  PERSONA_DRAG_LIFT,
+  MILESTONE_3D_HEIGHT,
+  BOARD_3D_HEIGHT,
+  TEAM_3D_HEIGHT,
+  TASK_3D_HEIGHT,
+  buildDayLabels,
+  getTaskHeight,
+  getTaskYOffset,
+  getTeamRowHeight,
+  calcContentHeight,
+} from '../../engine3d/constants.js';
+import { useCamera3D } from '../../engine3d/useCamera3D.js';
+import { usePersonas } from '../../engine3d/usePersonas.js';
+import { useFloor3D } from '../../engine3d/useFloor3D.js';
+import { ViewsPanel, ToolbarPlaceholder, DayGrid, MilestoneLayer } from '../../engine3d/components.jsx';
+import { buildConnectionGeometry } from '../../engine3d/connectionGeometry.js';
 
 // ══════════════════════════════════════════════════════════════════
 // Component
@@ -161,8 +76,10 @@ function calcContentHeight(teamOrder, teams, taskDisplaySettings, effectiveHeade
 
 export default function AssignmentSecond() {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const containerRef = useRef(null);
   const boardRef = useRef(null);
+  const viewportRef = useRef(null);
 
   // ── Data state ─────────────────────────────────────────────────
   const [days, setDays] = useState(null);
@@ -172,34 +89,43 @@ export default function AssignmentSecond() {
   const [teams, setTeams] = useState({});
   const [tasks, setTasks] = useState({});
   const [milestones, setMilestones] = useState({});
+  const [connections, setConnections] = useState([]);
   const [phases, setPhases] = useState([]);
   const [taskDisplaySettings, setTaskDisplaySettings] = useState({});
+  const [teamDisplaySettings, setTeamDisplaySettings] = useState({});
   const [loading, setLoading] = useState(true);
+  const [cameraFlash, setCameraFlash] = useState(null);
+  // Panel collapse state — each panel can be toggled open/closed independently
+  const [openPanel, setOpenPanel] = useState(null); // null | 'debug' | 'camera' | 'views' | 'personas'
+  const togglePanel = useCallback((name) => setOpenPanel((prev) => prev === name ? null : name), []);
 
-  // ── Layout constants (using defaults for now) ──────────────────
-  const TEAMWIDTH = DEFAULT_TEAMWIDTH;
-  const TASKWIDTH = DEFAULT_TASKWIDTH;
-  const DAYWIDTH = DEFAULT_DAYWIDTH;
+  // ── Layout constants (view-driven, fall back to defaults) ──────
+  const [customDayWidth, setCustomDayWidth] = useState(DEFAULT_DAYWIDTH);
+  const [customTaskHeightNormal, setCustomTaskHeightNormal] = useState(DEFAULT_TASKHEIGHT_NORMAL);
+  const [customTaskHeightSmall, setCustomTaskHeightSmall] = useState(DEFAULT_TASKHEIGHT_SMALL);
+  const [customTeamColumnWidth, setCustomTeamColumnWidth] = useState(DEFAULT_TEAMWIDTH);
+  const [customTaskColumnWidth, setCustomTaskColumnWidth] = useState(DEFAULT_TASKWIDTH);
+
+  const TEAMWIDTH = customTeamColumnWidth;
+  const TASKWIDTH = customTaskColumnWidth;
+  const DAYWIDTH = customDayWidth;
 
   // ── Fetch data ─────────────────────────────────────────────────
   useEffect(() => {
     if (!projectId) return;
     (async () => {
       try {
-        // Project details → days count
         const resProj = await fetch_project_details(projectId);
         const project = resProj.project;
         const numDays = daysBetween(project.start_date, project.end_date);
         setDays(numDays);
         setProjectStartDate(new Date(project.start_date));
 
-        // Project days metadata (purposes, sundays)
         try {
           const resDays = await get_project_days(projectId);
           setProjectDays(resDays.days || {});
         } catch { setProjectDays({}); }
 
-        // Teams
         const resTeams = await fetch_project_teams(projectId);
         const newTeamOrder = [];
         const teamObj = {};
@@ -208,7 +134,6 @@ export default function AssignmentSecond() {
           teamObj[t.id] = { ...t, tasks: [] };
         }
 
-        // Tasks
         const resTasks = await fetch_project_tasks(projectId);
         const initTaskDisplay = {};
         for (const tid in teamObj) {
@@ -218,7 +143,6 @@ export default function AssignmentSecond() {
             initTaskDisplay[id] = { size: 'normal', hidden: false };
           }
         }
-        // Unassigned
         const unassigned = resTasks.taskOrder?.['null'] || [];
         if (unassigned.length > 0) {
           const UID = '__unassigned__';
@@ -229,7 +153,6 @@ export default function AssignmentSecond() {
           }
         }
 
-        // Milestones
         const resMilestones = await get_all_milestones(projectId);
         const msObj = {};
         if (Array.isArray(resMilestones.milestones)) {
@@ -238,11 +161,18 @@ export default function AssignmentSecond() {
           }
         }
 
-        // Phases
         try {
           const resPhases = await get_all_phases(projectId);
           setPhases(resPhases.phases || []);
         } catch { setPhases([]); }
+
+        try {
+          const resDeps = await get_all_dependencies(projectId);
+          const fetched = resDeps.dependencies;
+          if (Array.isArray(fetched)) {
+            setConnections(fetched.map(d => ({ source: d.source, target: d.target, weight: d.weight || 'strong', reason: d.reason || null })));
+          }
+        } catch { setConnections([]); }
 
         setTeamOrder(newTeamOrder);
         setTeams(teamObj);
@@ -256,6 +186,54 @@ export default function AssignmentSecond() {
       }
     })();
   }, [projectId]);
+
+  // ── View management ────────────────────────────────────────────
+  const restoreCameraRef = useRef(null);
+  const applyViewState = useCallback((state) => {
+    if (!state) return;
+    const defaults = getDefaultViewState();
+    const savedTask = state.taskDisplaySettings || {};
+    setTaskDisplaySettings((prev) => {
+      const merged = {};
+      for (const id of Object.keys(prev)) {
+        merged[id] = savedTask[id] || { size: 'normal', hidden: false };
+      }
+      for (const id of Object.keys(savedTask)) {
+        if (!merged[id]) merged[id] = savedTask[id];
+      }
+      return merged;
+    });
+    setTeamDisplaySettings(state.teamDisplaySettings || {});
+    setCustomDayWidth(state.customDayWidth ?? defaults.customDayWidth);
+    setCustomTaskHeightNormal(state.customTaskHeightNormal ?? defaults.customTaskHeightNormal);
+    setCustomTaskHeightSmall(state.customTaskHeightSmall ?? defaults.customTaskHeightSmall);
+    setCustomTeamColumnWidth(state.teamColumnWidth ?? defaults.teamColumnWidth);
+    setCustomTaskColumnWidth(state.taskColumnWidth ?? defaults.taskColumnWidth);
+    if (state.camera && restoreCameraRef.current) {
+      restoreCameraRef.current(state.camera);
+    }
+  }, []);
+
+  const getCameraStateRef = useRef(null);
+  const collectViewState = useCallback(() => {
+    return {
+      taskDisplaySettings,
+      teamDisplaySettings,
+      customDayWidth,
+      customTaskHeightNormal,
+      customTaskHeightSmall,
+      teamColumnWidth: TEAMWIDTH,
+      taskColumnWidth: TASKWIDTH,
+      camera: getCameraStateRef.current ? getCameraStateRef.current() : null,
+    };
+  }, [taskDisplaySettings, teamDisplaySettings, customDayWidth, customTaskHeightNormal, customTaskHeightSmall, TEAMWIDTH, TASKWIDTH]);
+
+  const {
+    savedViews, activeViewId, activeViewName,
+    viewTransition, viewFlashName,
+    handleLoadView, handleNextView, handlePrevView,
+    handleSaveView, handleCreateView, handleDeleteView, handleSetDefaultView,
+  } = useViewManagement({ projectId, collectViewState, applyViewState });
 
   // ── Derived layout values ──────────────────────────────────────
   const dayLabels = useMemo(() => {
@@ -283,12 +261,23 @@ export default function AssignmentSecond() {
   const totalDaysWidth = (days || 0) * DAYWIDTH;
   const totalWidth = TEAMWIDTH + TASKWIDTH + totalDaysWidth;
 
+  const taskDisplaySettings3D = useMemo(() => {
+    const out = {};
+    for (const id of Object.keys(taskDisplaySettings)) {
+      const s = taskDisplaySettings[id];
+      out[id] = { ...s, size: 'normal', hidden: s?.hidden || false };
+    }
+    return out;
+  }, [taskDisplaySettings]);
+
   const contentHeight = useMemo(() => {
     if (!days) return 400;
-    return calcContentHeight(teamOrder, teams, taskDisplaySettings, effectiveHeaderH, teamPhasesMap);
-  }, [teamOrder, teams, taskDisplaySettings, effectiveHeaderH, teamPhasesMap, days]);
+    return calcContentHeight(teamOrder, teams, taskDisplaySettings3D, effectiveHeaderH, teamPhasesMap, teamDisplaySettings, DEFAULT_TASKHEIGHT_SMALL, DEFAULT_TASKHEIGHT_NORMAL);
+  }, [teamOrder, teams, taskDisplaySettings3D, effectiveHeaderH, teamPhasesMap, days, teamDisplaySettings]);
 
-  // ── Hide headers on mount (same as original Assignment page) ──
+  const boardW = totalWidth + 48;
+
+  // ── Hide headers on mount ──────────────────────────────────────
   useEffect(() => {
     const orgaH = document.querySelector('[data-orga-header]');
     const projH = document.querySelector('[data-project-header]');
@@ -305,250 +294,119 @@ export default function AssignmentSecond() {
     };
   }, []);
 
-  // ── 3D camera controls ─────────────────────────────────────────
-  // Middle-mouse drag           = orbit (rotate scene)
-  // Right-mouse drag            = pan   (translate scene)
-  // Scroll wheel                = zoom  (move closer / farther)
-  const [orbitX, setOrbitX] = useState(CAMERA_DEFAULT_TILT);  // vertical pitch (5–90°)
-  const [orbitY, setOrbitY] = useState(CAMERA_DEFAULT_YAW);   // horizontal yaw
-  const [panX, setPanX]     = useState(0);                     // screen-space pan X (px)
-  const [panY, setPanY]     = useState(0);                     // screen-space pan Y (px)
-  const [zoom, setZoom]     = useState(CAMERA_DEFAULT_ZOOM);   // distance offset (px)
-  const isDragging = useRef(false);
-  const isPanning  = useRef(false);
-  const lastMouse  = useRef({ x: 0, y: 0 });
-
-  // Keep orbit angles in refs so event handlers always see current values
-  const orbitXRef = useRef(orbitX);
-  const orbitYRef = useRef(orbitY);
-  useEffect(() => { orbitXRef.current = orbitX; }, [orbitX]);
-  useEffect(() => { orbitYRef.current = orbitY; }, [orbitY]);
-
-  // ── Protopersonas ──────────────────────────────────────────────
-  // Simple client-side-only persona tokens on the XZ floor.
-  // Each has { id, name, color, x (world X), z (world Z), milestoneId? }.
-  const [personas, setPersonas] = useState([]);
-  const draggingPersona = useRef(null);  // id of persona being dragged
-  const nextPersonaId   = useRef(1);
-
-  // ── Board element dimensions (for milestone coordinate mapping) ──
-  const [boardDims, setBoardDims] = useState({ w: 1400, h: 600 });
-  useLayoutEffect(() => {
-    if (boardRef.current) {
-      setBoardDims({
-        w: boardRef.current.offsetWidth,
-        h: boardRef.current.offsetHeight,
-      });
+  // ── Floor representation hook ──────────────────────────────────
+  // Moved before usePersonas so floorLayout is available for slab snapping.
+  // We need a pre-measurement of board dims for floor computation.
+  const preFloorBoardDimsRef = useRef({ w: 1400, h: 600, offsetX: 0, offsetY: 0 });
+  const [preFloorBoardDims, setPreFloorBoardDims] = useState(preFloorBoardDimsRef.current);
+  useEffect(() => {
+    if (boardRef.current && containerRef.current) {
+      let top = 0, left = 0;
+      let el = containerRef.current;
+      while (el && el !== boardRef.current) { top += el.offsetTop; left += el.offsetLeft; el = el.offsetParent; }
+      const dims = { w: boardRef.current.offsetWidth, h: boardRef.current.offsetHeight, offsetX: left, offsetY: top };
+      preFloorBoardDimsRef.current = dims;
+      setPreFloorBoardDims(dims);
     }
-  }, [days, teamOrder, teams, taskDisplaySettings, teamPhasesMap]);
+  }, [days, teamOrder, teams, taskDisplaySettings3D, teamPhasesMap, teamDisplaySettings, TEAMWIDTH, TASKWIDTH, DAYWIDTH]);
 
-  // ── Milestone 3D positions ────────────────────────────────────
-  // Each milestone’s pixel position on the board content is computed
-  // exactly as in MilestoneLayer, then mapped to world XZ via the
-  // board’s CSS transform:  Ry(90) · Rx(90) · translate(-50%,-50%)
-  //   worldX = py − H/2     (page-top → −X, page-bottom → +X)
-  //   worldZ = W/2 − px     (page-left → +Z, page-right  → −Z)
-  // where W,H = board element’s rendered width & height.
-  const milestone3D = useMemo(() => {
-    if (!days) return [];
-    const result = [];
-    const W = boardDims.w;
-    const H = boardDims.h;
-    let yOffset = effectiveHeaderH;
+  const { floorLayout } = useFloor3D({
+    teamOrder, teams,
+    taskDisplaySettings: taskDisplaySettings3D,
+    teamDisplaySettings, teamPhasesMap,
+    effectiveHeaderH, TEAMWIDTH, TASKWIDTH, DAYWIDTH,
+    days,
+    thSmall: DEFAULT_TASKHEIGHT_SMALL,
+    thNormal: DEFAULT_TASKHEIGHT_NORMAL,
+    boardDims: preFloorBoardDims,
+  });
 
-    for (const teamId of teamOrder) {
-      const team = teams[teamId];
-      if (!team) continue;
-      yOffset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-      yOffset += TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
-      const teamPhases_ = teamPhasesMap[teamId] || [];
-      const phaseRowH = teamPhases_.length > 0 ? TEAM_PHASE_ROW_HEIGHT : 0;
-      const tasksStartY = yOffset + phaseRowH;
-      const visibleTasks_ = getVisibleTasks(team, taskDisplaySettings);
-      for (const taskId of visibleTasks_) {
-        const th = getTaskHeight(taskId, taskDisplaySettings);
-        const taskY = tasksStartY + getTaskYOffset(taskId, team, taskDisplaySettings);
-        const taskMilestones = Object.values(milestones).filter((ms) => ms.task === taskId);
-        for (const m of taskMilestones) {
-          // Milestone center in board content pixel space
-          const px = TEAMWIDTH + TASKWIDTH + m.start_index * DAYWIDTH + ((m.duration || 1) * DAYWIDTH) / 2;
-          const py = taskY + th / 2;
-          result.push({
-            ...m,
-            worldX: py - H / 2,
-            worldZ: W / 2 - px,
-            teamColor: team.color || '#94a3b8',
-          });
-        }
-      }
-      yOffset = tasksStartY - phaseRowH + getTeamRowHeight(team, taskDisplaySettings, phaseRowH);
-    }
-    return result;
-  }, [days, teamOrder, teams, milestones, taskDisplaySettings, teamPhasesMap, effectiveHeaderH, boardDims, TEAMWIDTH, TASKWIDTH, DAYWIDTH]);
+  // ── Persona hook ───────────────────────────────────────────────
+  const screenToFloorRef = useRef(null);
 
-  /** Find closest milestone within SNAP_RADIUS */
-  const findNearestMilestone = (x, z) => {
-    let best = null;
-    let bestDist = SNAP_RADIUS;
-    for (const m of milestone3DRef.current) {
-      const dx = m.worldX - x;
-      const dz = m.worldZ - z;
-      const dist = Math.sqrt(dx * dx + dz * dz);
-      if (dist < bestDist) {
-        bestDist = dist;
-        best = m;
-      }
-    }
-    return best;
-  };
+  const {
+    personas, draggingId, boardDims, milestone3D,
+    addPersona, removePersona,
+    onPersonaDragMove, onPersonaDragEnd,
+    draggingPersona, dragAnchor,
+  } = usePersonas({
+    projectId, days, teamOrder, teams, milestones,
+    taskDisplaySettings3D, teamDisplaySettings, teamPhasesMap,
+    effectiveHeaderH, TEAMWIDTH, TASKWIDTH, DAYWIDTH,
+    boardRef, containerRef,
+    screenToFloor: (...args) => screenToFloorRef.current?.(...args),
+    floorLayout,
+  });
 
-  // Keep milestone3D in a ref so onUp handler always sees current positions
-  const milestone3DRef = useRef(milestone3D);
-  useEffect(() => { milestone3DRef.current = milestone3D; }, [milestone3D]);
+  // ── Camera hook ────────────────────────────────────────────────
+  const {
+    orbitX, orbitY, panX, panY, panZ, zoom, cameraScale,
+    screenToFloor,
+    getCameraState,
+    restoreCamera,
+  } = useCamera3D({
+    viewportRef,
+    draggingPersona,
+    dragAnchor,
+    onPersonaDragMove,
+    onPersonaDragEnd,
+    handleNextView,
+    handlePrevView,
+  });
 
-  /** Spawn a new persona near the origin */
-  const addPersona = () => {
-    const id = nextPersonaId.current++;
-    const color = PERSONA_COLORS[(id - 1) % PERSONA_COLORS.length];
-    setPersonas((prev) => [
-      ...prev,
-      { id, name: `P${id}`, color, x: (id - 1) * 40 - 60, z: -100, milestoneId: null },
-    ]);
-  };
-
-  /** Delete a persona by id */
-  const removePersona = (id) => {
-    setPersonas((prev) => prev.filter((p) => p.id !== id));
-  };
-
-  /** Convert a screen-space delta (dx, dy) to world XZ movement.
-   *  Camera transform is  Rx(-orbitX) · Ry(-orbitY).
-   *  Screen coords for a floor point (wx, 0, wz):
-   *    screenX = wx·cos(orbitY) − wz·sin(orbitY)
-   *    screenY = (wx·sin(orbitY) + wz·cos(orbitY)) · sin(orbitX)
-   *  Invert to get world delta from screen delta.
-   *  Uses refs so it always reads current camera angles.
-   */
-  const screenToFloorDelta = (dx, dy) => {
-    const pitchRad = (orbitXRef.current * Math.PI) / 180;
-    const yawRad   = (orbitYRef.current * Math.PI) / 180;
-    const cosY = Math.cos(yawRad);
-    const sinY = Math.sin(yawRad);
-    const sinX = Math.sin(pitchRad);
-    // When looking near the horizon (sinX ≈ 0), vertical mouse movement
-    // can't meaningfully map to floor Z — clamp to avoid huge jumps.
-    const effSinX = Math.max(Math.abs(sinX), 0.05) * Math.sign(sinX || 1);
-    // dy' = vertical screen delta projected onto the floor plane
-    const dyPrime = dy / effSinX;
-    // Invert the yaw rotation
-    const worldX =  dx * cosY + dyPrime * sinY;
-    const worldZ = -dx * sinY + dyPrime * cosY;
-    return { worldX, worldZ };
-  };
+  useEffect(() => { screenToFloorRef.current = screenToFloor; }, [screenToFloor]);
 
   useEffect(() => {
-    const onDown = (e) => {
-      // Left click on a persona = start dragging it
-      if (e.button === 0) {
-        const personaEl = e.target.closest('[data-persona-id]');
-        if (personaEl) {
-          e.preventDefault();
-          e.stopPropagation();
-          draggingPersona.current = Number(personaEl.dataset.personaId);
-          lastMouse.current = { x: e.clientX, y: e.clientY };
-          return;
-        }
-      }
-      // Middle mouse = orbit, Right mouse = pan
-      if (e.button === 1) {
-        e.preventDefault();
-        isDragging.current = true;
-        isPanning.current  = e.shiftKey; // Shift+middle also pans
-        lastMouse.current  = { x: e.clientX, y: e.clientY };
-      } else if (e.button === 2) {
-        e.preventDefault();
-        isDragging.current = true;
-        isPanning.current  = true;
-        lastMouse.current  = { x: e.clientX, y: e.clientY };
-      }
-    };
-    const onMove = (e) => {
-      // Persona drag — left button
-      if (draggingPersona.current != null) {
-        const dx = e.clientX - lastMouse.current.x;
-        const dy = e.clientY - lastMouse.current.y;
-        lastMouse.current = { x: e.clientX, y: e.clientY };
-        const { worldX, worldZ } = screenToFloorDelta(dx, dy);
-        const pid = draggingPersona.current;
-        setPersonas((prev) =>
-          prev.map((p) =>
-            p.id === pid ? { ...p, x: p.x + worldX, z: p.z + worldZ } : p
-          )
-        );
-        return;
-      }
-      if (!isDragging.current) return;
-      const dx = e.clientX - lastMouse.current.x;
-      const dy = e.clientY - lastMouse.current.y;
-      lastMouse.current = { x: e.clientX, y: e.clientY };
+    getCameraStateRef.current = getCameraState;
+    restoreCameraRef.current = restoreCamera;
+  }, [getCameraState, restoreCamera]);
 
-      if (isPanning.current) {
-        setPanX((prev) => prev + dx);
-        setPanY((prev) => prev + dy);
-      } else {
-        setOrbitY((prev) => prev - dx * 0.3);
-        setOrbitX((prev) => Math.max(5, Math.min(90, prev - dy * 0.3)));
+  // ── Restore persisted camera on mount ──────────────────────────
+  const cameraRestoredRef = useRef(false);
+  useEffect(() => {
+    if (cameraRestoredRef.current || !projectId) return;
+    cameraRestoredRef.current = true;
+    try {
+      const raw = localStorage.getItem(`orgarhythmus_camera_${projectId}`);
+      if (raw) {
+        const cam = JSON.parse(raw);
+        restoreCamera(cam);
       }
-    };
-    const onUp = (e) => {
-      if (e.button === 0 && draggingPersona.current != null) {
-        // Snap to nearest milestone if close enough
-        const pid = draggingPersona.current;
-        draggingPersona.current = null;
-        setPersonas((prev) =>
-          prev.map((p) => {
-            if (p.id !== pid) return p;
-            const nearest = findNearestMilestone(p.x, p.z);
-            if (nearest) {
-              return { ...p, x: nearest.worldX, z: nearest.worldZ, milestoneId: nearest.id };
-            }
-            return { ...p, milestoneId: null };
-          })
-        );
-        return;
-      }
-      if (e.button === 1 || e.button === 2) {
-        isDragging.current = false;
-        isPanning.current  = false;
-      }
-    };
-    // Prevent context menu on right-click
-    const onContextMenu = (e) => e.preventDefault();
+    } catch { /* ignore corrupt storage */ }
+  }, [projectId, restoreCamera]);
 
-    // Scroll wheel = zoom
-    const onWheel = (e) => {
-      const inside = e.target.closest('[data-board-scroll]');
-      if (inside) return;
-      e.preventDefault();
-      setZoom((prev) => Math.max(CAMERA_ZOOM_MIN, Math.min(CAMERA_ZOOM_MAX, prev - e.deltaY * 0.8)));
-    };
+  useEffect(() => {
+    if (!projectId) return;
+    const timer = setTimeout(() => {
+      localStorage.setItem(`orgarhythmus_camera_${projectId}`, JSON.stringify({
+        orbitX, orbitY, panX, panY, panZ, zoom, cameraScale,
+      }));
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [projectId, orbitX, orbitY, panX, panY, panZ, zoom, cameraScale]);
 
-    window.addEventListener('mousedown', onDown);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    window.addEventListener('contextmenu', onContextMenu);
-    window.addEventListener('wheel', onWheel, { passive: false });
-    const preventScroll = (e) => { if (e.button === 1) e.preventDefault(); };
-    window.addEventListener('auxclick', preventScroll);
-    return () => {
-      window.removeEventListener('mousedown', onDown);
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      window.removeEventListener('contextmenu', onContextMenu);
-      window.removeEventListener('wheel', onWheel);
-      window.removeEventListener('auxclick', preventScroll);
-    };
-  }, []);
+  const handleSaveCamera = useCallback(() => {
+    if (!projectId) return;
+    const cam = getCameraState();
+    localStorage.setItem(`orgarhythmus_camera_${projectId}`, JSON.stringify(cam));
+  }, [projectId, getCameraState]);
+
+  const handleResetCamera = useCallback(() => {
+    restoreCamera({
+      orbitX: CAMERA_DEFAULT_TILT,
+      orbitY: CAMERA_DEFAULT_YAW,
+      panX: 0, panY: 0, panZ: 0,
+      zoom: CAMERA_DEFAULT_ZOOM,
+      cameraScale: CAMERA_DEFAULT_SCALE,
+    });
+    if (projectId) {
+      localStorage.removeItem(`orgarhythmus_camera_${projectId}`);
+    }
+  }, [projectId, restoreCamera]);
+
+  // Floor dimensions (use boardDims from usePersonas)
+  const floorW = boardDims.h || (contentHeight + 180);
+  const floorH = boardW;
 
   // ── Loading state ──────────────────────────────────────────────
   if (loading || !days) {
@@ -562,64 +420,223 @@ export default function AssignmentSecond() {
   // ══════════════════════════════════════════════════════════════
   // RENDER
   // ══════════════════════════════════════════════════════════════
-  //
-  // CSS 3D transform hierarchy (orbit camera simulation):
-  //
-  //   Layer 1 — Viewport (this div)
-  //     Sets perspective depth and centers the vanishing point.
-  //
-  //   Layer 2 — Camera orbit
-  //     Anchored at viewport center (top:50%, left:50%).
-  //     Pan:   translateX/Y — moves look-at point in screen space
-  //     Pitch: rotateX(−orbitX) — tilts camera down (negative = look down)
-  //     Yaw:   rotateY(−orbitY) — spins camera around vertical axis
-  //
-  //   Layer 3 — Camera distance
-  //     translateZ(zoom − BASE_DISTANCE) — pushes scene along view axis.
-  //     zoom = 0 → full distance; zoom = BASE_DISTANCE → at origin.
-  //
-  //   Layer 4 — World content (gizmo, floor, board)
-  //     Everything positioned at world origin (0,0,0).
-  //     Floor: rotateX(90°) to lie on XZ plane, centered via translate(-50%,-50%)
-  //     Board: rotateX(90°) rotateY(90°) — page top → −X, bottom → +X
-  //
-  //   Effective camera distance at defaults:
-  //     CAMERA_DEFAULT_ZOOM − CAMERA_BASE_DISTANCE = 500 − 600 = −100px
-  //     (camera is 100px in front of origin, looking at it)
-  //
   return (
     <div
+      ref={viewportRef}
       className="w-full select-none"
       style={{
         height: '100dvh',
-        background: '#1a1a2e',
+        background: '#ffffff',
         perspective: `${PERSPECTIVE_DEPTH}px`,
         perspectiveOrigin: '50% 50%',
         overflow: 'hidden',
         position: 'relative',
       }}
     >
-      {/* ── Debug HUD — orbit/pan/zoom values ── */}
+      {/* ── Collapsible toolbar — left side ── */}
       <div style={{
-        position: 'absolute', top: '12px', left: '12px', zIndex: 999,
-        background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '8px 12px',
-        borderRadius: '8px', fontFamily: 'monospace', fontSize: '12px', lineHeight: '1.6',
-        pointerEvents: 'none',
+        position: 'absolute', top: '12px', left: '12px', zIndex: 1000,
+        display: 'flex', flexDirection: 'column', gap: '4px',
+        fontFamily: 'monospace',
       }}>
-        <div>orbitX: <span style={{ color: '#f87171' }}>{orbitX.toFixed(1)}°</span> (vertical tilt)</div>
-        <div>orbitY: <span style={{ color: '#4ade80' }}>{orbitY.toFixed(1)}°</span> (horizontal)</div>
-        <div>zoom:  <span style={{ color: '#60a5fa' }}>{zoom.toFixed(0)}px</span></div>
-        <div>pan:   <span style={{ color: '#fbbf24' }}>{panX.toFixed(0)}, {panY.toFixed(0)}</span></div>
-        <div style={{ marginTop: '4px', fontSize: '10px', color: '#94a3b8' }}>
-          Middle-drag = orbit | Right-drag = pan | Scroll = zoom
+        {/* Back button — always visible */}
+        <button
+          onClick={() => navigate(`/projects/${projectId}/dependencies`)}
+          style={{
+            background: 'rgba(0,0,0,0.7)', color: '#fff', border: 'none',
+            borderRadius: '8px', padding: '8px 12px', cursor: 'pointer',
+            fontSize: '12px', fontWeight: 'bold',
+            display: 'flex', alignItems: 'center', gap: '6px',
+          }}
+        >
+          <span style={{ fontSize: '16px' }}>←</span> Back
+        </button>
+
+        {/* ── Camera panel toggle ── */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+          <button
+            onClick={() => togglePanel('camera')}
+            title="Camera controls (Home = reset)"
+            style={{
+              background: openPanel === 'camera' ? 'rgba(248,113,113,0.9)' : 'rgba(0,0,0,0.7)',
+              color: '#fff', border: 'none', borderRadius: '8px',
+              width: '36px', height: '36px', cursor: 'pointer',
+              fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >🎥</button>
+          {openPanel === 'camera' && (
+            <div style={{
+              background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
+              padding: '10px 14px', borderRadius: '10px', color: '#fff', fontSize: '12px',
+              display: 'flex', flexDirection: 'column', gap: '6px', minWidth: '150px',
+            }}>
+              <button
+                onClick={() => { handleSaveCamera(); setCameraFlash('Saved!'); setTimeout(() => setCameraFlash(null), 1200); }}
+                style={{
+                  background: 'rgba(74,222,128,0.85)', color: '#000', border: 'none',
+                  borderRadius: '6px', padding: '6px 12px', cursor: 'pointer',
+                  fontSize: '11px', fontWeight: 'bold',
+                }}
+              >
+                {cameraFlash || '📷 Save Camera'}
+              </button>
+              <button
+                onClick={handleResetCamera}
+                style={{
+                  background: 'rgba(248,113,113,0.85)', color: '#000', border: 'none',
+                  borderRadius: '6px', padding: '6px 12px', cursor: 'pointer',
+                  fontSize: '11px', fontWeight: 'bold',
+                }}
+              >
+                ↺ Reset View
+              </button>
+              <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '2px' }}>
+                Home key = reset
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Views panel toggle ── */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+          <button
+            onClick={() => togglePanel('views')}
+            title="Dependency views (X = cycle)"
+            style={{
+              background: openPanel === 'views' ? 'rgba(20,184,166,0.9)' : 'rgba(0,0,0,0.7)',
+              color: '#fff', border: 'none', borderRadius: '8px',
+              width: '36px', height: '36px', cursor: 'pointer',
+              fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >👁</button>
+          {openPanel === 'views' && (
+            <ViewsPanel
+              savedViews={savedViews}
+              activeViewId={activeViewId}
+              activeViewName={activeViewName}
+              handleLoadView={handleLoadView}
+              handleNextView={handleNextView}
+              handlePrevView={handlePrevView}
+              handleSaveView={handleSaveView}
+              handleCreateView={handleCreateView}
+              handleDeleteView={handleDeleteView}
+              handleSetDefaultView={handleSetDefaultView}
+              viewFlashName={viewFlashName}
+            />
+          )}
+        </div>
+
+        {/* ── Debug HUD toggle ── */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+          <button
+            onClick={() => togglePanel('debug')}
+            title="Debug info"
+            style={{
+              background: openPanel === 'debug' ? 'rgba(99,102,241,0.9)' : 'rgba(0,0,0,0.7)',
+              color: '#fff', border: 'none', borderRadius: '8px',
+              width: '36px', height: '36px', cursor: 'pointer',
+              fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >⚙</button>
+          {openPanel === 'debug' && (
+            <div style={{
+              background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
+              padding: '8px 12px', borderRadius: '10px',
+              color: '#fff', fontSize: '12px', lineHeight: '1.6',
+            }}>
+              <div>orbitX: <span style={{ color: '#f87171' }}>{orbitX.toFixed(1)}°</span></div>
+              <div>orbitY: <span style={{ color: '#4ade80' }}>{orbitY.toFixed(1)}°</span></div>
+              <div>scale: <span style={{ color: '#60a5fa' }}>{cameraScale.toFixed(2)}x</span></div>
+              <div>pan: <span style={{ color: '#fbbf24' }}>{panX.toFixed(0)}, {panY.toFixed(0)} | Z: {panZ.toFixed(0)}</span></div>
+              <div style={{ marginTop: '4px', fontSize: '10px', color: '#94a3b8' }}>
+                Middle = orbit | Right = pan | Scroll = zoom
+              </div>
+              <div style={{ fontSize: '10px', color: '#c084fc' }}>
+                board: {boardDims.w}×{boardDims.h}
+              </div>
+              <div style={{ fontSize: '10px', color: '#67e8f9' }}>
+                floor: {floorW}×{floorH} | content: {totalWidth}×{contentHeight}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Persona panel toggle ── */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+          <button
+            onClick={() => togglePanel('personas')}
+            title="Protopersonas"
+            style={{
+              background: openPanel === 'personas' ? 'rgba(168,85,247,0.9)' : 'rgba(0,0,0,0.7)',
+              color: '#fff', border: 'none', borderRadius: '8px',
+              width: '36px', height: '36px', cursor: 'pointer',
+              fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >👤</button>
+          {openPanel === 'personas' && (
+            <div style={{
+              background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
+              padding: '10px 14px', borderRadius: '10px', color: '#fff',
+              fontSize: '12px', minWidth: '180px',
+            }}>
+              <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '13px' }}>Protopersonas</div>
+              <button
+                onClick={addPersona}
+                style={{
+                  width: '100%', padding: '6px 0', borderRadius: '6px',
+                  background: '#4ade80', color: '#000', fontWeight: 'bold',
+                  border: 'none', cursor: 'pointer', fontSize: '12px',
+                  marginBottom: '8px',
+                }}
+              >
+                + Add Persona
+              </button>
+              {personas.length === 0 && (
+                <div style={{ color: '#94a3b8', fontSize: '10px', textAlign: 'center' }}>
+                  No personas yet
+                </div>
+              )}
+              {personas.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '4px 0', borderTop: '1px solid rgba(255,255,255,0.1)',
+                  }}
+                >
+                  <div style={{
+                    width: '14px', height: '14px', borderRadius: '50%',
+                    background: p.color, flexShrink: 0,
+                    border: '1.5px solid rgba(255,255,255,0.6)',
+                  }} />
+                  <span style={{ flex: 1, fontSize: '11px' }}>{p.name}</span>
+                  <span style={{ fontSize: '9px', color: p.milestoneId ? '#4ade80' : (p.onTaskId || p.onTeamId) ? '#60a5fa' : '#94a3b8' }}>
+                    {p.milestoneId
+                      ? (milestones[p.milestoneId]?.name || 'MS')
+                      : p.onTaskId
+                        ? (tasks[p.onTaskId]?.name || 'Task')
+                        : p.onTeamId
+                          ? (teams[p.onTeamId]?.name || 'Team')
+                          : `${Math.round(p.x)}, ${Math.round(p.z)}`}
+                  </span>
+                  <button
+                    onClick={() => removePersona(p.id)}
+                    style={{
+                      background: 'none', border: 'none', color: '#f87171',
+                      cursor: 'pointer', fontSize: '14px', lineHeight: 1,
+                      padding: '0 2px',
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── Layer 2: Camera orbit ──
-           Anchored at viewport center. Rotations simulate the camera
-           orbiting on a sphere around the world origin.
-           Pan offsets translate the scene in screen space.
-      ── */}
+      {/* ── Layer 2: Camera orbit ── */}
       <div
         style={{
           position: 'absolute',
@@ -627,47 +644,38 @@ export default function AssignmentSecond() {
           left: '50%',
           transformStyle: 'preserve-3d',
           transform: [
-            `translateX(${panX}px)`,         // screen-space pan X
-            `translateY(${panY}px)`,         // screen-space pan Y
-            `rotateX(${-orbitX}deg)`,        // pitch (negative = look down)
-            `rotateY(${-orbitY}deg)`,        // yaw
+            `translateX(${panX}px)`,
+            `translateY(${panY}px)`,
+            `rotateX(${-orbitX}deg)`,
+            `rotateY(${-orbitY}deg)`,
           ].join(' '),
         }}
       >
-        {/* ── Layer 3: Camera distance ──
-             Pushes the scene along the (already rotated) Z axis.
-             Effective distance = CAMERA_BASE_DISTANCE − zoom.
-        ── */}
+        {/* ── Layer 3: Camera distance + scale ── */}
         <div
           style={{
             transformStyle: 'preserve-3d',
-            transform: `translateZ(${zoom - CAMERA_BASE_DISTANCE}px)`,
+            transform: `translateZ(${zoom - CAMERA_BASE_DISTANCE + panZ}px) scale3d(${cameraScale}, ${cameraScale}, ${cameraScale})`,
             position: 'relative',
           }}
         >
-            {/* ── 3D Axis Gizmo — shows ±X (red), ±Y (green), ±Z (blue) ── */}
+            {/* ── 3D Axis Gizmo ── */}
             <div style={{ position: 'absolute', top: 0, left: 0, transformStyle: 'preserve-3d', pointerEvents: 'none' }}>
-              {/* ── X axis (red) ── */}
-              {/* +X ray — right */}
+              {/* X axis (red) */}
               <div style={{ position: 'absolute', width: '300px', height: '4px', background: 'linear-gradient(90deg, #ff3333, #ff3333 80%, transparent)', transform: 'translateY(-2px)', boxShadow: '0 0 8px rgba(255,50,50,0.6)' }} />
               <div style={{ position: 'absolute', left: '305px', top: '-14px', color: '#ff3333', fontSize: '18px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 10px rgba(255,50,50,0.8)' }}>+X</div>
-              {/* −X ray — left (faded) */}
               <div style={{ position: 'absolute', width: '300px', height: '3px', background: 'linear-gradient(270deg, rgba(255,80,80,0.5), transparent)', transform: 'translate(-300px, -1.5px)' }} />
               <div style={{ position: 'absolute', left: '-335px', top: '-12px', color: 'rgba(255,80,80,0.6)', fontSize: '16px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 6px rgba(255,50,50,0.4)' }}>−X</div>
 
-              {/* ── Y axis (green) ── */}
-              {/* +Y ray — up */}
+              {/* Y axis (green) */}
               <div style={{ position: 'absolute', width: '4px', height: '300px', background: 'linear-gradient(0deg, #33ff33, #33ff33 80%, transparent)', transform: 'translate(-2px, -300px)', boxShadow: '0 0 8px rgba(50,255,50,0.6)' }} />
               <div style={{ position: 'absolute', left: '-12px', top: '-328px', color: '#33ff33', fontSize: '18px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 10px rgba(50,255,50,0.8)' }}>+Y</div>
-              {/* −Y ray — down (faded) */}
               <div style={{ position: 'absolute', width: '3px', height: '300px', background: 'linear-gradient(180deg, rgba(50,255,50,0.5), transparent)', transform: 'translate(-1.5px, 0)' }} />
               <div style={{ position: 'absolute', left: '-12px', top: '305px', color: 'rgba(50,255,50,0.6)', fontSize: '16px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 6px rgba(50,255,50,0.4)' }}>−Y</div>
 
-              {/* ── Z axis (blue) — rotateX(90deg) so it extends toward viewer ── */}
-              {/* +Z ray — toward viewer */}
+              {/* Z axis (blue) */}
               <div style={{ position: 'absolute', width: '4px', height: '300px', background: 'linear-gradient(0deg, #3399ff, #3399ff 80%, transparent)', transform: 'translate(-2px, 0) rotateX(90deg)', transformOrigin: 'top center', boxShadow: '0 0 8px rgba(50,150,255,0.6)' }} />
               <div style={{ position: 'absolute', left: '10px', color: '#3399ff', fontSize: '18px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 10px rgba(50,150,255,0.8)', transform: 'translateZ(305px)', transformOrigin: 'center center' }}>+Z</div>
-              {/* −Z ray — into screen (faded) */}
               <div style={{ position: 'absolute', width: '3px', height: '300px', background: 'linear-gradient(180deg, rgba(30,144,255,0.5), transparent)', transform: 'translate(-1.5px, 0) rotateX(-90deg)', transformOrigin: 'top center' }} />
               <div style={{ position: 'absolute', left: '10px', color: 'rgba(30,144,255,0.6)', fontSize: '16px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 6px rgba(50,150,255,0.4)', transform: 'translateZ(-310px)', transformOrigin: 'center center' }}>−Z</div>
 
@@ -675,77 +683,77 @@ export default function AssignmentSecond() {
               <div style={{ position: 'absolute', width: '12px', height: '12px', borderRadius: '50%', background: 'white', transform: 'translate(-6px, -6px)', boxShadow: '0 0 12px rgba(255,255,255,1), 0 0 4px rgba(255,255,255,0.9)' }} />
             </div>
 
-            {/* ── Layer 4b: Floor plane — XZ grid at Y=0 ──
-                 An 800×800 div rotated 90° around X to lie flat on XZ.
-                 translate(-50%,-50%) centers it on the world origin.
-            ── */}
+            {/* ── Floor plane ── */}
             <div
               style={{
                 position: 'absolute',
                 top: 0,
                 left: 0,
-                width: `${FLOOR_SIZE}px`,
-                height: `${FLOOR_SIZE}px`,
+                width: `${floorW}px`,
+                height: `${floorH}px`,
                 transform: 'translate(-50%, -50%) rotateX(90deg)',
                 transformOrigin: 'center center',
-                background: 'rgba(255,255,255,0.08)',
+                transformStyle: 'preserve-3d',
+                background: '#f8f9fb',
                 backgroundImage: `
-                  linear-gradient(rgba(255,255,255,0.15) 1px, transparent 1px),
-                  linear-gradient(90deg, rgba(255,255,255,0.15) 1px, transparent 1px)
+                  linear-gradient(rgba(0,0,0,0.06) 1px, transparent 1px),
+                  linear-gradient(90deg, rgba(0,0,0,0.06) 1px, transparent 1px)
                 `,
                 backgroundSize: '50px 50px',
-                border: '2px solid rgba(255,255,255,0.25)',
+                border: '1px solid rgba(0,0,0,0.1)',
                 pointerEvents: 'none',
               }}
             >
-              {/* Floor label */}
-              <div style={{ position: 'absolute', bottom: '8px', right: '8px', color: 'rgba(255,255,255,0.4)', fontSize: '12px', fontFamily: 'monospace' }}>XZ floor</div>
+              <div style={{ position: 'absolute', bottom: '8px', right: '8px', color: 'rgba(0,0,0,0.2)', fontSize: '12px', fontFamily: 'monospace' }}>XZ floor</div>
+
+              {/* Floor side faces */}
+              <div style={{ position: 'absolute', left: 0, top: `${floorH}px`, width: `${floorW}px`, height: `${BOARD_3D_HEIGHT}px`, transform: 'rotateX(-90deg)', transformOrigin: 'top left', background: 'linear-gradient(180deg, #e2e4e8, #d1d3d8)', borderBottom: '1px solid rgba(0,0,0,0.12)' }} />
+              <div style={{ position: 'absolute', left: 0, top: 0, width: `${floorW}px`, height: `${BOARD_3D_HEIGHT}px`, transform: 'rotateX(-90deg)', transformOrigin: 'top left', background: 'linear-gradient(180deg, #e8eaee, #dcdee3)', borderBottom: '1px solid rgba(0,0,0,0.1)' }} />
+              <div style={{ position: 'absolute', left: `${floorW}px`, top: 0, width: `${BOARD_3D_HEIGHT}px`, height: `${floorH}px`, transform: 'rotateY(90deg)', transformOrigin: 'top left', background: 'linear-gradient(180deg, #dfe1e6, #cfd1d6)', borderRight: '1px solid rgba(0,0,0,0.12)' }} />
+              <div style={{ position: 'absolute', left: 0, top: 0, width: `${BOARD_3D_HEIGHT}px`, height: `${floorH}px`, transform: 'rotateY(90deg)', transformOrigin: 'top left', background: 'linear-gradient(180deg, #e5e7ec, #d5d7dc)', borderRight: '1px solid rgba(0,0,0,0.1)' }} />
             </div>
 
-            {/* ── Layer 4c: Board — the 2D Gantt page on the XZ floor ──
-                 Transform breakdown (CSS applies right-to-left):
-                   1. translate(-50%,-50%)  — center the board at origin
-                   2. rotateX(90°)          — tilt from XY plane into XZ
-                   3. rotateY(90°)          — rotate so page-top → −X
-                 Result mapping (2D page axis → 3D world axis):
-                   page left   → +Z (toward viewer)
-                   page right  → −Z (into screen)
-                   page top    → −X (world left)
-                   page bottom → +X (world right)
-            ── */}
+            {/* ── Board (2D Gantt on XZ floor) ── */}
             <div
               ref={boardRef}
               style={{
                 position: 'absolute',
                 top: 0,
                 left: 0,
-                width: 'min(88vw, 1400px)',
+                width: `${boardW}px`,
                 transform: [
-                  'rotateY(90deg)',            // step 3: page-top → −X
-                  'rotateX(90deg)',            // step 2: XY plane → XZ plane
-                  'translate(-50%, -50%)',     // step 1: center on origin
+                  'rotateY(90deg)',
+                  'rotateX(90deg)',
+                  'translate(-50%, -50%)',
                 ].join(' '),
                 transformOrigin: '0 0',
                 transformStyle: 'preserve-3d',
                 display: 'flex',
                 flexDirection: 'column',
-                borderRadius: '12px',
                 boxShadow: '0 5px 40px rgba(0,0,0,0.6)',
-                pointerEvents: 'none',  // don't block persona clicks
+                pointerEvents: 'none',
               }}
             >
               <div
                 style={{
                   padding: '24px 24px 0 24px',
                   background: 'linear-gradient(160deg, #f8f9fb 0%, #f6f7fa 50%, #f7f6f5 100%)',
-                  borderRadius: '12px 12px 0 0',
                 }}
               >
-                {/* ── Toolbar placeholder ──────────────────────────── */}
-                <ToolbarPlaceholder />
+                <ToolbarPlaceholder
+                  savedViews={savedViews}
+                  activeViewId={activeViewId}
+                  activeViewName={activeViewName}
+                  handleLoadView={handleLoadView}
+                  handleNextView={handleNextView}
+                  handlePrevView={handlePrevView}
+                  handleSaveView={handleSaveView}
+                  handleCreateView={handleCreateView}
+                  viewFlashName={viewFlashName}
+                />
               </div>
 
-          {/* ── Canvas ─────────────────────────────────────────── */}
+          {/* ── Canvas ── */}
           <div
             style={{
               flex: '1 1 auto',
@@ -753,14 +761,12 @@ export default function AssignmentSecond() {
               overflow: 'hidden',
               background: 'linear-gradient(160deg, #f8f9fb 0%, #f6f7fa 50%, #f7f6f5 100%)',
               padding: '0 24px 24px 24px',
-              borderRadius: '0 0 12px 12px',
             }}
           >
-      {/* Outer scroll container — scaleY(-1) flips scrollbar to top */}
       <div
         data-board-scroll
         style={{ height: `${contentHeight + 16}px`, transform: 'scaleY(-1)', flex: '1 1 auto', minHeight: 0 }}
-        className="overflow-x-auto overflow-y-hidden rounded-xl border border-slate-200 shadow-sm"
+        className="overflow-x-hidden overflow-y-hidden border border-slate-200 shadow-sm"
         onWheel={(e) => {
           if (e.shiftKey && e.deltaY !== 0) {
             e.preventDefault();
@@ -768,16 +774,13 @@ export default function AssignmentSecond() {
           }
         }}
       >
-        {/* Inner container — flip back */}
         <div
           ref={containerRef}
           style={{ width: `${totalWidth}px`, height: `${contentHeight}px`, transform: 'scaleY(-1)' }}
           className="relative"
         >
-          {/* ── Header Row ────────────────────────────────────── */}
+          {/* ── Header Row ── */}
           <div className="flex flex-col" style={{ height: `${effectiveHeaderH}px`, position: 'relative', zIndex: 50 }}>
-
-            {/* Global phase header (26px) */}
             {showGlobalPhases && (
               <div className="flex" style={{ height: `${PHASE_HEADER_HEIGHT}px` }}>
                 <div
@@ -817,10 +820,8 @@ export default function AssignmentSecond() {
               </div>
             )}
 
-            {/* Day header row (48px) */}
             {showDayHeader && (
               <div className="flex" style={{ height: `${HEADER_HEIGHT}px`, position: 'relative', zIndex: 50 }}>
-                {/* Sticky team + tasks labels */}
                 <div
                   className="flex border-b bg-slate-100 text-sm font-semibold text-slate-700"
                   style={{ width: `${TEAMWIDTH + TASKWIDTH}px`, height: `${HEADER_HEIGHT}px`, position: 'sticky', left: 0, zIndex: 50 }}
@@ -832,7 +833,6 @@ export default function AssignmentSecond() {
                     Tasks
                   </div>
                 </div>
-                {/* Day columns */}
                 <div className="relative border-b" style={{ width: `${totalDaysWidth}px` }}>
                   {dayLabels.map((info, i) => {
                     const colX = i * DAYWIDTH;
@@ -872,27 +872,27 @@ export default function AssignmentSecond() {
             )}
           </div>
 
-          {/* ── Team rows ─────────────────────────────────────── */}
+          {/* ── Team rows ── */}
           {teamOrder.map((teamId) => {
             const team = teams[teamId];
             if (!team) return null;
+            if (teamDisplaySettings[teamId]?.hidden) return null;
+            const isCollapsed = teamDisplaySettings[teamId]?.collapsed;
             const teamColor = team.color || '#94a3b8';
             const isVirtual = team._virtual;
-            const visibleTasks_ = getVisibleTasks(team, taskDisplaySettings);
+            const visibleTasks_ = isCollapsed ? [] : getVisibleTasks(team, taskDisplaySettings3D);
             const teamPhases = teamPhasesMap[teamId] || [];
-            const hasTeamPhases = teamPhases.length > 0;
+            const hasTeamPhases = !isCollapsed && teamPhases.length > 0;
             const phaseRowH = hasTeamPhases ? TEAM_PHASE_ROW_HEIGHT : 0;
-            const teamRowH = getTeamRowHeight(team, taskDisplaySettings, phaseRowH);
+            const teamRowH = getTeamRowHeight(team, taskDisplaySettings3D, phaseRowH, isCollapsed, DEFAULT_TASKHEIGHT_SMALL, DEFAULT_TASKHEIGHT_NORMAL);
 
             return (
               <div key={teamId}>
-                {/* Drop highlight placeholder */}
                 <div className="flex">
                   <div style={{ width: `${TEAMWIDTH + TASKWIDTH}px`, height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2}px`, position: 'sticky', left: 0 }} />
                   <div style={{ flex: 1, height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2}px` }} />
                 </div>
 
-                {/* Team color header line */}
                 <div
                   style={{
                     height: `${TEAM_HEADER_LINE_HEIGHT}px`,
@@ -905,7 +905,6 @@ export default function AssignmentSecond() {
                   }}
                 />
 
-                {/* Team phase row (if applicable) */}
                 {hasTeamPhases && (
                   <div className="flex" style={{ height: `${TEAM_PHASE_ROW_HEIGHT}px` }}>
                     <div
@@ -952,9 +951,7 @@ export default function AssignmentSecond() {
                   </div>
                 )}
 
-                {/* Team row: sidebar + day grid */}
                 <div className="flex">
-                  {/* ── Sticky sidebar (team name + tasks) ───── */}
                   <div
                     style={{
                       width: `${TEAMWIDTH + TASKWIDTH}px`,
@@ -964,7 +961,6 @@ export default function AssignmentSecond() {
                       display: 'flex',
                     }}
                   >
-                    {/* Team name column */}
                     <div
                       className="flex items-start px-2 pt-2 border-r border-b border-slate-200"
                       style={{
@@ -977,9 +973,8 @@ export default function AssignmentSecond() {
                         } : {}),
                       }}
                     >
-                      {/* Expand/collapse triangle (non-functional) */}
                       <div className="flex items-center justify-center" style={{ width: '18px', height: '18px', flexShrink: 0 }}>
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill={teamColor} style={{ transform: 'rotate(90deg)', transition: 'transform 0.15s' }}>
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill={teamColor} style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.15s' }}>
                           <path d="M8 5v14l11-7z" />
                         </svg>
                       </div>
@@ -988,7 +983,6 @@ export default function AssignmentSecond() {
                       </span>
                     </div>
 
-                    {/* Tasks column */}
                     <div
                       className="border-r border-slate-200"
                       style={{
@@ -999,7 +993,7 @@ export default function AssignmentSecond() {
                       {visibleTasks_.map((taskId, idx) => {
                         const task = tasks[taskId];
                         if (!task) return null;
-                        const th = getTaskHeight(taskId, taskDisplaySettings);
+                        const th = getTaskHeight(taskId, taskDisplaySettings3D, DEFAULT_TASKHEIGHT_SMALL, DEFAULT_TASKHEIGHT_NORMAL);
                         return (
                           <div
                             key={taskId}
@@ -1012,7 +1006,6 @@ export default function AssignmentSecond() {
                               paddingRight: '4px',
                             }}
                           >
-                            {/* Drag handle icon (decorative) */}
                             <div className="flex items-center justify-center text-slate-300" style={{ width: '28px', flexShrink: 0 }}>
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                                 <circle cx="9" cy="5" r="1.5"/><circle cx="15" cy="5" r="1.5"/>
@@ -1039,53 +1032,247 @@ export default function AssignmentSecond() {
                     </div>
                   </div>
 
-                  {/* ── Day grid (per team) ───────────────────── */}
                   <DayGrid
                     team={team}
                     tasks={tasks}
                     days={days}
                     DAYWIDTH={DAYWIDTH}
-                    taskDisplaySettings={taskDisplaySettings}
+                    taskDisplaySettings={taskDisplaySettings3D}
                     teamPhasesMap={teamPhasesMap}
                     phases={phases}
                     teamColor={teamColor}
                     totalDaysWidth={totalDaysWidth}
+                    thSmall={DEFAULT_TASKHEIGHT_SMALL}
+                    thNormal={DEFAULT_TASKHEIGHT_NORMAL}
+                    isCollapsed={isCollapsed}
                   />
                 </div>
               </div>
             );
           })}
 
-          {/* Final drop indicator placeholder */}
           <div style={{ height: `${TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2}px` }} />
 
-          {/* ── Milestone Layer ────────────────────────────────── */}
           <MilestoneLayer
             teamOrder={teamOrder}
             teams={teams}
-            tasks={tasks}
             milestones={milestones}
-            taskDisplaySettings={taskDisplaySettings}
+            taskDisplaySettings={taskDisplaySettings3D}
+            teamDisplaySettings={teamDisplaySettings}
             teamPhasesMap={teamPhasesMap}
             effectiveHeaderH={effectiveHeaderH}
             TEAMWIDTH={TEAMWIDTH}
             TASKWIDTH={TASKWIDTH}
             DAYWIDTH={DAYWIDTH}
+            TASKHEIGHT_SMALL={DEFAULT_TASKHEIGHT_SMALL}
+            TASKHEIGHT_NORMAL={DEFAULT_TASKHEIGHT_NORMAL}
           />
         </div>{/* inner container */}
       </div>{/* scroll container */}
       </div>{/* canvas wrapper */}
       </div>{/* board */}
 
-            {/* ── Layer 4d: Milestone pedestals — slot markers on the floor ──
-                 Each pedestal lies flat on XZ with text along world Z
-                 (matching the board’s timeline direction).
-                 Rotation: Rx(90°)·Rz(90°) maps local-X → world-Z.
-            ── */}
+            {/* ── Team height slabs ── */}
+            {/* Extruded 3D boxes above the floor for each team row.
+                Positioned using world-space coords from useFloor3D's floorLayout.
+                Each slab has a top face and front/back side walls.
+                This is a preparation feature — not interactive yet. */}
+            {floorLayout.teams.map((teamSlab) => {
+              const team = teamSlab.team;
+              const teamColor = team?.color || '#94a3b8';
+              const teamName = team?.name || '';
+              const slabH = TEAM_3D_HEIGHT;
+              // Use the team name column Z extent only — not the full board width
+              const slabXLen = Math.abs(teamSlab.worldXEnd - teamSlab.worldXStart);
+              const slabZLen = Math.abs(teamSlab.nameWorldZEnd - teamSlab.nameWorldZStart);
+              const slabXCenter = (teamSlab.worldXStart + teamSlab.worldXEnd) / 2;
+              const slabZCenter = (teamSlab.nameWorldZStart + teamSlab.nameWorldZEnd) / 2;
+              const occupied = personas.some((p) => p.onTeamId === teamSlab.teamId);
+              const borderColor = occupied ? 'rgba(74,222,128,1)' : teamColor;
+              const topBg = occupied ? 'rgba(74,222,128,0.85)' : teamColor;
+              const textColor = getContrastTextColor(occupied ? '#4ade80' : teamColor);
+
+              if (slabXLen < 1 || slabZLen < 1) return null;
+
+              return (
+                <div
+                  key={`team-slab-${teamSlab.teamId}`}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: `${slabZLen}px`,
+                    height: `${slabXLen}px`,
+                    transform: [
+                      `translateX(${slabXCenter}px)`,
+                      `translateZ(${slabZCenter}px)`,
+                      `translateY(-${slabH}px)`,
+                      'rotateX(-90deg)',
+                      'rotateZ(-90deg)',
+                      `translate(-${slabZLen / 2}px, -${slabXLen / 2}px)`,
+                    ].join(' '),
+                    transformOrigin: '0 0',
+                    transformStyle: 'preserve-3d',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {/* Top face */}
+                  <div style={{
+                    position: 'absolute', top: 0, left: 0,
+                    width: `${slabZLen}px`, height: `${slabXLen}px`,
+                    background: topBg,
+                    border: `2px solid ${borderColor}`,
+                    borderRadius: '2px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    overflow: 'hidden',
+                  }}>
+                    <span style={{
+                      fontSize: '10px', fontWeight: 700, color: textColor,
+                      fontFamily: 'sans-serif', whiteSpace: 'nowrap',
+                      overflow: 'hidden', textOverflow: 'ellipsis',
+                      maxWidth: '100%', padding: '0 4px',
+                      transform: 'scaleX(-1)',
+                    }}>{teamName}</span>
+                  </div>
+                  {/* Front wall */}
+                  <div style={{
+                    position: 'absolute', left: 0, top: `${slabXLen}px`,
+                    width: `${slabZLen}px`, height: `${slabH}px`,
+                    transform: 'rotateX(90deg)', transformOrigin: 'top left',
+                    background: `color-mix(in srgb, ${borderColor} 85%, #000)`,
+                  }} />
+                  {/* Back wall */}
+                  <div style={{
+                    position: 'absolute', left: 0, top: 0,
+                    width: `${slabZLen}px`, height: `${slabH}px`,
+                    transform: 'rotateX(90deg)', transformOrigin: 'top left',
+                    background: `color-mix(in srgb, ${borderColor} 75%, #000)`,
+                  }} />
+                  {/* Left wall */}
+                  <div style={{
+                    position: 'absolute', left: 0, top: 0,
+                    width: `${slabH}px`, height: `${slabXLen}px`,
+                    transform: 'rotateY(-90deg)', transformOrigin: 'top left',
+                    background: `color-mix(in srgb, ${borderColor} 80%, #000)`,
+                  }} />
+                  {/* Right wall */}
+                  <div style={{
+                    position: 'absolute', left: `${slabZLen}px`, top: 0,
+                    width: `${slabH}px`, height: `${slabXLen}px`,
+                    transform: 'rotateY(-90deg)', transformOrigin: 'top left',
+                    background: `color-mix(in srgb, ${borderColor} 70%, #000)`,
+                  }} />
+                </div>
+              );
+            })}
+
+            {/* ── Task height slabs ── */}
+            {/* Extruded 3D boxes for each task row — thinner than team slabs. */}
+            {floorLayout.teams.flatMap((teamSlab) =>
+              teamSlab.tasks.map((taskSlab) => {
+                const team = teamSlab.team;
+                const teamColor = team?.color || '#94a3b8';
+                const taskObj = tasks[taskSlab.taskId];
+                const taskName = taskObj?.name || '';
+                const slabH = TASK_3D_HEIGHT;
+                // Use the task name column Z extent only — not the full board width
+                const slabXLen = Math.abs(taskSlab.worldXEnd - taskSlab.worldXStart);
+                const slabZLen = Math.abs(taskSlab.nameWorldZEnd - taskSlab.nameWorldZStart);
+                const slabXCenter = (taskSlab.worldXStart + taskSlab.worldXEnd) / 2;
+                const slabZCenter = (taskSlab.nameWorldZStart + taskSlab.nameWorldZEnd) / 2;
+                const bgColor = lightenColor(teamColor, 0.35);
+                const occupied = personas.some((p) => p.onTaskId === taskSlab.taskId);
+                const borderColor = occupied ? 'rgba(74,222,128,1)' : teamColor;
+                const topBg = occupied ? 'rgba(74,222,128,0.85)' : bgColor;
+                const textColor = getContrastTextColor(occupied ? '#4ade80' : bgColor);
+
+                if (slabXLen < 1 || slabZLen < 1) return null;
+
+                return (
+                  <div
+                    key={`task-slab-${taskSlab.taskId}`}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: `${slabZLen}px`,
+                      height: `${slabXLen}px`,
+                      transform: [
+                        `translateX(${slabXCenter}px)`,
+                        `translateZ(${slabZCenter}px)`,
+                        `translateY(-${slabH}px)`,
+                        'rotateX(-90deg)',
+                        'rotateZ(-90deg)',
+                        `translate(-${slabZLen / 2}px, -${slabXLen / 2}px)`,
+                      ].join(' '),
+                      transformOrigin: '0 0',
+                      transformStyle: 'preserve-3d',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    {/* Top face */}
+                    <div style={{
+                      position: 'absolute', top: 0, left: 0,
+                      width: `${slabZLen}px`, height: `${slabXLen}px`,
+                      background: topBg,
+                      border: `2px solid ${borderColor}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      overflow: 'hidden',
+                    }}>
+                      <span style={{
+                        fontSize: '8px', fontWeight: 600, color: textColor,
+                        fontFamily: 'sans-serif', whiteSpace: 'nowrap',
+                        overflow: 'hidden', textOverflow: 'ellipsis',
+                        maxWidth: '100%', padding: '0 3px',
+                        transform: 'scaleX(-1)',
+                      }}>{taskName}</span>
+                    </div>
+                    {/* Front wall */}
+                    <div style={{
+                      position: 'absolute', left: 0, top: `${slabXLen}px`,
+                      width: `${slabZLen}px`, height: `${slabH}px`,
+                      transform: 'rotateX(90deg)', transformOrigin: 'top left',
+                      background: `color-mix(in srgb, ${borderColor} 80%, #000)`,
+                    }} />
+                    {/* Back wall */}
+                    <div style={{
+                      position: 'absolute', left: 0, top: 0,
+                      width: `${slabZLen}px`, height: `${slabH}px`,
+                      transform: 'rotateX(90deg)', transformOrigin: 'top left',
+                      background: `color-mix(in srgb, ${borderColor} 70%, #000)`,
+                    }} />
+                    {/* Left wall */}
+                    <div style={{
+                      position: 'absolute', left: 0, top: 0,
+                      width: `${slabH}px`, height: `${slabXLen}px`,
+                      transform: 'rotateY(-90deg)', transformOrigin: 'top left',
+                      background: `color-mix(in srgb, ${borderColor} 75%, #000)`,
+                    }} />
+                    {/* Right wall */}
+                    <div style={{
+                      position: 'absolute', left: `${slabZLen}px`, top: 0,
+                      width: `${slabH}px`, height: `${slabXLen}px`,
+                      transform: 'rotateY(-90deg)', transformOrigin: 'top left',
+                      background: `color-mix(in srgb, ${borderColor} 65%, #000)`,
+                    }} />
+                  </div>
+                );
+              })
+            )}
+
+            {/* ── Milestone pedestals ── */}
             {milestone3D.map((m) => {
               const occupied = personas.some((p) => p.milestoneId === m.id);
               const slotW = Math.max((m.duration || 1) * DAYWIDTH, PERSONA_SIZE + 10);
               const slotH = PERSONA_SIZE + 10;
+              const depth = MILESTONE_3D_HEIGHT;
+              const baseColor = m.color || m.teamColor || '#facc15';
+              const borderColor = occupied ? 'rgba(74,222,128,1)' : baseColor;
+              const topBg = occupied ? 'rgba(74,222,128,0.85)' : baseColor;
+              const sideA = `linear-gradient(180deg, color-mix(in srgb, ${baseColor} 90%, #000), color-mix(in srgb, ${baseColor} 70%, #000))`;
+              const sideB = `linear-gradient(180deg, color-mix(in srgb, ${baseColor} 80%, #000), color-mix(in srgb, ${baseColor} 60%, #000))`;
+              const sideC = `linear-gradient(180deg, color-mix(in srgb, ${baseColor} 85%, #000), color-mix(in srgb, ${baseColor} 65%, #000))`;
+              const sideD = `linear-gradient(180deg, color-mix(in srgb, ${baseColor} 75%, #000), color-mix(in srgb, ${baseColor} 55%, #000))`;
               return (
                 <div
                   key={`ms-${m.id}`}
@@ -1095,142 +1282,228 @@ export default function AssignmentSecond() {
                     left: 0,
                     width: `${slotW}px`,
                     height: `${slotH}px`,
-                    // 1. Center the div on its own origin
-                    // 2. Rz(90°) rotates text 90° in-plane
-                    // 3. Rx(90°) lays it flat on XZ
-                    // 4. Move to world position
-                    // Result: text flows along world Z, div lies on floor
                     transform: [
                       `translateX(${m.worldX}px)`,
                       `translateZ(${m.worldZ}px)`,
-                      'rotateX(90deg)',
-                      'rotateZ(90deg)',
+                      `translateY(-${depth}px)`,
+                      'rotateX(-90deg)',
+                      'rotateZ(-90deg)',
                       `translate(-${slotW / 2}px, -${slotH / 2}px)`,
                     ].join(' '),
                     transformOrigin: '0 0',
-                    border: occupied ? '2px solid rgba(74,222,128,0.6)' : '2px dashed rgba(255,255,255,0.4)',
-                    borderRadius: '6px',
-                    background: occupied
-                      ? 'rgba(74,222,128,0.15)'
-                      : `${m.color || m.teamColor || '#facc15'}33`,
+                    transformStyle: 'preserve-3d',
                     pointerEvents: 'none',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
                   }}
                 >
-                  <span style={{
-                    fontSize: '8px',
-                    color: 'rgba(255,255,255,0.7)',
-                    fontFamily: 'monospace',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    maxWidth: '100%',
-                    padding: '0 2px',
+                  <div style={{
+                    position: 'absolute', top: 0, left: 0,
+                    width: `${slotW}px`, height: `${slotH}px`,
+                    border: `2px solid ${borderColor}`, borderRadius: '4px',
+                    background: topBg,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
-                    {m.name}
-                  </span>
+                    <span style={{
+                      fontSize: '8px', color: getContrastTextColor(baseColor),
+                      fontFamily: 'monospace', whiteSpace: 'nowrap',
+                      overflow: 'hidden', textOverflow: 'ellipsis',
+                      maxWidth: '100%', padding: '0 2px',
+                      textShadow: 'none',
+                      display: 'inline-block',
+                      transform: 'scaleX(-1)',
+                    }}>
+                      {m.name}
+                    </span>
+                  </div>
+                  <div style={{ position: 'absolute', left: 0, top: `${slotH}px`, width: `${slotW}px`, height: `${depth}px`, transform: 'rotateX(90deg)', transformOrigin: 'top left', background: sideA, borderLeft: `1px solid ${borderColor}`, borderRight: `1px solid ${borderColor}`, borderBottom: `1px solid ${borderColor}` }} />
+                  <div style={{ position: 'absolute', left: 0, top: 0, width: `${slotW}px`, height: `${depth}px`, transform: 'rotateX(90deg)', transformOrigin: 'top left', background: sideB, borderLeft: `1px solid ${borderColor}`, borderRight: `1px solid ${borderColor}`, borderBottom: `1px solid ${borderColor}` }} />
+                  <div style={{ position: 'absolute', left: `${slotW}px`, top: 0, width: `${depth}px`, height: `${slotH}px`, transform: 'rotateY(-90deg)', transformOrigin: 'top left', background: sideC, borderTop: `1px solid ${borderColor}`, borderBottom: `1px solid ${borderColor}`, borderRight: `1px solid ${borderColor}` }} />
+                  <div style={{ position: 'absolute', left: 0, top: 0, width: `${depth}px`, height: `${slotH}px`, transform: 'rotateY(-90deg)', transformOrigin: 'top left', background: sideD, borderTop: `1px solid ${borderColor}`, borderBottom: `1px solid ${borderColor}`, borderRight: `1px solid ${borderColor}` }} />
                 </div>
               );
             })}
 
-            {/* ── Layer 4e: Protopersonas — cubes on the XZ floor ──
-                 Each persona is a CSS 3D cube at world (x, 0, z).
-                 translateX = world X, translateZ = world Z.
-            ── */}
+            {/* ── Milestone dependency bezier curves (3D ribbon planks) ── */}
+            {connections.map((conn, ci) => {
+              const srcMs = milestone3D.find((m) => m.id === conn.source);
+              const tgtMs = milestone3D.find((m) => m.id === conn.target);
+              if (!srcMs || !tgtMs) return null;
+
+              const { segments, lastPt, arrowAngle, arrowSize, ribbonW, beamH, liftY, weightColor, weightColorDark } =
+                buildConnectionGeometry(conn, srcMs, tgtMs);
+
+              return (
+                <div key={`dep-${ci}`} style={{ position: 'absolute', top: 0, left: 0, transformStyle: 'preserve-3d', pointerEvents: 'none' }}>
+                  {segments.map(({ pt, segAngle, sw }, si) => (
+                    <div
+                      key={si}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: `${sw}px`,
+                        height: `${ribbonW}px`,
+                        transform: [
+                          `translateX(${pt.x}px)`,
+                          `translateZ(${pt.z}px)`,
+                          `translateY(-${liftY + beamH}px)`,
+                          'rotateX(-90deg)',
+                          `rotateZ(${-segAngle}deg)`,
+                          `translate(0px, -${ribbonW / 2}px)`,
+                        ].join(' '),
+                        transformOrigin: '0 0',
+                        transformStyle: 'preserve-3d',
+                      }}
+                    >
+                      <div style={{ position: 'absolute', left: 0, top: 0, width: `${sw}px`, height: `${ribbonW}px`, background: weightColor }} />
+                      <div style={{ position: 'absolute', left: 0, top: `${ribbonW}px`, width: `${sw}px`, height: `${beamH}px`, background: weightColorDark, transform: 'rotateX(90deg)', transformOrigin: 'top left' }} />
+                      <div style={{ position: 'absolute', left: 0, top: 0, width: `${sw}px`, height: `${beamH}px`, background: `linear-gradient(180deg, ${weightColor}, ${weightColorDark})`, transform: 'rotateX(90deg)', transformOrigin: 'top left' }} />
+                    </div>
+                  ))}
+                  <div style={{
+                    position: 'absolute',
+                    width: 0, height: 0,
+                    borderLeft: `${arrowSize}px solid ${weightColor}`,
+                    borderTop: `${arrowSize / 2}px solid transparent`,
+                    borderBottom: `${arrowSize / 2}px solid transparent`,
+                    transform: [
+                      `translateX(${lastPt.x}px)`,
+                      `translateZ(${lastPt.z}px)`,
+                      `translateY(-${liftY + beamH / 2}px)`,
+                      'rotateX(-90deg)',
+                      `rotateZ(${-arrowAngle}deg)`,
+                      `translateX(-${arrowSize}px)`,
+                      `translateY(-${arrowSize / 2}px)`,
+                    ].join(' '),
+                    transformOrigin: '0 50%',
+                    filter: `drop-shadow(0 0 4px ${weightColor})`,
+                  }} />
+                </div>
+              );
+            })}
+
+            {/* ── Protopersona figures (blocky box style) ── */}
             {personas.map((p) => {
-              const S = PERSONA_SIZE;       // cube side length
-              const half = S / 2;           // half-side for face translations
-              // Shared face style — each face is an S×S square centered in the cube
-              const face = {
-                position: 'absolute',
-                width: `${S}px`,
-                height: `${S}px`,
-                backfaceVisibility: 'hidden',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '20px',
-                fontWeight: 'bold',
-                color: '#fff',
-                fontFamily: 'monospace',
-                textShadow: '0 1px 3px rgba(0,0,0,0.5)',
-                border: '2px solid rgba(255,255,255,0.25)',
-                boxSizing: 'border-box',
-              };
+              const S = PERSONA_SIZE;
+              const isBeingDragged = p.id === draggingId;
+              const headW = S * 0.44, headH = S * 0.40, headD = S * 0.40;
+              const bodyW = S * 0.50, bodyH = S * 0.44, bodyD = S * 0.30;
+              const legW  = bodyW * 0.40, legH = S * 0.34, legD = bodyD * 0.85;
+              const legGap = bodyW * 0.08;
+              const totalH = headH + bodyH + legH;
+              // Lift persona above whatever it's standing on (or hovering over)
+              let standOnH = 0;
+              if (isBeingDragged) {
+                // While dragging, dynamically detect what's underneath and float above it
+                // Check milestones first
+                let overMs = false;
+                for (const m of milestone3D) {
+                  const dx = Math.max(0, Math.abs(m.worldX - p.x) - (m.halfX || 0));
+                  const dz = Math.max(0, Math.abs(m.worldZ - p.z) - (m.halfZ || 0));
+                  if (dx < 1 && dz < 1) { standOnH = MILESTONE_3D_HEIGHT; overMs = true; break; }
+                }
+                if (!overMs) {
+                  // Check team/task slabs (with padding matching snap tolerance)
+                  const PAD = 15;
+                  // Task slabs first (more specific)
+                  let foundSlab = false;
+                  for (const ts of floorLayout.teams) {
+                    const inX = p.x >= Math.min(ts.worldXStart, ts.worldXEnd) - PAD && p.x <= Math.max(ts.worldXStart, ts.worldXEnd) + PAD;
+                    if (!inX) continue;
+                    for (const tk of ts.tasks) {
+                      const tInX = p.x >= Math.min(tk.worldXStart, tk.worldXEnd) - PAD && p.x <= Math.max(tk.worldXStart, tk.worldXEnd) + PAD;
+                      const tInZ = p.z >= Math.min(tk.nameWorldZStart, tk.nameWorldZEnd) - PAD && p.z <= Math.max(tk.nameWorldZStart, tk.nameWorldZEnd) + PAD;
+                      if (tInX && tInZ) { standOnH = TASK_3D_HEIGHT; foundSlab = true; break; }
+                    }
+                    if (foundSlab) break;
+                  }
+                  if (!foundSlab) {
+                    // Team slabs
+                    for (const ts of floorLayout.teams) {
+                      const inX = p.x >= Math.min(ts.worldXStart, ts.worldXEnd) - PAD && p.x <= Math.max(ts.worldXStart, ts.worldXEnd) + PAD;
+                      const inZ = p.z >= Math.min(ts.nameWorldZStart, ts.nameWorldZEnd) - PAD && p.z <= Math.max(ts.nameWorldZStart, ts.nameWorldZEnd) + PAD;
+                      if (inX && inZ) { standOnH = TEAM_3D_HEIGHT; foundSlab = true; break; }
+                    }
+                  }
+                }
+                standOnH += PERSONA_DRAG_LIFT;
+              } else {
+                if (p.milestoneId != null) standOnH = MILESTONE_3D_HEIGHT;
+                else if (p.onTaskId) standOnH = TASK_3D_HEIGHT;
+                else if (p.onTeamId) standOnH = TEAM_3D_HEIGHT;
+              }
+              const baseY = totalH + standOnH;
               return (
                 <div
                   key={p.id}
                   data-persona-id={p.id}
-                  onMouseDown={(e) => {
-                    if (e.button === 0) {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      draggingPersona.current = p.id;
-                      lastMouse.current = { x: e.clientX, y: e.clientY };
-                    }
-                  }}
                   style={{
                     position: 'absolute',
                     top: 0,
                     left: 0,
                     width: `${S}px`,
                     height: `${S}px`,
-                    // Position: world X & Z, then lift by full side so cube sits ON the floor
-                    // (half lifts center to Y=half, + half more clears the bottom face above Y=0)
                     transform: [
-                      `translateX(${p.x}px)`,
-                      `translateZ(${p.z}px)`,
-                      `translateY(-${S}px)`,
+                      `translateX(${p.x - S / 2}px)`,
+                      `translateZ(${p.z + S / 2}px)`,
+                      `translateY(-${baseY}px)`,
                     ].join(' '),
+                    transition: isBeingDragged ? 'none' : 'transform 0.25s ease-out',
                     transformStyle: 'preserve-3d',
-                    cursor: draggingPersona.current === p.id ? 'grabbing' : 'grab',
+                    cursor: isBeingDragged ? 'grabbing' : 'grab',
                     userSelect: 'none',
                     zIndex: 50,
                     pointerEvents: 'auto',
                   }}
                 >
-                  {/* Front face (+Z) */}
-                  <div style={{ ...face, background: p.color,
-                    transform: `translateZ(${half}px)` }}>
-                    {p.name.charAt(0).toUpperCase()}
+                  {/* ── Head ── */}
+                  <div style={{ position: 'absolute', left: `${(S - headW) / 2}px`, top: '0px', width: `${headW}px`, height: `${headH}px`, transformStyle: 'preserve-3d' }}>
+                    <div style={{ position: 'absolute', width: `${headW}px`, height: `${headH}px`, background: '#fcd9b6', transform: `translateZ(${headD / 2}px)` }}>
+                      <div style={{ position: 'absolute', top: `${headH * 0.38}px`, left: `${headW * 0.22}px`, width: '3px', height: '3px', background: '#2d2d2d' }} />
+                      <div style={{ position: 'absolute', top: `${headH * 0.38}px`, right: `${headW * 0.22}px`, width: '3px', height: '3px', background: '#2d2d2d' }} />
+                      <div style={{ position: 'absolute', top: `${headH * 0.62}px`, left: '50%', width: '5px', height: '2px', background: '#c17c5e', transform: 'translateX(-50%)' }} />
+                    </div>
+                    <div style={{ position: 'absolute', width: `${headW}px`, height: `${headH}px`, background: '#d4a67a', transform: `rotateY(180deg) translateZ(${headD / 2}px)` }} />
+                    <div style={{ position: 'absolute', width: `${headD}px`, height: `${headH}px`, background: '#ecc9a0', transform: `rotateY(-90deg) translateZ(0px)` }} />
+                    <div style={{ position: 'absolute', width: `${headD}px`, height: `${headH}px`, background: '#ecc9a0', transform: `rotateY(90deg) translateZ(${headW}px)` }} />
+                    <div style={{ position: 'absolute', width: `${headW}px`, height: `${headD}px`, background: '#5c3d2e', transform: 'rotateX(90deg) translateZ(0px)' }} />
+                    <div style={{ position: 'absolute', width: `${headW}px`, height: `${headD}px`, background: '#e8c09a', transform: `rotateX(-90deg) translateZ(${headH}px)` }} />
                   </div>
-                  {/* Back face (−Z) */}
-                  <div style={{ ...face, background: p.color,
-                    transform: `rotateY(180deg) translateZ(${half}px)` }}>
-                    {p.name.charAt(0).toUpperCase()}
+
+                  {/* ── Torso ── */}
+                  <div style={{ position: 'absolute', left: `${(S - bodyW) / 2}px`, top: `${headH}px`, width: `${bodyW}px`, height: `${bodyH}px`, transformStyle: 'preserve-3d' }}>
+                    <div style={{ position: 'absolute', width: `${bodyW}px`, height: `${bodyH}px`, background: p.color, transform: `translateZ(${bodyD / 2}px)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#fff', fontFamily: 'sans-serif', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{p.name.charAt(0).toUpperCase()}</span>
+                    </div>
+                    <div style={{ position: 'absolute', width: `${bodyW}px`, height: `${bodyH}px`, background: p.color, filter: 'brightness(0.75)', transform: `rotateY(180deg) translateZ(${bodyD / 2}px)` }} />
+                    <div style={{ position: 'absolute', width: `${bodyD}px`, height: `${bodyH}px`, background: p.color, filter: 'brightness(0.82)', transform: 'rotateY(-90deg) translateZ(0px)' }} />
+                    <div style={{ position: 'absolute', width: `${bodyD}px`, height: `${bodyH}px`, background: p.color, filter: 'brightness(0.82)', transform: `rotateY(90deg) translateZ(${bodyW}px)` }} />
+                    <div style={{ position: 'absolute', width: `${bodyW}px`, height: `${bodyD}px`, background: p.color, filter: 'brightness(1.08)', transform: 'rotateX(90deg) translateZ(0px)' }} />
+                    <div style={{ position: 'absolute', width: `${bodyW}px`, height: `${bodyD}px`, background: p.color, filter: 'brightness(0.68)', transform: `rotateX(-90deg) translateZ(${bodyH}px)` }} />
                   </div>
-                  {/* Left face (−X) */}
-                  <div style={{ ...face, background: p.color,
-                    filter: 'brightness(0.85)',
-                    transform: `rotateY(-90deg) translateZ(${half}px)` }} />
-                  {/* Right face (+X) */}
-                  <div style={{ ...face, background: p.color,
-                    filter: 'brightness(0.85)',
-                    transform: `rotateY(90deg) translateZ(${half}px)` }} />
-                  {/* Top face (+Y) */}
-                  <div style={{ ...face, background: p.color,
-                    filter: 'brightness(1.15)',
-                    transform: `rotateX(90deg) translateZ(${half}px)` }}>
-                    {p.name.charAt(0).toUpperCase()}
+
+                  {/* ── Left leg ── */}
+                  <div style={{ position: 'absolute', left: `${(S - bodyW) / 2 + legGap}px`, top: `${headH + bodyH}px`, width: `${legW}px`, height: `${legH}px`, transformStyle: 'preserve-3d' }}>
+                    <div style={{ position: 'absolute', width: `${legW}px`, height: `${legH}px`, background: '#3b4861', transform: `translateZ(${legD / 2}px)` }} />
+                    <div style={{ position: 'absolute', width: `${legW}px`, height: `${legH}px`, background: '#2d3a4e', transform: `rotateY(180deg) translateZ(${legD / 2}px)` }} />
+                    <div style={{ position: 'absolute', width: `${legD}px`, height: `${legH}px`, background: '#344054', transform: 'rotateY(-90deg) translateZ(0px)' }} />
+                    <div style={{ position: 'absolute', width: `${legD}px`, height: `${legH}px`, background: '#344054', transform: `rotateY(90deg) translateZ(${legW}px)` }} />
                   </div>
-                  {/* Bottom face (−Y) — sits on the floor */}
-                  <div style={{ ...face, background: p.color,
-                    filter: 'brightness(0.7)',
-                    transform: `rotateX(-90deg) translateZ(${half}px)` }} />
-                  {/* Name label floating above the cube */}
+
+                  {/* ── Right leg ── */}
+                  <div style={{ position: 'absolute', left: `${(S - bodyW) / 2 + bodyW - legGap - legW}px`, top: `${headH + bodyH}px`, width: `${legW}px`, height: `${legH}px`, transformStyle: 'preserve-3d' }}>
+                    <div style={{ position: 'absolute', width: `${legW}px`, height: `${legH}px`, background: '#3b4861', transform: `translateZ(${legD / 2}px)` }} />
+                    <div style={{ position: 'absolute', width: `${legW}px`, height: `${legH}px`, background: '#2d3a4e', transform: `rotateY(180deg) translateZ(${legD / 2}px)` }} />
+                    <div style={{ position: 'absolute', width: `${legD}px`, height: `${legH}px`, background: '#344054', transform: 'rotateY(-90deg) translateZ(0px)' }} />
+                    <div style={{ position: 'absolute', width: `${legD}px`, height: `${legH}px`, background: '#344054', transform: `rotateY(90deg) translateZ(${legW}px)` }} />
+                  </div>
+
+                  {/* ── Name label ── */}
                   <div style={{
-                    position: 'absolute',
-                    top: `-20px`,
-                    left: '50%',
+                    position: 'absolute', top: '-14px', left: '50%',
                     transform: 'translateX(-50%)',
-                    color: '#fff',
-                    fontSize: '11px',
-                    fontFamily: 'monospace',
-                    fontWeight: 600,
-                    whiteSpace: 'nowrap',
-                    textShadow: '0 1px 4px rgba(0,0,0,0.7)',
+                    color: '#fff', fontSize: '9px', fontFamily: 'sans-serif',
+                    fontWeight: 700, whiteSpace: 'nowrap',
+                    textShadow: '0 1px 4px rgba(0,0,0,0.8)',
                     pointerEvents: 'none',
                   }}>
                     {p.name}
@@ -1241,324 +1514,6 @@ export default function AssignmentSecond() {
 
       </div>{/* distance wrapper */}
       </div>{/* orbit wrapper */}
-
-      {/* ── Persona controls panel (top-right) ── */}
-      <div style={{
-        position: 'absolute', top: '12px', right: '12px', zIndex: 999,
-        background: 'rgba(0,0,0,0.7)', padding: '10px 14px',
-        borderRadius: '10px', fontFamily: 'monospace', fontSize: '12px',
-        color: '#fff', minWidth: '160px',
-      }}>
-        <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '13px' }}>Protopersonas</div>
-        <button
-          onClick={addPersona}
-          style={{
-            width: '100%', padding: '6px 0', borderRadius: '6px',
-            background: '#4ade80', color: '#000', fontWeight: 'bold',
-            border: 'none', cursor: 'pointer', fontSize: '12px',
-            marginBottom: '8px',
-          }}
-        >
-          + Add Persona
-        </button>
-        {personas.length === 0 && (
-          <div style={{ color: '#94a3b8', fontSize: '10px', textAlign: 'center' }}>
-            No personas yet
-          </div>
-        )}
-        {personas.map((p) => (
-          <div
-            key={p.id}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
-              padding: '4px 0', borderTop: '1px solid rgba(255,255,255,0.1)',
-            }}
-          >
-            <div style={{
-              width: '14px', height: '14px', borderRadius: '50%',
-              background: p.color, flexShrink: 0,
-              border: '1.5px solid rgba(255,255,255,0.6)',
-            }} />
-            <span style={{ flex: 1, fontSize: '11px' }}>{p.name}</span>
-            <span style={{ fontSize: '9px', color: p.milestoneId ? '#4ade80' : '#94a3b8' }}>
-              {p.milestoneId
-                ? (milestones[p.milestoneId]?.name || 'MS')
-                : `${Math.round(p.x)}, ${Math.round(p.z)}`}
-            </span>
-            <button
-              onClick={() => removePersona(p.id)}
-              style={{
-                background: 'none', border: 'none', color: '#f87171',
-                cursor: 'pointer', fontSize: '14px', lineHeight: 1,
-                padding: '0 2px',
-              }}
-            >
-              ×
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════
-// ToolbarPlaceholder — visual replica of toolbar chrome (no logic)
-// ══════════════════════════════════════════════════════════════════
-
-function ToolbarPlaceholder() {
-  return (
-    <div className="mb-4">
-      {/* Toggle tabs */}
-      <div className="flex items-end gap-0.5 ml-1">
-        <button className="px-3 py-1 rounded-t-md bg-white border border-b-0 border-slate-200 text-slate-400 text-xs flex items-center gap-1">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5.83L15.17 9l1.41-1.41L12 3 7.41 7.59 8.83 9 12 5.83zm0 12.34L8.83 15l-1.41 1.41L12 21l4.59-4.59L15.17 15 12 18.17z"/></svg>
-          <span className="text-[10px]">Show</span>
-        </button>
-        <button className="px-3 py-1 rounded-t-md bg-white border border-b-0 border-slate-200 text-slate-400 text-xs flex items-center gap-1">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 11h3v10h2V11h3l-4-4-4 4zM4 3v2h16V3H4z"/></svg>
-          <span className="text-[10px]">Header</span>
-        </button>
-      </div>
-
-      {/* Toolbar body */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex divide-x divide-slate-200 px-3 py-2.5">
-          {/* Mode section */}
-          <div className="pr-3">
-            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Mode</div>
-            <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-100 rounded-lg" style={{ width: '170px' }}>
-              {['View', 'Edit', 'Deps', 'Refact.'].map((label, i) => (
-                <button
-                  key={label}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md ${i === 0 ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {/* Create section */}
-          <div className="px-3">
-            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Create</div>
-            <div className="grid grid-cols-2 gap-1" style={{ width: '130px' }}>
-              {['Team', 'Task', 'Mile.', 'Phase'].map((label) => (
-                <button key={label} className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-slate-200 text-slate-600">
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {/* Delete section */}
-          <div className="px-3 flex items-center">
-            <button className="flex flex-col items-center justify-center gap-0.5 px-1 py-2.5 text-xs font-medium rounded-md border border-slate-200 text-slate-300 cursor-not-allowed" style={{ width: '70px' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-              <span className="text-[10px]">Delete</span>
-            </button>
-          </div>
-          {/* Display section */}
-          <div className="px-3 flex-1">
-            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Display</div>
-            <div className="flex gap-2">
-              {['Timeline', 'Hide Deps', 'Coll. Deps', 'Coll. All'].map((label) => (
-                <button key={label} className="px-2 py-1.5 text-xs rounded-md border border-slate-200 text-slate-600">
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {/* Sizing section */}
-          <div className="px-3">
-            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Sizing</div>
-            <div className="space-y-1" style={{ width: '210px' }}>
-              {[
-                { label: 'Day W', val: DEFAULT_DAYWIDTH },
-                { label: 'Task H', val: DEFAULT_TASKHEIGHT_NORMAL },
-              ].map(({ label, val }) => (
-                <div key={label} className="flex items-center gap-2">
-                  <span className="text-[11px] text-slate-500 w-12">{label}</span>
-                  <input type="range" className="flex-1" disabled />
-                  <span className="text-[11px] text-slate-500 w-6 text-right tabular-nums">{val}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          {/* Views section */}
-          <div className="pl-3">
-            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Views</div>
-            <button className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-teal-400 bg-teal-50 text-teal-700" style={{ width: '175px' }}>
-              Default
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════
-// DayGrid — per-team day cell grid (display only)
-// ══════════════════════════════════════════════════════════════════
-
-function DayGrid({ team, tasks, days, DAYWIDTH, taskDisplaySettings, teamPhasesMap, phases, teamColor, totalDaysWidth }) {
-  const visibleTasks_ = getVisibleTasks(team, taskDisplaySettings);
-  const teamPhases = teamPhasesMap[team.id] || [];
-  const phaseRowH = teamPhases.length > 0 ? TEAM_PHASE_ROW_HEIGHT : 0;
-  const teamRowH = getTeamRowHeight(team, taskDisplaySettings, phaseRowH) - phaseRowH;
-
-  // Build a day→phase color map from all phases that apply to this team
-  const phaseColorMap = useMemo(() => {
-    const map = {};
-    for (const p of phases) {
-      // Global phases apply to all teams; team phases apply only to their team
-      if (p.team != null && String(p.team) !== String(team.id)) continue;
-      for (let d = p.start_index; d < p.start_index + p.duration; d++) {
-        map[d] = p.color || '#3b82f6';
-      }
-    }
-    return map;
-  }, [phases, team.id]);
-
-  return (
-    <div
-      className="border-y border-slate-200"
-      style={{ width: `${totalDaysWidth}px`, height: `${teamRowH}px`, position: 'relative', backgroundColor: '#fafbfc' }}
-    >
-      {visibleTasks_.map((taskId, tIdx) => {
-        const th = getTaskHeight(taskId, taskDisplaySettings);
-        const yOff = getTaskYOffset(taskId, team, taskDisplaySettings);
-        return (
-          <div
-            key={taskId}
-            className="absolute"
-            style={{
-              top: `${yOff}px`,
-              left: 0,
-              width: `${totalDaysWidth}px`,
-              height: `${th}px`,
-              borderBottom: tIdx < visibleTasks_.length - 1 ? '1px solid #e2e8f0' : 'none',
-            }}
-          >
-            {Array.from({ length: days }, (_, i) => {
-              const colX = i * DAYWIDTH;
-              const phaseColor = phaseColorMap[i];
-              return (
-                <div
-                  key={i}
-                  className="absolute top-0 border-r border-slate-100"
-                  style={{
-                    left: `${colX}px`,
-                    width: `${DAYWIDTH}px`,
-                    height: `${th}px`,
-                    backgroundColor: phaseColor
-                      ? `${phaseColor}14`
-                      : undefined,
-                    ...(phaseColor ? {
-                      backgroundImage: `repeating-linear-gradient(135deg, transparent, transparent 4px, ${phaseColor}0a 4px, ${phaseColor}0a 8px)`,
-                    } : {}),
-                  }}
-                />
-              );
-            })}
-          </div>
-        );
-      })}
-      {/* If no visible tasks — show empty placeholder */}
-      {visibleTasks_.length === 0 && (
-        <div
-          className="w-full h-full"
-          style={{
-            backgroundImage: 'repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(148,163,184,0.06) 4px, rgba(148,163,184,0.06) 8px)',
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════════
-// MilestoneLayer — positioned absolute overlay for milestones
-// ══════════════════════════════════════════════════════════════════
-
-function MilestoneLayer({ teamOrder, teams, tasks, milestones, taskDisplaySettings, teamPhasesMap, effectiveHeaderH, TEAMWIDTH, TASKWIDTH, DAYWIDTH }) {
-  // Group milestones by task
-  const milestonesByTask = useMemo(() => {
-    const map = {};
-    for (const m of Object.values(milestones)) {
-      if (!map[m.task]) map[m.task] = [];
-      map[m.task].push(m);
-    }
-    return map;
-  }, [milestones]);
-
-  // We need to calculate Y positions from the top of the canvas
-  // for each team/task to position milestones absolutely
-  const positioned = useMemo(() => {
-    const result = [];
-    let yOffset = effectiveHeaderH;
-
-    for (const teamId of teamOrder) {
-      const team = teams[teamId];
-      if (!team) continue;
-
-      // Drop highlight
-      yOffset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-      // Header line
-      yOffset += TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
-
-      const teamPhases = teamPhasesMap[teamId] || [];
-      const phaseRowH = teamPhases.length > 0 ? TEAM_PHASE_ROW_HEIGHT : 0;
-
-      // Phase row offset
-      const tasksStartY = yOffset + phaseRowH;
-
-      // Walk tasks
-      const visibleTasks_ = getVisibleTasks(team, taskDisplaySettings);
-      for (const taskId of visibleTasks_) {
-        const th = getTaskHeight(taskId, taskDisplaySettings);
-        const taskY = tasksStartY + getTaskYOffset(taskId, team, taskDisplaySettings);
-        const taskMilestones = milestonesByTask[taskId] || [];
-        for (const m of taskMilestones) {
-          const x = TEAMWIDTH + TASKWIDTH + m.start_index * DAYWIDTH;
-          const w = (m.duration || 1) * DAYWIDTH;
-          result.push({
-            ...m,
-            x,
-            y: taskY + 2,
-            w,
-            h: th - 4,
-            teamColor: team.color || '#94a3b8',
-          });
-        }
-      }
-
-      // Advance yOffset past this entire team
-      yOffset = tasksStartY - phaseRowH + getTeamRowHeight(team, taskDisplaySettings, phaseRowH);
-    }
-
-    return result;
-  }, [teamOrder, teams, taskDisplaySettings, milestonesByTask, effectiveHeaderH, teamPhasesMap, TEAMWIDTH, TASKWIDTH, DAYWIDTH]);
-
-  return (
-    <div className="absolute top-0 left-0 w-full h-full" style={{ zIndex: 20, pointerEvents: 'none' }}>
-      {positioned.map((m) => (
-        <div
-          key={m.id}
-          className="absolute rounded cursor-pointer"
-          style={{
-            left: `${m.x}px`,
-            top: `${m.y}px`,
-            width: `${m.w}px`,
-            height: `${m.h}px`,
-            backgroundColor: m.color || m.teamColor || '#facc15',
-            pointerEvents: 'auto',
-          }}
-        >
-          <span className="text-xs truncate text-white px-2 leading-none flex items-center h-full" style={{ textShadow: '0 0 3px rgba(0,0,0,0.3)' }}>
-            {m.name}
-          </span>
-        </div>
-      ))}
     </div>
   );
 }

@@ -506,38 +506,46 @@ export async function save_user_shortcuts(shortcuts) {
     return await res.json();
 }
 
-
-// ──────────────────────────────────────────────
-// ProtoPersonas (3D Gantt figures)
-// ──────────────────────────────────────────────
+// ════════════════════════════════════════════
+// Protopersonas (3D assignment board tokens)
+// ════════════════════════════════════════════
 
 export async function get_all_protopersonas(projectId) {
     const res = await authFetch(`/api/projects/${projectId}/protopersonas/`);
     if (!res.ok) throw new Error('Failed to fetch protopersonas');
-    return await res.json();
+    const data = await res.json();
+    return data.personas || data;
 }
 
-export async function create_protopersona(projectId, data) {
+export async function create_protopersona(projectId, { name, color, x, z, milestone }) {
     const res = await authFetch(`/api/projects/${projectId}/protopersonas/create/`, {
-        method: 'POST',
-        body: JSON.stringify(data),
+        method: "POST",
+        body: JSON.stringify({ name, color, x, z, milestone: milestone || null }),
     });
-    if (!res.ok) throw new Error('Failed to create protopersona');
-    return await res.json();
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to create protopersona');
+    }
+    const data = await res.json();
+    return data.persona || data;
 }
 
-export async function update_protopersona(projectId, personaId, data) {
+export async function update_protopersona(projectId, personaId, updates) {
     const res = await authFetch(`/api/projects/${projectId}/protopersonas/${personaId}/`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
+        method: "PATCH",
+        body: JSON.stringify(updates),
     });
-    if (!res.ok) throw new Error('Failed to update protopersona');
-    return await res.json();
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to update protopersona');
+    }
+    const data = await res.json();
+    return data.persona || data;
 }
 
 export async function delete_protopersona(projectId, personaId) {
     const res = await authFetch(`/api/projects/${projectId}/protopersonas/${personaId}/delete/`, {
-        method: 'DELETE',
+        method: "DELETE",
     });
     if (!res.ok) throw new Error('Failed to delete protopersona');
     return await res.json();

@@ -251,10 +251,17 @@ class DependencyViewSerializer(serializers.ModelSerializer):
 
 # ProtoPersonaSerializer
 class ProtoPersonaSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField()
+
     class Meta:
         model = ProtoPersona
-        fields = ["id", "project", "task", "name", "color", "hair_color", "day_index", "order_index"]
-        read_only_fields = ["id", "project"]
+        fields = ["id", "name", "color", "x", "z", "milestone", "created_by", "created_by_name", "created_at"]
+        read_only_fields = ["id", "created_at", "created_by"]
+
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return obj.created_by.username
+        return None
 
 
 
