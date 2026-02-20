@@ -560,16 +560,27 @@ export default function AssignmentSecond() {
         const pid = draggingPersona.current;
         draggingPersona.current = null;
         dragAnchor.current = null;
-        setPersonas((prev) =>
-          prev.map((p) => {
+        setPersonas((prev) => {
+          // Count how many personas are already snapped to each milestone
+          const countOnMs = {};
+          for (const pp of prev) {
+            if (pp.milestoneId != null && pp.id !== pid) {
+              countOnMs[pp.milestoneId] = (countOnMs[pp.milestoneId] || 0) + 1;
+            }
+          }
+          return prev.map((p) => {
             if (p.id !== pid) return p;
             const nearest = findNearestMilestone(p.x, p.z);
             if (nearest) {
-              return { ...p, x: nearest.worldX, z: nearest.worldZ, milestoneId: nearest.id };
+              // Offset along the milestone's Z axis so multiple personas sit side by side
+              const idx = countOnMs[nearest.id] || 0;
+              const spacing = PERSONA_SIZE + 4;
+              const zOffset = idx * spacing;
+              return { ...p, x: nearest.worldX, z: nearest.worldZ + zOffset, milestoneId: nearest.id };
             }
             return { ...p, milestoneId: null };
-          })
-        );
+          });
+        });
         return;
       }
       if (e.button === 1 || e.button === 2) {
@@ -1239,7 +1250,7 @@ export default function AssignmentSecond() {
                     top: 0,
                     width: `${depth}px`,
                     height: `${slotH}px`,
-                    transform: 'rotateY(90deg)',
+                    transform: 'rotateY(-90deg)',
                     transformOrigin: 'top left',
                     background: sideBg,
                     borderTop: `1px solid ${borderColor}`,
@@ -1253,7 +1264,7 @@ export default function AssignmentSecond() {
                     top: 0,
                     width: `${depth}px`,
                     height: `${slotH}px`,
-                    transform: 'rotateY(90deg)',
+                    transform: 'rotateY(-90deg)',
                     transformOrigin: 'top left',
                     background: sideBg,
                     borderTop: `1px solid ${borderColor}`,
