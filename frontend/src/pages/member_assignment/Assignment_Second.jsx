@@ -479,6 +479,7 @@ export default function AssignmentSecond() {
                 left: 0,
                 width: 'min(88vw, 1400px)',
                 transform: 'rotateY(90deg) rotateX(90deg) translate(-50%, -50%)',
+                transformOrigin: '0 0',
                 transformStyle: 'preserve-3d',
                 display: 'flex',
                 flexDirection: 'column',
