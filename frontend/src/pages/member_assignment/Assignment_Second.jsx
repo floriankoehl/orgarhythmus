@@ -7,7 +7,7 @@
 // milestones — all using the same layout constants. Buttons and
 // interactions are NOT wired up; this is a display-only surface.
 //
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   fetch_project_details,
@@ -56,10 +56,11 @@ const CAMERA_DEFAULT_YAW    = 30;    // deg — default horizontal rotation
 const CAMERA_ZOOM_MIN       = -800;  // px — minimum zoom (farthest away)
 const CAMERA_ZOOM_MAX       = 600;   // px — maximum zoom (closest)
 const PERSPECTIVE_DEPTH     = 1800;  // px — CSS perspective value
-const FLOOR_SIZE            = 800;   // px — XZ grid floor side length
+const FLOOR_SIZE            = 2400;  // px — XZ grid floor side length
 
 // ── Protopersona defaults ────────────────────────────────────────
-const PERSONA_SIZE          = 50;    // px — cube side length
+const PERSONA_SIZE          = 25;    // px — cube side length
+const SNAP_RADIUS           = 40;    // px — max distance to snap to a milestone
 const PERSONA_COLORS = [
   '#f87171', '#fb923c', '#facc15', '#4ade80',
   '#22d3ee', '#818cf8', '#e879f9', '#f472b6',
@@ -161,6 +162,7 @@ function calcContentHeight(teamOrder, teams, taskDisplaySettings, effectiveHeade
 export default function AssignmentSecond() {
   const { projectId } = useParams();
   const containerRef = useRef(null);
+  const boardRef = useRef(null);
 
   // ── Data state ─────────────────────────────────────────────────
   const [days, setDays] = useState(null);
@@ -316,12 +318,93 @@ export default function AssignmentSecond() {
   const isPanning  = useRef(false);
   const lastMouse  = useRef({ x: 0, y: 0 });
 
+  // Keep orbit angles in refs so event handlers always see current values
+  const orbitXRef = useRef(orbitX);
+  const orbitYRef = useRef(orbitY);
+  useEffect(() => { orbitXRef.current = orbitX; }, [orbitX]);
+  useEffect(() => { orbitYRef.current = orbitY; }, [orbitY]);
+
   // ── Protopersonas ──────────────────────────────────────────────
   // Simple client-side-only persona tokens on the XZ floor.
-  // Each has { id, name, color, x (world X), z (world Z) }.
+  // Each has { id, name, color, x (world X), z (world Z), milestoneId? }.
   const [personas, setPersonas] = useState([]);
   const draggingPersona = useRef(null);  // id of persona being dragged
   const nextPersonaId   = useRef(1);
+
+  // ── Board element dimensions (for milestone coordinate mapping) ──
+  const [boardDims, setBoardDims] = useState({ w: 1400, h: 600 });
+  useLayoutEffect(() => {
+    if (boardRef.current) {
+      setBoardDims({
+        w: boardRef.current.offsetWidth,
+        h: boardRef.current.offsetHeight,
+      });
+    }
+  }, [days, teamOrder, teams, taskDisplaySettings, teamPhasesMap]);
+
+  // ── Milestone 3D positions ────────────────────────────────────
+  // Each milestone’s pixel position on the board content is computed
+  // exactly as in MilestoneLayer, then mapped to world XZ via the
+  // board’s CSS transform:  Ry(90) · Rx(90) · translate(-50%,-50%)
+  //   worldX = py − H/2     (page-top → −X, page-bottom → +X)
+  //   worldZ = W/2 − px     (page-left → +Z, page-right  → −Z)
+  // where W,H = board element’s rendered width & height.
+  const milestone3D = useMemo(() => {
+    if (!days) return [];
+    const result = [];
+    const W = boardDims.w;
+    const H = boardDims.h;
+    let yOffset = effectiveHeaderH;
+
+    for (const teamId of teamOrder) {
+      const team = teams[teamId];
+      if (!team) continue;
+      yOffset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
+      yOffset += TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
+      const teamPhases_ = teamPhasesMap[teamId] || [];
+      const phaseRowH = teamPhases_.length > 0 ? TEAM_PHASE_ROW_HEIGHT : 0;
+      const tasksStartY = yOffset + phaseRowH;
+      const visibleTasks_ = getVisibleTasks(team, taskDisplaySettings);
+      for (const taskId of visibleTasks_) {
+        const th = getTaskHeight(taskId, taskDisplaySettings);
+        const taskY = tasksStartY + getTaskYOffset(taskId, team, taskDisplaySettings);
+        const taskMilestones = Object.values(milestones).filter((ms) => ms.task === taskId);
+        for (const m of taskMilestones) {
+          // Milestone center in board content pixel space
+          const px = TEAMWIDTH + TASKWIDTH + m.start_index * DAYWIDTH + ((m.duration || 1) * DAYWIDTH) / 2;
+          const py = taskY + th / 2;
+          result.push({
+            ...m,
+            worldX: py - H / 2,
+            worldZ: W / 2 - px,
+            teamColor: team.color || '#94a3b8',
+          });
+        }
+      }
+      yOffset = tasksStartY - phaseRowH + getTeamRowHeight(team, taskDisplaySettings, phaseRowH);
+    }
+    return result;
+  }, [days, teamOrder, teams, milestones, taskDisplaySettings, teamPhasesMap, effectiveHeaderH, boardDims, TEAMWIDTH, TASKWIDTH, DAYWIDTH]);
+
+  /** Find closest milestone within SNAP_RADIUS */
+  const findNearestMilestone = (x, z) => {
+    let best = null;
+    let bestDist = SNAP_RADIUS;
+    for (const m of milestone3DRef.current) {
+      const dx = m.worldX - x;
+      const dz = m.worldZ - z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = m;
+      }
+    }
+    return best;
+  };
+
+  // Keep milestone3D in a ref so onUp handler always sees current positions
+  const milestone3DRef = useRef(milestone3D);
+  useEffect(() => { milestone3DRef.current = milestone3D; }, [milestone3D]);
 
   /** Spawn a new persona near the origin */
   const addPersona = () => {
@@ -329,7 +412,7 @@ export default function AssignmentSecond() {
     const color = PERSONA_COLORS[(id - 1) % PERSONA_COLORS.length];
     setPersonas((prev) => [
       ...prev,
-      { id, name: `P${id}`, color, x: (id - 1) * 80 - 120, z: -150 },
+      { id, name: `P${id}`, color, x: (id - 1) * 40 - 60, z: -100, milestoneId: null },
     ]);
   };
 
@@ -344,10 +427,11 @@ export default function AssignmentSecond() {
    *    screenX = wx·cos(orbitY) − wz·sin(orbitY)
    *    screenY = (wx·sin(orbitY) + wz·cos(orbitY)) · sin(orbitX)
    *  Invert to get world delta from screen delta.
+   *  Uses refs so it always reads current camera angles.
    */
   const screenToFloorDelta = (dx, dy) => {
-    const pitchRad = (orbitX * Math.PI) / 180;
-    const yawRad   = (orbitY * Math.PI) / 180;
+    const pitchRad = (orbitXRef.current * Math.PI) / 180;
+    const yawRad   = (orbitYRef.current * Math.PI) / 180;
     const cosY = Math.cos(yawRad);
     const sinY = Math.sin(yawRad);
     const sinX = Math.sin(pitchRad);
@@ -418,7 +502,19 @@ export default function AssignmentSecond() {
     };
     const onUp = (e) => {
       if (e.button === 0 && draggingPersona.current != null) {
+        // Snap to nearest milestone if close enough
+        const pid = draggingPersona.current;
         draggingPersona.current = null;
+        setPersonas((prev) =>
+          prev.map((p) => {
+            if (p.id !== pid) return p;
+            const nearest = findNearestMilestone(p.x, p.z);
+            if (nearest) {
+              return { ...p, x: nearest.worldX, z: nearest.worldZ, milestoneId: nearest.id };
+            }
+            return { ...p, milestoneId: null };
+          })
+        );
         return;
       }
       if (e.button === 1 || e.button === 2) {
@@ -618,6 +714,7 @@ export default function AssignmentSecond() {
                    page bottom → +X (world right)
             ── */}
             <div
+              ref={boardRef}
               style={{
                 position: 'absolute',
                 top: 0,
@@ -980,10 +1077,67 @@ export default function AssignmentSecond() {
       </div>{/* canvas wrapper */}
       </div>{/* board */}
 
-            {/* ── Layer 4d: Protopersonas — tokens on the XZ floor ──
-                 Each persona stands upright (billboard-style) at world (x, 0, z).
-                 No rotateX(90) — they stay facing the camera so they're clickable.
-                 translateX = world X, translateZ = world Z positions them on the floor.
+            {/* ── Layer 4d: Milestone pedestals — slot markers on the floor ──
+                 Each pedestal lies flat on XZ with text along world Z
+                 (matching the board’s timeline direction).
+                 Rotation: Rx(90°)·Rz(90°) maps local-X → world-Z.
+            ── */}
+            {milestone3D.map((m) => {
+              const occupied = personas.some((p) => p.milestoneId === m.id);
+              const slotW = Math.max((m.duration || 1) * DAYWIDTH, PERSONA_SIZE + 10);
+              const slotH = PERSONA_SIZE + 10;
+              return (
+                <div
+                  key={`ms-${m.id}`}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: `${slotW}px`,
+                    height: `${slotH}px`,
+                    // 1. Center the div on its own origin
+                    // 2. Rz(90°) rotates text 90° in-plane
+                    // 3. Rx(90°) lays it flat on XZ
+                    // 4. Move to world position
+                    // Result: text flows along world Z, div lies on floor
+                    transform: [
+                      `translateX(${m.worldX}px)`,
+                      `translateZ(${m.worldZ}px)`,
+                      'rotateX(90deg)',
+                      'rotateZ(90deg)',
+                      `translate(-${slotW / 2}px, -${slotH / 2}px)`,
+                    ].join(' '),
+                    transformOrigin: '0 0',
+                    border: occupied ? '2px solid rgba(74,222,128,0.6)' : '2px dashed rgba(255,255,255,0.4)',
+                    borderRadius: '6px',
+                    background: occupied
+                      ? 'rgba(74,222,128,0.15)'
+                      : `${m.color || m.teamColor || '#facc15'}33`,
+                    pointerEvents: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <span style={{
+                    fontSize: '8px',
+                    color: 'rgba(255,255,255,0.7)',
+                    fontFamily: 'monospace',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    maxWidth: '100%',
+                    padding: '0 2px',
+                  }}>
+                    {m.name}
+                  </span>
+                </div>
+              );
+            })}
+
+            {/* ── Layer 4e: Protopersonas — cubes on the XZ floor ──
+                 Each persona is a CSS 3D cube at world (x, 0, z).
+                 translateX = world X, translateZ = world Z.
             ── */}
             {personas.map((p) => {
               const S = PERSONA_SIZE;       // cube side length
@@ -1126,8 +1280,10 @@ export default function AssignmentSecond() {
               border: '1.5px solid rgba(255,255,255,0.6)',
             }} />
             <span style={{ flex: 1, fontSize: '11px' }}>{p.name}</span>
-            <span style={{ fontSize: '9px', color: '#94a3b8' }}>
-              {Math.round(p.x)}, {Math.round(p.z)}
+            <span style={{ fontSize: '9px', color: p.milestoneId ? '#4ade80' : '#94a3b8' }}>
+              {p.milestoneId
+                ? (milestones[p.milestoneId]?.name || 'MS')
+                : `${Math.round(p.x)}, ${Math.round(p.z)}`}
             </span>
             <button
               onClick={() => removePersona(p.id)}
