@@ -164,29 +164,46 @@ export function usePersonas({
    * Find the team or task slab that contains the world point (x, z).
    * Only checks the name-column Z extents (where the 3D boxes are).
    * Returns { teamId, taskId } or null.
+   *
+   * Note: team and task name columns occupy different Z ranges
+   * (team col: boardX 0→TEAMWIDTH, task col: boardX TEAMWIDTH→TEAMWIDTH+TASKWIDTH)
+   * so we check them independently — task slabs first (more specific), then team slabs.
+   *
+   * @param {number} x      — world X
+   * @param {number} z      — world Z
+   * @param {number} [pad]  — extra padding (px) added to all slab edges for hit-testing
    */
-  const findSlabAt = (x, z) => {
+  const findSlabAt = (x, z, pad = 0) => {
     const layout = floorLayoutRef.current;
     if (!layout || !layout.teams) return null;
+
+    // 1) Check task slabs first (more specific match)
     for (const teamSlab of layout.teams) {
-      const inX = x >= Math.min(teamSlab.worldXStart, teamSlab.worldXEnd) &&
-                  x <= Math.max(teamSlab.worldXStart, teamSlab.worldXEnd);
-      const inZ = z >= Math.min(teamSlab.nameWorldZStart, teamSlab.nameWorldZEnd) &&
-                  z <= Math.max(teamSlab.nameWorldZStart, teamSlab.nameWorldZEnd);
-      if (!inX || !inZ) continue;
-      // Check task slabs first (more specific)
+      const inX = x >= Math.min(teamSlab.worldXStart, teamSlab.worldXEnd) - pad &&
+                  x <= Math.max(teamSlab.worldXStart, teamSlab.worldXEnd) + pad;
+      if (!inX) continue;
       for (const taskSlab of teamSlab.tasks) {
-        const inTX = x >= Math.min(taskSlab.worldXStart, taskSlab.worldXEnd) &&
-                     x <= Math.max(taskSlab.worldXStart, taskSlab.worldXEnd);
-        const inTZ = z >= Math.min(taskSlab.nameWorldZStart, taskSlab.nameWorldZEnd) &&
-                     z <= Math.max(taskSlab.nameWorldZStart, taskSlab.nameWorldZEnd);
+        const inTX = x >= Math.min(taskSlab.worldXStart, taskSlab.worldXEnd) - pad &&
+                     x <= Math.max(taskSlab.worldXStart, taskSlab.worldXEnd) + pad;
+        const inTZ = z >= Math.min(taskSlab.nameWorldZStart, taskSlab.nameWorldZEnd) - pad &&
+                     z <= Math.max(taskSlab.nameWorldZStart, taskSlab.nameWorldZEnd) + pad;
         if (inTX && inTZ) {
           return { teamId: teamSlab.teamId, taskId: taskSlab.taskId };
         }
       }
-      // On team slab but not on a specific task
-      return { teamId: teamSlab.teamId, taskId: null };
     }
+
+    // 2) Check team slabs (team name column has its own Z range)
+    for (const teamSlab of layout.teams) {
+      const inX = x >= Math.min(teamSlab.worldXStart, teamSlab.worldXEnd) - pad &&
+                  x <= Math.max(teamSlab.worldXStart, teamSlab.worldXEnd) + pad;
+      const inZ = z >= Math.min(teamSlab.nameWorldZStart, teamSlab.nameWorldZEnd) - pad &&
+                  z <= Math.max(teamSlab.nameWorldZStart, teamSlab.nameWorldZEnd) + pad;
+      if (inX && inZ) {
+        return { teamId: teamSlab.teamId, taskId: null };
+      }
+    }
+
     return null;
   };
 
@@ -214,8 +231,10 @@ export function usePersonas({
         return { ...p, x: ms.worldX, z: ms.worldZ + idx * spacing, onTeamId: null, onTaskId: null };
       }
       // For slab-bound personas, re-check if they're still on a slab
+      // Use padding for forgiving hit-testing (coordinates may be slightly
+      // offset from exact slab bounds due to perspective projection).
       if (p.onTeamId || p.onTaskId) {
-        const slab = findSlabAt(p.x, p.z);
+        const slab = findSlabAt(p.x, p.z, 15);
         if (slab) {
           return { ...p, onTeamId: slab.teamId, onTaskId: slab.taskId };
         }
@@ -256,8 +275,11 @@ export function usePersonas({
     }
   }, [screenToFloor]);
 
-  /** Called by camera hook on mouseup while dragging a persona */
-  const onPersonaDragEnd = useCallback(() => {
+  /** Called by camera hook on mouseup while dragging a persona.
+   *  Uses the persona's own stored position for slab hit-testing (not the
+   *  floor-plane cursor projection, which is offset due to perspective).
+   */
+  const onPersonaDragEnd = useCallback((e) => {
     const pid = draggingPersona.current;
     draggingPersona.current = null;
     setDraggingId(null);
@@ -274,8 +296,15 @@ export function usePersonas({
       return prev.map((p) => {
         if (p.id !== pid) return p;
 
-        // 1) Try milestone snap first
-        const nearest = findNearestMilestone(p.x, p.z);
+        // Use the persona's own coordinates for hit-testing.
+        // During drag, these track the elevated plane intersection — but they
+        // share the same world x/z system as the slabs, so a persona at
+        // (x, height, z) is directly above slab (x, 0, z).
+        const hitX = p.x;
+        const hitZ = p.z;
+
+        // 1) Try milestone snap first (uses its own rectangular hitbox)
+        const nearest = findNearestMilestone(hitX, hitZ);
         if (nearest) {
           const idx = countOnMs[nearest.id] || 0;
           const spacing = PERSONA_SIZE + 4;
@@ -289,12 +318,13 @@ export function usePersonas({
           return updated;
         }
 
-        // 2) Try team/task slab snap
-        const slab = findSlabAt(p.x, p.z);
+        // 2) Try team/task slab snap (with generous padding for perspective-forgiving hit-testing)
+        const SLAB_SNAP_PAD = 25;
+        const slab = findSlabAt(hitX, hitZ, SLAB_SNAP_PAD);
         if (slab) {
-          update_protopersona(projectId, p.id, { x: p.x, z: p.z, milestone: null })
+          update_protopersona(projectId, p.id, { x: hitX, z: hitZ, milestone: null })
             .catch((err) => console.error('Failed to update persona:', err));
-          const updated = { ...p, milestoneId: null, onTeamId: slab.teamId, onTaskId: slab.taskId };
+          const updated = { ...p, x: hitX, z: hitZ, milestoneId: null, onTeamId: slab.teamId, onTaskId: slab.taskId };
           setAllPersonas((all) => all.map((a) => (a.id === pid ? updated : a)));
           return updated;
         }

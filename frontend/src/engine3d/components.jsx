@@ -35,7 +35,6 @@ export function ViewsPanel({
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const panelStyle = {
-    position: 'absolute', top: '210px', left: '12px', zIndex: 999,
     background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
     padding: '10px 14px', borderRadius: '10px',
     fontFamily: 'monospace', fontSize: '12px',

@@ -95,6 +95,9 @@ export default function AssignmentSecond() {
   const [teamDisplaySettings, setTeamDisplaySettings] = useState({});
   const [loading, setLoading] = useState(true);
   const [cameraFlash, setCameraFlash] = useState(null);
+  // Panel collapse state — each panel can be toggled open/closed independently
+  const [openPanel, setOpenPanel] = useState(null); // null | 'debug' | 'camera' | 'views' | 'personas'
+  const togglePanel = useCallback((name) => setOpenPanel((prev) => prev === name ? null : name), []);
 
   // ── Layout constants (view-driven, fall back to defaults) ──────
   const [customDayWidth, setCustomDayWidth] = useState(DEFAULT_DAYWIDTH);
@@ -430,67 +433,207 @@ export default function AssignmentSecond() {
         position: 'relative',
       }}
     >
-      {/* ── Back button ── */}
-      <button
-        onClick={() => navigate(`/projects/${projectId}/dependencies`)}
-        style={{
-          position: 'absolute', top: '12px', left: '12px', zIndex: 1000,
-          background: 'rgba(0,0,0,0.7)', color: '#fff', border: 'none',
-          borderRadius: '8px', padding: '8px 14px', cursor: 'pointer',
-          fontFamily: 'monospace', fontSize: '12px', fontWeight: 'bold',
-          display: 'flex', alignItems: 'center', gap: '6px',
-        }}
-      >
-        <span style={{ fontSize: '16px' }}>←</span> Dependencies
-      </button>
-
-      {/* ── Debug HUD ── */}
+      {/* ── Collapsible toolbar — left side ── */}
       <div style={{
-        position: 'absolute', top: '50px', left: '12px', zIndex: 999,
-        background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '8px 12px',
-        borderRadius: '8px', fontFamily: 'monospace', fontSize: '12px', lineHeight: '1.6',
-        pointerEvents: 'none',
+        position: 'absolute', top: '12px', left: '12px', zIndex: 1000,
+        display: 'flex', flexDirection: 'column', gap: '4px',
+        fontFamily: 'monospace',
       }}>
-        <div>orbitX: <span style={{ color: '#f87171' }}>{orbitX.toFixed(1)}°</span> (vertical tilt)</div>
-        <div>orbitY: <span style={{ color: '#4ade80' }}>{orbitY.toFixed(1)}°</span> (horizontal)</div>
-        <div>scale: <span style={{ color: '#60a5fa' }}>{cameraScale.toFixed(2)}x</span></div>
-        <div>pan:   <span style={{ color: '#fbbf24' }}>{panX.toFixed(0)}, {panY.toFixed(0)} | Z: {panZ.toFixed(0)}</span></div>
-        <div style={{ marginTop: '4px', fontSize: '10px', color: '#94a3b8' }}>
-          Middle-drag = orbit | Right-drag = pan | Scroll = zoom | Shift+Scroll = nav
-        </div>
-        <div style={{ marginTop: '4px', fontSize: '10px', color: '#c084fc' }}>
-          board: {boardDims.w}×{boardDims.h} | oX:{boardDims.offsetX} oY:{boardDims.offsetY}
-        </div>
-        <div style={{ fontSize: '10px', color: '#67e8f9' }}>
-          floor: {floorW}×{floorH} | content: {totalWidth}×{contentHeight}
-        </div>
-      </div>
-
-      {/* ── Camera save/reset buttons ── */}
-      <div style={{
-        position: 'absolute', top: '210px', left: '12px', zIndex: 999,
-        display: 'flex', gap: '6px',
-      }}>
+        {/* Back button — always visible */}
         <button
-          onClick={() => { handleSaveCamera(); setCameraFlash('Saved!'); setTimeout(() => setCameraFlash(null), 1200); }}
+          onClick={() => navigate(`/projects/${projectId}/dependencies`)}
           style={{
-            background: 'rgba(74,222,128,0.85)', color: '#000', border: 'none',
-            borderRadius: '6px', padding: '6px 12px', cursor: 'pointer',
-            fontFamily: 'monospace', fontSize: '11px', fontWeight: 'bold',
+            background: 'rgba(0,0,0,0.7)', color: '#fff', border: 'none',
+            borderRadius: '8px', padding: '8px 12px', cursor: 'pointer',
+            fontSize: '12px', fontWeight: 'bold',
+            display: 'flex', alignItems: 'center', gap: '6px',
           }}
         >
-          {cameraFlash || '📷 Save Camera'}
+          <span style={{ fontSize: '16px' }}>←</span> Back
         </button>
-        <button
-          onClick={handleResetCamera}
-          style={{
-            background: 'rgba(248,113,113,0.85)', color: '#000', border: 'none',
-            borderRadius: '6px', padding: '6px 12px', cursor: 'pointer',
-            fontFamily: 'monospace', fontSize: '11px', fontWeight: 'bold',
-          }}
-        >
-          ↺ Reset
-        </button>
+
+        {/* ── Camera panel toggle ── */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+          <button
+            onClick={() => togglePanel('camera')}
+            title="Camera controls (Home = reset)"
+            style={{
+              background: openPanel === 'camera' ? 'rgba(248,113,113,0.9)' : 'rgba(0,0,0,0.7)',
+              color: '#fff', border: 'none', borderRadius: '8px',
+              width: '36px', height: '36px', cursor: 'pointer',
+              fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >🎥</button>
+          {openPanel === 'camera' && (
+            <div style={{
+              background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
+              padding: '10px 14px', borderRadius: '10px', color: '#fff', fontSize: '12px',
+              display: 'flex', flexDirection: 'column', gap: '6px', minWidth: '150px',
+            }}>
+              <button
+                onClick={() => { handleSaveCamera(); setCameraFlash('Saved!'); setTimeout(() => setCameraFlash(null), 1200); }}
+                style={{
+                  background: 'rgba(74,222,128,0.85)', color: '#000', border: 'none',
+                  borderRadius: '6px', padding: '6px 12px', cursor: 'pointer',
+                  fontSize: '11px', fontWeight: 'bold',
+                }}
+              >
+                {cameraFlash || '📷 Save Camera'}
+              </button>
+              <button
+                onClick={handleResetCamera}
+                style={{
+                  background: 'rgba(248,113,113,0.85)', color: '#000', border: 'none',
+                  borderRadius: '6px', padding: '6px 12px', cursor: 'pointer',
+                  fontSize: '11px', fontWeight: 'bold',
+                }}
+              >
+                ↺ Reset View
+              </button>
+              <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '2px' }}>
+                Home key = reset
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Views panel toggle ── */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+          <button
+            onClick={() => togglePanel('views')}
+            title="Dependency views (X = cycle)"
+            style={{
+              background: openPanel === 'views' ? 'rgba(20,184,166,0.9)' : 'rgba(0,0,0,0.7)',
+              color: '#fff', border: 'none', borderRadius: '8px',
+              width: '36px', height: '36px', cursor: 'pointer',
+              fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >👁</button>
+          {openPanel === 'views' && (
+            <ViewsPanel
+              savedViews={savedViews}
+              activeViewId={activeViewId}
+              activeViewName={activeViewName}
+              handleLoadView={handleLoadView}
+              handleNextView={handleNextView}
+              handlePrevView={handlePrevView}
+              handleSaveView={handleSaveView}
+              handleCreateView={handleCreateView}
+              handleDeleteView={handleDeleteView}
+              handleSetDefaultView={handleSetDefaultView}
+              viewFlashName={viewFlashName}
+            />
+          )}
+        </div>
+
+        {/* ── Debug HUD toggle ── */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+          <button
+            onClick={() => togglePanel('debug')}
+            title="Debug info"
+            style={{
+              background: openPanel === 'debug' ? 'rgba(99,102,241,0.9)' : 'rgba(0,0,0,0.7)',
+              color: '#fff', border: 'none', borderRadius: '8px',
+              width: '36px', height: '36px', cursor: 'pointer',
+              fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >⚙</button>
+          {openPanel === 'debug' && (
+            <div style={{
+              background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
+              padding: '8px 12px', borderRadius: '10px',
+              color: '#fff', fontSize: '12px', lineHeight: '1.6',
+            }}>
+              <div>orbitX: <span style={{ color: '#f87171' }}>{orbitX.toFixed(1)}°</span></div>
+              <div>orbitY: <span style={{ color: '#4ade80' }}>{orbitY.toFixed(1)}°</span></div>
+              <div>scale: <span style={{ color: '#60a5fa' }}>{cameraScale.toFixed(2)}x</span></div>
+              <div>pan: <span style={{ color: '#fbbf24' }}>{panX.toFixed(0)}, {panY.toFixed(0)} | Z: {panZ.toFixed(0)}</span></div>
+              <div style={{ marginTop: '4px', fontSize: '10px', color: '#94a3b8' }}>
+                Middle = orbit | Right = pan | Scroll = zoom
+              </div>
+              <div style={{ fontSize: '10px', color: '#c084fc' }}>
+                board: {boardDims.w}×{boardDims.h}
+              </div>
+              <div style={{ fontSize: '10px', color: '#67e8f9' }}>
+                floor: {floorW}×{floorH} | content: {totalWidth}×{contentHeight}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Persona panel toggle ── */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+          <button
+            onClick={() => togglePanel('personas')}
+            title="Protopersonas"
+            style={{
+              background: openPanel === 'personas' ? 'rgba(168,85,247,0.9)' : 'rgba(0,0,0,0.7)',
+              color: '#fff', border: 'none', borderRadius: '8px',
+              width: '36px', height: '36px', cursor: 'pointer',
+              fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >👤</button>
+          {openPanel === 'personas' && (
+            <div style={{
+              background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
+              padding: '10px 14px', borderRadius: '10px', color: '#fff',
+              fontSize: '12px', minWidth: '180px',
+            }}>
+              <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '13px' }}>Protopersonas</div>
+              <button
+                onClick={addPersona}
+                style={{
+                  width: '100%', padding: '6px 0', borderRadius: '6px',
+                  background: '#4ade80', color: '#000', fontWeight: 'bold',
+                  border: 'none', cursor: 'pointer', fontSize: '12px',
+                  marginBottom: '8px',
+                }}
+              >
+                + Add Persona
+              </button>
+              {personas.length === 0 && (
+                <div style={{ color: '#94a3b8', fontSize: '10px', textAlign: 'center' }}>
+                  No personas yet
+                </div>
+              )}
+              {personas.map((p) => (
+                <div
+                  key={p.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '4px 0', borderTop: '1px solid rgba(255,255,255,0.1)',
+                  }}
+                >
+                  <div style={{
+                    width: '14px', height: '14px', borderRadius: '50%',
+                    background: p.color, flexShrink: 0,
+                    border: '1.5px solid rgba(255,255,255,0.6)',
+                  }} />
+                  <span style={{ flex: 1, fontSize: '11px' }}>{p.name}</span>
+                  <span style={{ fontSize: '9px', color: p.milestoneId ? '#4ade80' : (p.onTaskId || p.onTeamId) ? '#60a5fa' : '#94a3b8' }}>
+                    {p.milestoneId
+                      ? (milestones[p.milestoneId]?.name || 'MS')
+                      : p.onTaskId
+                        ? (tasks[p.onTaskId]?.name || 'Task')
+                        : p.onTeamId
+                          ? (teams[p.onTeamId]?.name || 'Team')
+                          : `${Math.round(p.x)}, ${Math.round(p.z)}`}
+                  </span>
+                  <button
+                    onClick={() => removePersona(p.id)}
+                    style={{
+                      background: 'none', border: 'none', color: '#f87171',
+                      cursor: 'pointer', fontSize: '14px', lineHeight: 1,
+                      padding: '0 2px',
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Layer 2: Camera orbit ── */}
@@ -1247,12 +1390,48 @@ export default function AssignmentSecond() {
               const legW  = bodyW * 0.40, legH = S * 0.34, legD = bodyD * 0.85;
               const legGap = bodyW * 0.08;
               const totalH = headH + bodyH + legH;
-              // Lift persona above whatever it's standing on
+              // Lift persona above whatever it's standing on (or hovering over)
               let standOnH = 0;
-              if (p.milestoneId != null) standOnH = MILESTONE_3D_HEIGHT;
-              else if (p.onTaskId) standOnH = TASK_3D_HEIGHT;
-              else if (p.onTeamId) standOnH = TEAM_3D_HEIGHT;
-              const baseY = isBeingDragged ? totalH + PERSONA_DRAG_LIFT : totalH + standOnH;
+              if (isBeingDragged) {
+                // While dragging, dynamically detect what's underneath and float above it
+                // Check milestones first
+                let overMs = false;
+                for (const m of milestone3D) {
+                  const dx = Math.max(0, Math.abs(m.worldX - p.x) - (m.halfX || 0));
+                  const dz = Math.max(0, Math.abs(m.worldZ - p.z) - (m.halfZ || 0));
+                  if (dx < 1 && dz < 1) { standOnH = MILESTONE_3D_HEIGHT; overMs = true; break; }
+                }
+                if (!overMs) {
+                  // Check team/task slabs (with padding matching snap tolerance)
+                  const PAD = 15;
+                  // Task slabs first (more specific)
+                  let foundSlab = false;
+                  for (const ts of floorLayout.teams) {
+                    const inX = p.x >= Math.min(ts.worldXStart, ts.worldXEnd) - PAD && p.x <= Math.max(ts.worldXStart, ts.worldXEnd) + PAD;
+                    if (!inX) continue;
+                    for (const tk of ts.tasks) {
+                      const tInX = p.x >= Math.min(tk.worldXStart, tk.worldXEnd) - PAD && p.x <= Math.max(tk.worldXStart, tk.worldXEnd) + PAD;
+                      const tInZ = p.z >= Math.min(tk.nameWorldZStart, tk.nameWorldZEnd) - PAD && p.z <= Math.max(tk.nameWorldZStart, tk.nameWorldZEnd) + PAD;
+                      if (tInX && tInZ) { standOnH = TASK_3D_HEIGHT; foundSlab = true; break; }
+                    }
+                    if (foundSlab) break;
+                  }
+                  if (!foundSlab) {
+                    // Team slabs
+                    for (const ts of floorLayout.teams) {
+                      const inX = p.x >= Math.min(ts.worldXStart, ts.worldXEnd) - PAD && p.x <= Math.max(ts.worldXStart, ts.worldXEnd) + PAD;
+                      const inZ = p.z >= Math.min(ts.nameWorldZStart, ts.nameWorldZEnd) - PAD && p.z <= Math.max(ts.nameWorldZStart, ts.nameWorldZEnd) + PAD;
+                      if (inX && inZ) { standOnH = TEAM_3D_HEIGHT; foundSlab = true; break; }
+                    }
+                  }
+                }
+                standOnH += PERSONA_DRAG_LIFT;
+              } else {
+                if (p.milestoneId != null) standOnH = MILESTONE_3D_HEIGHT;
+                else if (p.onTaskId) standOnH = TASK_3D_HEIGHT;
+                else if (p.onTeamId) standOnH = TEAM_3D_HEIGHT;
+              }
+              const baseY = totalH + standOnH;
               return (
                 <div
                   key={p.id}
@@ -1335,82 +1514,6 @@ export default function AssignmentSecond() {
 
       </div>{/* distance wrapper */}
       </div>{/* orbit wrapper */}
-
-      {/* ── Persona controls panel ── */}
-      <div style={{
-        position: 'absolute', top: '12px', right: '12px', zIndex: 999,
-        background: 'rgba(0,0,0,0.7)', padding: '10px 14px',
-        borderRadius: '10px', fontFamily: 'monospace', fontSize: '12px',
-        color: '#fff', minWidth: '160px',
-      }}>
-        <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '13px' }}>Protopersonas</div>
-        <button
-          onClick={addPersona}
-          style={{
-            width: '100%', padding: '6px 0', borderRadius: '6px',
-            background: '#4ade80', color: '#000', fontWeight: 'bold',
-            border: 'none', cursor: 'pointer', fontSize: '12px',
-            marginBottom: '8px',
-          }}
-        >
-          + Add Persona
-        </button>
-        {personas.length === 0 && (
-          <div style={{ color: '#94a3b8', fontSize: '10px', textAlign: 'center' }}>
-            No personas yet
-          </div>
-        )}
-        {personas.map((p) => (
-          <div
-            key={p.id}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '8px',
-              padding: '4px 0', borderTop: '1px solid rgba(255,255,255,0.1)',
-            }}
-          >
-            <div style={{
-              width: '14px', height: '14px', borderRadius: '50%',
-              background: p.color, flexShrink: 0,
-              border: '1.5px solid rgba(255,255,255,0.6)',
-            }} />
-            <span style={{ flex: 1, fontSize: '11px' }}>{p.name}</span>
-            <span style={{ fontSize: '9px', color: p.milestoneId ? '#4ade80' : (p.onTaskId || p.onTeamId) ? '#60a5fa' : '#94a3b8' }}>
-              {p.milestoneId
-                ? (milestones[p.milestoneId]?.name || 'MS')
-                : p.onTaskId
-                  ? (tasks[p.onTaskId]?.name || 'Task')
-                  : p.onTeamId
-                    ? (teams[p.onTeamId]?.name || 'Team')
-                    : `${Math.round(p.x)}, ${Math.round(p.z)}`}
-            </span>
-            <button
-              onClick={() => removePersona(p.id)}
-              style={{
-                background: 'none', border: 'none', color: '#f87171',
-                cursor: 'pointer', fontSize: '14px', lineHeight: 1,
-                padding: '0 2px',
-              }}
-            >
-              ×
-            </button>
-          </div>
-        ))}
-      </div>
-
-      {/* ── Views panel ── */}
-      <ViewsPanel
-        savedViews={savedViews}
-        activeViewId={activeViewId}
-        activeViewName={activeViewName}
-        handleLoadView={handleLoadView}
-        handleNextView={handleNextView}
-        handlePrevView={handlePrevView}
-        handleSaveView={handleSaveView}
-        handleCreateView={handleCreateView}
-        handleDeleteView={handleDeleteView}
-        handleSetDefaultView={handleSetDefaultView}
-        viewFlashName={viewFlashName}
-      />
     </div>
   );
 }

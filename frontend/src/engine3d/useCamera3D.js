@@ -241,7 +241,7 @@ export function useCamera3D({
         orbitYRef.current = newOrbitY;
 
         if (anchor) {
-          const { worldX: ax, worldZ: az, screenX: anchorSX, screenY: anchorSY, z4: z4Target } = anchor;
+          const { worldX: ax, worldZ: az, screenX: anchorSX, screenY: anchorSY } = anchor;
           const P = PERSPECTIVE_DEPTH;
           const pitch = newOrbitX * Math.PI / 180;
           const yaw = newOrbitY * Math.PI / 180;
@@ -249,34 +249,67 @@ export function useCamera3D({
           const cp = Math.cos(pitch), sp = Math.sin(pitch);
           const cyw = Math.cos(yaw), syw = Math.sin(yaw);
 
-          // Solve for zOff so the anchor's post-transform z4 stays constant.
-          // z4 = [ax*s*sin(yaw) + (az*s + zOff)*cos(yaw)] * cos(pitch) = z4Target
-          if (Math.abs(cp) > 0.05 && Math.abs(cyw) > 0.05) {
-            const zOff_new = (z4Target / cp - ax * s * syw) / cyw - az * s;
+          // Depth sensitivity: how much z4 changes per unit zOff change.
+          // Near yaw ≈ ±90°, cos(yaw)→0 and zoom can't control depth.
+          const sensitivity = Math.abs(cp * cyw);
+          // Smooth blend: full anchor compensation above 0.3, none below 0.05.
+          // This prevents the singularity at yaw ≈ ±90° from causing runaway
+          // zoom/pan values while keeping smooth transitions.
+          const strength = Math.min(1, Math.max(0, (sensitivity - 0.05) / 0.25));
+          const zOff_cur = zoomRef.current - CAMERA_BASE_DISTANCE + panZRef.current;
 
-            // Absorb depth change into zoom (panZ is reserved for shift+wheel nav)
+          if (strength > 0.001) {
+            // Solve for zOff that preserves z4Target exactly
+            const zOff_ideal = (anchor.z4 / cp - ax * s * syw) / cyw - az * s;
+
+            // Scale max correction by strength — near the singularity corrections
+            // shrink toward zero, preventing accumulation of drift.
+            const MAX_ZOOM_STEP = 120 * strength;
+            const delta = zOff_ideal - zOff_cur;
+            const clamped = Math.max(-MAX_ZOOM_STEP, Math.min(MAX_ZOOM_STEP, delta));
+            const zOff_new = zOff_cur + clamped;
+
             zoomRef.current = zOff_new + CAMERA_BASE_DISTANCE - panZRef.current;
 
-            // Recompute anchor's post-rotation position with new zOff
+            // Recompute anchor's actual z4 with the (possibly clamped) zOff
             const sxW = ax * s;
             const szW = az * s + zOff_new;
             const x4 = sxW * cyw - szW * syw;
             const z3 = sxW * syw + szW * cyw;
             const y4 = z3 * sp;
+            const z4_actual = z3 * cp;
 
-            // Perspective factor is constant (z4 preserved by construction)
-            const f = P / (P - z4Target);
+            anchor.z4 = z4_actual;
 
-            // Solve for pan so anchor projects to its original screen position
-            const el = viewportRef.current;
-            if (el) {
-              const rect = el.getBoundingClientRect();
-              panXRef.current = (anchorSX - (rect.left + rect.width / 2)) / f - x4;
-              panYRef.current = (anchorSY - (rect.top + rect.height / 2)) / f - y4;
+            const f = P / (P - z4_actual);
+            if (f > 0.05) {
+              const el = viewportRef.current;
+              if (el) {
+                const rect = el.getBoundingClientRect();
+                // Blend pan toward target: at full strength snap; near zero, keep current
+                const targetPanX = (anchorSX - (rect.left + rect.width / 2)) / f - x4;
+                const targetPanY = (anchorSY - (rect.top + rect.height / 2)) / f - y4;
+                panXRef.current += (targetPanX - panXRef.current) * strength;
+                panYRef.current += (targetPanY - panYRef.current) * strength;
+              }
             }
-
             setZoom(zoomRef.current);
           }
+
+          // When strength < 1 (approaching singularity), update anchor.z4 to
+          // current reality so exiting the singularity zone doesn't snap back.
+          if (strength < 0.999) {
+            const sxW = ax * s;
+            const szW = az * s + (zoomRef.current - CAMERA_BASE_DISTANCE + panZRef.current);
+            const z3 = sxW * syw + szW * cyw;
+            anchor.z4 = z3 * cp;
+          }
+
+          // Hard safety clamps — prevent runaway values from any edge case
+          const PAN_LIMIT = 5000;
+          panXRef.current = Math.max(-PAN_LIMIT, Math.min(PAN_LIMIT, panXRef.current));
+          panYRef.current = Math.max(-PAN_LIMIT, Math.min(PAN_LIMIT, panYRef.current));
+          zoomRef.current = Math.max(-2000, Math.min(5000, zoomRef.current));
         }
 
         setOrbitY(newOrbitY);
@@ -378,6 +411,23 @@ export function useCamera3D({
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
         handlePrevViewRef.current();
+      } else if (e.key === 'Home') {
+        // Reset camera to default view
+        e.preventDefault();
+        orbitXRef.current = CAMERA_DEFAULT_TILT;
+        orbitYRef.current = CAMERA_DEFAULT_YAW;
+        panXRef.current = 0;
+        panYRef.current = 0;
+        panZRef.current = 0;
+        zoomRef.current = CAMERA_DEFAULT_ZOOM;
+        cameraScaleRef.current = CAMERA_DEFAULT_SCALE;
+        setOrbitX(CAMERA_DEFAULT_TILT);
+        setOrbitY(CAMERA_DEFAULT_YAW);
+        setPanX(0);
+        setPanY(0);
+        setPanZ(0);
+        setZoom(CAMERA_DEFAULT_ZOOM);
+        setCameraScale(CAMERA_DEFAULT_SCALE);
       }
     };
     window.addEventListener('keydown', onKeyDown);
