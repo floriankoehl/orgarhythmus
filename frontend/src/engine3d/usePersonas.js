@@ -25,23 +25,12 @@ import {
  * usePersonas — manages protopersona tokens: DB persistence, drag/snap,
  * milestone 3D coordinate projection, and board dimension measurement.
  *
- * @param {Object} opts
- * @param {string}          opts.projectId
- * @param {number|null}     opts.days
- * @param {Array}           opts.teamOrder
- * @param {Object}          opts.teams
- * @param {Object}          opts.milestones
- * @param {Object}          opts.taskDisplaySettings3D
- * @param {Object}          opts.teamDisplaySettings
- * @param {Object}          opts.teamPhasesMap
- * @param {number}          opts.effectiveHeaderH
- * @param {number}          opts.TEAMWIDTH
- * @param {number}          opts.TASKWIDTH
- * @param {number}          opts.DAYWIDTH
- * @param {React.RefObject} opts.boardRef
- * @param {React.RefObject} opts.containerRef
- * @param {Function}        opts.screenToFloor  — (sx, sy) => { x, z } | null
- * @param {Object}          [opts.floorLayout]  — entity registry from useFloor3D
+ * Persona state shape:
+ *   { id, name, color, x, z, milestoneIds: [int], teamIds: [int], taskIds: [int] }
+ *
+ * All relationships are many-to-many. For now, drag-drop replaces assignments
+ * (sets the array to [id]) rather than accumulating. The "train" feature will
+ * add accumulation logic later.
  */
 export function usePersonas({
   projectId,
@@ -60,7 +49,6 @@ export function usePersonas({
   containerRef,
   screenToFloor,
   floorLayout,
-  stickyOffsetRef,
 }) {
   // ── Persona state ──────────────────────────────────────────────
   const [personas, setPersonas] = useState([]);
@@ -68,19 +56,24 @@ export function usePersonas({
   const draggingPersona = useRef(null);
   const [draggingId, setDraggingId] = useState(null);
 
+  /** Map raw API record to internal shape */
+  const apiToLocal = (p) => ({
+    id: p.id,
+    name: p.name,
+    color: p.color,
+    x: p.x,
+    z: p.z,
+    milestoneIds: Array.isArray(p.milestones) ? p.milestones : (p.milestones ? [p.milestones] : []),
+    teamIds: Array.isArray(p.teams) ? p.teams : [],
+    taskIds: Array.isArray(p.tasks) ? p.tasks : [],
+  });
+
   // Load protopersonas from DB on mount
   useEffect(() => {
     if (!projectId) return;
     get_all_protopersonas(projectId)
       .then((data) => {
-        const loaded = (data || []).map((p) => ({
-          id: p.id,
-          name: p.name,
-          color: p.color,
-          x: p.x,
-          z: p.z,
-          milestoneId: p.milestone || null,
-        }));
+        const loaded = (data || []).map(apiToLocal);
         setAllPersonas(loaded);
         setPersonas(loaded);
       })
@@ -130,9 +123,8 @@ export function usePersonas({
         ...m,
         worldX: (m.y + m.h / 2 + oY + SCROLL_Y_PAD) - H / 2,
         worldZ: W / 2 - (m.x + m.w / 2 + oX),
-        // World-space half-extents for rectangular hitbox
-        halfX: slotH / 2,   // pedestal height → world X extent
-        halfZ: slotW / 2,   // pedestal width  → world Z extent
+        halfX: slotH / 2,
+        halfZ: slotW / 2,
       };
     });
   }, [days, teamOrder, teams, milestones, taskDisplaySettings3D, teamDisplaySettings, teamPhasesMap, effectiveHeaderH, boardDims, TEAMWIDTH, TASKWIDTH, DAYWIDTH]);
@@ -140,7 +132,6 @@ export function usePersonas({
   const milestone3DRef = useRef(milestone3D);
   useEffect(() => { milestone3DRef.current = milestone3D; }, [milestone3D]);
 
-  // Keep a ref so snap functions see the latest layout
   const floorLayoutRef = useRef(floorLayout);
   useEffect(() => { floorLayoutRef.current = floorLayout; }, [floorLayout]);
 
@@ -149,7 +140,6 @@ export function usePersonas({
     let best = null;
     let bestDist = SNAP_RADIUS;
     for (const m of milestone3DRef.current) {
-      // Distance to nearest point on the milestone rectangle (0 if inside)
       const dx = Math.max(0, Math.abs(m.worldX - x) - (m.halfX || 0));
       const dz = Math.max(0, Math.abs(m.worldZ - z) - (m.halfZ || 0));
       const dist = Math.sqrt(dx * dx + dz * dz);
@@ -163,60 +153,33 @@ export function usePersonas({
 
   /**
    * Find the team or task slab that contains the world point (x, z).
-   * Only checks the name-column Z extents (where the 3D boxes are).
-   * Returns { teamId, taskId, viaSticky } or null.
-   *
-   * When checkSticky=true, also tests z + stickyOffset against slab bounds
-   * to detect drops on the floating sticky labels.
-   *
-   * @param {number}  x            — world X
-   * @param {number}  z            — world Z
-   * @param {number}  [pad]        — extra padding (px)
-   * @param {boolean} [checkSticky] — also match against sticky label Z
+   * Returns { teamId, taskId } or null.
    */
-  const findSlabAt = (x, z, pad = 0, checkSticky = false) => {
+  const findSlabAt = (x, z, pad = 0) => {
     const layout = floorLayoutRef.current;
     if (!layout || !layout.teams) return null;
 
-    // Inner check against a single Z value
-    const checkZ = (zVal) => {
-      // 1) task slabs first (more specific)
-      for (const teamSlab of layout.teams) {
-        const inX = x >= Math.min(teamSlab.worldXStart, teamSlab.worldXEnd) - pad &&
-                    x <= Math.max(teamSlab.worldXStart, teamSlab.worldXEnd) + pad;
-        if (!inX) continue;
-        for (const taskSlab of teamSlab.tasks) {
-          const inTX = x >= Math.min(taskSlab.worldXStart, taskSlab.worldXEnd) - pad &&
-                       x <= Math.max(taskSlab.worldXStart, taskSlab.worldXEnd) + pad;
-          const inTZ = zVal >= Math.min(taskSlab.nameWorldZStart, taskSlab.nameWorldZEnd) - pad &&
-                       zVal <= Math.max(taskSlab.nameWorldZStart, taskSlab.nameWorldZEnd) + pad;
-          if (inTX && inTZ) return { teamId: teamSlab.teamId, taskId: taskSlab.taskId };
-        }
-      }
-      // 2) team slabs
-      for (const teamSlab of layout.teams) {
-        const inX = x >= Math.min(teamSlab.worldXStart, teamSlab.worldXEnd) - pad &&
-                    x <= Math.max(teamSlab.worldXStart, teamSlab.worldXEnd) + pad;
-        const inZ = zVal >= Math.min(teamSlab.nameWorldZStart, teamSlab.nameWorldZEnd) - pad &&
-                    zVal <= Math.max(teamSlab.nameWorldZStart, teamSlab.nameWorldZEnd) + pad;
-        if (inX && inZ) return { teamId: teamSlab.teamId, taskId: null };
-      }
-      return null;
-    };
-
-    // Try real slab position first
-    const real = checkZ(z);
-    if (real) return { ...real, viaSticky: false };
-
-    // Try sticky label position (z + offset converts sticky→real)
-    if (checkSticky) {
-      const stickyOff = stickyOffsetRef?.current || 0;
-      if (stickyOff !== 0) {
-        const sticky = checkZ(z + stickyOff);
-        if (sticky) return { ...sticky, viaSticky: true };
+    // 1) task slabs first (more specific)
+    for (const teamSlab of layout.teams) {
+      const inX = x >= Math.min(teamSlab.worldXStart, teamSlab.worldXEnd) - pad &&
+                  x <= Math.max(teamSlab.worldXStart, teamSlab.worldXEnd) + pad;
+      if (!inX) continue;
+      for (const taskSlab of teamSlab.tasks) {
+        const inTX = x >= Math.min(taskSlab.worldXStart, taskSlab.worldXEnd) - pad &&
+                     x <= Math.max(taskSlab.worldXStart, taskSlab.worldXEnd) + pad;
+        const inTZ = z >= Math.min(taskSlab.nameWorldZStart, taskSlab.nameWorldZEnd) - pad &&
+                     z <= Math.max(taskSlab.nameWorldZStart, taskSlab.nameWorldZEnd) + pad;
+        if (inTX && inTZ) return { teamId: teamSlab.teamId, taskId: taskSlab.taskId };
       }
     }
-
+    // 2) team slabs
+    for (const teamSlab of layout.teams) {
+      const inX = x >= Math.min(teamSlab.worldXStart, teamSlab.worldXEnd) - pad &&
+                  x <= Math.max(teamSlab.worldXStart, teamSlab.worldXEnd) + pad;
+      const inZ = z >= Math.min(teamSlab.nameWorldZStart, teamSlab.nameWorldZEnd) - pad &&
+                  z <= Math.max(teamSlab.nameWorldZStart, teamSlab.nameWorldZEnd) + pad;
+      if (inX && inZ) return { teamId: teamSlab.teamId, taskId: null };
+    }
     return null;
   };
 
@@ -224,34 +187,26 @@ export function usePersonas({
   useEffect(() => {
     if (!allPersonas.length) { setPersonas([]); return; }
     const msMap = new Map(milestone3D.map((m) => [m.id, m]));
-    const visibleMsIds = new Set(msMap.keys());
 
     // Count how many personas sit on each milestone (for stacking offset)
     const countOnMs = {};
-    const visible = allPersonas.filter(
-      (p) => p.milestoneId == null || visibleMsIds.has(p.milestoneId)
-    );
 
-    // Re-snap every persona that is attached to a milestone
-    // (personas on slabs keep their stored x/z and just propagate teamId/taskId)
-    const repositioned = visible.map((p) => {
-      if (p.milestoneId != null) {
-        const ms = msMap.get(p.milestoneId);
-        if (!ms) return p;
-        const idx = countOnMs[p.milestoneId] || 0;
-        countOnMs[p.milestoneId] = idx + 1;
-        const spacing = PERSONA_SIZE + 4;
-        return { ...p, x: ms.worldX, z: ms.worldZ + idx * spacing, onTeamId: null, onTaskId: null };
+    const repositioned = allPersonas.map((p) => {
+      // If persona has milestones, snap to the first visible one
+      if (p.milestoneIds.length > 0) {
+        const firstVisibleMsId = p.milestoneIds.find((mid) => msMap.has(mid));
+        if (firstVisibleMsId != null) {
+          const ms = msMap.get(firstVisibleMsId);
+          const idx = countOnMs[firstVisibleMsId] || 0;
+          countOnMs[firstVisibleMsId] = idx + 1;
+          const spacing = PERSONA_SIZE + 4;
+          return { ...p, x: ms.worldX, z: ms.worldZ + idx * spacing };
+        }
       }
       // For slab-bound personas, re-check if they're still on a slab
-      // Use padding for forgiving hit-testing (coordinates may be slightly
-      // offset from exact slab bounds due to perspective projection).
-      if (p.onTeamId || p.onTaskId) {
+      if (p.teamIds.length > 0 || p.taskIds.length > 0) {
         const slab = findSlabAt(p.x, p.z, 15);
-        if (slab) {
-          return { ...p, onTeamId: slab.teamId, onTaskId: slab.taskId };
-        }
-        return { ...p, onTeamId: null, onTaskId: null };
+        if (slab) return p; // still on slab, keep position
       }
       return p;
     });
@@ -265,10 +220,7 @@ export function usePersonas({
   const onPersonaDragMove = useCallback((e) => {
     const pid = draggingPersona.current;
     if (pid == null) return;
-    // Set reactive dragging state on first call (mousedown)
     setDraggingId(pid);
-    // Compute floor hit
-    // Use the same plane height as the mousedown anchor for consistent drag
     const planeY = dragAnchor.current.planeY || 0;
     const hit = screenToFloor(e.clientX, e.clientY, planeY);
     if (hit && dragAnchor.current) {
@@ -288,10 +240,7 @@ export function usePersonas({
     }
   }, [screenToFloor]);
 
-  /** Called by camera hook on mouseup while dragging a persona.
-   *  Uses the persona's own stored position for slab hit-testing (not the
-   *  floor-plane cursor projection, which is offset due to perspective).
-   */
+  /** Called by camera hook on mouseup while dragging a persona. */
   const onPersonaDragEnd = useCallback((e) => {
     const pid = draggingPersona.current;
     draggingPersona.current = null;
@@ -302,52 +251,61 @@ export function usePersonas({
     setPersonas((prev) => {
       const countOnMs = {};
       for (const pp of prev) {
-        if (pp.milestoneId != null && pp.id !== pid) {
-          countOnMs[pp.milestoneId] = (countOnMs[pp.milestoneId] || 0) + 1;
+        if (pp.milestoneIds.length > 0 && pp.id !== pid) {
+          for (const mid of pp.milestoneIds) {
+            countOnMs[mid] = (countOnMs[mid] || 0) + 1;
+          }
         }
       }
       return prev.map((p) => {
         if (p.id !== pid) return p;
 
-        // Use the persona's own coordinates for hit-testing.
-        // During drag, these track the elevated plane intersection — but they
-        // share the same world x/z system as the slabs, so a persona at
-        // (x, height, z) is directly above slab (x, 0, z).
         const hitX = p.x;
         const hitZ = p.z;
 
-        // 1) Try milestone snap first (uses its own rectangular hitbox)
+        // 1) Try milestone snap first
         const nearest = findNearestMilestone(hitX, hitZ);
         if (nearest) {
           const idx = countOnMs[nearest.id] || 0;
           const spacing = PERSONA_SIZE + 4;
-          const zOffset = idx * spacing;
           const newX = nearest.worldX;
-          const newZ = nearest.worldZ + zOffset;
-          update_protopersona(projectId, p.id, { x: newX, z: newZ, milestone: nearest.id })
-            .catch((err) => console.error('Failed to update persona:', err));
-          const updated = { ...p, x: newX, z: newZ, milestoneId: nearest.id, onTeamId: null, onTaskId: null };
+          const newZ = nearest.worldZ + idx * spacing;
+          update_protopersona(projectId, p.id, {
+            x: newX, z: newZ,
+            milestones: [nearest.id],
+            teams: [],
+            tasks: [],
+          }).catch((err) => console.error('Failed to update persona:', err));
+          const updated = { ...p, x: newX, z: newZ, milestoneIds: [nearest.id], teamIds: [], taskIds: [] };
           setAllPersonas((all) => all.map((a) => (a.id === pid ? updated : a)));
           return updated;
         }
 
-        // 2) Try team/task slab snap — also checks sticky labels (checkSticky=true)
+        // 2) Try team/task slab snap
         const SLAB_SNAP_PAD = 25;
-        const slab = findSlabAt(hitX, hitZ, SLAB_SNAP_PAD, true);
+        const slab = findSlabAt(hitX, hitZ, SLAB_SNAP_PAD);
         if (slab) {
-          // If matched via sticky label, convert to real-world Z for DB storage
-          const storeZ = slab.viaSticky ? hitZ + (stickyOffsetRef?.current || 0) : hitZ;
-          update_protopersona(projectId, p.id, { x: hitX, z: storeZ, milestone: null })
-            .catch((err) => console.error('Failed to update persona:', err));
-          const updated = { ...p, x: hitX, z: storeZ, milestoneId: null, onTeamId: slab.teamId, onTaskId: slab.taskId };
+          const newTeamIds = slab.teamId ? [slab.teamId] : [];
+          const newTaskIds = slab.taskId ? [slab.taskId] : [];
+          update_protopersona(projectId, p.id, {
+            x: hitX, z: hitZ,
+            milestones: [],
+            teams: newTeamIds,
+            tasks: newTaskIds,
+          }).catch((err) => console.error('Failed to update persona:', err));
+          const updated = { ...p, x: hitX, z: hitZ, milestoneIds: [], teamIds: newTeamIds, taskIds: newTaskIds };
           setAllPersonas((all) => all.map((a) => (a.id === pid ? updated : a)));
           return updated;
         }
 
-        // 3) Free placement
-        update_protopersona(projectId, p.id, { x: p.x, z: p.z, milestone: null })
-          .catch((err) => console.error('Failed to update persona:', err));
-        const updated = { ...p, milestoneId: null, onTeamId: null, onTaskId: null };
+        // 3) Free placement — clear all assignments
+        update_protopersona(projectId, p.id, {
+          x: p.x, z: p.z,
+          milestones: [],
+          teams: [],
+          tasks: [],
+        }).catch((err) => console.error('Failed to update persona:', err));
+        const updated = { ...p, milestoneIds: [], teamIds: [], taskIds: [] };
         setAllPersonas((all) => all.map((a) => (a.id === pid ? updated : a)));
         return updated;
       });
@@ -363,13 +321,13 @@ export function usePersonas({
     const x = idx * 40 - 60;
     const z = -100;
 
-    const tempPersona = { id: tempId, name, color, x, z, milestoneId: null };
+    const tempPersona = { id: tempId, name, color, x, z, milestoneIds: [], teamIds: [], taskIds: [] };
     setPersonas((prev) => [...prev, tempPersona]);
     setAllPersonas((prev) => [...prev, tempPersona]);
 
     try {
-      const created = await create_protopersona(projectId, { name, color, x, z, milestone: null });
-      const dbPersona = { id: created.id, name: created.name, color: created.color, x: created.x, z: created.z, milestoneId: created.milestone || null };
+      const created = await create_protopersona(projectId, { name, color, x, z, milestones: [], teams: [], tasks: [] });
+      const dbPersona = apiToLocal(created);
       setPersonas((prev) => prev.map((p) => (p.id === tempId ? dbPersona : p)));
       setAllPersonas((prev) => prev.map((p) => (p.id === tempId ? dbPersona : p)));
     } catch (err) {

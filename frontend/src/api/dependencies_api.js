@@ -517,10 +517,10 @@ export async function get_all_protopersonas(projectId) {
     return data.personas || data;
 }
 
-export async function create_protopersona(projectId, { name, color, x, z, milestone }) {
+export async function create_protopersona(projectId, { name, color, x, z, milestones, teams, tasks }) {
     const res = await authFetch(`/api/projects/${projectId}/protopersonas/create/`, {
         method: "POST",
-        body: JSON.stringify({ name, color, x, z, milestone: milestone || null }),
+        body: JSON.stringify({ name, color, x, z, milestones: milestones || [], teams: teams || [], tasks: tasks || [] }),
     });
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));

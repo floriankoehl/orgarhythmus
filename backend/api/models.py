@@ -453,8 +453,14 @@ class ProtoPersona(models.Model):
     color = models.CharField(max_length=20, default="#f87171")
     x = models.FloatField(default=0)
     z = models.FloatField(default=0)
-    milestone = models.ForeignKey(
-        Milestone, on_delete=models.SET_NULL, null=True, blank=True, related_name="protopersonas"
+    milestones = models.ManyToManyField(
+        Milestone, blank=True, related_name="protopersonas"
+    )
+    teams = models.ManyToManyField(
+        Team, blank=True, related_name="protopersonas"
+    )
+    tasks = models.ManyToManyField(
+        Task, blank=True, related_name="protopersonas"
     )
     created_by = models.ForeignKey(
         "auth.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="created_protopersonas"
