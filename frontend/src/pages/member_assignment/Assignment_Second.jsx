@@ -276,44 +276,78 @@ export default function AssignmentSecond() {
     };
   }, []);
 
-  // ── Camera orbit via middle-mouse drag ─────────────────────────
-  const [rotX, setRotX] = useState(70);   // degrees — tilt (0 = facing you, 90 = flat)
-  const [rotY, setRotY] = useState(0);    // degrees — horizontal swivel
-  const [perspOriginY, setPerspOriginY] = useState(40); // %
+  // ── 3D camera controls ─────────────────────────────────────────
+  // Middle-mouse drag           = orbit (rotate scene)
+  // Right-mouse drag            = pan   (translate scene)
+  // Scroll wheel                = zoom  (move closer / farther)
+  const [orbitX, setOrbitX] = useState(30);   // vertical tilt  (5–90°)
+  const [orbitY, setOrbitY] = useState(30);    // horizontal spin
+  const [panX, setPanX]     = useState(0);     // translate left/right (px)
+  const [panY, setPanY]     = useState(0);     // translate up/down    (px)
+  const [zoom, setZoom]     = useState(500);   // translateZ depth     (px)  — closer to origin
   const isDragging = useRef(false);
-  const lastMouse = useRef({ x: 0, y: 0 });
+  const isPanning  = useRef(false);
+  const lastMouse  = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     const onDown = (e) => {
-      // Middle mouse button = button 1
-      if (e.button !== 1) return;
-      e.preventDefault();
-      isDragging.current = true;
-      lastMouse.current = { x: e.clientX, y: e.clientY };
+      // Middle mouse = orbit, Right mouse = pan
+      if (e.button === 1) {
+        e.preventDefault();
+        isDragging.current = true;
+        isPanning.current  = e.shiftKey; // Shift+middle also pans
+        lastMouse.current  = { x: e.clientX, y: e.clientY };
+      } else if (e.button === 2) {
+        e.preventDefault();
+        isDragging.current = true;
+        isPanning.current  = true;
+        lastMouse.current  = { x: e.clientX, y: e.clientY };
+      }
     };
     const onMove = (e) => {
       if (!isDragging.current) return;
       const dx = e.clientX - lastMouse.current.x;
       const dy = e.clientY - lastMouse.current.y;
       lastMouse.current = { x: e.clientX, y: e.clientY };
-      // Horizontal drag → rotate Y, Vertical drag → rotate X
-      setRotY((prev) => prev + dx * 0.3);
-      setRotX((prev) => Math.max(0, Math.min(90, prev + dy * 0.3)));
-      setPerspOriginY((prev) => Math.max(10, Math.min(90, prev + dy * 0.1)));
+
+      if (isPanning.current) {
+        setPanX((prev) => prev + dx);
+        setPanY((prev) => prev + dy);
+      } else {
+        setOrbitY((prev) => prev - dx * 0.3);
+        setOrbitX((prev) => Math.max(5, Math.min(90, prev - dy * 0.3)));
+      }
     };
     const onUp = (e) => {
-      if (e.button === 1) isDragging.current = false;
+      if (e.button === 1 || e.button === 2) {
+        isDragging.current = false;
+        isPanning.current  = false;
+      }
     };
+    // Prevent context menu on right-click
+    const onContextMenu = (e) => e.preventDefault();
+
+    // Scroll wheel = zoom
+    const onWheel = (e) => {
+      const inside = e.target.closest('[data-board-scroll]');
+      if (inside) return;
+      e.preventDefault();
+      setZoom((prev) => Math.max(-800, Math.min(600, prev - e.deltaY * 0.8)));
+    };
+
     window.addEventListener('mousedown', onDown);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    // Prevent default middle-click auto-scroll
+    window.addEventListener('contextmenu', onContextMenu);
+    window.addEventListener('wheel', onWheel, { passive: false });
     const preventScroll = (e) => { if (e.button === 1) e.preventDefault(); };
     window.addEventListener('auxclick', preventScroll);
     return () => {
       window.removeEventListener('mousedown', onDown);
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('contextmenu', onContextMenu);
+      window.removeEventListener('wheel', onWheel);
       window.removeEventListener('auxclick', preventScroll);
     };
   }, []);
@@ -330,73 +364,153 @@ export default function AssignmentSecond() {
   // ══════════════════════════════════════════════════════════════
   // RENDER
   // ══════════════════════════════════════════════════════════════
+  //
+  // Transform hierarchy (simulates orbit camera):
+  //   Perspective container
+  //     → Orbit wrapper     : rotateX(orbitX) rotateY(orbitY)  — camera on sphere
+  //     → Distance wrapper  : translateZ(-distance + zoom)     — camera distance
+  //     → Board             : translate(-50%,-50%) rotateX(-90deg) — world alignment (XZ plane)
+  //
   return (
     <div
       className="w-full select-none"
       style={{
         height: '100dvh',
         background: '#1a1a2e',
-        display: 'flex',
-        alignItems: 'flex-end',
-        justifyContent: 'center',
-        perspective: '1200px',
-        perspectiveOrigin: `50% ${perspOriginY}%`,
+        perspective: '1800px',
+        perspectiveOrigin: '50% 50%',
         overflow: 'hidden',
+        position: 'relative',
       }}
     >
-      {/* Shadow on the "floor" */}
+      {/* ── Debug HUD — orbit/pan/zoom values ── */}
+      <div style={{
+        position: 'absolute', top: '12px', left: '12px', zIndex: 999,
+        background: 'rgba(0,0,0,0.7)', color: '#fff', padding: '8px 12px',
+        borderRadius: '8px', fontFamily: 'monospace', fontSize: '12px', lineHeight: '1.6',
+        pointerEvents: 'none',
+      }}>
+        <div>orbitX: <span style={{ color: '#f87171' }}>{orbitX.toFixed(1)}°</span> (vertical tilt)</div>
+        <div>orbitY: <span style={{ color: '#4ade80' }}>{orbitY.toFixed(1)}°</span> (horizontal)</div>
+        <div>zoom:  <span style={{ color: '#60a5fa' }}>{zoom.toFixed(0)}px</span></div>
+        <div>pan:   <span style={{ color: '#fbbf24' }}>{panX.toFixed(0)}, {panY.toFixed(0)}</span></div>
+        <div style={{ marginTop: '4px', fontSize: '10px', color: '#94a3b8' }}>
+          Middle-drag = orbit | Right-drag = pan | Scroll = zoom
+        </div>
+      </div>
+
+      {/* ── Orbit wrapper — rotates the scene = camera orbits around the board ── */}
       <div
         style={{
           position: 'absolute',
-          bottom: '0',
+          top: '50%',
           left: '50%',
-          width: '90%',
-          height: '30%',
-          marginLeft: '-45%',
-          borderRadius: '50%',
-          background: 'radial-gradient(ellipse, rgba(0,0,0,0.35) 0%, transparent 70%)',
-        }}
-      />
-
-      {/* The 2D board — lying flat on the floor */}
-      <div
-        style={{
           transformStyle: 'preserve-3d',
-          transform: `rotateX(${rotX}deg) rotateY(${rotY}deg)`,
-          transformOrigin: 'center bottom',
-          width: '88%',
-          maxWidth: '1400px',
-          marginBottom: '40px',
-          display: 'flex',
-          flexDirection: 'column',
-          borderRadius: '12px',
-          boxShadow: '0 5px 40px rgba(0,0,0,0.6)',
+          transform: `translateX(${panX}px) translateY(${panY}px) rotateX(${-orbitX}deg) rotateY(${-orbitY}deg)`,
         }}
       >
+        {/* ── Distance wrapper — translateZ = camera distance from center ── */}
         <div
           style={{
-            padding: '24px 24px 0 24px',
-            background: 'linear-gradient(160deg, #f8f9fb 0%, #f6f7fa 50%, #f7f6f5 100%)',
-            borderRadius: '12px 12px 0 0',
+            transformStyle: 'preserve-3d',
+            transform: `translateZ(${-600 + zoom}px)`,
+            position: 'relative',
           }}
         >
-          {/* ── Toolbar placeholder ──────────────────────────────── */}
-          <ToolbarPlaceholder />
-        </div>
+            {/* ── 3D Axis Gizmo — shows ±X (red), ±Y (green), ±Z (blue) ── */}
+            <div style={{ position: 'absolute', top: 0, left: 0, transformStyle: 'preserve-3d', pointerEvents: 'none' }}>
+              {/* ── X axis (red) ── */}
+              {/* +X ray — right */}
+              <div style={{ position: 'absolute', width: '180px', height: '3px', background: 'red', transform: 'translateY(-1.5px)' }} />
+              <div style={{ position: 'absolute', left: '185px', top: '-10px', color: 'red', fontSize: '14px', fontWeight: 'bold', fontFamily: 'monospace' }}>+X</div>
+              {/* −X ray — left (faded) */}
+              <div style={{ position: 'absolute', width: '180px', height: '2px', background: 'rgba(255,80,80,0.35)', transform: 'translate(-180px, -1px)' }} />
+              <div style={{ position: 'absolute', left: '-210px', top: '-10px', color: 'rgba(255,80,80,0.5)', fontSize: '12px', fontWeight: 'bold', fontFamily: 'monospace' }}>−X</div>
 
-        {/* ── Canvas ───────────────────────────────────────────── */}
-        <div
-          style={{
-            flex: '1 1 auto',
-            minHeight: 0,
-            overflow: 'hidden',
-            background: 'linear-gradient(160deg, #f8f9fb 0%, #f6f7fa 50%, #f7f6f5 100%)',
-            padding: '0 24px 24px 24px',
-            borderRadius: '0 0 12px 12px',
-          }}
-        >
+              {/* ── Y axis (green) ── */}
+              {/* +Y ray — up */}
+              <div style={{ position: 'absolute', width: '3px', height: '180px', background: 'limegreen', transform: 'translate(-1.5px, -180px)' }} />
+              <div style={{ position: 'absolute', left: '-8px', top: '-202px', color: 'limegreen', fontSize: '14px', fontWeight: 'bold', fontFamily: 'monospace' }}>+Y</div>
+              {/* −Y ray — down (faded) */}
+              <div style={{ position: 'absolute', width: '2px', height: '180px', background: 'rgba(50,255,50,0.35)', transform: 'translate(-1px, 0)' }} />
+              <div style={{ position: 'absolute', left: '-10px', top: '185px', color: 'rgba(50,255,50,0.5)', fontSize: '12px', fontWeight: 'bold', fontFamily: 'monospace' }}>−Y</div>
+
+              {/* ── Z axis (blue) — rotateX(90deg) so it extends toward viewer ── */}
+              {/* +Z ray — toward viewer */}
+              <div style={{ position: 'absolute', width: '3px', height: '180px', background: 'dodgerblue', transform: 'translate(-1.5px, 0) rotateX(90deg)', transformOrigin: 'top center' }} />
+              <div style={{ position: 'absolute', left: '8px', color: 'dodgerblue', fontSize: '14px', fontWeight: 'bold', fontFamily: 'monospace', transform: 'translateZ(185px)', transformOrigin: 'center center' }}>+Z</div>
+              {/* −Z ray — into screen (faded) */}
+              <div style={{ position: 'absolute', width: '2px', height: '180px', background: 'rgba(30,144,255,0.35)', transform: 'translate(-1px, 0) rotateX(-90deg)', transformOrigin: 'top center' }} />
+              <div style={{ position: 'absolute', left: '8px', color: 'rgba(30,144,255,0.5)', fontSize: '12px', fontWeight: 'bold', fontFamily: 'monospace', transform: 'translateZ(-190px)', transformOrigin: 'center center' }}>−Z</div>
+
+              {/* Origin dot */}
+              <div style={{ position: 'absolute', width: '8px', height: '8px', borderRadius: '50%', background: 'white', transform: 'translate(-4px, -4px)', boxShadow: '0 0 6px rgba(255,255,255,0.8)' }} />
+            </div>
+
+            {/* ── Floor plane — lies flat in XZ, grid pattern ── */}
+            <div
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                width: '800px',
+                height: '800px',
+                transform: 'translate(-50%, -50%) rotateX(90deg)',
+                transformOrigin: 'center center',
+                background: 'rgba(255,255,255,0.08)',
+                backgroundImage: `
+                  linear-gradient(rgba(255,255,255,0.15) 1px, transparent 1px),
+                  linear-gradient(90deg, rgba(255,255,255,0.15) 1px, transparent 1px)
+                `,
+                backgroundSize: '50px 50px',
+                border: '2px solid rgba(255,255,255,0.25)',
+                pointerEvents: 'none',
+              }}
+            >
+              {/* Floor label */}
+              <div style={{ position: 'absolute', bottom: '8px', right: '8px', color: 'rgba(255,255,255,0.4)', fontSize: '12px', fontFamily: 'monospace' }}>XZ floor</div>
+            </div>
+
+            {/* ── The board — HIDDEN for now, use floor + axes to decide placement ── */}
+            <div
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                width: 'min(88vw, 1400px)',
+                transform: 'rotateX(90deg) translate(-50%, -50%)',
+                transformStyle: 'preserve-3d',
+                display: 'none', /* ← hidden, not deleted */
+                flexDirection: 'column',
+                borderRadius: '12px',
+                boxShadow: '0 5px 40px rgba(0,0,0,0.6)',
+              }}
+            >
+              <div
+                style={{
+                  padding: '24px 24px 0 24px',
+                  background: 'linear-gradient(160deg, #f8f9fb 0%, #f6f7fa 50%, #f7f6f5 100%)',
+                  borderRadius: '12px 12px 0 0',
+                }}
+              >
+                {/* ── Toolbar placeholder ──────────────────────────── */}
+                <ToolbarPlaceholder />
+              </div>
+
+          {/* ── Canvas ─────────────────────────────────────────── */}
+          <div
+            style={{
+              flex: '1 1 auto',
+              minHeight: 0,
+              overflow: 'hidden',
+              background: 'linear-gradient(160deg, #f8f9fb 0%, #f6f7fa 50%, #f7f6f5 100%)',
+              padding: '0 24px 24px 24px',
+              borderRadius: '0 0 12px 12px',
+            }}
+          >
       {/* Outer scroll container — scaleY(-1) flips scrollbar to top */}
       <div
+        data-board-scroll
         style={{ height: `${contentHeight + 16}px`, transform: 'scaleY(-1)', flex: '1 1 auto', minHeight: 0 }}
         className="overflow-x-auto overflow-y-hidden rounded-xl border border-slate-200 shadow-sm"
         onWheel={(e) => {
@@ -710,10 +824,12 @@ export default function AssignmentSecond() {
             TASKWIDTH={TASKWIDTH}
             DAYWIDTH={DAYWIDTH}
           />
-        </div>
-      </div>
-      </div>
-      </div>
+        </div>{/* inner container */}
+      </div>{/* scroll container */}
+      </div>{/* canvas wrapper */}
+      </div>{/* board */}
+      </div>{/* distance wrapper */}
+      </div>{/* orbit wrapper */}
     </div>
   );
 }
