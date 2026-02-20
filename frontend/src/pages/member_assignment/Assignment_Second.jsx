@@ -777,7 +777,7 @@ export default function AssignmentSecond() {
               <div style={{ position: 'absolute', bottom: '8px', right: '8px', color: 'rgba(0,0,0,0.2)', fontSize: '12px', fontFamily: 'monospace' }}>XZ floor</div>
 
               {/* Floor side faces — give the board slab visual thickness */}
-              {/* Bottom edge (local Y = floorH) */}
+              {/* Bottom edge (local Y = floorH) — folds downward */}
               <div style={{
                 position: 'absolute',
                 left: 0,
@@ -789,19 +789,19 @@ export default function AssignmentSecond() {
                 background: 'linear-gradient(180deg, #e2e4e8, #d1d3d8)',
                 borderBottom: '1px solid rgba(0,0,0,0.12)',
               }} />
-              {/* Top edge (local Y = 0) */}
+              {/* Top edge (local Y = 0) — folds downward from top */}
               <div style={{
                 position: 'absolute',
                 left: 0,
                 top: 0,
                 width: `${floorW}px`,
                 height: `${BOARD_3D_HEIGHT}px`,
-                transform: 'rotateX(90deg)',
-                transformOrigin: 'top left',
+                transform: 'rotateX(-90deg)',
+                transformOrigin: 'bottom left',
                 background: 'linear-gradient(180deg, #e8eaee, #dcdee3)',
                 borderBottom: '1px solid rgba(0,0,0,0.1)',
               }} />
-              {/* Right edge (local X = floorW) */}
+              {/* Right edge (local X = floorW) — folds downward */}
               <div style={{
                 position: 'absolute',
                 left: `${floorW}px`,
@@ -813,15 +813,15 @@ export default function AssignmentSecond() {
                 background: 'linear-gradient(180deg, #dfe1e6, #cfd1d6)',
                 borderRight: '1px solid rgba(0,0,0,0.12)',
               }} />
-              {/* Left edge (local X = 0) */}
+              {/* Left edge (local X = 0) — folds downward */}
               <div style={{
                 position: 'absolute',
                 left: 0,
                 top: 0,
                 width: `${BOARD_3D_HEIGHT}px`,
                 height: `${floorH}px`,
-                transform: 'rotateY(-90deg)',
-                transformOrigin: 'top left',
+                transform: 'rotateY(90deg)',
+                transformOrigin: 'top right',
                 background: 'linear-gradient(180deg, #e5e7ec, #d5d7dc)',
                 borderRight: '1px solid rgba(0,0,0,0.1)',
               }} />
@@ -1214,11 +1214,12 @@ export default function AssignmentSecond() {
               const baseColor = m.color || m.teamColor || '#facc15';
               const borderColor = occupied ? 'rgba(74,222,128,1)' : baseColor;
               const topBg = occupied ? 'rgba(74,222,128,0.85)' : baseColor;
-              // Directional shading: each wall gets a different brightness to simulate light from +Y/+Z
-              const sideA = occupied ? 'linear-gradient(180deg, rgba(50,180,80,0.95), rgba(40,150,65,0.85))' : `linear-gradient(180deg, ${baseColor}ee, ${baseColor}bb)`;
-              const sideB = occupied ? 'linear-gradient(180deg, rgba(45,160,72,0.9), rgba(35,135,58,0.8))' : `linear-gradient(180deg, ${baseColor}cc, ${baseColor}99)`;
-              const sideC = occupied ? 'linear-gradient(180deg, rgba(55,190,85,0.95), rgba(45,165,70,0.88))' : `linear-gradient(180deg, ${baseColor}dd, ${baseColor}aa)`;
-              const sideD = occupied ? 'linear-gradient(180deg, rgba(40,150,65,0.85), rgba(30,120,50,0.75))' : `linear-gradient(180deg, ${baseColor}bb, ${baseColor}88)`;
+              // Directional shading: darken the base color at different levels per face
+              // to simulate light from above-right. Uses color-mix for proper color blending.
+              const sideA = `linear-gradient(180deg, color-mix(in srgb, ${baseColor} 90%, #000), color-mix(in srgb, ${baseColor} 70%, #000))`;
+              const sideB = `linear-gradient(180deg, color-mix(in srgb, ${baseColor} 80%, #000), color-mix(in srgb, ${baseColor} 60%, #000))`;
+              const sideC = `linear-gradient(180deg, color-mix(in srgb, ${baseColor} 85%, #000), color-mix(in srgb, ${baseColor} 65%, #000))`;
+              const sideD = `linear-gradient(180deg, color-mix(in srgb, ${baseColor} 75%, #000), color-mix(in srgb, ${baseColor} 55%, #000))`;
               return (
                 <div
                   key={`ms-${m.id}`}
