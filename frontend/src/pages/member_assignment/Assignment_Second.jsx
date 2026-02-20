@@ -17,6 +17,7 @@ import {
   get_all_milestones,
   get_project_days,
   get_all_phases,
+  get_all_dependencies,
 } from '../../api/dependencies_api.js';
 import { useViewManagement } from '../dependency/useViewManagement.js';
 import { getDefaultViewState } from '../dependency/viewDefaults.js';
@@ -79,6 +80,7 @@ export default function AssignmentSecond() {
   const [teams, setTeams] = useState({});
   const [tasks, setTasks] = useState({});
   const [milestones, setMilestones] = useState({});
+  const [connections, setConnections] = useState([]);
   const [phases, setPhases] = useState([]);
   const [taskDisplaySettings, setTaskDisplaySettings] = useState({});
   const [teamDisplaySettings, setTeamDisplaySettings] = useState({});
@@ -150,6 +152,14 @@ export default function AssignmentSecond() {
           const resPhases = await get_all_phases(projectId);
           setPhases(resPhases.phases || []);
         } catch { setPhases([]); }
+
+        try {
+          const resDeps = await get_all_dependencies(projectId);
+          const fetched = resDeps.dependencies;
+          if (Array.isArray(fetched)) {
+            setConnections(fetched.map(d => ({ source: d.source, target: d.target, weight: d.weight || 'strong', reason: d.reason || null })));
+          }
+        } catch { setConnections([]); }
 
         setTeamOrder(newTeamOrder);
         setTeams(teamObj);
@@ -865,26 +875,85 @@ export default function AssignmentSecond() {
               );
             })}
 
-            {/* ── Protopersona cubes ── */}
+            {/* ── Milestone dependency lines on floor ── */}
+            {connections.map((conn, ci) => {
+              const srcMs = milestone3D.find((m) => m.id === conn.source);
+              const tgtMs = milestone3D.find((m) => m.id === conn.target);
+              if (!srcMs || !tgtMs) return null;
+              const x1 = srcMs.worldX, z1 = srcMs.worldZ;
+              const x2 = tgtMs.worldX, z2 = tgtMs.worldZ;
+              const dx = x2 - x1, dz = z2 - z1;
+              const len = Math.sqrt(dx * dx + dz * dz);
+              if (len < 1) return null;
+              const angle = Math.atan2(dz, dx) * (180 / Math.PI);
+              const lineH = 4;
+              const liftY = 3; // lift above floor to avoid z-fighting
+              const weightColor = conn.weight === 'strong' ? 'rgba(251,146,60,0.95)'
+                : conn.weight === 'weak' ? 'rgba(148,163,184,0.8)'
+                : 'rgba(134,239,172,0.7)';
+              const arrowSize = 10;
+              return (
+                <div key={`dep-${ci}`} style={{ position: 'absolute', top: 0, left: 0, transformStyle: 'preserve-3d', pointerEvents: 'none' }}>
+                  {/* Line body flat on floor */}
+                  <div style={{
+                    position: 'absolute',
+                    width: `${len}px`,
+                    height: `${lineH}px`,
+                    background: weightColor,
+                    borderRadius: '2px',
+                    boxShadow: `0 0 8px ${weightColor}`,
+                    transform: [
+                      `translateX(${x1}px)`,
+                      `translateZ(${z1}px)`,
+                      `translateY(-${liftY}px)`,
+                      `rotateX(90deg)`,
+                      `rotateZ(${-angle}deg)`,
+                      `translateY(-${lineH / 2}px)`,
+                    ].join(' '),
+                    transformOrigin: '0 50%',
+                  }} />
+                  {/* Arrowhead at target end */}
+                  <div style={{
+                    position: 'absolute',
+                    width: 0, height: 0,
+                    borderLeft: `${arrowSize}px solid ${weightColor}`,
+                    borderTop: `${arrowSize / 2}px solid transparent`,
+                    borderBottom: `${arrowSize / 2}px solid transparent`,
+                    transform: [
+                      `translateX(${x2}px)`,
+                      `translateZ(${z2}px)`,
+                      `translateY(-${liftY}px)`,
+                      `rotateX(90deg)`,
+                      `rotateZ(${-angle}deg)`,
+                      `translateX(-${arrowSize}px)`,
+                      `translateY(-${arrowSize / 2}px)`,
+                    ].join(' '),
+                    transformOrigin: '0 50%',
+                    filter: `drop-shadow(0 0 6px ${weightColor})`,
+                  }} />
+                </div>
+              );
+            })}
+
+            {/* ── Protopersona figures ── */}
             {personas.map((p) => {
               const S = PERSONA_SIZE;
-              const half = S / 2;
               const isBeingDragged = p.id === draggingId;
-              const face = {
-                position: 'absolute',
-                width: `${S}px`,
-                height: `${S}px`,
-                backfaceVisibility: 'hidden',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '20px',
-                fontWeight: 'bold',
-                color: '#fff',
-                fontFamily: 'monospace',
-                textShadow: '0 1px 3px rgba(0,0,0,0.5)',
-                border: '2px solid rgba(255,255,255,0.25)',
-                boxSizing: 'border-box',
+              // Figure dimensions
+              const headR = S * 0.32;        // head radius
+              const headD = headR * 2;       // head diameter
+              const bodyW = S * 0.50;        // torso width
+              const bodyH = S * 0.50;        // torso height
+              const bodyD = bodyW * 0.55;    // torso depth
+              const legW  = bodyW * 0.38;    // one leg width
+              const legH  = S * 0.36;        // leg height
+              const legD  = bodyD * 0.8;     // leg depth
+              const legGap = bodyW * 0.08;   // gap between legs
+              const totalH = headD + bodyH + legH; // total figure height
+              const baseY = isBeingDragged ? totalH + PERSONA_DRAG_LIFT : totalH + (p.milestoneId != null ? MILESTONE_3D_HEIGHT : 0);
+              const darker = (c, amt) => {
+                // simple darken via filter on side faces
+                return c;
               };
               return (
                 <div
@@ -899,7 +968,7 @@ export default function AssignmentSecond() {
                     transform: [
                       `translateX(${p.x - S / 2}px)`,
                       `translateZ(${p.z + S / 2}px)`,
-                      `translateY(-${isBeingDragged ? S + PERSONA_DRAG_LIFT : S + (p.milestoneId != null ? MILESTONE_3D_HEIGHT : 0)}px)`,
+                      `translateY(-${baseY}px)`,
                     ].join(' '),
                     transition: isBeingDragged ? 'none' : 'transform 0.25s ease-out',
                     transformStyle: 'preserve-3d',
@@ -909,25 +978,95 @@ export default function AssignmentSecond() {
                     pointerEvents: 'auto',
                   }}
                 >
-                  <div style={{ ...face, background: p.color, transform: `translateZ(${half}px)` }}>
-                    {p.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div style={{ ...face, background: p.color, transform: `rotateY(180deg) translateZ(${half}px)` }}>
-                    {p.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div style={{ ...face, background: p.color, filter: 'brightness(0.85)', transform: `rotateY(-90deg) translateZ(${half}px)` }} />
-                  <div style={{ ...face, background: p.color, filter: 'brightness(0.85)', transform: `rotateY(90deg) translateZ(${half}px)` }} />
-                  <div style={{ ...face, background: p.color, filter: 'brightness(1.15)', transform: `rotateX(90deg) translateZ(${half}px)` }}>
-                    {p.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div style={{ ...face, background: p.color, filter: 'brightness(0.7)', transform: `rotateX(-90deg) translateZ(${half}px)` }} />
+                  {/* ── Head (sphere approximation via border-radius) ── */}
                   <div style={{
                     position: 'absolute',
-                    top: `-20px`,
+                    left: `${(S - headD) / 2}px`,
+                    top: '0px',
+                    width: `${headD}px`,
+                    height: `${headD}px`,
+                    transformStyle: 'preserve-3d',
+                  }}>
+                    {/* front face */}
+                    <div style={{ position: 'absolute', width: `${headD}px`, height: `${headD}px`, borderRadius: '50%', background: '#fcd9b6', transform: `translateZ(${headR * 0.7}px)`, boxShadow: 'inset -2px -2px 4px rgba(0,0,0,0.15)' }} />
+                    {/* back face */}
+                    <div style={{ position: 'absolute', width: `${headD}px`, height: `${headD}px`, borderRadius: '50%', background: '#e8c9a0', transform: `rotateY(180deg) translateZ(${headR * 0.7}px)` }} />
+                    {/* left face */}
+                    <div style={{ position: 'absolute', width: `${headD}px`, height: `${headD}px`, borderRadius: '50%', background: '#f0d0a8', transform: `rotateY(-90deg) translateZ(${headR * 0.7}px)` }} />
+                    {/* right face */}
+                    <div style={{ position: 'absolute', width: `${headD}px`, height: `${headD}px`, borderRadius: '50%', background: '#f0d0a8', transform: `rotateY(90deg) translateZ(${headR * 0.7}px)` }} />
+                    {/* top */}
+                    <div style={{ position: 'absolute', width: `${headD}px`, height: `${headD}px`, borderRadius: '50%', background: '#dbb896', transform: `rotateX(90deg) translateZ(${headR * 0.7}px)` }} />
+                    {/* Eyes — two dots */}
+                    <div style={{ position: 'absolute', top: `${headD * 0.38}px`, left: `${headD * 0.28}px`, width: '3px', height: '3px', borderRadius: '50%', background: '#333', transform: `translateZ(${headR * 0.72}px)` }} />
+                    <div style={{ position: 'absolute', top: `${headD * 0.38}px`, right: `${headD * 0.28}px`, width: '3px', height: '3px', borderRadius: '50%', background: '#333', transform: `translateZ(${headR * 0.72}px)` }} />
+                    {/* Mouth — tiny arc */}
+                    <div style={{ position: 'absolute', top: `${headD * 0.6}px`, left: '50%', width: '5px', height: '2.5px', borderRadius: '0 0 5px 5px', background: '#c17c5e', transform: `translateX(-50%) translateZ(${headR * 0.72}px)` }} />
+                  </div>
+
+                  {/* ── Torso (box) ── */}
+                  <div style={{
+                    position: 'absolute',
+                    left: `${(S - bodyW) / 2}px`,
+                    top: `${headD}px`,
+                    width: `${bodyW}px`,
+                    height: `${bodyH}px`,
+                    transformStyle: 'preserve-3d',
+                  }}>
+                    {/* front */}
+                    <div style={{ position: 'absolute', width: `${bodyW}px`, height: `${bodyH}px`, background: p.color, borderRadius: '3px 3px 0 0', transform: `translateZ(${bodyD / 2}px)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#fff', fontFamily: 'monospace', textShadow: '0 1px 2px rgba(0,0,0,0.4)' }}>{p.name.charAt(0).toUpperCase()}</span>
+                    </div>
+                    {/* back */}
+                    <div style={{ position: 'absolute', width: `${bodyW}px`, height: `${bodyH}px`, background: p.color, filter: 'brightness(0.8)', borderRadius: '3px 3px 0 0', transform: `rotateY(180deg) translateZ(${bodyD / 2}px)` }} />
+                    {/* left */}
+                    <div style={{ position: 'absolute', width: `${bodyD}px`, height: `${bodyH}px`, background: p.color, filter: 'brightness(0.85)', transform: `rotateY(-90deg) translateZ(0px)` }} />
+                    {/* right */}
+                    <div style={{ position: 'absolute', width: `${bodyD}px`, height: `${bodyH}px`, background: p.color, filter: 'brightness(0.85)', transform: `rotateY(90deg) translateZ(${bodyW}px)` }} />
+                    {/* top (shoulders) */}
+                    <div style={{ position: 'absolute', width: `${bodyW}px`, height: `${bodyD}px`, background: p.color, filter: 'brightness(1.1)', transform: `rotateX(90deg) translateZ(0px)` }} />
+                    {/* bottom */}
+                    <div style={{ position: 'absolute', width: `${bodyW}px`, height: `${bodyD}px`, background: p.color, filter: 'brightness(0.7)', transform: `rotateX(-90deg) translateZ(${bodyH}px)` }} />
+                  </div>
+
+                  {/* ── Left leg ── */}
+                  <div style={{
+                    position: 'absolute',
+                    left: `${(S - bodyW) / 2 + legGap}px`,
+                    top: `${headD + bodyH}px`,
+                    width: `${legW}px`,
+                    height: `${legH}px`,
+                    transformStyle: 'preserve-3d',
+                  }}>
+                    <div style={{ position: 'absolute', width: `${legW}px`, height: `${legH}px`, background: '#3b4861', borderRadius: '0 0 2px 2px', transform: `translateZ(${legD / 2}px)` }} />
+                    <div style={{ position: 'absolute', width: `${legW}px`, height: `${legH}px`, background: '#2d3a4e', borderRadius: '0 0 2px 2px', transform: `rotateY(180deg) translateZ(${legD / 2}px)` }} />
+                    <div style={{ position: 'absolute', width: `${legD}px`, height: `${legH}px`, background: '#344054', transform: `rotateY(-90deg) translateZ(0px)` }} />
+                    <div style={{ position: 'absolute', width: `${legD}px`, height: `${legH}px`, background: '#344054', transform: `rotateY(90deg) translateZ(${legW}px)` }} />
+                  </div>
+
+                  {/* ── Right leg ── */}
+                  <div style={{
+                    position: 'absolute',
+                    left: `${(S - bodyW) / 2 + bodyW - legGap - legW}px`,
+                    top: `${headD + bodyH}px`,
+                    width: `${legW}px`,
+                    height: `${legH}px`,
+                    transformStyle: 'preserve-3d',
+                  }}>
+                    <div style={{ position: 'absolute', width: `${legW}px`, height: `${legH}px`, background: '#3b4861', borderRadius: '0 0 2px 2px', transform: `translateZ(${legD / 2}px)` }} />
+                    <div style={{ position: 'absolute', width: `${legW}px`, height: `${legH}px`, background: '#2d3a4e', borderRadius: '0 0 2px 2px', transform: `rotateY(180deg) translateZ(${legD / 2}px)` }} />
+                    <div style={{ position: 'absolute', width: `${legD}px`, height: `${legH}px`, background: '#344054', transform: `rotateY(-90deg) translateZ(0px)` }} />
+                    <div style={{ position: 'absolute', width: `${legD}px`, height: `${legH}px`, background: '#344054', transform: `rotateY(90deg) translateZ(${legW}px)` }} />
+                  </div>
+
+                  {/* ── Name label floating above ── */}
+                  <div style={{
+                    position: 'absolute',
+                    top: `-14px`,
                     left: '50%',
                     transform: 'translateX(-50%)',
                     color: '#fff',
-                    fontSize: '11px',
+                    fontSize: '10px',
                     fontFamily: 'monospace',
                     fontWeight: 600,
                     whiteSpace: 'nowrap',

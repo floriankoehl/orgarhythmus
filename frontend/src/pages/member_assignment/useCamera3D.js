@@ -47,7 +47,9 @@ export function useCamera3D({
   const isPanning  = useRef(false);
   const lastMouse  = useRef({ x: 0, y: 0 });
 
-  // Keep camera values in refs so event handlers always see current values
+  // Refs are the single source of truth for event handlers.
+  // They are updated directly in handlers BEFORE calling setState.
+  // No useEffect syncs — those cause async fighting with manual ref updates.
   const orbitXRef = useRef(orbitX);
   const orbitYRef = useRef(orbitY);
   const zoomRef = useRef(zoom);
@@ -55,13 +57,6 @@ export function useCamera3D({
   const panXRef = useRef(panX);
   const panYRef = useRef(panY);
   const panZRef = useRef(panZ);
-  useEffect(() => { orbitXRef.current = orbitX; }, [orbitX]);
-  useEffect(() => { orbitYRef.current = orbitY; }, [orbitY]);
-  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
-  useEffect(() => { cameraScaleRef.current = cameraScale; }, [cameraScale]);
-  useEffect(() => { panXRef.current = panX; }, [panX]);
-  useEffect(() => { panYRef.current = panY; }, [panY]);
-  useEffect(() => { panZRef.current = panZ; }, [panZ]);
 
   // ── Screen-to-floor unprojection ───────────────────────────────
   /** Cast ray from camera through screen point (sx, sy) onto Y=0 floor.
@@ -200,15 +195,15 @@ export function useCamera3D({
       lastMouse.current = { x: e.clientX, y: e.clientY };
 
       if (isPanning.current) {
-        setPanX((prev) => prev + dx);
-        setPanY((prev) => prev + dy);
+        panXRef.current += dx;
+        panYRef.current += dy;
+        setPanX(panXRef.current);
+        setPanY(panYRef.current);
       } else {
         // ── Orbit with anchor compensation ──
-        // 1. Capture the world floor point at screen center before rotation
-        const el = viewportRef.current;
-        const rect = el ? el.getBoundingClientRect() : null;
-        const anchorSX = rect ? rect.left + rect.width / 2 : 0;
-        const anchorSY = rect ? rect.top  + rect.height / 2 : 0;
+        // 1. Capture the world floor point at the mouse position before rotation
+        const anchorSX = e.clientX;
+        const anchorSY = e.clientY;
         const floorPt = screenToFloor(anchorSX, anchorSY);
 
         // 2. Apply new orbit angles to refs immediately
@@ -216,23 +211,23 @@ export function useCamera3D({
         const newOrbitX = Math.max(5, Math.min(90, orbitXRef.current - dy * 0.3));
         orbitXRef.current = newOrbitX;
         orbitYRef.current = newOrbitY;
-        setOrbitY(newOrbitY);
-        setOrbitX(newOrbitX);
 
-        // 3. Compensate pan so the anchor world point stays at screen center
+        // 3. Compensate pan so the anchor world point stays under the mouse
         if (floorPt) {
           const projected = worldToScreen(floorPt.x, floorPt.z);
           if (projected && Math.abs(projected.f) > 1e-6) {
             const dPanX = (anchorSX - projected.sx) / projected.f;
             const dPanY = (anchorSY - projected.sy) / projected.f;
-            const newPanX = panXRef.current + dPanX;
-            const newPanY = panYRef.current + dPanY;
-            panXRef.current = newPanX;
-            panYRef.current = newPanY;
-            setPanX(newPanX);
-            setPanY(newPanY);
+            panXRef.current += dPanX;
+            panYRef.current += dPanY;
           }
         }
+
+        // 4. Flush state
+        setOrbitY(newOrbitY);
+        setOrbitX(newOrbitX);
+        setPanX(panXRef.current);
+        setPanY(panYRef.current);
       }
     };
 
@@ -256,18 +251,32 @@ export function useCamera3D({
       e.preventDefault();
       if (e.shiftKey) {
         // Shift+wheel → navigate along the world Z-axis
-        setPanZ((prev) => prev + e.deltaY * 0.8);
+        panZRef.current += e.deltaY * 0.8;
+        setPanZ(panZRef.current);
       } else {
-        // Plain wheel → scale zoom toward screen center
+        // Plain wheel → scale zoom anchored at mouse cursor
         const oldScale = cameraScaleRef.current;
         const factor = Math.exp(-e.deltaY * 0.003);
         const newScale = Math.max(CAMERA_SCALE_MIN, Math.min(CAMERA_SCALE_MAX, oldScale * factor));
-        const ratio = newScale / oldScale;
+
+        // Capture the floor point under the cursor before scaling
+        const floorPt = screenToFloor(e.clientX, e.clientY);
+
+        // Apply new scale
+        cameraScaleRef.current = newScale;
+
+        // Compensate pan so the cursor-point stays fixed
+        if (floorPt) {
+          const projected = worldToScreen(floorPt.x, floorPt.z);
+          if (projected && Math.abs(projected.f) > 1e-6) {
+            panXRef.current += (e.clientX - projected.sx) / projected.f;
+            panYRef.current += (e.clientY - projected.sy) / projected.f;
+          }
+        }
 
         setCameraScale(newScale);
-        // Zoom toward screen center: scale pan proportionally so the center stays fixed
-        setPanX((prev) => prev * ratio);
-        setPanY((prev) => prev * ratio);
+        setPanX(panXRef.current);
+        setPanY(panYRef.current);
       }
     };
 
