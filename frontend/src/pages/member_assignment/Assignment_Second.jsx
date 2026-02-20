@@ -361,20 +361,27 @@ export default function AssignmentSecond() {
     restoreCameraRef.current = restoreCamera;
   }, [getCameraState, restoreCamera]);
 
-  // ── Restore persisted camera on mount ──────────────────────────
+  // ── Restore camera on mount: saved state → defaults fallback ──
   const cameraRestoredRef = useRef(false);
   useEffect(() => {
     if (cameraRestoredRef.current || !projectId) return;
     cameraRestoredRef.current = true;
-    try {
-      const raw = localStorage.getItem(`orgarhythmus_camera_${projectId}`);
-      if (raw) {
-        const cam = JSON.parse(raw);
-        restoreCamera(cam);
-      }
-    } catch { /* ignore corrupt storage */ }
+    const saved = localStorage.getItem(`orgarhythmus_camera_${projectId}`);
+    if (saved) {
+      try { restoreCamera(JSON.parse(saved)); } catch { /* fall through */ }
+    }
+    if (!saved) {
+      restoreCamera({
+        orbitX: CAMERA_DEFAULT_TILT,
+        orbitY: CAMERA_DEFAULT_YAW,
+        panX: 0, panY: 0, panZ: 0,
+        zoom: CAMERA_DEFAULT_ZOOM,
+        cameraScale: CAMERA_DEFAULT_SCALE,
+      });
+    }
   }, [projectId, restoreCamera]);
 
+  // Auto-save camera to localStorage (debounced)
   useEffect(() => {
     if (!projectId) return;
     const timer = setTimeout(() => {

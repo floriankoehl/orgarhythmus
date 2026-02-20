@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   getTaskHeight as getTaskHeightBase, 
   getRawTeamHeight as getRawTeamHeightBase, 
@@ -69,6 +70,25 @@ export default function Dependencies() {
 function DependenciesContent() {
 
   const { projectId, teamContainerRef, pushAction } = useDependency();
+  const navigate = useNavigate();
+
+  // Secret shortcut: press 0 + 9 together to open 3D view
+  const heldRef = useRef(new Set());
+  useEffect(() => {
+    const down = (e) => {
+      if (e.key === '0' || e.key === '9') heldRef.current.add(e.key);
+      if (heldRef.current.has('0') && heldRef.current.has('9')) {
+        navigate(`/projects/${projectId}/assignment`);
+      }
+    };
+    const up = (e) => heldRef.current.delete(e.key);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    };
+  }, [projectId, navigate]);
 
   // ________Data Hook___________
   const {
