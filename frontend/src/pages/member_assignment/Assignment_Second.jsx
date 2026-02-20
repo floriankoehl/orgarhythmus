@@ -36,6 +36,7 @@ import {
   DAY_NAME_WIDTH_THRESHOLD,
   daysBetween,
   lightenColor,
+  getContrastTextColor,
   getVisibleTasks,
   isTaskVisible,
 } from '../dependency/layoutMath.js';
@@ -46,6 +47,7 @@ import {
   CAMERA_BASE_DISTANCE,
   PERSPECTIVE_DEPTH,
   PERSONA_SIZE,
+  PERSONA_DRAG_LIFT,
   MILESTONE_3D_HEIGHT,
   BOARD_3D_HEIGHT,
   buildDayLabels,
@@ -844,7 +846,7 @@ export default function AssignmentSecond() {
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
                     <span style={{
-                      fontSize: '8px', color: '#000',
+                      fontSize: '8px', color: getContrastTextColor(baseColor),
                       fontFamily: 'monospace', whiteSpace: 'nowrap',
                       overflow: 'hidden', textOverflow: 'ellipsis',
                       maxWidth: '100%', padding: '0 2px',
@@ -895,7 +897,7 @@ export default function AssignmentSecond() {
                     transform: [
                       `translateX(${p.x - S / 2}px)`,
                       `translateZ(${p.z + S / 2}px)`,
-                      `translateY(-${isBeingDragged ? S + 30 : S + (p.milestoneId != null ? MILESTONE_3D_HEIGHT : 0)}px)`,
+                      `translateY(-${isBeingDragged ? S + PERSONA_DRAG_LIFT : S + (p.milestoneId != null ? MILESTONE_3D_HEIGHT : 0)}px)`,
                     ].join(' '),
                     transition: isBeingDragged ? 'none' : 'transform 0.25s ease-out',
                     transformStyle: 'preserve-3d',

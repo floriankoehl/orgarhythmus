@@ -184,24 +184,16 @@ export function useCamera3D({
         // Shift+wheel → navigate along the world Z-axis
         setPanZ((prev) => prev + e.deltaY * 0.8);
       } else {
-        // Plain wheel → scale zoom toward cursor position
-        const el = viewportRef.current;
-        const rect = el?.getBoundingClientRect();
-        const vpCX = rect ? rect.left + rect.width / 2 : 0;
-        const vpCY = rect ? rect.top  + rect.height / 2 : 0;
-        // Cursor offset from viewport center (screen-space)
-        const dx = e.clientX - vpCX;
-        const dy = e.clientY - vpCY;
-
+        // Plain wheel → scale zoom toward screen center
         const oldScale = cameraScaleRef.current;
         const factor = Math.exp(-e.deltaY * 0.003);
         const newScale = Math.max(CAMERA_SCALE_MIN, Math.min(CAMERA_SCALE_MAX, oldScale * factor));
         const ratio = newScale / oldScale;
 
         setCameraScale(newScale);
-        // Adjust pan so the world-point under the cursor stays fixed
-        setPanX((prev) => dx - (dx - prev) * ratio);
-        setPanY((prev) => dy - (dy - prev) * ratio);
+        // Zoom toward screen center: scale pan proportionally so the center stays fixed
+        setPanX((prev) => prev * ratio);
+        setPanY((prev) => prev * ratio);
       }
     };
 

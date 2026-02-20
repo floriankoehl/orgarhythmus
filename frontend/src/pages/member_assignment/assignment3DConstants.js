@@ -35,6 +35,7 @@ export const PERSPECTIVE_DEPTH     = 1800;
 
 // ── Protopersona defaults ────────────────────────────────────────
 export const PERSONA_SIZE          = 25;
+export const PERSONA_DRAG_LIFT     = 5;
 export const SNAP_RADIUS           = 40;
 export const MILESTONE_3D_HEIGHT   = 8;
 export const BOARD_3D_HEIGHT       = 14;

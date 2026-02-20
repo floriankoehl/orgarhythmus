@@ -13,6 +13,7 @@ import {
   TEAM_PHASE_ROW_HEIGHT,
   getVisibleTasks,
   computeMilestonePixelPositions,
+  getContrastTextColor,
 } from '../dependency/layoutMath.js';
 import {
   DEFAULT_DAYWIDTH,
@@ -487,7 +488,7 @@ export function MilestoneLayer({ teamOrder, teams, milestones, taskDisplaySettin
             pointerEvents: 'auto',
           }}
         >
-          <span className="text-xs truncate px-2 leading-none flex items-center h-full" style={{ color: '#000', textShadow: 'none' }}>
+          <span className="text-xs truncate px-2 leading-none flex items-center h-full" style={{ color: getContrastTextColor(m.color || m.teamColor || '#facc15'), textShadow: 'none' }}>
             {m.name}
           </span>
         </div>

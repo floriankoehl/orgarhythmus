@@ -27,6 +27,20 @@ export const MAX_TASKWIDTH = 500;
 // Pure Utility Functions
 // ==========================================
 
+// Helper to determine high-contrast text color (black or white) for a given background hex color
+export const getContrastTextColor = (hex) => {
+  if (!hex || !hex.startsWith('#')) return '#000';
+  let color = hex.replace('#', '');
+  if (color.length === 3) {
+    color = color[0] + color[0] + color[1] + color[1] + color[2] + color[2];
+  }
+  const r = parseInt(color.substring(0, 2), 16);
+  const g = parseInt(color.substring(2, 4), 16);
+  const b = parseInt(color.substring(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5 ? '#000' : '#fff';
+};
+
 // Helper function to lighten a hex color while keeping high opacity
 export const lightenColor = (hex, amount = 0.9) => {
   const color = hex.replace('#', '');
