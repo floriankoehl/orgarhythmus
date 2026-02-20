@@ -66,7 +66,9 @@ const PERSPECTIVE_DEPTH     = 1800;  // px — CSS perspective value
 // ── Protopersona defaults ────────────────────────────────────────
 const PERSONA_SIZE          = 25;    // px — cube side length
 const SNAP_RADIUS           = 40;    // px — max distance to snap to a milestone
-const MILESTONE_3D_HEIGHT   = 6;    // px — how far milestone pedestals rise above the XZ floor (+Y)
+const MILESTONE_3D_HEIGHT   = 25;   // px — how far milestone pedestals rise above the XZ floor (+Y)
+const SCROLL_Y_PAD          = 16;   // px — extra height on the scroll container (contentHeight + 16) that
+                                     //      causes a visual Y-offset due to the double scaleY(-1) flip
 const PERSONA_COLORS = [
   '#f87171', '#fb923c', '#facc15', '#4ade80',
   '#22d3ee', '#818cf8', '#e879f9', '#f472b6',
@@ -376,9 +378,12 @@ export default function AssignmentSecond() {
       TEAMWIDTH, TASKWIDTH, DAYWIDTH,
     });
     // Apply coordinate transformation: 2D content-space → 3D world-space
+    // The double scaleY(-1) (scroll container + inner container) with the
+    // scroll container being SCROLL_Y_PAD px taller than the content shifts
+    // the visual Y position by +SCROLL_Y_PAD relative to the layout position.
     return positioned.map((m) => ({
       ...m,
-      worldX: (m.y + m.h / 2 + oY) - H / 2,
+      worldX: (m.y + m.h / 2 + oY + SCROLL_Y_PAD) - H / 2,
       worldZ: W / 2 - (m.x + m.w / 2 + oX),
     }));
   }, [days, teamOrder, teams, milestones, taskDisplaySettings, teamPhasesMap, effectiveHeaderH, boardDims, TEAMWIDTH, TASKWIDTH, DAYWIDTH]);
@@ -1142,6 +1147,11 @@ export default function AssignmentSecond() {
               const occupied = personas.some((p) => p.milestoneId === m.id);
               const slotW = Math.max((m.duration || 1) * DAYWIDTH, PERSONA_SIZE + 10);
               const slotH = PERSONA_SIZE + 10;
+              const depth = MILESTONE_3D_HEIGHT;
+              const baseColor = m.color || m.teamColor || '#facc15';
+              const borderColor = occupied ? 'rgba(74,222,128,0.8)' : `${baseColor}99`;
+              const topBg = occupied ? 'rgba(74,222,128,0.25)' : `${baseColor}55`;
+              const sideBg = occupied ? 'rgba(74,222,128,0.12)' : `${baseColor}30`;
               return (
                 <div
                   key={`ms-${m.id}`}
@@ -1151,44 +1161,105 @@ export default function AssignmentSecond() {
                     left: 0,
                     width: `${slotW}px`,
                     height: `${slotH}px`,
-                    // 1. Move to world XZ position
-                    // 2. translateY(-MILESTONE_3D_HEIGHT) lifts pedestal above floor (+Y in world)
-                    // 3. Rx(90°) lays it flat on XZ (but elevated)
-                    // 4. Rz(90°) rotates text 90° in-plane so it flows along world Z
-                    // 5. Center the div on its world position
                     transform: [
                       `translateX(${m.worldX}px)`,
                       `translateZ(${m.worldZ}px)`,
-                      `translateY(-${MILESTONE_3D_HEIGHT}px)`,
-                      'rotateX(90deg)',
-                      'rotateZ(90deg)',
+                      `translateY(-${depth}px)`,
+                      'rotateX(-90deg)',
+                      'rotateZ(-90deg)',
                       `translate(-${slotW / 2}px, -${slotH / 2}px)`,
                     ].join(' '),
                     transformOrigin: '0 0',
-                    border: occupied ? `2px solid rgba(74,222,128,0.8)` : `2px solid ${m.color || m.teamColor || '#facc15'}99`,
-                    borderRadius: '4px',
-                    background: occupied
-                      ? 'rgba(74,222,128,0.25)'
-                      : `${m.color || m.teamColor || '#facc15'}55`,
+                    transformStyle: 'preserve-3d',
                     pointerEvents: 'none',
+                  }}
+                >
+                  {/* Top face (label surface) */}
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: `${slotW}px`,
+                    height: `${slotH}px`,
+                    border: `2px solid ${borderColor}`,
+                    borderRadius: '4px',
+                    background: topBg,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                  }}
-                >
-                  <span style={{
-                    fontSize: '8px',
-                    color: 'rgba(255,255,255,0.9)',
-                    fontFamily: 'monospace',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    maxWidth: '100%',
-                    padding: '0 2px',
-                    textShadow: '0 1px 2px rgba(0,0,0,0.6)',
                   }}>
-                    {m.name}
-                  </span>
+                    <span style={{
+                      fontSize: '8px',
+                      color: 'rgba(255,255,255,0.9)',
+                      fontFamily: 'monospace',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      maxWidth: '100%',
+                      padding: '0 2px',
+                      textShadow: '0 1px 2px rgba(0,0,0,0.6)',
+                    }}>
+                      {m.name}
+                    </span>
+                  </div>
+
+                  {/* Side faces (extend from top face into -Z = downward) */}
+                  {/* Bottom edge (local Y = slotH) */}
+                  <div style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: `${slotH}px`,
+                    width: `${slotW}px`,
+                    height: `${depth}px`,
+                    transform: 'rotateX(90deg)',
+                    transformOrigin: 'top left',
+                    background: sideBg,
+                    borderLeft: `1px solid ${borderColor}`,
+                    borderRight: `1px solid ${borderColor}`,
+                    borderBottom: `1px solid ${borderColor}`,
+                  }} />
+                  {/* Top edge (local Y = 0) */}
+                  <div style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    width: `${slotW}px`,
+                    height: `${depth}px`,
+                    transform: 'rotateX(-90deg)',
+                    transformOrigin: 'top left',
+                    background: sideBg,
+                    borderLeft: `1px solid ${borderColor}`,
+                    borderRight: `1px solid ${borderColor}`,
+                    borderBottom: `1px solid ${borderColor}`,
+                  }} />
+                  {/* Right edge (local X = slotW) */}
+                  <div style={{
+                    position: 'absolute',
+                    left: `${slotW}px`,
+                    top: 0,
+                    width: `${depth}px`,
+                    height: `${slotH}px`,
+                    transform: 'rotateY(90deg)',
+                    transformOrigin: 'top left',
+                    background: sideBg,
+                    borderTop: `1px solid ${borderColor}`,
+                    borderBottom: `1px solid ${borderColor}`,
+                    borderRight: `1px solid ${borderColor}`,
+                  }} />
+                  {/* Left edge (local X = 0) */}
+                  <div style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    width: `${depth}px`,
+                    height: `${slotH}px`,
+                    transform: 'rotateY(-90deg)',
+                    transformOrigin: 'top left',
+                    background: sideBg,
+                    borderTop: `1px solid ${borderColor}`,
+                    borderBottom: `1px solid ${borderColor}`,
+                    borderRight: `1px solid ${borderColor}`,
+                  }} />
                 </div>
               );
             })}
