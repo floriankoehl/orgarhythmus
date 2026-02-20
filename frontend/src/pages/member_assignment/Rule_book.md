@@ -38,8 +38,9 @@ When a rule or behaviour changes, update this file.
 
 ## Team / Task Height
 
-- **Team rows** now extrude `TEAM_3D_HEIGHT` (20 px) above the floor as 3D slabs.
-- **Task rows** extrude `TASK_3D_HEIGHT` (10 px) above the floor.
+- **Team name slabs** extrude `TEAM_3D_HEIGHT` (20 px) above the floor, but **only over the team name column** — not over the day grid.
+- **Task name slabs** extrude `TASK_3D_HEIGHT` (10 px) above the floor, but **only over the task name column** — not over the day grid.
+- The day grid area is always flat (no height extrusion).
 - Slabs are rendered in the camera layer (same level as milestone pedestals).
 - Top face uses the team color (semi-transparent). Side walls use a darker shade.
 

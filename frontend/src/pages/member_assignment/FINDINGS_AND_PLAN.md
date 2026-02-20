@@ -110,7 +110,7 @@ The 3D scene's `onMouseMove` / `onClick` handlers need to:
 
 ### Team/Task height (experimental visual feature)
 - `useFloor3D` computes world-space bounding boxes for each team row and task row.
-- `Assignment_Second.jsx` now renders **team slabs** (TEAM_3D_HEIGHT = 20 px) and **task slabs** (TASK_3D_HEIGHT = 10 px) as 3D boxes rising from the floor.
+- `Assignment_Second.jsx` now renders **team name slabs** (TEAM_3D_HEIGHT = 20 px, covering only the team name column) and **task name slabs** (TASK_3D_HEIGHT = 10 px, covering only the task name column) as 3D boxes rising from the floor. The day grid area remains flat.
 - Each slab has a semi-transparent top face (in team color) and front/back side walls.
 - These are display-only for now — no click events attached.
 

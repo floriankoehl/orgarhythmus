@@ -923,12 +923,11 @@ export default function AssignmentSecond() {
               const team = teamSlab.team;
               const teamColor = team?.color || '#94a3b8';
               const slabH = TEAM_3D_HEIGHT;
-              // World-space dimensions of this team's header zone
-              // worldX = team row direction, worldZ = board width direction
+              // Use the team name column Z extent only — not the full board width
               const slabXLen = Math.abs(teamSlab.worldXEnd - teamSlab.worldXStart);
-              const slabZLen = Math.abs(teamSlab.worldZEnd - teamSlab.worldZStart);
+              const slabZLen = Math.abs(teamSlab.nameWorldZEnd - teamSlab.nameWorldZStart);
               const slabXCenter = (teamSlab.worldXStart + teamSlab.worldXEnd) / 2;
-              const slabZCenter = (teamSlab.worldZStart + teamSlab.worldZEnd) / 2;
+              const slabZCenter = (teamSlab.nameWorldZStart + teamSlab.nameWorldZEnd) / 2;
 
               if (slabXLen < 1 || slabZLen < 1) return null;
 
@@ -987,10 +986,11 @@ export default function AssignmentSecond() {
                 const team = teamSlab.team;
                 const teamColor = team?.color || '#94a3b8';
                 const slabH = TASK_3D_HEIGHT;
+                // Use the task name column Z extent only — not the full board width
                 const slabXLen = Math.abs(taskSlab.worldXEnd - taskSlab.worldXStart);
-                const slabZLen = Math.abs(taskSlab.worldZEnd - taskSlab.worldZStart);
+                const slabZLen = Math.abs(taskSlab.nameWorldZEnd - taskSlab.nameWorldZStart);
                 const slabXCenter = (taskSlab.worldXStart + taskSlab.worldXEnd) / 2;
-                const slabZCenter = (taskSlab.worldZStart + taskSlab.worldZEnd) / 2;
+                const slabZCenter = (taskSlab.nameWorldZStart + taskSlab.nameWorldZEnd) / 2;
 
                 if (slabXLen < 1 || slabZLen < 1) return null;
 

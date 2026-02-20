@@ -159,17 +159,19 @@ worldZ = boardWidth/2 - (pixelX + pixelW/2 + boardOffsetX)
 ### Team slabs
 Each visible, non-hidden team row has a `teamSlab`:
 ```
-worldXStart, worldXEnd   ← board vertical extent → world X
-worldZStart, worldZEnd   ← full board horizontal extent → world Z
-height: TEAM_3D_HEIGHT   ← visual extrusion above floor
+worldXStart, worldXEnd       ← board vertical extent → world X
+worldZStart, worldZEnd       ← full board horizontal extent → world Z (for hit-testing)
+nameWorldZStart, nameWorldZEnd ← team name column extent only → world Z (for slab rendering)
+height: TEAM_3D_HEIGHT       ← visual extrusion above floor (name column only)
 ```
 
 ### Task slabs
 Each visible task row (within its team) has a `taskSlab`:
 ```
-worldXStart, worldXEnd   ← task's vertical extent within its team → world X
-worldZStart, worldZEnd   ← full board horizontal extent → world Z
-height: TASK_3D_HEIGHT   ← visual extrusion above floor
+worldXStart, worldXEnd       ← task's vertical extent within its team → world X
+worldZStart, worldZEnd       ← full board horizontal extent → world Z (for hit-testing)
+nameWorldZStart, nameWorldZEnd ← task name column extent only → world Z (for slab rendering)
+height: TASK_3D_HEIGHT       ← visual extrusion above floor (name column only)
 ```
 
 ### Hit-testing
@@ -181,15 +183,15 @@ height: TASK_3D_HEIGHT   ← visual extrusion above floor
 
 ## Team / Task Height in 3D
 
-| Constant        | Value | Meaning                                              |
-|-----------------|-------|------------------------------------------------------|
-| `TEAM_3D_HEIGHT` | 20 px | Extrusion height of team header slab above floor     |
-| `TASK_3D_HEIGHT` | 10 px | Extrusion height of task row slab above floor        |
+| Constant        | Value | Meaning                                                       |
+|-----------------|-------|---------------------------------------------------------------|
+| `TEAM_3D_HEIGHT` | 20 px | Extrusion height of team **name** slab above floor           |
+| `TASK_3D_HEIGHT` | 10 px | Extrusion height of task **name** slab above floor           |
 
-- Team slabs are rendered in the camera layer (same level as milestone pedestals).
-- Each slab has a top face (team color, semi-transparent) and front/back/side walls (darker).
-- Task slabs are rendered similarly but with smaller height and lighter opacity.
-- Slabs are positioned using world-space coordinates from `useFloor3D`.
+- **Team name slabs** extrude 20px above the floor, but **only over the team name column** (board X: 0 → TEAMWIDTH). The day grid area is flat.
+- **Task name slabs** extrude 10px above the floor, but **only over the task name column** (board X: TEAMWIDTH → TEAMWIDTH+TASKWIDTH). The day grid area is flat.
+- Each slab has a top face (team color, semi-transparent) and front/back side walls (darker).
+- `nameWorldZStart`/`nameWorldZEnd` on each slab contains the column-specific Z extent used for rendering. `worldZStart`/`worldZEnd` covers the full board width and is kept for future hit-testing.
 
 ---
 

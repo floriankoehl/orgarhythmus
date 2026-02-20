@@ -245,10 +245,18 @@ export function computeFloorEntityBounds({
 }) {
   const totalBoardWidth = TEAMWIDTH + TASKWIDTH + (days || 0) * DAYWIDTH;
 
-  // World Z extent of the full board width
+  // World Z extent of the full board width (used for hit-testing)
   const { worldZ: worldZLeft } = boardPixelToWorld(totalBoardWidth, 0, boardDims);
   const { worldZ: worldZRight } = boardPixelToWorld(0, 0, boardDims);
   // Note: worldZ is inverted relative to board X, so left board edge has lower worldZ
+
+  // World Z extents for each name column only (used for visual slab rendering)
+  // Team name column:  board X 0 → TEAMWIDTH
+  const { worldZ: teamColZRight } = boardPixelToWorld(0, 0, boardDims);
+  const { worldZ: teamColZLeft }  = boardPixelToWorld(TEAMWIDTH, 0, boardDims);
+  // Task name column:  board X TEAMWIDTH → TEAMWIDTH + TASKWIDTH
+  const { worldZ: taskColZRight } = boardPixelToWorld(TEAMWIDTH, 0, boardDims);
+  const { worldZ: taskColZLeft }  = boardPixelToWorld(TEAMWIDTH + TASKWIDTH, 0, boardDims);
 
   const teamSlabs = [];
   let yOffset = effectiveHeaderH;
@@ -303,6 +311,9 @@ export function computeFloorEntityBounds({
           worldXEnd: txEnd,
           worldZStart: worldZLeft,
           worldZEnd: worldZRight,
+          // Z extent covering only the task name column (for slab rendering)
+          nameWorldZStart: taskColZLeft,
+          nameWorldZEnd: taskColZRight,
           boardYStart: taskBoardYStart,
           boardYEnd: taskBoardYEnd,
         });
@@ -316,6 +327,9 @@ export function computeFloorEntityBounds({
       worldXEnd,
       worldZStart: worldZLeft,
       worldZEnd: worldZRight,
+      // Z extent covering only the team name column (for slab rendering)
+      nameWorldZStart: teamColZLeft,
+      nameWorldZEnd: teamColZRight,
       boardYStart: teamBoardYStart,
       boardYEnd: teamBoardYEnd,
       tasks: taskSlabs,
