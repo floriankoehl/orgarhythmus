@@ -6,7 +6,7 @@
 // milestones — all using the same layout constants. Buttons and
 // interactions are NOT wired up; this is a display-only surface.
 //
-import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   fetch_project_details,
@@ -16,6 +16,8 @@ import {
   get_project_days,
   get_all_phases,
 } from '../../api/dependencies_api.js';
+import { useViewManagement } from '../dependency/useViewManagement.js';
+import { getDefaultViewState } from '../dependency/viewDefaults.js';
 import {
   DEFAULT_TASKHEIGHT_NORMAL,
   DEFAULT_TASKHEIGHT_SMALL,
@@ -37,6 +39,7 @@ import {
   getTaskYOffset as getTaskYOffsetBase,
   isTaskVisible,
   getRawTeamHeight,
+  isTeamVisibleBase,
   computeMilestonePixelPositions,
 } from '../dependency/layoutMath.js';
 
@@ -104,37 +107,40 @@ function buildDayLabels(numDays, startDate, projectDays) {
 // These thin wrappers delegate to the shared layoutMath functions so that
 // all position logic lives in one canonical module.
 
-/** Get task height from display settings (uses layout defaults) */
-function getTaskHeight(taskId, taskDisplaySettings) {
-  return getTaskHeightBase(taskId, taskDisplaySettings, DEFAULT_TASKHEIGHT_SMALL, DEFAULT_TASKHEIGHT_NORMAL);
+/** Get task height from display settings (accepts custom heights) */
+function getTaskHeight(taskId, taskDisplaySettings, thSmall = DEFAULT_TASKHEIGHT_SMALL, thNormal = DEFAULT_TASKHEIGHT_NORMAL) {
+  return getTaskHeightBase(taskId, taskDisplaySettings, thSmall, thNormal);
 }
 
-/** Get Y offset for a task within its team (uses layout defaults) */
-function getTaskYOffset(taskId, team, taskDisplaySettings) {
+/** Get Y offset for a task within its team (accepts custom heights) */
+function getTaskYOffset(taskId, team, taskDisplaySettings, thSmall = DEFAULT_TASKHEIGHT_SMALL, thNormal = DEFAULT_TASKHEIGHT_NORMAL) {
   return getTaskYOffsetBase(
     taskId,
     team,
     isTaskVisible,
-    (id, ds) => getTaskHeightBase(id, ds, DEFAULT_TASKHEIGHT_SMALL, DEFAULT_TASKHEIGHT_NORMAL),
+    (id, ds) => getTaskHeightBase(id, ds, thSmall, thNormal),
     taskDisplaySettings,
   );
 }
 
-/** Get team row height including optional phase row (uses layout defaults) */
-function getTeamRowHeight(team, taskDisplaySettings, teamPhaseRowH = 0) {
-  if (!team) return TEAM_COLLAPSED_HEIGHT;
-  const rawH = getRawTeamHeight(team, taskDisplaySettings, DEFAULT_TASKHEIGHT_SMALL, DEFAULT_TASKHEIGHT_NORMAL);
-  return Math.max(rawH, TEAM_COLLAPSED_HEIGHT) + teamPhaseRowH;
+/** Get team row height including optional phase row (accepts custom heights + collapse) */
+function getTeamRowHeight(team, taskDisplaySettings, phaseRowH = 0, isCollapsed = false, thSmall = DEFAULT_TASKHEIGHT_SMALL, thNormal = DEFAULT_TASKHEIGHT_NORMAL) {
+  if (isCollapsed || !team) return TEAM_COLLAPSED_HEIGHT;
+  const rawH = getRawTeamHeight(team, taskDisplaySettings, thSmall, thNormal);
+  return Math.max(rawH, TEAM_COLLAPSED_HEIGHT) + phaseRowH;
 }
 
-/** Calculate total content height */
-function calcContentHeight(teamOrder, teams, taskDisplaySettings, effectiveHeaderH, teamPhasesMap) {
+/** Calculate total content height (respects team visibility + collapse) */
+function calcContentHeight(teamOrder, teams, taskDisplaySettings, effectiveHeaderH, teamPhasesMap, teamDisplaySettings = {}, thSmall = DEFAULT_TASKHEIGHT_SMALL, thNormal = DEFAULT_TASKHEIGHT_NORMAL) {
   let h = effectiveHeaderH;
   for (const tid of teamOrder) {
+    // Skip hidden teams
+    if (teamDisplaySettings[tid]?.hidden) continue;
     h += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
     h += TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
     const phaseH = (teamPhasesMap[tid] && teamPhasesMap[tid].length > 0) ? TEAM_PHASE_ROW_HEIGHT : 0;
-    h += getTeamRowHeight(teams[tid], taskDisplaySettings, phaseH);
+    const isCollapsed = teamDisplaySettings[tid]?.collapsed;
+    h += getTeamRowHeight(teams[tid], taskDisplaySettings, phaseH, isCollapsed, thSmall, thNormal);
   }
   // Final drop indicator area
   h += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
@@ -160,12 +166,19 @@ export default function AssignmentSecond() {
   const [milestones, setMilestones] = useState({});
   const [phases, setPhases] = useState([]);
   const [taskDisplaySettings, setTaskDisplaySettings] = useState({});
+  const [teamDisplaySettings, setTeamDisplaySettings] = useState({});
   const [loading, setLoading] = useState(true);
 
-  // ── Layout constants (using defaults for now) ──────────────────
-  const TEAMWIDTH = DEFAULT_TEAMWIDTH;
-  const TASKWIDTH = DEFAULT_TASKWIDTH;
-  const DAYWIDTH = DEFAULT_DAYWIDTH;
+  // ── Layout constants (view-driven, fall back to defaults) ──────
+  const [customDayWidth, setCustomDayWidth] = useState(DEFAULT_DAYWIDTH);
+  const [customTaskHeightNormal, setCustomTaskHeightNormal] = useState(DEFAULT_TASKHEIGHT_NORMAL);
+  const [customTaskHeightSmall, setCustomTaskHeightSmall] = useState(DEFAULT_TASKHEIGHT_SMALL);
+  const [customTeamColumnWidth, setCustomTeamColumnWidth] = useState(DEFAULT_TEAMWIDTH);
+  const [customTaskColumnWidth, setCustomTaskColumnWidth] = useState(DEFAULT_TASKWIDTH);
+
+  const TEAMWIDTH = customTeamColumnWidth;
+  const TASKWIDTH = customTaskColumnWidth;
+  const DAYWIDTH = customDayWidth;
 
   // ── Fetch data ─────────────────────────────────────────────────
   useEffect(() => {
@@ -243,6 +256,66 @@ export default function AssignmentSecond() {
     })();
   }, [projectId]);
 
+  // ── View management ────────────────────────────────────────────
+  // applyViewState: receives a saved view blob and sets all layout-relevant state
+  const applyViewState = useCallback((state) => {
+    if (!state) return;
+    const defaults = getDefaultViewState();
+
+    // Task display settings — merge with current tasks (new tasks default to visible/normal)
+    const savedTask = state.taskDisplaySettings || {};
+    setTaskDisplaySettings((prev) => {
+      const merged = {};
+      for (const id of Object.keys(prev)) {
+        merged[id] = savedTask[id] || { size: 'normal', hidden: false };
+      }
+      // Also include any IDs in saved state that might not be in prev yet
+      for (const id of Object.keys(savedTask)) {
+        if (!merged[id]) merged[id] = savedTask[id];
+      }
+      return merged;
+    });
+
+    // Team display settings
+    setTeamDisplaySettings(state.teamDisplaySettings || {});
+
+    // Dimension settings
+    setCustomDayWidth(state.customDayWidth ?? defaults.customDayWidth);
+    setCustomTaskHeightNormal(state.customTaskHeightNormal ?? defaults.customTaskHeightNormal);
+    setCustomTaskHeightSmall(state.customTaskHeightSmall ?? defaults.customTaskHeightSmall);
+    setCustomTeamColumnWidth(state.teamColumnWidth ?? defaults.teamColumnWidth);
+    setCustomTaskColumnWidth(state.taskColumnWidth ?? defaults.taskColumnWidth);
+  }, []);
+
+  // collectViewState: snapshots the current layout state into a view blob
+  const collectViewState = useCallback(() => {
+    return {
+      taskDisplaySettings,
+      teamDisplaySettings,
+      customDayWidth,
+      customTaskHeightNormal,
+      customTaskHeightSmall,
+      teamColumnWidth: TEAMWIDTH,
+      taskColumnWidth: TASKWIDTH,
+    };
+  }, [taskDisplaySettings, teamDisplaySettings, customDayWidth, customTaskHeightNormal, customTaskHeightSmall, TEAMWIDTH, TASKWIDTH]);
+
+  // Wire the view management hook
+  const {
+    savedViews,
+    activeViewId,
+    activeViewName,
+    viewTransition,
+    viewFlashName,
+    handleLoadView,
+    handleNextView,
+    handlePrevView,
+    handleSaveView,
+    handleCreateView,
+    handleDeleteView,
+    handleSetDefaultView,
+  } = useViewManagement({ projectId, collectViewState, applyViewState });
+
   // ── Derived layout values ──────────────────────────────────────
   const dayLabels = useMemo(() => {
     if (!days || !projectStartDate) return [];
@@ -271,8 +344,8 @@ export default function AssignmentSecond() {
 
   const contentHeight = useMemo(() => {
     if (!days) return 400;
-    return calcContentHeight(teamOrder, teams, taskDisplaySettings, effectiveHeaderH, teamPhasesMap);
-  }, [teamOrder, teams, taskDisplaySettings, effectiveHeaderH, teamPhasesMap, days]);
+    return calcContentHeight(teamOrder, teams, taskDisplaySettings, effectiveHeaderH, teamPhasesMap, teamDisplaySettings, customTaskHeightSmall, customTaskHeightNormal);
+  }, [teamOrder, teams, taskDisplaySettings, effectiveHeaderH, teamPhasesMap, days, teamDisplaySettings, customTaskHeightSmall, customTaskHeightNormal]);
 
   // Board width now matches the full chart (no overflow scroll)
   const boardW = totalWidth + 48;  // content + left/right padding (24+24)
@@ -346,7 +419,7 @@ export default function AssignmentSecond() {
         offsetY: top,
       });
     }
-  }, [days, teamOrder, teams, taskDisplaySettings, teamPhasesMap]);
+  }, [days, teamOrder, teams, taskDisplaySettings, teamPhasesMap, teamDisplaySettings, TEAMWIDTH, TASKWIDTH, DAYWIDTH, customTaskHeightNormal, customTaskHeightSmall]);
 
   // Floor dimensions — match the board so the floor represents the whole chart.
   // The board transform Ry(90)·Rx(90) maps:  board height → world X,  board width → world Z.
@@ -375,8 +448,11 @@ export default function AssignmentSecond() {
     // Get 2D positions from the canonical layout module
     const positioned = computeMilestonePixelPositions({
       teamOrder, teams, milestones, taskDisplaySettings,
+      teamDisplaySettings,
       teamPhasesMap, effectiveHeaderH,
       TEAMWIDTH, TASKWIDTH, DAYWIDTH,
+      TASKHEIGHT_SMALL: customTaskHeightSmall,
+      TASKHEIGHT_NORMAL: customTaskHeightNormal,
     });
     // Apply coordinate transformation: 2D content-space → 3D world-space
     // The double scaleY(-1) (scroll container + inner container) with the
@@ -387,7 +463,7 @@ export default function AssignmentSecond() {
       worldX: (m.y + m.h / 2 + oY + SCROLL_Y_PAD) - H / 2,
       worldZ: W / 2 - (m.x + m.w / 2 + oX),
     }));
-  }, [days, teamOrder, teams, milestones, taskDisplaySettings, teamPhasesMap, effectiveHeaderH, boardDims, TEAMWIDTH, TASKWIDTH, DAYWIDTH]);
+  }, [days, teamOrder, teams, milestones, taskDisplaySettings, teamDisplaySettings, teamPhasesMap, effectiveHeaderH, boardDims, TEAMWIDTH, TASKWIDTH, DAYWIDTH, customTaskHeightSmall, customTaskHeightNormal]);
 
   /** Find closest milestone within SNAP_RADIUS */
   const findNearestMilestone = (x, z) => {
@@ -867,7 +943,17 @@ export default function AssignmentSecond() {
                 }}
               >
                 {/* ── Toolbar placeholder ──────────────────────────── */}
-                <ToolbarPlaceholder />
+                <ToolbarPlaceholder
+                  savedViews={savedViews}
+                  activeViewId={activeViewId}
+                  activeViewName={activeViewName}
+                  handleLoadView={handleLoadView}
+                  handleNextView={handleNextView}
+                  handlePrevView={handlePrevView}
+                  handleSaveView={handleSaveView}
+                  handleCreateView={handleCreateView}
+                  viewFlashName={viewFlashName}
+                />
               </div>
 
           {/* ── Canvas ─────────────────────────────────────────── */}
@@ -1001,13 +1087,16 @@ export default function AssignmentSecond() {
           {teamOrder.map((teamId) => {
             const team = teams[teamId];
             if (!team) return null;
+            // Skip hidden teams
+            if (teamDisplaySettings[teamId]?.hidden) return null;
+            const isCollapsed = teamDisplaySettings[teamId]?.collapsed;
             const teamColor = team.color || '#94a3b8';
             const isVirtual = team._virtual;
-            const visibleTasks_ = getVisibleTasks(team, taskDisplaySettings);
+            const visibleTasks_ = isCollapsed ? [] : getVisibleTasks(team, taskDisplaySettings);
             const teamPhases = teamPhasesMap[teamId] || [];
-            const hasTeamPhases = teamPhases.length > 0;
+            const hasTeamPhases = !isCollapsed && teamPhases.length > 0;
             const phaseRowH = hasTeamPhases ? TEAM_PHASE_ROW_HEIGHT : 0;
-            const teamRowH = getTeamRowHeight(team, taskDisplaySettings, phaseRowH);
+            const teamRowH = getTeamRowHeight(team, taskDisplaySettings, phaseRowH, isCollapsed, customTaskHeightSmall, customTaskHeightNormal);
 
             return (
               <div key={teamId}>
@@ -1102,9 +1191,9 @@ export default function AssignmentSecond() {
                         } : {}),
                       }}
                     >
-                      {/* Expand/collapse triangle (non-functional) */}
+                      {/* Expand/collapse triangle (reflects view state) */}
                       <div className="flex items-center justify-center" style={{ width: '18px', height: '18px', flexShrink: 0 }}>
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill={teamColor} style={{ transform: 'rotate(90deg)', transition: 'transform 0.15s' }}>
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill={teamColor} style={{ transform: isCollapsed ? 'rotate(0deg)' : 'rotate(90deg)', transition: 'transform 0.15s' }}>
                           <path d="M8 5v14l11-7z" />
                         </svg>
                       </div>
@@ -1124,7 +1213,7 @@ export default function AssignmentSecond() {
                       {visibleTasks_.map((taskId, idx) => {
                         const task = tasks[taskId];
                         if (!task) return null;
-                        const th = getTaskHeight(taskId, taskDisplaySettings);
+                        const th = getTaskHeight(taskId, taskDisplaySettings, customTaskHeightSmall, customTaskHeightNormal);
                         return (
                           <div
                             key={taskId}
@@ -1175,6 +1264,9 @@ export default function AssignmentSecond() {
                     phases={phases}
                     teamColor={teamColor}
                     totalDaysWidth={totalDaysWidth}
+                    thSmall={customTaskHeightSmall}
+                    thNormal={customTaskHeightNormal}
+                    isCollapsed={isCollapsed}
                   />
                 </div>
               </div>
@@ -1190,11 +1282,14 @@ export default function AssignmentSecond() {
             teams={teams}
             milestones={milestones}
             taskDisplaySettings={taskDisplaySettings}
+            teamDisplaySettings={teamDisplaySettings}
             teamPhasesMap={teamPhasesMap}
             effectiveHeaderH={effectiveHeaderH}
             TEAMWIDTH={TEAMWIDTH}
             TASKWIDTH={TASKWIDTH}
             DAYWIDTH={DAYWIDTH}
+            TASKHEIGHT_SMALL={customTaskHeightSmall}
+            TASKHEIGHT_NORMAL={customTaskHeightNormal}
           />
         </div>{/* inner container */}
       </div>{/* scroll container */}
@@ -1489,6 +1584,199 @@ export default function AssignmentSecond() {
           </div>
         ))}
       </div>
+
+      {/* ── Views panel (top-left) ── */}
+      <ViewsPanel
+        savedViews={savedViews}
+        activeViewId={activeViewId}
+        activeViewName={activeViewName}
+        handleLoadView={handleLoadView}
+        handleNextView={handleNextView}
+        handlePrevView={handlePrevView}
+        handleSaveView={handleSaveView}
+        handleCreateView={handleCreateView}
+        handleDeleteView={handleDeleteView}
+        handleSetDefaultView={handleSetDefaultView}
+        viewFlashName={viewFlashName}
+      />
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ViewsPanel — floating view switcher outside the 3D scene
+// ══════════════════════════════════════════════════════════════════
+
+function ViewsPanel({
+  savedViews, activeViewId, activeViewName,
+  handleLoadView, handleNextView, handlePrevView,
+  handleSaveView, handleCreateView, handleDeleteView, handleSetDefaultView,
+  viewFlashName,
+}) {
+  const [newViewName, setNewViewName] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+
+  const panelStyle = {
+    position: 'absolute', top: '12px', left: '12px', zIndex: 999,
+    background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)',
+    padding: '10px 14px', borderRadius: '10px',
+    fontFamily: 'monospace', fontSize: '12px',
+    color: '#fff', minWidth: '200px', maxWidth: '260px',
+  };
+
+  const btnBase = {
+    border: 'none', cursor: 'pointer', borderRadius: '4px',
+    fontSize: '11px', padding: '4px 8px', transition: 'background 0.15s',
+  };
+
+  return (
+    <div style={panelStyle}>
+      <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span>Views</span>
+        {/* Flash indicator */}
+        {viewFlashName && (
+          <span style={{
+            fontSize: '9px', background: '#14b8a6', color: '#fff',
+            padding: '2px 6px', borderRadius: '4px', fontWeight: 600,
+          }}>
+            {viewFlashName.name}
+          </span>
+        )}
+      </div>
+
+      {/* Active view + nav arrows */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
+        <button
+          onClick={handlePrevView}
+          style={{ ...btnBase, background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '4px 6px' }}
+          title="Previous view"
+        >
+          ◀
+        </button>
+        <div style={{
+          flex: 1, textAlign: 'center', fontSize: '12px', fontWeight: 600,
+          color: '#5eead4', padding: '4px 0', whiteSpace: 'nowrap',
+          overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {activeViewName || 'Default'}
+        </div>
+        <button
+          onClick={handleNextView}
+          style={{ ...btnBase, background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '4px 6px' }}
+          title="Next view"
+        >
+          ▶
+        </button>
+        {/* Save */}
+        {activeViewId && (
+          <button
+            onClick={handleSaveView}
+            style={{ ...btnBase, background: 'rgba(20,184,166,0.3)', color: '#5eead4', padding: '4px 6px' }}
+            title="Save current state to this view"
+          >
+            💾
+          </button>
+        )}
+      </div>
+
+      {/* View list */}
+      <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '8px' }}>
+        {/* Default view */}
+        <button
+          onClick={() => handleLoadView(null)}
+          style={{
+            ...btnBase, width: '100%', textAlign: 'left',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: !activeViewId ? 'rgba(20,184,166,0.25)' : 'rgba(255,255,255,0.05)',
+            color: !activeViewId ? '#5eead4' : '#cbd5e1',
+            marginBottom: '2px', padding: '5px 8px',
+          }}
+        >
+          <span>Default</span>
+        </button>
+
+        {/* Saved views */}
+        {savedViews.map((v) => (
+          <div
+            key={v.id}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '2px',
+            }}
+          >
+            <button
+              onClick={() => handleLoadView(v)}
+              style={{
+                ...btnBase, flex: 1, textAlign: 'left',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                background: v.id === activeViewId ? 'rgba(20,184,166,0.25)' : 'rgba(255,255,255,0.05)',
+                color: v.id === activeViewId ? '#5eead4' : '#cbd5e1',
+                padding: '5px 8px',
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.name}</span>
+              {v.is_default && <span style={{ fontSize: '9px', color: '#facc15', marginLeft: '4px' }}>★</span>}
+            </button>
+            {/* Delete button */}
+            {confirmDeleteId === v.id ? (
+              <button
+                onClick={() => { handleDeleteView(v.id); setConfirmDeleteId(null); }}
+                style={{ ...btnBase, background: '#ef4444', color: '#fff', fontSize: '9px', padding: '3px 5px' }}
+              >
+                Yes
+              </button>
+            ) : (
+              <button
+                onClick={() => setConfirmDeleteId(v.id)}
+                style={{ ...btnBase, background: 'none', color: '#64748b', fontSize: '11px', padding: '2px 4px' }}
+                title="Delete view"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Create new view */}
+      <div style={{ display: 'flex', gap: '4px' }}>
+        <input
+          type="text"
+          value={newViewName}
+          onChange={(e) => setNewViewName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && newViewName.trim()) {
+              handleCreateView(newViewName.trim());
+              setNewViewName('');
+            }
+          }}
+          placeholder="New view name…"
+          style={{
+            flex: 1, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: '4px', padding: '4px 8px', color: '#fff', fontSize: '11px',
+            outline: 'none', fontFamily: 'monospace',
+          }}
+        />
+        <button
+          onClick={() => {
+            if (newViewName.trim()) {
+              handleCreateView(newViewName.trim());
+              setNewViewName('');
+            }
+          }}
+          style={{
+            ...btnBase, background: '#14b8a6', color: '#fff', fontWeight: 'bold',
+            padding: '4px 10px',
+          }}
+        >
+          +
+        </button>
+      </div>
+
+      {savedViews.length === 0 && (
+        <div style={{ color: '#64748b', fontSize: '10px', textAlign: 'center', marginTop: '6px' }}>
+          No saved views yet — create one from the 2D Dependencies page
+        </div>
+      )}
     </div>
   );
 }
@@ -1497,7 +1785,10 @@ export default function AssignmentSecond() {
 // ToolbarPlaceholder — visual replica of toolbar chrome (no logic)
 // ══════════════════════════════════════════════════════════════════
 
-function ToolbarPlaceholder() {
+function ToolbarPlaceholder({ savedViews, activeViewId, activeViewName, handleLoadView, handleNextView, handlePrevView, handleSaveView, handleCreateView, viewFlashName }) {
+  const [showViewMenu, setShowViewMenu] = useState(false);
+  const [newViewName, setNewViewName] = useState('');
+
   return (
     <div className="mb-4">
       {/* Toggle tabs */}
@@ -1575,11 +1866,110 @@ function ToolbarPlaceholder() {
             </div>
           </div>
           {/* Views section */}
-          <div className="pl-3">
+          <div className="pl-3 relative">
             <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Views</div>
-            <button className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-teal-400 bg-teal-50 text-teal-700" style={{ width: '175px' }}>
-              Default
-            </button>
+            <div className="flex items-center gap-1">
+              {/* Prev view */}
+              <button
+                onClick={handlePrevView}
+                className="px-1.5 py-1.5 text-xs rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50"
+                title="Previous view"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+              </button>
+              {/* Active view button */}
+              <button
+                onClick={() => setShowViewMenu((v) => !v)}
+                className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md border border-teal-400 bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors"
+                style={{ minWidth: '120px' }}
+              >
+                <span className="truncate">{activeViewName || 'Default'}</span>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}><path d="M7 10l5 5 5-5z"/></svg>
+              </button>
+              {/* Next view */}
+              <button
+                onClick={handleNextView}
+                className="px-1.5 py-1.5 text-xs rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50"
+                title="Next view"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+              </button>
+              {/* Save view */}
+              {activeViewId && (
+                <button
+                  onClick={handleSaveView}
+                  className="px-1.5 py-1.5 text-xs rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50"
+                  title="Save current view"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
+                </button>
+              )}
+            </div>
+            {/* View dropdown menu */}
+            {showViewMenu && (
+              <div
+                className="absolute top-full right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-50"
+                style={{ minWidth: '200px' }}
+              >
+                <div className="py-1">
+                  {/* Default view */}
+                  <button
+                    onClick={() => { handleLoadView(null); setShowViewMenu(false); }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 ${!activeViewId ? 'bg-teal-50 text-teal-700 font-medium' : 'text-slate-600'}`}
+                  >
+                    Default
+                  </button>
+                  {/* Saved views */}
+                  {savedViews.map((v) => (
+                    <button
+                      key={v.id}
+                      onClick={() => { handleLoadView(v); setShowViewMenu(false); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between ${v.id === activeViewId ? 'bg-teal-50 text-teal-700 font-medium' : 'text-slate-600'}`}
+                    >
+                      <span className="truncate">{v.name}</span>
+                      {v.is_default && <span className="text-[9px] text-teal-500 ml-2">★</span>}
+                    </button>
+                  ))}
+                </div>
+                {/* Create new view */}
+                <div className="border-t border-slate-100 p-2">
+                  <div className="flex gap-1">
+                    <input
+                      type="text"
+                      value={newViewName}
+                      onChange={(e) => setNewViewName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && newViewName.trim()) {
+                          handleCreateView(newViewName.trim());
+                          setNewViewName('');
+                          setShowViewMenu(false);
+                        }
+                      }}
+                      placeholder="New view name..."
+                      className="flex-1 px-2 py-1 text-xs border border-slate-200 rounded"
+                    />
+                    <button
+                      onClick={() => {
+                        if (newViewName.trim()) {
+                          handleCreateView(newViewName.trim());
+                          setNewViewName('');
+                          setShowViewMenu(false);
+                        }
+                      }}
+                      className="px-2 py-1 text-xs rounded bg-teal-500 text-white hover:bg-teal-600"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* View flash name (shown when switching views) */}
+            {viewFlashName && (
+              <div className="absolute -top-8 left-1/2 -translate-x-1/2 px-3 py-1 rounded-md bg-teal-500 text-white text-xs font-medium whitespace-nowrap shadow-lg animate-pulse">
+                {viewFlashName.name}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1591,11 +1981,11 @@ function ToolbarPlaceholder() {
 // DayGrid — per-team day cell grid (display only)
 // ══════════════════════════════════════════════════════════════════
 
-function DayGrid({ team, tasks, days, DAYWIDTH, taskDisplaySettings, teamPhasesMap, phases, teamColor, totalDaysWidth }) {
-  const visibleTasks_ = getVisibleTasks(team, taskDisplaySettings);
+function DayGrid({ team, tasks, days, DAYWIDTH, taskDisplaySettings, teamPhasesMap, phases, teamColor, totalDaysWidth, thSmall, thNormal, isCollapsed }) {
+  const visibleTasks_ = isCollapsed ? [] : getVisibleTasks(team, taskDisplaySettings);
   const teamPhases = teamPhasesMap[team.id] || [];
-  const phaseRowH = teamPhases.length > 0 ? TEAM_PHASE_ROW_HEIGHT : 0;
-  const teamRowH = getTeamRowHeight(team, taskDisplaySettings, phaseRowH) - phaseRowH;
+  const phaseRowH = !isCollapsed && teamPhases.length > 0 ? TEAM_PHASE_ROW_HEIGHT : 0;
+  const teamRowH = getTeamRowHeight(team, taskDisplaySettings, phaseRowH, isCollapsed, thSmall, thNormal) - phaseRowH;
 
   // Build a day→phase color map from all phases that apply to this team
   const phaseColorMap = useMemo(() => {
@@ -1616,8 +2006,8 @@ function DayGrid({ team, tasks, days, DAYWIDTH, taskDisplaySettings, teamPhasesM
       style={{ width: `${totalDaysWidth}px`, height: `${teamRowH}px`, position: 'relative', backgroundColor: '#fafbfc' }}
     >
       {visibleTasks_.map((taskId, tIdx) => {
-        const th = getTaskHeight(taskId, taskDisplaySettings);
-        const yOff = getTaskYOffset(taskId, team, taskDisplaySettings);
+        const th = getTaskHeight(taskId, taskDisplaySettings, thSmall, thNormal);
+        const yOff = getTaskYOffset(taskId, team, taskDisplaySettings, thSmall, thNormal);
         return (
           <div
             key={taskId}
@@ -1671,16 +2061,18 @@ function DayGrid({ team, tasks, days, DAYWIDTH, taskDisplaySettings, teamPhasesM
 // MilestoneLayer — positioned absolute overlay for milestones
 // ══════════════════════════════════════════════════════════════════
 
-function MilestoneLayer({ teamOrder, teams, milestones, taskDisplaySettings, teamPhasesMap, effectiveHeaderH, TEAMWIDTH, TASKWIDTH, DAYWIDTH }) {
+function MilestoneLayer({ teamOrder, teams, milestones, taskDisplaySettings, teamDisplaySettings, teamPhasesMap, effectiveHeaderH, TEAMWIDTH, TASKWIDTH, DAYWIDTH, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL }) {
   // Use the canonical layout module to compute 2D milestone positions.
   // The result is mapped to the standard milestone box format (y+2, h-4).
   const positioned = useMemo(() => {
     return computeMilestonePixelPositions({
       teamOrder, teams, milestones, taskDisplaySettings,
+      teamDisplaySettings,
       teamPhasesMap, effectiveHeaderH,
       TEAMWIDTH, TASKWIDTH, DAYWIDTH,
+      TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL,
     }).map((m) => ({ ...m, y: m.y + 2, h: m.h - 4 }));
-  }, [teamOrder, teams, taskDisplaySettings, milestones, effectiveHeaderH, teamPhasesMap, TEAMWIDTH, TASKWIDTH, DAYWIDTH]);
+  }, [teamOrder, teams, taskDisplaySettings, teamDisplaySettings, milestones, effectiveHeaderH, teamPhasesMap, TEAMWIDTH, TASKWIDTH, DAYWIDTH, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL]);
 
   return (
     <div className="absolute top-0 left-0 w-full h-full" style={{ zIndex: 20, pointerEvents: 'none' }}>

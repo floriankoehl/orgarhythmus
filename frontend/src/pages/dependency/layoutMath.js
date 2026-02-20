@@ -238,6 +238,7 @@ export function computeMilestonePixelPositions({
     teams,
     milestones,
     taskDisplaySettings,
+    teamDisplaySettings = {},
     teamPhasesMap,
     effectiveHeaderH,
     TEAMWIDTH,
@@ -253,11 +254,22 @@ export function computeMilestonePixelPositions({
         const team = teams[teamId];
         if (!team) continue;
 
+        // Skip hidden teams entirely
+        const teamSettings = teamDisplaySettings[teamId];
+        if (teamSettings?.hidden) continue;
+
         yOffset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
         yOffset += TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
 
         const teamPhases = teamPhasesMap ? (teamPhasesMap[teamId] || []) : [];
         const phaseRowH = teamPhases.length > 0 ? TEAM_PHASE_ROW_HEIGHT : 0;
+
+        // Collapsed teams: accumulate collapsed height, skip milestone rendering
+        if (teamSettings?.collapsed) {
+            yOffset += phaseRowH + TEAM_COLLAPSED_HEIGHT;
+            continue;
+        }
+
         const tasksStartY = yOffset + phaseRowH;
 
         const visibleTaskIds = getVisibleTasks(team, taskDisplaySettings);
