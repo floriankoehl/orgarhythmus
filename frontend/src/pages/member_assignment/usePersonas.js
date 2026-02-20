@@ -144,13 +144,29 @@ export function usePersonas({
     return best;
   };
 
-  // ── Filter personas by visible milestones (view-aware) ────────
+  // ── Filter personas by visible milestones AND re-snap positions ─
   useEffect(() => {
     if (!allPersonas.length) { setPersonas([]); return; }
-    const visibleMsIds = new Set(milestone3D.map((m) => m.id));
-    setPersonas(
-      allPersonas.filter((p) => p.milestoneId == null || visibleMsIds.has(p.milestoneId))
+    const msMap = new Map(milestone3D.map((m) => [m.id, m]));
+    const visibleMsIds = new Set(msMap.keys());
+
+    // Count how many personas sit on each milestone (for stacking offset)
+    const countOnMs = {};
+    const visible = allPersonas.filter(
+      (p) => p.milestoneId == null || visibleMsIds.has(p.milestoneId)
     );
+
+    // Re-snap every persona that is attached to a milestone
+    const repositioned = visible.map((p) => {
+      if (p.milestoneId == null) return p;
+      const ms = msMap.get(p.milestoneId);
+      if (!ms) return p;
+      const idx = countOnMs[p.milestoneId] || 0;
+      countOnMs[p.milestoneId] = idx + 1;
+      const spacing = PERSONA_SIZE + 4;
+      return { ...p, x: ms.worldX, z: ms.worldZ + idx * spacing };
+    });
+    setPersonas(repositioned);
   }, [milestone3D, allPersonas]);
 
   // ── Drag anchor ────────────────────────────────────────────────
