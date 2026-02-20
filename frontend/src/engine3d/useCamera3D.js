@@ -333,17 +333,14 @@ export function useCamera3D({
 
     const onContextMenu = (e) => e.preventDefault();
 
-    // Scroll wheel = scale zoom (toward cursor), Shift+wheel = navigate along Z-axis
+    // Scroll wheel = scale zoom (toward cursor) — requires Shift key
     const onWheel = (e) => {
       const inside = e.target.closest('[data-board-scroll]');
       if (inside) return;
+      if (!e.shiftKey) return; // plain scroll = no 3D camera action
       e.preventDefault();
-      if (e.shiftKey) {
-        // Shift+wheel → navigate along the world Z-axis
-        panZRef.current = Math.max(-1500, Math.min(1500, panZRef.current + e.deltaY * 0.8));
-        setPanZ(panZRef.current);
-      } else {
-        // Plain wheel → scale zoom anchored at mouse cursor
+      {
+        // Shift+wheel → scale zoom anchored at mouse cursor
         const oldScale = cameraScaleRef.current;
         const factor = Math.exp(-e.deltaY * 0.003);
         const newScale = Math.max(CAMERA_SCALE_MIN, Math.min(CAMERA_SCALE_MAX, oldScale * factor));
