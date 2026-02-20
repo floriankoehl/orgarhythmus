@@ -14,6 +14,7 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import NotificationsPanel from './NotificationsPanel';
 import DemoDateDisplay from './DemoDateDisplay';
 import ModelTrainingIcon from '@mui/icons-material/ModelTraining';
+import ViewInArIcon from '@mui/icons-material/ViewInAr';
 
 export default function ProjectHeader({}) {
   // Controls whether the mobile menu is open or closed
@@ -57,6 +58,12 @@ export default function ProjectHeader({}) {
       to: projectId ? `/projects/${projectId}/dependencies` : '/projects', // fallback
       label: 'dependencies',
       icon: <NumbersIcon fontSize="small" />,
+    },
+    {
+      key: 'assignment',
+      to: projectId ? `/projects/${projectId}/assignment` : '/projects',
+      label: '3D Board',
+      icon: <ViewInArIcon fontSize="small" />,
     },
     {
       key: 'next-steps',
