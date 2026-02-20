@@ -17,6 +17,8 @@ import {
   SNAP_RADIUS,
   SCROLL_Y_PAD,
   PERSONA_COLORS,
+  TEAM_3D_HEIGHT,
+  TASK_3D_HEIGHT,
 } from './constants.js';
 
 /**
@@ -39,6 +41,7 @@ import {
  * @param {React.RefObject} opts.boardRef
  * @param {React.RefObject} opts.containerRef
  * @param {Function}        opts.screenToFloor  — (sx, sy) => { x, z } | null
+ * @param {Object}          [opts.floorLayout]  — entity registry from useFloor3D
  */
 export function usePersonas({
   projectId,
@@ -56,6 +59,7 @@ export function usePersonas({
   boardRef,
   containerRef,
   screenToFloor,
+  floorLayout,
 }) {
   // ── Persona state ──────────────────────────────────────────────
   const [personas, setPersonas] = useState([]);
@@ -135,6 +139,10 @@ export function usePersonas({
   const milestone3DRef = useRef(milestone3D);
   useEffect(() => { milestone3DRef.current = milestone3D; }, [milestone3D]);
 
+  // Keep a ref so snap functions see the latest layout
+  const floorLayoutRef = useRef(floorLayout);
+  useEffect(() => { floorLayoutRef.current = floorLayout; }, [floorLayout]);
+
   /** Find closest milestone within SNAP_RADIUS using rectangular distance */
   const findNearestMilestone = (x, z) => {
     let best = null;
@@ -152,6 +160,36 @@ export function usePersonas({
     return best;
   };
 
+  /**
+   * Find the team or task slab that contains the world point (x, z).
+   * Only checks the name-column Z extents (where the 3D boxes are).
+   * Returns { teamId, taskId } or null.
+   */
+  const findSlabAt = (x, z) => {
+    const layout = floorLayoutRef.current;
+    if (!layout || !layout.teams) return null;
+    for (const teamSlab of layout.teams) {
+      const inX = x >= Math.min(teamSlab.worldXStart, teamSlab.worldXEnd) &&
+                  x <= Math.max(teamSlab.worldXStart, teamSlab.worldXEnd);
+      const inZ = z >= Math.min(teamSlab.nameWorldZStart, teamSlab.nameWorldZEnd) &&
+                  z <= Math.max(teamSlab.nameWorldZStart, teamSlab.nameWorldZEnd);
+      if (!inX || !inZ) continue;
+      // Check task slabs first (more specific)
+      for (const taskSlab of teamSlab.tasks) {
+        const inTX = x >= Math.min(taskSlab.worldXStart, taskSlab.worldXEnd) &&
+                     x <= Math.max(taskSlab.worldXStart, taskSlab.worldXEnd);
+        const inTZ = z >= Math.min(taskSlab.nameWorldZStart, taskSlab.nameWorldZEnd) &&
+                     z <= Math.max(taskSlab.nameWorldZStart, taskSlab.nameWorldZEnd);
+        if (inTX && inTZ) {
+          return { teamId: teamSlab.teamId, taskId: taskSlab.taskId };
+        }
+      }
+      // On team slab but not on a specific task
+      return { teamId: teamSlab.teamId, taskId: null };
+    }
+    return null;
+  };
+
   // ── Filter personas by visible milestones AND re-snap positions ─
   useEffect(() => {
     if (!allPersonas.length) { setPersonas([]); return; }
@@ -165,17 +203,28 @@ export function usePersonas({
     );
 
     // Re-snap every persona that is attached to a milestone
+    // (personas on slabs keep their stored x/z and just propagate teamId/taskId)
     const repositioned = visible.map((p) => {
-      if (p.milestoneId == null) return p;
-      const ms = msMap.get(p.milestoneId);
-      if (!ms) return p;
-      const idx = countOnMs[p.milestoneId] || 0;
-      countOnMs[p.milestoneId] = idx + 1;
-      const spacing = PERSONA_SIZE + 4;
-      return { ...p, x: ms.worldX, z: ms.worldZ + idx * spacing };
+      if (p.milestoneId != null) {
+        const ms = msMap.get(p.milestoneId);
+        if (!ms) return p;
+        const idx = countOnMs[p.milestoneId] || 0;
+        countOnMs[p.milestoneId] = idx + 1;
+        const spacing = PERSONA_SIZE + 4;
+        return { ...p, x: ms.worldX, z: ms.worldZ + idx * spacing, onTeamId: null, onTaskId: null };
+      }
+      // For slab-bound personas, re-check if they're still on a slab
+      if (p.onTeamId || p.onTaskId) {
+        const slab = findSlabAt(p.x, p.z);
+        if (slab) {
+          return { ...p, onTeamId: slab.teamId, onTaskId: slab.taskId };
+        }
+        return { ...p, onTeamId: null, onTaskId: null };
+      }
+      return p;
     });
     setPersonas(repositioned);
-  }, [milestone3D, allPersonas]);
+  }, [milestone3D, allPersonas, floorLayout]);
 
   // ── Drag anchor ────────────────────────────────────────────────
   const dragAnchor = useRef(null);
@@ -224,6 +273,8 @@ export function usePersonas({
       }
       return prev.map((p) => {
         if (p.id !== pid) return p;
+
+        // 1) Try milestone snap first
         const nearest = findNearestMilestone(p.x, p.z);
         if (nearest) {
           const idx = countOnMs[nearest.id] || 0;
@@ -233,13 +284,25 @@ export function usePersonas({
           const newZ = nearest.worldZ + zOffset;
           update_protopersona(projectId, p.id, { x: newX, z: newZ, milestone: nearest.id })
             .catch((err) => console.error('Failed to update persona:', err));
-          const updated = { ...p, x: newX, z: newZ, milestoneId: nearest.id };
+          const updated = { ...p, x: newX, z: newZ, milestoneId: nearest.id, onTeamId: null, onTaskId: null };
           setAllPersonas((all) => all.map((a) => (a.id === pid ? updated : a)));
           return updated;
         }
+
+        // 2) Try team/task slab snap
+        const slab = findSlabAt(p.x, p.z);
+        if (slab) {
+          update_protopersona(projectId, p.id, { x: p.x, z: p.z, milestone: null })
+            .catch((err) => console.error('Failed to update persona:', err));
+          const updated = { ...p, milestoneId: null, onTeamId: slab.teamId, onTaskId: slab.taskId };
+          setAllPersonas((all) => all.map((a) => (a.id === pid ? updated : a)));
+          return updated;
+        }
+
+        // 3) Free placement
         update_protopersona(projectId, p.id, { x: p.x, z: p.z, milestone: null })
           .catch((err) => console.error('Failed to update persona:', err));
-        const updated = { ...p, milestoneId: null };
+        const updated = { ...p, milestoneId: null, onTeamId: null, onTaskId: null };
         setAllPersonas((all) => all.map((a) => (a.id === pid ? updated : a)));
         return updated;
       });

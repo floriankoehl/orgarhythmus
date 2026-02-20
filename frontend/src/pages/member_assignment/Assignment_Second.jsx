@@ -291,6 +291,33 @@ export default function AssignmentSecond() {
     };
   }, []);
 
+  // ── Floor representation hook ──────────────────────────────────
+  // Moved before usePersonas so floorLayout is available for slab snapping.
+  // We need a pre-measurement of board dims for floor computation.
+  const preFloorBoardDimsRef = useRef({ w: 1400, h: 600, offsetX: 0, offsetY: 0 });
+  const [preFloorBoardDims, setPreFloorBoardDims] = useState(preFloorBoardDimsRef.current);
+  useEffect(() => {
+    if (boardRef.current && containerRef.current) {
+      let top = 0, left = 0;
+      let el = containerRef.current;
+      while (el && el !== boardRef.current) { top += el.offsetTop; left += el.offsetLeft; el = el.offsetParent; }
+      const dims = { w: boardRef.current.offsetWidth, h: boardRef.current.offsetHeight, offsetX: left, offsetY: top };
+      preFloorBoardDimsRef.current = dims;
+      setPreFloorBoardDims(dims);
+    }
+  }, [days, teamOrder, teams, taskDisplaySettings3D, teamPhasesMap, teamDisplaySettings, TEAMWIDTH, TASKWIDTH, DAYWIDTH]);
+
+  const { floorLayout } = useFloor3D({
+    teamOrder, teams,
+    taskDisplaySettings: taskDisplaySettings3D,
+    teamDisplaySettings, teamPhasesMap,
+    effectiveHeaderH, TEAMWIDTH, TASKWIDTH, DAYWIDTH,
+    days,
+    thSmall: DEFAULT_TASKHEIGHT_SMALL,
+    thNormal: DEFAULT_TASKHEIGHT_NORMAL,
+    boardDims: preFloorBoardDims,
+  });
+
   // ── Persona hook ───────────────────────────────────────────────
   const screenToFloorRef = useRef(null);
 
@@ -305,6 +332,7 @@ export default function AssignmentSecond() {
     effectiveHeaderH, TEAMWIDTH, TASKWIDTH, DAYWIDTH,
     boardRef, containerRef,
     screenToFloor: (...args) => screenToFloorRef.current?.(...args),
+    floorLayout,
   });
 
   // ── Camera hook ────────────────────────────────────────────────
@@ -373,20 +401,7 @@ export default function AssignmentSecond() {
     }
   }, [projectId, restoreCamera]);
 
-  // ── Floor representation hook ──────────────────────────────────
-  // Exposes floorLayout (entity registry) and hitTest for future interaction.
-  const { floorLayout } = useFloor3D({
-    teamOrder, teams,
-    taskDisplaySettings: taskDisplaySettings3D,
-    teamDisplaySettings, teamPhasesMap,
-    effectiveHeaderH, TEAMWIDTH, TASKWIDTH, DAYWIDTH,
-    days,
-    thSmall: DEFAULT_TASKHEIGHT_SMALL,
-    thNormal: DEFAULT_TASKHEIGHT_NORMAL,
-    boardDims,
-  });
-
-  // Floor dimensions
+  // Floor dimensions (use boardDims from usePersonas)
   const floorW = boardDims.h || (contentHeight + 180);
   const floorH = boardW;
 
@@ -922,12 +937,14 @@ export default function AssignmentSecond() {
             {floorLayout.teams.map((teamSlab) => {
               const team = teamSlab.team;
               const teamColor = team?.color || '#94a3b8';
+              const teamName = team?.name || '';
               const slabH = TEAM_3D_HEIGHT;
               // Use the team name column Z extent only — not the full board width
               const slabXLen = Math.abs(teamSlab.worldXEnd - teamSlab.worldXStart);
               const slabZLen = Math.abs(teamSlab.nameWorldZEnd - teamSlab.nameWorldZStart);
               const slabXCenter = (teamSlab.worldXStart + teamSlab.worldXEnd) / 2;
               const slabZCenter = (teamSlab.nameWorldZStart + teamSlab.nameWorldZEnd) / 2;
+              const textColor = getContrastTextColor(teamColor);
 
               if (slabXLen < 1 || slabZLen < 1) return null;
 
@@ -957,23 +974,47 @@ export default function AssignmentSecond() {
                   <div style={{
                     position: 'absolute', top: 0, left: 0,
                     width: `${slabZLen}px`, height: `${slabXLen}px`,
-                    background: `${teamColor}55`,
-                    border: `1px solid ${teamColor}88`,
+                    background: teamColor,
+                    border: `1.5px solid ${teamColor}`,
                     borderRadius: '2px',
-                  }} />
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    overflow: 'hidden',
+                  }}>
+                    <span style={{
+                      fontSize: '10px', fontWeight: 700, color: textColor,
+                      fontFamily: 'sans-serif', whiteSpace: 'nowrap',
+                      overflow: 'hidden', textOverflow: 'ellipsis',
+                      maxWidth: '100%', padding: '0 4px',
+                      transform: 'scaleX(-1)',
+                    }}>{teamName}</span>
+                  </div>
                   {/* Front wall */}
                   <div style={{
                     position: 'absolute', left: 0, top: `${slabXLen}px`,
                     width: `${slabZLen}px`, height: `${slabH}px`,
                     transform: 'rotateX(90deg)', transformOrigin: 'top left',
-                    background: `${teamColor}99`,
+                    background: `color-mix(in srgb, ${teamColor} 85%, #000)`,
                   }} />
                   {/* Back wall */}
                   <div style={{
                     position: 'absolute', left: 0, top: 0,
                     width: `${slabZLen}px`, height: `${slabH}px`,
                     transform: 'rotateX(90deg)', transformOrigin: 'top left',
-                    background: `${teamColor}66`,
+                    background: `color-mix(in srgb, ${teamColor} 75%, #000)`,
+                  }} />
+                  {/* Left wall */}
+                  <div style={{
+                    position: 'absolute', left: 0, top: 0,
+                    width: `${slabH}px`, height: `${slabXLen}px`,
+                    transform: 'rotateY(-90deg)', transformOrigin: 'top left',
+                    background: `color-mix(in srgb, ${teamColor} 80%, #000)`,
+                  }} />
+                  {/* Right wall */}
+                  <div style={{
+                    position: 'absolute', left: `${slabZLen}px`, top: 0,
+                    width: `${slabH}px`, height: `${slabXLen}px`,
+                    transform: 'rotateY(-90deg)', transformOrigin: 'top left',
+                    background: `color-mix(in srgb, ${teamColor} 70%, #000)`,
                   }} />
                 </div>
               );
@@ -985,12 +1026,16 @@ export default function AssignmentSecond() {
               teamSlab.tasks.map((taskSlab) => {
                 const team = teamSlab.team;
                 const teamColor = team?.color || '#94a3b8';
+                const taskObj = tasks[taskSlab.taskId];
+                const taskName = taskObj?.name || '';
                 const slabH = TASK_3D_HEIGHT;
                 // Use the task name column Z extent only — not the full board width
                 const slabXLen = Math.abs(taskSlab.worldXEnd - taskSlab.worldXStart);
                 const slabZLen = Math.abs(taskSlab.nameWorldZEnd - taskSlab.nameWorldZStart);
                 const slabXCenter = (taskSlab.worldXStart + taskSlab.worldXEnd) / 2;
                 const slabZCenter = (taskSlab.nameWorldZStart + taskSlab.nameWorldZEnd) / 2;
+                const bgColor = lightenColor(teamColor, 0.35);
+                const textColor = getContrastTextColor(bgColor);
 
                 if (slabXLen < 1 || slabZLen < 1) return null;
 
@@ -1020,22 +1065,46 @@ export default function AssignmentSecond() {
                     <div style={{
                       position: 'absolute', top: 0, left: 0,
                       width: `${slabZLen}px`, height: `${slabXLen}px`,
-                      background: `${teamColor}33`,
-                      border: `1px solid ${teamColor}55`,
-                    }} />
+                      background: bgColor,
+                      border: `1px solid ${teamColor}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      overflow: 'hidden',
+                    }}>
+                      <span style={{
+                        fontSize: '8px', fontWeight: 600, color: textColor,
+                        fontFamily: 'sans-serif', whiteSpace: 'nowrap',
+                        overflow: 'hidden', textOverflow: 'ellipsis',
+                        maxWidth: '100%', padding: '0 3px',
+                        transform: 'scaleX(-1)',
+                      }}>{taskName}</span>
+                    </div>
                     {/* Front wall */}
                     <div style={{
                       position: 'absolute', left: 0, top: `${slabXLen}px`,
                       width: `${slabZLen}px`, height: `${slabH}px`,
                       transform: 'rotateX(90deg)', transformOrigin: 'top left',
-                      background: `${teamColor}66`,
+                      background: `color-mix(in srgb, ${bgColor} 80%, #000)`,
                     }} />
                     {/* Back wall */}
                     <div style={{
                       position: 'absolute', left: 0, top: 0,
                       width: `${slabZLen}px`, height: `${slabH}px`,
                       transform: 'rotateX(90deg)', transformOrigin: 'top left',
-                      background: `${teamColor}44`,
+                      background: `color-mix(in srgb, ${bgColor} 70%, #000)`,
+                    }} />
+                    {/* Left wall */}
+                    <div style={{
+                      position: 'absolute', left: 0, top: 0,
+                      width: `${slabH}px`, height: `${slabXLen}px`,
+                      transform: 'rotateY(-90deg)', transformOrigin: 'top left',
+                      background: `color-mix(in srgb, ${bgColor} 75%, #000)`,
+                    }} />
+                    {/* Right wall */}
+                    <div style={{
+                      position: 'absolute', left: `${slabZLen}px`, top: 0,
+                      width: `${slabH}px`, height: `${slabXLen}px`,
+                      transform: 'rotateY(-90deg)', transformOrigin: 'top left',
+                      background: `color-mix(in srgb, ${bgColor} 65%, #000)`,
                     }} />
                   </div>
                 );
@@ -1172,7 +1241,12 @@ export default function AssignmentSecond() {
               const legW  = bodyW * 0.40, legH = S * 0.34, legD = bodyD * 0.85;
               const legGap = bodyW * 0.08;
               const totalH = headH + bodyH + legH;
-              const baseY = isBeingDragged ? totalH + PERSONA_DRAG_LIFT : totalH + (p.milestoneId != null ? MILESTONE_3D_HEIGHT : 0);
+              // Lift persona above whatever it's standing on
+              let standOnH = 0;
+              if (p.milestoneId != null) standOnH = MILESTONE_3D_HEIGHT;
+              else if (p.onTaskId) standOnH = TASK_3D_HEIGHT;
+              else if (p.onTeamId) standOnH = TEAM_3D_HEIGHT;
+              const baseY = isBeingDragged ? totalH + PERSONA_DRAG_LIFT : totalH + standOnH;
               return (
                 <div
                   key={p.id}
@@ -1294,10 +1368,14 @@ export default function AssignmentSecond() {
               border: '1.5px solid rgba(255,255,255,0.6)',
             }} />
             <span style={{ flex: 1, fontSize: '11px' }}>{p.name}</span>
-            <span style={{ fontSize: '9px', color: p.milestoneId ? '#4ade80' : '#94a3b8' }}>
+            <span style={{ fontSize: '9px', color: p.milestoneId ? '#4ade80' : (p.onTaskId || p.onTeamId) ? '#60a5fa' : '#94a3b8' }}>
               {p.milestoneId
                 ? (milestones[p.milestoneId]?.name || 'MS')
-                : `${Math.round(p.x)}, ${Math.round(p.z)}`}
+                : p.onTaskId
+                  ? (tasks[p.onTaskId]?.name || 'Task')
+                  : p.onTeamId
+                    ? (teams[p.onTeamId]?.name || 'Team')
+                    : `${Math.round(p.x)}, ${Math.round(p.z)}`}
             </span>
             <button
               onClick={() => removePersona(p.id)}

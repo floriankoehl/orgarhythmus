@@ -59,6 +59,12 @@ export default function ProjectHeader({}) {
       icon: <NumbersIcon fontSize="small" />,
     },
     {
+      key: 'assignment',
+      to: projectId ? `/projects/${projectId}/assignment` : '/projects',
+      label: '3D',
+      icon: <NumbersIcon fontSize="small" />,
+    },
+    {
       key: 'next-steps',
       to: projectId ? `/projects/${projectId}/calender` : '/projects', // fallback
       label: 'Calender',

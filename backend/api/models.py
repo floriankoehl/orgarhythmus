@@ -443,6 +443,31 @@ class Idea(models.Model):
         ordering = ["order_index"]
 
 
+# ═══════════════════════════════════════════════
+#  PROTO-PERSONA
+# ═══════════════════════════════════════════════
+
+class ProtoPersona(models.Model):
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="protopersonas")
+    name = models.CharField(max_length=200)
+    color = models.CharField(max_length=20, default="#f87171")
+    x = models.FloatField(default=0)
+    z = models.FloatField(default=0)
+    milestone = models.ForeignKey(
+        Milestone, on_delete=models.SET_NULL, null=True, blank=True, related_name="protopersonas"
+    )
+    created_by = models.ForeignKey(
+        "auth.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="created_protopersonas"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.project.name})"
+
+
 
 
 
