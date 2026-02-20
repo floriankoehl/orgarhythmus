@@ -851,6 +851,8 @@ export default function AssignmentSecond() {
                       overflow: 'hidden', textOverflow: 'ellipsis',
                       maxWidth: '100%', padding: '0 2px',
                       textShadow: 'none',
+                      display: 'inline-block',
+                      transform: 'scaleX(-1)',
                     }}>
                       {m.name}
                     </span>

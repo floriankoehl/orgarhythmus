@@ -106,6 +106,52 @@ export function useCamera3D({
     return { x: qx / s, z: (qz - zOff) / s };
   };
 
+  // ── World-to-screen projection (forward transform) ───────────
+  /** Project a world-space floor point (wx, 0, wz) to screen coords.
+   *  Returns { sx, sy, f } where f is the perspective factor, or null.
+   */
+  const worldToScreen = (wx, wz) => {
+    const P = PERSPECTIVE_DEPTH;
+    const el = viewportRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    const cxS = rect.left + rect.width / 2;
+    const cyS = rect.top  + rect.height / 2;
+
+    const pitch = orbitXRef.current * Math.PI / 180;
+    const yaw   = orbitYRef.current * Math.PI / 180;
+    const zOff  = zoomRef.current - CAMERA_BASE_DISTANCE + panZRef.current;
+    const s     = cameraScaleRef.current;
+    const panXV = panXRef.current;
+    const panYV = panYRef.current;
+
+    const cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const cyw = Math.cos(yaw), syw = Math.sin(yaw);
+
+    // Scale + translateZ
+    const sxW = wx * s;
+    const szW = wz * s + zOff;
+
+    // RotateY(-yaw)
+    const x3 = sxW * cyw - szW * syw;
+    const z3 = sxW * syw + szW * cyw;
+
+    // RotateX(-pitch):  y4 = z3 * sinPitch,  z4 = z3 * cosPitch
+    const x4 = x3;
+    const y4 = z3 * sp;
+    const z4 = z3 * cp;
+
+    // Translate(panX, panY)
+    const x5 = x4 + panXV;
+    const y5 = y4 + panYV;
+
+    const denom = P - z4;
+    if (Math.abs(denom) < 1e-6) return null;
+    const f = P / denom;
+
+    return { sx: x5 * f + cxS, sy: y5 * f + cyS, f };
+  };
+
   // ── Mouse / wheel event handlers ──────────────────────────────
   useEffect(() => {
     const onDown = (e) => {
@@ -157,8 +203,36 @@ export function useCamera3D({
         setPanX((prev) => prev + dx);
         setPanY((prev) => prev + dy);
       } else {
-        setOrbitY((prev) => prev - dx * 0.3);
-        setOrbitX((prev) => Math.max(5, Math.min(90, prev - dy * 0.3)));
+        // ── Orbit with anchor compensation ──
+        // 1. Capture the world floor point at screen center before rotation
+        const el = viewportRef.current;
+        const rect = el ? el.getBoundingClientRect() : null;
+        const anchorSX = rect ? rect.left + rect.width / 2 : 0;
+        const anchorSY = rect ? rect.top  + rect.height / 2 : 0;
+        const floorPt = screenToFloor(anchorSX, anchorSY);
+
+        // 2. Apply new orbit angles to refs immediately
+        const newOrbitY = orbitYRef.current - dx * 0.3;
+        const newOrbitX = Math.max(5, Math.min(90, orbitXRef.current - dy * 0.3));
+        orbitXRef.current = newOrbitX;
+        orbitYRef.current = newOrbitY;
+        setOrbitY(newOrbitY);
+        setOrbitX(newOrbitX);
+
+        // 3. Compensate pan so the anchor world point stays at screen center
+        if (floorPt) {
+          const projected = worldToScreen(floorPt.x, floorPt.z);
+          if (projected && Math.abs(projected.f) > 1e-6) {
+            const dPanX = (anchorSX - projected.sx) / projected.f;
+            const dPanY = (anchorSY - projected.sy) / projected.f;
+            const newPanX = panXRef.current + dPanX;
+            const newPanY = panYRef.current + dPanY;
+            panXRef.current = newPanX;
+            panYRef.current = newPanY;
+            setPanX(newPanX);
+            setPanY(newPanY);
+          }
+        }
       }
     };
 
