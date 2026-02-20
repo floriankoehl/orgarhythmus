@@ -33,6 +33,12 @@ import {
   DAY_NAME_WIDTH_THRESHOLD,
   daysBetween,
   lightenColor,
+  getTaskHeight as getTaskHeightBase,
+  getVisibleTasks,
+  getTaskYOffset as getTaskYOffsetBase,
+  isTaskVisible,
+  getRawTeamHeight,
+  computeMilestonePixelPositions,
 } from '../dependency/layoutMath.js';
 
 // ── Phase header height ──────────────────────────────────────────
@@ -91,54 +97,31 @@ function buildDayLabels(numDays, startDate, projectDays) {
   return labels;
 }
 
-/** Get task height from display settings */
+// ── Layout helpers bound to default constants ────────────────────
+// These thin wrappers delegate to the shared layoutMath functions so that
+// all position logic lives in one canonical module.
+
+/** Get task height from display settings (uses layout defaults) */
 function getTaskHeight(taskId, taskDisplaySettings) {
-  const s = taskDisplaySettings[taskId];
-  if (!s || s.hidden) return 0;
-  return s.size === 'small' ? DEFAULT_TASKHEIGHT_SMALL : DEFAULT_TASKHEIGHT_NORMAL;
+  return getTaskHeightBase(taskId, taskDisplaySettings, DEFAULT_TASKHEIGHT_SMALL, DEFAULT_TASKHEIGHT_NORMAL);
 }
 
-/** Get visible tasks for a team */
-function getVisibleTasks(team, taskDisplaySettings) {
-  if (!team) return [];
-  return team.tasks.filter((tid) => {
-    const s = taskDisplaySettings[tid];
-    return s ? !s.hidden : true;
-  });
+/** Get Y offset for a task within its team (uses layout defaults) */
+function getTaskYOffset(taskId, team, taskDisplaySettings) {
+  return getTaskYOffsetBase(
+    taskId,
+    team,
+    isTaskVisible,
+    (id, ds) => getTaskHeightBase(id, ds, DEFAULT_TASKHEIGHT_SMALL, DEFAULT_TASKHEIGHT_NORMAL),
+    taskDisplaySettings,
+  );
 }
 
-/** Get team row height */
+/** Get team row height including optional phase row (uses layout defaults) */
 function getTeamRowHeight(team, taskDisplaySettings, teamPhaseRowH = 0) {
   if (!team) return TEAM_COLLAPSED_HEIGHT;
-  let h = 0;
-  for (const tid of team.tasks) {
-    h += getTaskHeight(tid, taskDisplaySettings);
-  }
-  return Math.max(h, TEAM_COLLAPSED_HEIGHT) + teamPhaseRowH;
-}
-
-/** Get Y offset for a team */
-function getTeamYOffset(teamId, teamOrder, teams, taskDisplaySettings, effectiveHeaderH, teamPhasesMap) {
-  let offset = effectiveHeaderH;
-  for (const tid of teamOrder) {
-    if (tid === teamId) break;
-    offset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-    offset += TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
-    const phaseH = (teamPhasesMap[tid] && teamPhasesMap[tid].length > 0) ? TEAM_PHASE_ROW_HEIGHT : 0;
-    offset += getTeamRowHeight(teams[tid], taskDisplaySettings, phaseH);
-  }
-  return offset;
-}
-
-/** Get Y offset for a task within its team */
-function getTaskYOffset(taskId, team, taskDisplaySettings) {
-  if (!team) return 0;
-  let offset = 0;
-  for (const tid of team.tasks) {
-    if (tid === taskId) break;
-    offset += getTaskHeight(tid, taskDisplaySettings);
-  }
-  return offset;
+  const rawH = getRawTeamHeight(team, taskDisplaySettings, DEFAULT_TASKHEIGHT_SMALL, DEFAULT_TASKHEIGHT_NORMAL);
+  return Math.max(rawH, TEAM_COLLAPSED_HEIGHT) + teamPhaseRowH;
 }
 
 /** Calculate total content height */
@@ -371,52 +354,33 @@ export default function AssignmentSecond() {
   const floorH = boardW;                                  // world Z extent
 
   // ── Milestone 3D positions ────────────────────────────────────
-  // Each milestone’s pixel position on the board content is computed
-  // exactly as in MilestoneLayer, then mapped to world XZ via the
-  // board’s CSS transform:  Ry(90) · Rx(90) · translate(-50%,-50%)
-  //   worldX = (py + offsetY) − H/2
-  //   worldZ = W/2 − (px + offsetX)
-  // where W,H = board element’s rendered dimensions,
+  // 2D pixel positions are computed by the shared computeMilestonePixelPositions
+  // from layoutMath.js (the single source of truth for milestone layout).
+  // This useMemo is a pure projection layer: it receives already-computed
+  // 2D coordinates and converts them to 3D world coordinates via the
+  // board's CSS transform:  Ry(90) · Rx(90) · translate(-50%,-50%)
+  //   worldX = (centerY + offsetY) − H/2
+  //   worldZ = W/2 − (centerX + offsetX)
+  // where W,H = board element's rendered dimensions,
   // offsetX/Y = distance from board top-left to inner content top-left.
   const milestone3D = useMemo(() => {
     if (!days) return [];
-    const result = [];
     const W = boardDims.w;
     const H = boardDims.h;
     const oX = boardDims.offsetX;
     const oY = boardDims.offsetY;
-    let yOffset = effectiveHeaderH;
-
-    for (const teamId of teamOrder) {
-      const team = teams[teamId];
-      if (!team) continue;
-      yOffset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-      yOffset += TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
-      const teamPhases_ = teamPhasesMap[teamId] || [];
-      const phaseRowH = teamPhases_.length > 0 ? TEAM_PHASE_ROW_HEIGHT : 0;
-      const tasksStartY = yOffset + phaseRowH;
-      const visibleTasks_ = getVisibleTasks(team, taskDisplaySettings);
-      for (const taskId of visibleTasks_) {
-        const th = getTaskHeight(taskId, taskDisplaySettings);
-        const taskY = tasksStartY + getTaskYOffset(taskId, team, taskDisplaySettings);
-        const taskMilestones = Object.values(milestones).filter((ms) => ms.task === taskId);
-        for (const m of taskMilestones) {
-          // Milestone center in inner content pixel space
-          const px = TEAMWIDTH + TASKWIDTH + m.start_index * DAYWIDTH + ((m.duration || 1) * DAYWIDTH) / 2;
-          const py = taskY + th / 2;
-          // Shift by the offset from board wrapper to inner content,
-          // then apply the board’s translate(-50%,-50%) centering
-          result.push({
-            ...m,
-            worldX: (py + oY) - H / 2,
-            worldZ: W / 2 - (px + oX),
-            teamColor: team.color || '#94a3b8',
-          });
-        }
-      }
-      yOffset = tasksStartY - phaseRowH + getTeamRowHeight(team, taskDisplaySettings, phaseRowH);
-    }
-    return result;
+    // Get 2D positions from the canonical layout module
+    const positioned = computeMilestonePixelPositions({
+      teamOrder, teams, milestones, taskDisplaySettings,
+      teamPhasesMap, effectiveHeaderH,
+      TEAMWIDTH, TASKWIDTH, DAYWIDTH,
+    });
+    // Apply coordinate transformation: 2D content-space → 3D world-space
+    return positioned.map((m) => ({
+      ...m,
+      worldX: (m.y + m.h / 2 + oY) - H / 2,
+      worldZ: W / 2 - (m.x + m.w / 2 + oX),
+    }));
   }, [days, teamOrder, teams, milestones, taskDisplaySettings, teamPhasesMap, effectiveHeaderH, boardDims, TEAMWIDTH, TASKWIDTH, DAYWIDTH]);
 
   /** Find closest milestone within SNAP_RADIUS */
@@ -1156,7 +1120,6 @@ export default function AssignmentSecond() {
           <MilestoneLayer
             teamOrder={teamOrder}
             teams={teams}
-            tasks={tasks}
             milestones={milestones}
             taskDisplaySettings={taskDisplaySettings}
             teamPhasesMap={teamPhasesMap}
@@ -1565,64 +1528,16 @@ function DayGrid({ team, tasks, days, DAYWIDTH, taskDisplaySettings, teamPhasesM
 // MilestoneLayer — positioned absolute overlay for milestones
 // ══════════════════════════════════════════════════════════════════
 
-function MilestoneLayer({ teamOrder, teams, tasks, milestones, taskDisplaySettings, teamPhasesMap, effectiveHeaderH, TEAMWIDTH, TASKWIDTH, DAYWIDTH }) {
-  // Group milestones by task
-  const milestonesByTask = useMemo(() => {
-    const map = {};
-    for (const m of Object.values(milestones)) {
-      if (!map[m.task]) map[m.task] = [];
-      map[m.task].push(m);
-    }
-    return map;
-  }, [milestones]);
-
-  // We need to calculate Y positions from the top of the canvas
-  // for each team/task to position milestones absolutely
+function MilestoneLayer({ teamOrder, teams, milestones, taskDisplaySettings, teamPhasesMap, effectiveHeaderH, TEAMWIDTH, TASKWIDTH, DAYWIDTH }) {
+  // Use the canonical layout module to compute 2D milestone positions.
+  // The result is mapped to the standard milestone box format (y+2, h-4).
   const positioned = useMemo(() => {
-    const result = [];
-    let yOffset = effectiveHeaderH;
-
-    for (const teamId of teamOrder) {
-      const team = teams[teamId];
-      if (!team) continue;
-
-      // Drop highlight
-      yOffset += TEAM_DRAG_HIGHLIGHT_HEIGHT + MARIGN_BETWEEN_DRAG_HIGHLIGHT * 2;
-      // Header line
-      yOffset += TEAM_HEADER_LINE_HEIGHT + TEAM_HEADER_GAP;
-
-      const teamPhases = teamPhasesMap[teamId] || [];
-      const phaseRowH = teamPhases.length > 0 ? TEAM_PHASE_ROW_HEIGHT : 0;
-
-      // Phase row offset
-      const tasksStartY = yOffset + phaseRowH;
-
-      // Walk tasks
-      const visibleTasks_ = getVisibleTasks(team, taskDisplaySettings);
-      for (const taskId of visibleTasks_) {
-        const th = getTaskHeight(taskId, taskDisplaySettings);
-        const taskY = tasksStartY + getTaskYOffset(taskId, team, taskDisplaySettings);
-        const taskMilestones = milestonesByTask[taskId] || [];
-        for (const m of taskMilestones) {
-          const x = TEAMWIDTH + TASKWIDTH + m.start_index * DAYWIDTH;
-          const w = (m.duration || 1) * DAYWIDTH;
-          result.push({
-            ...m,
-            x,
-            y: taskY + 2,
-            w,
-            h: th - 4,
-            teamColor: team.color || '#94a3b8',
-          });
-        }
-      }
-
-      // Advance yOffset past this entire team
-      yOffset = tasksStartY - phaseRowH + getTeamRowHeight(team, taskDisplaySettings, phaseRowH);
-    }
-
-    return result;
-  }, [teamOrder, teams, taskDisplaySettings, milestonesByTask, effectiveHeaderH, teamPhasesMap, TEAMWIDTH, TASKWIDTH, DAYWIDTH]);
+    return computeMilestonePixelPositions({
+      teamOrder, teams, milestones, taskDisplaySettings,
+      teamPhasesMap, effectiveHeaderH,
+      TEAMWIDTH, TASKWIDTH, DAYWIDTH,
+    }).map((m) => ({ ...m, y: m.y + 2, h: m.h - 4 }));
+  }, [teamOrder, teams, taskDisplaySettings, milestones, effectiveHeaderH, teamPhasesMap, TEAMWIDTH, TASKWIDTH, DAYWIDTH]);
 
   return (
     <div className="absolute top-0 left-0 w-full h-full" style={{ zIndex: 20, pointerEvents: 'none' }}>
