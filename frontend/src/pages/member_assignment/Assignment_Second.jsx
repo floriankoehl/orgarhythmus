@@ -415,6 +415,7 @@ export default function AssignmentSecond() {
   const [personas, setPersonas] = useState([]);
   const [allPersonas, setAllPersonas] = useState([]);  // full DB list (unfiltered)
   const draggingPersona = useRef(null);  // id of persona being dragged
+  const [draggingId, setDraggingId] = useState(null);  // reactive mirror — triggers re-render for lift
 
   // Load protopersonas from DB on mount
   useEffect(() => {
@@ -643,6 +644,7 @@ export default function AssignmentSecond() {
           e.stopPropagation();
           const pid = Number(personaEl.dataset.personaId);
           draggingPersona.current = pid;
+          setDraggingId(pid);
           lastMouse.current = { x: e.clientX, y: e.clientY };
           // Compute floor hit point at mouse-down position
           const hit = screenToFloor(e.clientX, e.clientY);
@@ -709,6 +711,7 @@ export default function AssignmentSecond() {
         // Snap to nearest milestone if close enough
         const pid = draggingPersona.current;
         draggingPersona.current = null;
+        setDraggingId(null);
         dragAnchor.current = null;
         setPersonas((prev) => {
           // Count how many personas are already snapped to each milestone
@@ -754,12 +757,18 @@ export default function AssignmentSecond() {
     // Prevent context menu on right-click
     const onContextMenu = (e) => e.preventDefault();
 
-    // Scroll wheel = zoom
+    // Scroll wheel = zoom, Shift+wheel = pan along Z-axis
     const onWheel = (e) => {
       const inside = e.target.closest('[data-board-scroll]');
       if (inside) return;
       e.preventDefault();
-      setZoom((prev) => Math.max(CAMERA_ZOOM_MIN, Math.min(CAMERA_ZOOM_MAX, prev - e.deltaY * 0.8)));
+      if (e.shiftKey) {
+        // Shift+wheel → scroll/pan along the Z-axis
+        setPanY((prev) => prev - e.deltaY * 0.8);
+      } else {
+        // Plain wheel → zoom (camera distance)
+        setZoom((prev) => Math.max(CAMERA_ZOOM_MIN, Math.min(CAMERA_ZOOM_MAX, prev - e.deltaY * 0.8)));
+      }
     };
 
     window.addEventListener('mousedown', onDown);
@@ -881,7 +890,7 @@ export default function AssignmentSecond() {
         <div>zoom:  <span style={{ color: '#60a5fa' }}>{zoom.toFixed(0)}px</span></div>
         <div>pan:   <span style={{ color: '#fbbf24' }}>{panX.toFixed(0)}, {panY.toFixed(0)}</span></div>
         <div style={{ marginTop: '4px', fontSize: '10px', color: '#94a3b8' }}>
-          Middle-drag = orbit | Right-drag = pan | Scroll = zoom
+          Middle-drag = orbit | Right-drag = pan | Scroll = zoom | Shift+Scroll = nav
         </div>
         <div style={{ marginTop: '4px', fontSize: '10px', color: '#c084fc' }}>
           board: {boardDims.w}×{boardDims.h} | oX:{boardDims.offsetX} oY:{boardDims.offsetY}
@@ -1056,7 +1065,6 @@ export default function AssignmentSecond() {
                 transformStyle: 'preserve-3d',
                 display: 'flex',
                 flexDirection: 'column',
-                borderRadius: '12px',
                 boxShadow: '0 5px 40px rgba(0,0,0,0.6)',
                 pointerEvents: 'none',  // don't block persona clicks
               }}
@@ -1065,7 +1073,6 @@ export default function AssignmentSecond() {
                 style={{
                   padding: '24px 24px 0 24px',
                   background: 'linear-gradient(160deg, #f8f9fb 0%, #f6f7fa 50%, #f7f6f5 100%)',
-                  borderRadius: '12px 12px 0 0',
                 }}
               >
                 {/* ── Toolbar placeholder ──────────────────────────── */}
@@ -1090,14 +1097,13 @@ export default function AssignmentSecond() {
               overflow: 'hidden',
               background: 'linear-gradient(160deg, #f8f9fb 0%, #f6f7fa 50%, #f7f6f5 100%)',
               padding: '0 24px 24px 24px',
-              borderRadius: '0 0 12px 12px',
             }}
           >
       {/* Outer scroll container — scaleY(-1) flips scrollbar to top */}
       <div
         data-board-scroll
         style={{ height: `${contentHeight + 16}px`, transform: 'scaleY(-1)', flex: '1 1 auto', minHeight: 0 }}
-        className="overflow-x-hidden overflow-y-hidden rounded-xl border border-slate-200 shadow-sm"
+        className="overflow-x-hidden overflow-y-hidden border border-slate-200 shadow-sm"
         onWheel={(e) => {
           if (e.shiftKey && e.deltaY !== 0) {
             e.preventDefault();
@@ -1560,6 +1566,7 @@ export default function AssignmentSecond() {
             {personas.map((p) => {
               const S = PERSONA_SIZE;       // cube side length
               const half = S / 2;           // half-side for face translations
+              const isBeingDragged = p.id === draggingId;
               // Shared face style — each face is an S×S square centered in the cube
               const face = {
                 position: 'absolute',
@@ -1590,14 +1597,15 @@ export default function AssignmentSecond() {
                     // Position: world X & Z, then lift by full side so cube sits ON the floor.
                     // When snapped to a milestone, add MILESTONE_3D_HEIGHT so the cube
                     // sits on top of the raised milestone pedestal instead of on the floor.
-                    // Also center the cube on the milestone slot (half cube offset).
+                    // When being dragged, lift extra above floor for visual feedback.
                     transform: [
                       `translateX(${p.x - S / 2}px)`,
                       `translateZ(${p.z + S / 2}px)`,
-                      `translateY(-${S + (p.milestoneId != null ? MILESTONE_3D_HEIGHT : 0)}px)`,
+                      `translateY(-${isBeingDragged ? S + 30 : S + (p.milestoneId != null ? MILESTONE_3D_HEIGHT : 0)}px)`,
                     ].join(' '),
+                    transition: isBeingDragged ? 'none' : 'transform 0.25s ease-out',
                     transformStyle: 'preserve-3d',
-                    cursor: draggingPersona.current === p.id ? 'grabbing' : 'grab',
+                    cursor: isBeingDragged ? 'grabbing' : 'grab',
                     userSelect: 'none',
                     zIndex: 50,
                     pointerEvents: 'auto',
@@ -2215,7 +2223,7 @@ function MilestoneLayer({ teamOrder, teams, milestones, taskDisplaySettings, tea
             pointerEvents: 'auto',
           }}
         >
-          <span className="text-xs truncate text-white px-2 leading-none flex items-center h-full" style={{ textShadow: '0 0 3px rgba(0,0,0,0.3)' }}>
+          <span className="text-xs truncate text-white px-2 leading-none flex items-center h-full" style={{ textShadow: '0 0 3px rgba(0,0,0,0.3)', transform: 'scaleX(-1)' }}>
             {m.name}
           </span>
         </div>
