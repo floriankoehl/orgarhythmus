@@ -776,20 +776,20 @@ export default function AssignmentSecond() {
               {/* Floor label */}
               <div style={{ position: 'absolute', bottom: '8px', right: '8px', color: 'rgba(0,0,0,0.2)', fontSize: '12px', fontFamily: 'monospace' }}>XZ floor</div>
 
-              {/* Floor side faces — give the board slab visual thickness */}
-              {/* Bottom edge (local Y = floorH) — folds downward */}
+              {/* Floor side faces — walls extending BELOW the floor surface */}
+              {/* Bottom edge (local Y = floorH) */}
               <div style={{
                 position: 'absolute',
                 left: 0,
                 top: `${floorH}px`,
                 width: `${floorW}px`,
                 height: `${BOARD_3D_HEIGHT}px`,
-                transform: 'rotateX(90deg)',
+                transform: 'rotateX(-90deg)',
                 transformOrigin: 'top left',
                 background: 'linear-gradient(180deg, #e2e4e8, #d1d3d8)',
                 borderBottom: '1px solid rgba(0,0,0,0.12)',
               }} />
-              {/* Top edge (local Y = 0) — folds downward from top */}
+              {/* Top edge (local Y = 0) */}
               <div style={{
                 position: 'absolute',
                 left: 0,
@@ -797,23 +797,23 @@ export default function AssignmentSecond() {
                 width: `${floorW}px`,
                 height: `${BOARD_3D_HEIGHT}px`,
                 transform: 'rotateX(-90deg)',
-                transformOrigin: 'bottom left',
+                transformOrigin: 'top left',
                 background: 'linear-gradient(180deg, #e8eaee, #dcdee3)',
                 borderBottom: '1px solid rgba(0,0,0,0.1)',
               }} />
-              {/* Right edge (local X = floorW) — folds downward */}
+              {/* Right edge (local X = floorW) */}
               <div style={{
                 position: 'absolute',
                 left: `${floorW}px`,
                 top: 0,
                 width: `${BOARD_3D_HEIGHT}px`,
                 height: `${floorH}px`,
-                transform: 'rotateY(-90deg)',
+                transform: 'rotateY(90deg)',
                 transformOrigin: 'top left',
                 background: 'linear-gradient(180deg, #dfe1e6, #cfd1d6)',
                 borderRight: '1px solid rgba(0,0,0,0.12)',
               }} />
-              {/* Left edge (local X = 0) — folds downward */}
+              {/* Left edge (local X = 0) */}
               <div style={{
                 position: 'absolute',
                 left: 0,
@@ -821,7 +821,7 @@ export default function AssignmentSecond() {
                 width: `${BOARD_3D_HEIGHT}px`,
                 height: `${floorH}px`,
                 transform: 'rotateY(90deg)',
-                transformOrigin: 'top right',
+                transformOrigin: 'top left',
                 background: 'linear-gradient(180deg, #e5e7ec, #d5d7dc)',
                 borderRight: '1px solid rgba(0,0,0,0.1)',
               }} />
