@@ -56,7 +56,7 @@ const CAMERA_DEFAULT_YAW    = 30;    // deg — default horizontal rotation
 const CAMERA_ZOOM_MIN       = -800;  // px — minimum zoom (farthest away)
 const CAMERA_ZOOM_MAX       = 600;   // px — maximum zoom (closest)
 const PERSPECTIVE_DEPTH     = 1800;  // px — CSS perspective value
-const FLOOR_SIZE            = 2400;  // px — XZ grid floor side length
+// FLOOR_SIZE is computed dynamically from the board content dimensions
 
 // ── Protopersona defaults ────────────────────────────────────────
 const PERSONA_SIZE          = 25;    // px — cube side length
@@ -288,6 +288,9 @@ export default function AssignmentSecond() {
     return calcContentHeight(teamOrder, teams, taskDisplaySettings, effectiveHeaderH, teamPhasesMap);
   }, [teamOrder, teams, taskDisplaySettings, effectiveHeaderH, teamPhasesMap, days]);
 
+  // Board width now matches the full chart (no overflow scroll)
+  const boardW = totalWidth + 48;  // content + left/right padding (24+24)
+
   // ── Hide headers on mount (same as original Assignment page) ──
   useEffect(() => {
     const orgaH = document.querySelector('[data-orga-header]');
@@ -318,11 +321,17 @@ export default function AssignmentSecond() {
   const isPanning  = useRef(false);
   const lastMouse  = useRef({ x: 0, y: 0 });
 
-  // Keep orbit angles in refs so event handlers always see current values
+  // Keep camera values in refs so event handlers always see current values
   const orbitXRef = useRef(orbitX);
   const orbitYRef = useRef(orbitY);
+  const zoomRef = useRef(zoom);
+  const panXRef = useRef(panX);
+  const panYRef = useRef(panY);
   useEffect(() => { orbitXRef.current = orbitX; }, [orbitX]);
   useEffect(() => { orbitYRef.current = orbitY; }, [orbitY]);
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  useEffect(() => { panXRef.current = panX; }, [panX]);
+  useEffect(() => { panYRef.current = panY; }, [panY]);
 
   // ── Protopersonas ──────────────────────────────────────────────
   // Simple client-side-only persona tokens on the XZ floor.
@@ -331,29 +340,51 @@ export default function AssignmentSecond() {
   const draggingPersona = useRef(null);  // id of persona being dragged
   const nextPersonaId   = useRef(1);
 
-  // ── Board element dimensions (for milestone coordinate mapping) ──
-  const [boardDims, setBoardDims] = useState({ w: 1400, h: 600 });
+  // Board element dimensions (for milestone coordinate mapping)
+  // Walk offsetTop/offsetLeft from containerRef up to boardRef to get
+  // layout-space offsets (unaffected by CSS 3D transforms).
+  const [boardDims, setBoardDims] = useState({ w: 1400, h: 600, offsetX: 0, offsetY: 0 });
   useLayoutEffect(() => {
-    if (boardRef.current) {
+    if (boardRef.current && containerRef.current) {
+      let top = 0, left = 0;
+      let el = containerRef.current;
+      while (el && el !== boardRef.current) {
+        top  += el.offsetTop;
+        left += el.offsetLeft;
+        el = el.offsetParent;
+      }
       setBoardDims({
         w: boardRef.current.offsetWidth,
         h: boardRef.current.offsetHeight,
+        offsetX: left,
+        offsetY: top,
       });
     }
   }, [days, teamOrder, teams, taskDisplaySettings, teamPhasesMap]);
+
+  // Floor dimensions — match the board so the floor represents the whole chart.
+  // The board transform Ry(90)·Rx(90) maps:  board height → world X,  board width → world Z.
+  // The floor transform rotateX(90) maps:     floor width → world X,  floor height → world Z.
+  // So: floorW (X) = boardH, floorH (Z) = boardW.
+  // boardH = boardDims.h (measured after render), fallback to contentHeight + 180 estimate.
+  const floorW = boardDims.h || (contentHeight + 180);  // world X extent
+  const floorH = boardW;                                  // world Z extent
 
   // ── Milestone 3D positions ────────────────────────────────────
   // Each milestone’s pixel position on the board content is computed
   // exactly as in MilestoneLayer, then mapped to world XZ via the
   // board’s CSS transform:  Ry(90) · Rx(90) · translate(-50%,-50%)
-  //   worldX = py − H/2     (page-top → −X, page-bottom → +X)
-  //   worldZ = W/2 − px     (page-left → +Z, page-right  → −Z)
-  // where W,H = board element’s rendered width & height.
+  //   worldX = (py + offsetY) − H/2
+  //   worldZ = W/2 − (px + offsetX)
+  // where W,H = board element’s rendered dimensions,
+  // offsetX/Y = distance from board top-left to inner content top-left.
   const milestone3D = useMemo(() => {
     if (!days) return [];
     const result = [];
     const W = boardDims.w;
     const H = boardDims.h;
+    const oX = boardDims.offsetX;
+    const oY = boardDims.offsetY;
     let yOffset = effectiveHeaderH;
 
     for (const teamId of teamOrder) {
@@ -370,13 +401,15 @@ export default function AssignmentSecond() {
         const taskY = tasksStartY + getTaskYOffset(taskId, team, taskDisplaySettings);
         const taskMilestones = Object.values(milestones).filter((ms) => ms.task === taskId);
         for (const m of taskMilestones) {
-          // Milestone center in board content pixel space
+          // Milestone center in inner content pixel space
           const px = TEAMWIDTH + TASKWIDTH + m.start_index * DAYWIDTH + ((m.duration || 1) * DAYWIDTH) / 2;
           const py = taskY + th / 2;
+          // Shift by the offset from board wrapper to inner content,
+          // then apply the board’s translate(-50%,-50%) centering
           result.push({
             ...m,
-            worldX: py - H / 2,
-            worldZ: W / 2 - px,
+            worldX: (py + oY) - H / 2,
+            worldZ: W / 2 - (px + oX),
             teamColor: team.color || '#94a3b8',
           });
         }
@@ -421,30 +454,65 @@ export default function AssignmentSecond() {
     setPersonas((prev) => prev.filter((p) => p.id !== id));
   };
 
-  /** Convert a screen-space delta (dx, dy) to world XZ movement.
-   *  Camera transform is  Rx(-orbitX) · Ry(-orbitY).
-   *  Screen coords for a floor point (wx, 0, wz):
-   *    screenX = wx·cos(orbitY) − wz·sin(orbitY)
-   *    screenY = (wx·sin(orbitY) + wz·cos(orbitY)) · sin(orbitX)
-   *  Invert to get world delta from screen delta.
-   *  Uses refs so it always reads current camera angles.
+  // Perspective-correct screen-to-floor unprojection.
+  // Closed-form: given CSS chain perspective(P).translate(pan).Rx(-p).Ry(-y).Tz(zOff),
+  // solves for (worldX, worldZ) on the Y=0 floor plane.
+
+  const viewportRef = useRef(null);
+
+  /** Cast ray from camera through screen point (sx, sy) onto Y=0 floor.
+   *  Returns { x, z } in world space, or null if ray is parallel to floor.
    */
-  const screenToFloorDelta = (dx, dy) => {
-    const pitchRad = (orbitXRef.current * Math.PI) / 180;
-    const yawRad   = (orbitYRef.current * Math.PI) / 180;
-    const cosY = Math.cos(yawRad);
-    const sinY = Math.sin(yawRad);
-    const sinX = Math.sin(pitchRad);
-    // When looking near the horizon (sinX ≈ 0), vertical mouse movement
-    // can't meaningfully map to floor Z — clamp to avoid huge jumps.
-    const effSinX = Math.max(Math.abs(sinX), 0.05) * Math.sign(sinX || 1);
-    // dy' = vertical screen delta projected onto the floor plane
-    const dyPrime = dy / effSinX;
-    // Invert the yaw rotation
-    const worldX =  dx * cosY + dyPrime * sinY;
-    const worldZ = -dx * sinY + dyPrime * cosY;
-    return { worldX, worldZ };
+  const screenToFloor = (sx, sy) => {
+    const P = PERSPECTIVE_DEPTH;
+    const el = viewportRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    const cxS = rect.left + rect.width / 2;
+    const cyS = rect.top  + rect.height / 2;
+
+    const pitch = orbitXRef.current * Math.PI / 180;
+    const yaw   = orbitYRef.current * Math.PI / 180;
+    const zOff  = zoomRef.current - CAMERA_BASE_DISTANCE;
+    const panXV = panXRef.current;
+    const panYV = panYRef.current;
+
+    // Projected coords relative to perspective origin
+    const projX = sx - cxS;
+    const projY = sy - cyS;
+
+    const cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const cyw = Math.cos(yaw), syw = Math.sin(yaw);
+    if (Math.abs(sp) < 1e-6) return null;
+
+    // Closed-form unprojection onto CSS Y=0 floor plane.
+    // From the CSS transform chain:
+    //   perspective(P) . translate(pan) . Rx(-pitch) . Ry(-yaw) . Tz(zOff)
+    // The floor constraint (wy=0) gives r.z = r.y * cot(pitch),
+    // and projection gives r.y = projY*(P-r.z)/P - panY.
+    // Solving: r.z = cot(p)*(projY - panY) / (1 + cot(p)*projY/P)
+    const cotP = cp / sp;
+    const denom = 1 + cotP * projY / P;
+    if (Math.abs(denom) < 1e-8) return null;
+
+    const rz = cotP * (projY - panYV) / denom;
+    const ry = rz * sp / cp;
+    const rx = projX * (P - rz) / P - panXV;
+
+    // Invert Rx(pitch): u = Rx(p) * r
+    const ux = rx;
+    const uz = ry * sp + rz * cp;
+
+    // Invert Ry(yaw): q = Ry(y) * u
+    const qx = ux * cyw - uz * syw;
+    const qz = ux * syw + uz * cyw;
+
+    return { x: qx, z: qz - zOff };
   };
+
+  // Store an anchor point when drag starts: where on the floor the initial
+  // click landed, and what the persona’s position was at that moment.
+  const dragAnchor = useRef(null);  // { floorX, floorZ, personaX, personaZ }
 
   useEffect(() => {
     const onDown = (e) => {
@@ -454,8 +522,17 @@ export default function AssignmentSecond() {
         if (personaEl) {
           e.preventDefault();
           e.stopPropagation();
-          draggingPersona.current = Number(personaEl.dataset.personaId);
+          const pid = Number(personaEl.dataset.personaId);
+          draggingPersona.current = pid;
           lastMouse.current = { x: e.clientX, y: e.clientY };
+          // Compute floor hit point at mouse-down position
+          const hit = screenToFloor(e.clientX, e.clientY);
+          if (hit) {
+            // Find current persona position
+            // We read from the DOM dataset or find in state
+            // Use a callback-ref pattern: store the anchor
+            dragAnchor.current = { floorX: hit.x, floorZ: hit.z, pid };
+          }
           return;
         }
       }
@@ -463,7 +540,7 @@ export default function AssignmentSecond() {
       if (e.button === 1) {
         e.preventDefault();
         isDragging.current = true;
-        isPanning.current  = e.shiftKey; // Shift+middle also pans
+        isPanning.current  = e.shiftKey;
         lastMouse.current  = { x: e.clientX, y: e.clientY };
       } else if (e.button === 2) {
         e.preventDefault();
@@ -473,18 +550,26 @@ export default function AssignmentSecond() {
       }
     };
     const onMove = (e) => {
-      // Persona drag — left button
-      if (draggingPersona.current != null) {
-        const dx = e.clientX - lastMouse.current.x;
-        const dy = e.clientY - lastMouse.current.y;
-        lastMouse.current = { x: e.clientX, y: e.clientY };
-        const { worldX, worldZ } = screenToFloorDelta(dx, dy);
-        const pid = draggingPersona.current;
-        setPersonas((prev) =>
-          prev.map((p) =>
-            p.id === pid ? { ...p, x: p.x + worldX, z: p.z + worldZ } : p
-          )
-        );
+      // Persona drag — ray-plane intersection
+      if (draggingPersona.current != null && dragAnchor.current) {
+        const hit = screenToFloor(e.clientX, e.clientY);
+        if (hit) {
+          const anchor = dragAnchor.current;
+          const deltaX = hit.x - anchor.floorX;
+          const deltaZ = hit.z - anchor.floorZ;
+          const pid = draggingPersona.current;
+          setPersonas((prev) =>
+            prev.map((p) => {
+              if (p.id !== pid) return p;
+              // On first move, capture the persona’s original position
+              if (anchor.personaX === undefined) {
+                anchor.personaX = p.x;
+                anchor.personaZ = p.z;
+              }
+              return { ...p, x: anchor.personaX + deltaX, z: anchor.personaZ + deltaZ };
+            })
+          );
+        }
         return;
       }
       if (!isDragging.current) return;
@@ -505,6 +590,7 @@ export default function AssignmentSecond() {
         // Snap to nearest milestone if close enough
         const pid = draggingPersona.current;
         draggingPersona.current = null;
+        dragAnchor.current = null;
         setPersonas((prev) =>
           prev.map((p) => {
             if (p.id !== pid) return p;
@@ -589,6 +675,7 @@ export default function AssignmentSecond() {
   //
   return (
     <div
+      ref={viewportRef}
       className="w-full select-none"
       style={{
         height: '100dvh',
@@ -612,6 +699,12 @@ export default function AssignmentSecond() {
         <div>pan:   <span style={{ color: '#fbbf24' }}>{panX.toFixed(0)}, {panY.toFixed(0)}</span></div>
         <div style={{ marginTop: '4px', fontSize: '10px', color: '#94a3b8' }}>
           Middle-drag = orbit | Right-drag = pan | Scroll = zoom
+        </div>
+        <div style={{ marginTop: '4px', fontSize: '10px', color: '#c084fc' }}>
+          board: {boardDims.w}×{boardDims.h} | oX:{boardDims.offsetX} oY:{boardDims.offsetY}
+        </div>
+        <div style={{ fontSize: '10px', color: '#67e8f9' }}>
+          floor: {floorW}×{floorH} | content: {totalWidth}×{contentHeight}
         </div>
       </div>
 
@@ -684,8 +777,8 @@ export default function AssignmentSecond() {
                 position: 'absolute',
                 top: 0,
                 left: 0,
-                width: `${FLOOR_SIZE}px`,
-                height: `${FLOOR_SIZE}px`,
+                width: `${floorW}px`,
+                height: `${floorH}px`,
                 transform: 'translate(-50%, -50%) rotateX(90deg)',
                 transformOrigin: 'center center',
                 background: 'rgba(255,255,255,0.08)',
@@ -719,7 +812,7 @@ export default function AssignmentSecond() {
                 position: 'absolute',
                 top: 0,
                 left: 0,
-                width: 'min(88vw, 1400px)',
+                width: `${boardW}px`,  // full chart width + left/right padding
                 transform: [
                   'rotateY(90deg)',            // step 3: page-top → −X
                   'rotateX(90deg)',            // step 2: XY plane → XZ plane
@@ -760,7 +853,7 @@ export default function AssignmentSecond() {
       <div
         data-board-scroll
         style={{ height: `${contentHeight + 16}px`, transform: 'scaleY(-1)', flex: '1 1 auto', minHeight: 0 }}
-        className="overflow-x-auto overflow-y-hidden rounded-xl border border-slate-200 shadow-sm"
+        className="overflow-x-hidden overflow-y-hidden rounded-xl border border-slate-200 shadow-sm"
         onWheel={(e) => {
           if (e.shiftKey && e.deltaY !== 0) {
             e.preventDefault();
@@ -1163,14 +1256,6 @@ export default function AssignmentSecond() {
                 <div
                   key={p.id}
                   data-persona-id={p.id}
-                  onMouseDown={(e) => {
-                    if (e.button === 0) {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      draggingPersona.current = p.id;
-                      lastMouse.current = { x: e.clientX, y: e.clientY };
-                    }
-                  }}
                   style={{
                     position: 'absolute',
                     top: 0,
