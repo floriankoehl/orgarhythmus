@@ -118,23 +118,31 @@ export function usePersonas({
       TASKHEIGHT_SMALL: DEFAULT_TASKHEIGHT_SMALL,
       TASKHEIGHT_NORMAL: DEFAULT_TASKHEIGHT_NORMAL,
     });
-    return positioned.map((m) => ({
-      ...m,
-      worldX: (m.y + m.h / 2 + oY + SCROLL_Y_PAD) - H / 2,
-      worldZ: W / 2 - (m.x + m.w / 2 + oX),
-    }));
+    return positioned.map((m) => {
+      const slotW = Math.max((m.duration || 1) * DAYWIDTH, PERSONA_SIZE + 10);
+      const slotH = PERSONA_SIZE + 10;
+      return {
+        ...m,
+        worldX: (m.y + m.h / 2 + oY + SCROLL_Y_PAD) - H / 2,
+        worldZ: W / 2 - (m.x + m.w / 2 + oX),
+        // World-space half-extents for rectangular hitbox
+        halfX: slotH / 2,   // pedestal height → world X extent
+        halfZ: slotW / 2,   // pedestal width  → world Z extent
+      };
+    });
   }, [days, teamOrder, teams, milestones, taskDisplaySettings3D, teamDisplaySettings, teamPhasesMap, effectiveHeaderH, boardDims, TEAMWIDTH, TASKWIDTH, DAYWIDTH]);
 
   const milestone3DRef = useRef(milestone3D);
   useEffect(() => { milestone3DRef.current = milestone3D; }, [milestone3D]);
 
-  /** Find closest milestone within SNAP_RADIUS */
+  /** Find closest milestone within SNAP_RADIUS using rectangular distance */
   const findNearestMilestone = (x, z) => {
     let best = null;
     let bestDist = SNAP_RADIUS;
     for (const m of milestone3DRef.current) {
-      const dx = m.worldX - x;
-      const dz = m.worldZ - z;
+      // Distance to nearest point on the milestone rectangle (0 if inside)
+      const dx = Math.max(0, Math.abs(m.worldX - x) - (m.halfX || 0));
+      const dz = Math.max(0, Math.abs(m.worldZ - z) - (m.halfZ || 0));
       const dist = Math.sqrt(dx * dx + dz * dz);
       if (dist < bestDist) {
         bestDist = dist;
@@ -179,7 +187,9 @@ export function usePersonas({
     // Set reactive dragging state on first call (mousedown)
     setDraggingId(pid);
     // Compute floor hit
-    const hit = screenToFloor(e.clientX, e.clientY);
+    // Use the same plane height as the mousedown anchor for consistent drag
+    const planeY = dragAnchor.current.planeY || 0;
+    const hit = screenToFloor(e.clientX, e.clientY, planeY);
     if (hit && dragAnchor.current) {
       const anchor = dragAnchor.current;
       const deltaX = hit.x - anchor.floorX;

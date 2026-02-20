@@ -1,6 +1,6 @@
 // useCamera3D.js — Camera state, input handlers, and screen-to-floor unprojection
 // ═══════════════════════════════════════════════════════════════════
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   CAMERA_BASE_DISTANCE,
   CAMERA_DEFAULT_ZOOM,
@@ -10,6 +10,8 @@ import {
   CAMERA_SCALE_MIN,
   CAMERA_SCALE_MAX,
   PERSPECTIVE_DEPTH,
+  PERSONA_SIZE,
+  PERSONA_DRAG_LIFT,
 } from './assignment3DConstants.js';
 
 /**
@@ -58,11 +60,12 @@ export function useCamera3D({
   const panYRef = useRef(panY);
   const panZRef = useRef(panZ);
 
-  // ── Screen-to-floor unprojection ───────────────────────────────
-  /** Cast ray from camera through screen point (sx, sy) onto Y=0 floor.
-   *  Returns { x, z } in world space, or null if ray is parallel to floor.
+  // ── Screen-to-plane unprojection ────────────────────────────────
+  /** Cast ray from camera through screen point (sx, sy) onto a horizontal
+   *  plane at height planeY above Y=0.  Returns { x, z } in world space,
+   *  or null if ray is parallel to the plane.
    */
-  const screenToFloor = (sx, sy) => {
+  const screenToFloor = (sx, sy, planeY = 0) => {
     const P = PERSPECTIVE_DEPTH;
     const el = viewportRef.current;
     if (!el) return null;
@@ -81,24 +84,22 @@ export function useCamera3D({
 
     const cp = Math.cos(pitch), sp = Math.sin(pitch);
     const cyw = Math.cos(yaw), syw = Math.sin(yaw);
-    if (Math.abs(sp) < 1e-6) return null;
 
-    const cotP = cp / sp;
-    const denom = 1 + cotP * projY / P;
+    const h = planeY; // height above floor
+    const denom = sp * P + cp * projY;
     if (Math.abs(denom) < 1e-8) return null;
 
-    const rz = cotP * (projY - panYV) / denom;
-    const ry = rz * sp / cp;
-    const rx = projX * (P - rz) / P - panXV;
+    // z3 = post-rotateY Z for ray-plane intersection at y_local = -h
+    const z3 = (P * (projY - panYV + h * cp) - projY * h * sp) / denom;
+    const z4 = h * sp + z3 * cp; // depth after rotateX
+    const x3 = projX * (P - z4) / P - panXV;
 
-    const ux = rx;
-    const uz = ry * sp + rz * cp;
-
-    const qx = ux * cyw + uz * syw;
-    const qz = -ux * syw + uz * cyw;
+    // Undo rotateY
+    const sxW = x3 * cyw + z3 * syw;
+    const szW = -x3 * syw + z3 * cyw;
 
     const s = cameraScaleRef.current;
-    return { x: qx / s, z: (qz - zOff) / s };
+    return { x: sxW / s, z: (szW - zOff) / s };
   };
 
   // ── World-to-screen projection (forward transform) ───────────
@@ -159,10 +160,12 @@ export function useCamera3D({
           const pid = Number(personaEl.dataset.personaId);
           draggingPersona.current = pid;
           lastMouse.current = { x: e.clientX, y: e.clientY };
-          // Compute floor hit point at mouse-down position
-          const hit = screenToFloor(e.clientX, e.clientY);
+          // Compute drag plane height (approx center of persona figure)
+          const dragPlaneY = PERSONA_SIZE * 0.75 + PERSONA_DRAG_LIFT;
+          // Compute hit on the persona-height plane (not floor)
+          const hit = screenToFloor(e.clientX, e.clientY, dragPlaneY);
           if (hit) {
-            dragAnchor.current = { floorX: hit.x, floorZ: hit.z, pid };
+            dragAnchor.current = { floorX: hit.x, floorZ: hit.z, pid, planeY: dragPlaneY };
           }
           // Notify parent (sets draggingId state for lift animation)
           onPersonaDragMove(e);
@@ -322,10 +325,34 @@ export function useCamera3D({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  // ── Camera state snapshot / restore ─────────────────────────
+  const getCameraState = useCallback(() => ({
+    orbitX: orbitXRef.current,
+    orbitY: orbitYRef.current,
+    panX: panXRef.current,
+    panY: panYRef.current,
+    panZ: panZRef.current,
+    zoom: zoomRef.current,
+    cameraScale: cameraScaleRef.current,
+  }), []);
+
+  const restoreCamera = useCallback((cam) => {
+    if (!cam) return;
+    if (cam.orbitX != null) { orbitXRef.current = cam.orbitX; setOrbitX(cam.orbitX); }
+    if (cam.orbitY != null) { orbitYRef.current = cam.orbitY; setOrbitY(cam.orbitY); }
+    if (cam.panX != null)  { panXRef.current = cam.panX;  setPanX(cam.panX); }
+    if (cam.panY != null)  { panYRef.current = cam.panY;  setPanY(cam.panY); }
+    if (cam.panZ != null)  { panZRef.current = cam.panZ;  setPanZ(cam.panZ); }
+    if (cam.zoom != null)  { zoomRef.current = cam.zoom;  setZoom(cam.zoom); }
+    if (cam.cameraScale != null) { cameraScaleRef.current = cam.cameraScale; setCameraScale(cam.cameraScale); }
+  }, []);
+
   return {
     orbitX, orbitY, panX, panY, panZ, zoom, cameraScale,
     setOrbitX, setOrbitY, setPanX, setPanY, setPanZ, setZoom, setCameraScale,
     screenToFloor,
     lastMouse,
+    getCameraState,
+    restoreCamera,
   };
 }

@@ -8,7 +8,7 @@
 //   - Persona logic (usePersonas)
 //   - Sub-components (ViewsPanel, ToolbarPlaceholder, DayGrid, MilestoneLayer)
 //
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   fetch_project_details,
@@ -46,6 +46,10 @@ import {
 import {
   PHASE_HEADER_HEIGHT,
   CAMERA_BASE_DISTANCE,
+  CAMERA_DEFAULT_TILT,
+  CAMERA_DEFAULT_YAW,
+  CAMERA_DEFAULT_ZOOM,
+  CAMERA_DEFAULT_SCALE,
   PERSPECTIVE_DEPTH,
   PERSONA_SIZE,
   PERSONA_DRAG_LIFT,
@@ -85,6 +89,7 @@ export default function AssignmentSecond() {
   const [taskDisplaySettings, setTaskDisplaySettings] = useState({});
   const [teamDisplaySettings, setTeamDisplaySettings] = useState({});
   const [loading, setLoading] = useState(true);
+  const [cameraFlash, setCameraFlash] = useState(null);
 
   // ── Layout constants (view-driven, fall back to defaults) ──────
   const [customDayWidth, setCustomDayWidth] = useState(DEFAULT_DAYWIDTH);
@@ -175,6 +180,7 @@ export default function AssignmentSecond() {
   }, [projectId]);
 
   // ── View management ────────────────────────────────────────────
+  const restoreCameraRef = useRef(null);
   const applyViewState = useCallback((state) => {
     if (!state) return;
     const defaults = getDefaultViewState();
@@ -195,8 +201,13 @@ export default function AssignmentSecond() {
     setCustomTaskHeightSmall(state.customTaskHeightSmall ?? defaults.customTaskHeightSmall);
     setCustomTeamColumnWidth(state.teamColumnWidth ?? defaults.teamColumnWidth);
     setCustomTaskColumnWidth(state.taskColumnWidth ?? defaults.taskColumnWidth);
+    // Restore camera position if saved with the view
+    if (state.camera && restoreCameraRef.current) {
+      restoreCameraRef.current(state.camera);
+    }
   }, []);
 
+  const getCameraStateRef = useRef(null);
   const collectViewState = useCallback(() => {
     return {
       taskDisplaySettings,
@@ -206,6 +217,7 @@ export default function AssignmentSecond() {
       customTaskHeightSmall,
       teamColumnWidth: TEAMWIDTH,
       taskColumnWidth: TASKWIDTH,
+      camera: getCameraStateRef.current ? getCameraStateRef.current() : null,
     };
   }, [taskDisplaySettings, teamDisplaySettings, customDayWidth, customTaskHeightNormal, customTaskHeightSmall, TEAMWIDTH, TASKWIDTH]);
 
@@ -297,6 +309,8 @@ export default function AssignmentSecond() {
   const {
     orbitX, orbitY, panX, panY, panZ, zoom, cameraScale,
     screenToFloor,
+    getCameraState,
+    restoreCamera,
   } = useCamera3D({
     viewportRef,
     draggingPersona,
@@ -311,6 +325,58 @@ export default function AssignmentSecond() {
   useEffect(() => {
     screenToFloorRef.current = screenToFloor;
   }, [screenToFloor]);
+
+  // Wire camera state refs so collectViewState/applyViewState can access them
+  useEffect(() => {
+    getCameraStateRef.current = getCameraState;
+    restoreCameraRef.current = restoreCamera;
+  }, [getCameraState, restoreCamera]);
+
+  // ── Restore persisted camera on mount ──────────────────────────
+  const cameraRestoredRef = useRef(false);
+  useEffect(() => {
+    if (cameraRestoredRef.current || !projectId) return;
+    cameraRestoredRef.current = true;
+    try {
+      const raw = localStorage.getItem(`orgarhythmus_camera_${projectId}`);
+      if (raw) {
+        const cam = JSON.parse(raw);
+        restoreCamera(cam);
+      }
+    } catch { /* ignore corrupt storage */ }
+  }, [projectId, restoreCamera]);
+
+  // Auto-save camera to localStorage (debounced 600ms)
+  useEffect(() => {
+    if (!projectId) return;
+    const timer = setTimeout(() => {
+      localStorage.setItem(`orgarhythmus_camera_${projectId}`, JSON.stringify({
+        orbitX, orbitY, panX, panY, panZ, zoom, cameraScale,
+      }));
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [projectId, orbitX, orbitY, panX, panY, panZ, zoom, cameraScale]);
+
+  // Save camera position to localStorage (called by button)
+  const handleSaveCamera = useCallback(() => {
+    if (!projectId) return;
+    const cam = getCameraState();
+    localStorage.setItem(`orgarhythmus_camera_${projectId}`, JSON.stringify(cam));
+  }, [projectId, getCameraState]);
+
+  // Reset camera to defaults
+  const handleResetCamera = useCallback(() => {
+    restoreCamera({
+      orbitX: CAMERA_DEFAULT_TILT,
+      orbitY: CAMERA_DEFAULT_YAW,
+      panX: 0, panY: 0, panZ: 0,
+      zoom: CAMERA_DEFAULT_ZOOM,
+      cameraScale: CAMERA_DEFAULT_SCALE,
+    });
+    if (projectId) {
+      localStorage.removeItem(`orgarhythmus_camera_${projectId}`);
+    }
+  }, [projectId, restoreCamera]);
 
   // Floor dimensions
   const floorW = boardDims.h || (contentHeight + 180);
@@ -375,6 +441,33 @@ export default function AssignmentSecond() {
         <div style={{ fontSize: '10px', color: '#67e8f9' }}>
           floor: {floorW}×{floorH} | content: {totalWidth}×{contentHeight}
         </div>
+      </div>
+
+      {/* ── Camera save/reset buttons ── */}
+      <div style={{
+        position: 'absolute', top: '210px', left: '12px', zIndex: 999,
+        display: 'flex', gap: '6px',
+      }}>
+        <button
+          onClick={() => { handleSaveCamera(); setCameraFlash('Saved!'); setTimeout(() => setCameraFlash(null), 1200); }}
+          style={{
+            background: 'rgba(74,222,128,0.85)', color: '#000', border: 'none',
+            borderRadius: '6px', padding: '6px 12px', cursor: 'pointer',
+            fontFamily: 'monospace', fontSize: '11px', fontWeight: 'bold',
+          }}
+        >
+          {cameraFlash || '📷 Save Camera'}
+        </button>
+        <button
+          onClick={handleResetCamera}
+          style={{
+            background: 'rgba(248,113,113,0.85)', color: '#000', border: 'none',
+            borderRadius: '6px', padding: '6px 12px', cursor: 'pointer',
+            fontFamily: 'monospace', fontSize: '11px', fontWeight: 'bold',
+          }}
+        >
+          ↺ Reset
+        </button>
       </div>
 
       {/* ── Layer 2: Camera orbit ── */}
@@ -875,43 +968,103 @@ export default function AssignmentSecond() {
               );
             })}
 
-            {/* ── Milestone dependency lines on floor ── */}
+            {/* ── Milestone dependency bezier curves (3D ribbon planks) ── */}
             {connections.map((conn, ci) => {
               const srcMs = milestone3D.find((m) => m.id === conn.source);
               const tgtMs = milestone3D.find((m) => m.id === conn.target);
               if (!srcMs || !tgtMs) return null;
-              const x1 = srcMs.worldX, z1 = srcMs.worldZ;
-              const x2 = tgtMs.worldX, z2 = tgtMs.worldZ;
-              const dx = x2 - x1, dz = z2 - z1;
-              const len = Math.sqrt(dx * dx + dz * dz);
-              if (len < 1) return null;
-              const angle = Math.atan2(dz, dx) * (180 / Math.PI);
-              const lineH = 4;
-              const liftY = 3; // lift above floor to avoid z-fighting
-              const weightColor = conn.weight === 'strong' ? 'rgba(251,146,60,0.95)'
-                : conn.weight === 'weak' ? 'rgba(148,163,184,0.8)'
-                : 'rgba(134,239,172,0.7)';
-              const arrowSize = 10;
+
+              // Bezier control points — S-curve matching 2D view
+              const p0x = srcMs.worldX, p0z = srcMs.worldZ;
+              const p3x = tgtMs.worldX, p3z = tgtMs.worldZ;
+              const midZ = (p0z + p3z) / 2;
+              const p1x = p0x, p1z = midZ;
+              const p2x = p3x, p2z = midZ;
+
+              const SEGMENTS = 14;
+              // Ribbon dimensions — wide enough to see from above
+              const ribbonW = conn.weight === 'strong' ? 14 : conn.weight === 'weak' ? 10 : 8;
+              const beamH   = conn.weight === 'strong' ? 4  : conn.weight === 'weak' ? 3  : 2;
+              const liftY = 0.5;
+              const weightColor = conn.weight === 'strong' ? 'rgba(251,146,60,0.92)'
+                : conn.weight === 'weak' ? 'rgba(148,163,184,0.78)'
+                : 'rgba(134,239,172,0.68)';
+              const weightColorDark = conn.weight === 'strong' ? 'rgba(200,110,30,0.82)'
+                : conn.weight === 'weak' ? 'rgba(110,125,150,0.68)'
+                : 'rgba(90,190,120,0.58)';
+
+              // Sample bezier curve
+              const points = [];
+              for (let i = 0; i <= SEGMENTS; i++) {
+                const t = i / SEGMENTS;
+                const u = 1 - t;
+                points.push({
+                  x: u*u*u*p0x + 3*u*u*t*p1x + 3*u*t*t*p2x + t*t*t*p3x,
+                  z: u*u*u*p0z + 3*u*u*t*p1z + 3*u*t*t*p2z + t*t*t*p3z,
+                });
+              }
+
+              const arrowSize = 12;
+              const lastPt = points[points.length - 1];
+              const prevPt = points[points.length - 2];
+              const arrowAngle = Math.atan2(lastPt.z - prevPt.z, lastPt.x - prevPt.x) * (180 / Math.PI);
+
               return (
                 <div key={`dep-${ci}`} style={{ position: 'absolute', top: 0, left: 0, transformStyle: 'preserve-3d', pointerEvents: 'none' }}>
-                  {/* Line body flat on floor */}
-                  <div style={{
-                    position: 'absolute',
-                    width: `${len}px`,
-                    height: `${lineH}px`,
-                    background: weightColor,
-                    borderRadius: '2px',
-                    boxShadow: `0 0 8px ${weightColor}`,
-                    transform: [
-                      `translateX(${x1}px)`,
-                      `translateZ(${z1}px)`,
-                      `translateY(-${liftY}px)`,
-                      `rotateX(90deg)`,
-                      `rotateZ(${-angle}deg)`,
-                      `translateY(-${lineH / 2}px)`,
-                    ].join(' '),
-                    transformOrigin: '0 50%',
-                  }} />
+                  {/* Each segment is a 3D plank: top face + 2 side walls (same technique as milestone boxes) */}
+                  {points.slice(0, -1).map((pt, si) => {
+                    const next = points[si + 1];
+                    const dx = next.x - pt.x, dz = next.z - pt.z;
+                    const segLen = Math.sqrt(dx*dx + dz*dz);
+                    if (segLen < 0.1) return null;
+                    const segAngle = Math.atan2(dz, dx) * (180 / Math.PI);
+                    const sw = segLen + 1; // slight overlap to avoid gaps
+                    return (
+                      <div
+                        key={si}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: `${sw}px`,
+                          height: `${ribbonW}px`,
+                          transform: [
+                            `translateX(${pt.x}px)`,
+                            `translateZ(${pt.z}px)`,
+                            `translateY(-${liftY + beamH}px)`,
+                            'rotateX(-90deg)',
+                            `rotateZ(${-segAngle}deg)`,
+                            `translate(0px, -${ribbonW / 2}px)`,
+                          ].join(' '),
+                          transformOrigin: '0 0',
+                          transformStyle: 'preserve-3d',
+                        }}
+                      >
+                        {/* Top face — visible from above */}
+                        <div style={{
+                          position: 'absolute', left: 0, top: 0,
+                          width: `${sw}px`, height: `${ribbonW}px`,
+                          background: weightColor,
+                        }} />
+                        {/* Front wall — folds down from bottom edge */}
+                        <div style={{
+                          position: 'absolute', left: 0, top: `${ribbonW}px`,
+                          width: `${sw}px`, height: `${beamH}px`,
+                          background: weightColorDark,
+                          transform: 'rotateX(90deg)',
+                          transformOrigin: 'top left',
+                        }} />
+                        {/* Back wall — folds down from top edge */}
+                        <div style={{
+                          position: 'absolute', left: 0, top: 0,
+                          width: `${sw}px`, height: `${beamH}px`,
+                          background: `linear-gradient(180deg, ${weightColor}, ${weightColorDark})`,
+                          transform: 'rotateX(90deg)',
+                          transformOrigin: 'top left',
+                        }} />
+                      </div>
+                    );
+                  })}
                   {/* Arrowhead at target end */}
                   <div style={{
                     position: 'absolute',
@@ -920,41 +1073,32 @@ export default function AssignmentSecond() {
                     borderTop: `${arrowSize / 2}px solid transparent`,
                     borderBottom: `${arrowSize / 2}px solid transparent`,
                     transform: [
-                      `translateX(${x2}px)`,
-                      `translateZ(${z2}px)`,
-                      `translateY(-${liftY}px)`,
-                      `rotateX(90deg)`,
-                      `rotateZ(${-angle}deg)`,
+                      `translateX(${lastPt.x}px)`,
+                      `translateZ(${lastPt.z}px)`,
+                      `translateY(-${liftY + beamH / 2}px)`,
+                      'rotateX(-90deg)',
+                      `rotateZ(${-arrowAngle}deg)`,
                       `translateX(-${arrowSize}px)`,
                       `translateY(-${arrowSize / 2}px)`,
                     ].join(' '),
                     transformOrigin: '0 50%',
-                    filter: `drop-shadow(0 0 6px ${weightColor})`,
+                    filter: `drop-shadow(0 0 4px ${weightColor})`,
                   }} />
                 </div>
               );
             })}
 
-            {/* ── Protopersona figures ── */}
+            {/* ── Protopersona figures (blocky box style) ── */}
             {personas.map((p) => {
               const S = PERSONA_SIZE;
               const isBeingDragged = p.id === draggingId;
-              // Figure dimensions
-              const headR = S * 0.32;        // head radius
-              const headD = headR * 2;       // head diameter
-              const bodyW = S * 0.50;        // torso width
-              const bodyH = S * 0.50;        // torso height
-              const bodyD = bodyW * 0.55;    // torso depth
-              const legW  = bodyW * 0.38;    // one leg width
-              const legH  = S * 0.36;        // leg height
-              const legD  = bodyD * 0.8;     // leg depth
-              const legGap = bodyW * 0.08;   // gap between legs
-              const totalH = headD + bodyH + legH; // total figure height
+              // All-box dimensions — simple Minecraft-like figure
+              const headW = S * 0.44, headH = S * 0.40, headD = S * 0.40;
+              const bodyW = S * 0.50, bodyH = S * 0.44, bodyD = S * 0.30;
+              const legW  = bodyW * 0.40, legH = S * 0.34, legD = bodyD * 0.85;
+              const legGap = bodyW * 0.08;
+              const totalH = headH + bodyH + legH;
               const baseY = isBeingDragged ? totalH + PERSONA_DRAG_LIFT : totalH + (p.milestoneId != null ? MILESTONE_3D_HEIGHT : 0);
-              const darker = (c, amt) => {
-                // simple darken via filter on side faces
-                return c;
-              };
               return (
                 <div
                   key={p.id}
@@ -978,99 +1122,102 @@ export default function AssignmentSecond() {
                     pointerEvents: 'auto',
                   }}
                 >
-                  {/* ── Head (sphere approximation via border-radius) ── */}
+                  {/* ── Head (6-face box) ── */}
                   <div style={{
                     position: 'absolute',
-                    left: `${(S - headD) / 2}px`,
+                    left: `${(S - headW) / 2}px`,
                     top: '0px',
-                    width: `${headD}px`,
-                    height: `${headD}px`,
+                    width: `${headW}px`,
+                    height: `${headH}px`,
                     transformStyle: 'preserve-3d',
                   }}>
-                    {/* front face */}
-                    <div style={{ position: 'absolute', width: `${headD}px`, height: `${headD}px`, borderRadius: '50%', background: '#fcd9b6', transform: `translateZ(${headR * 0.7}px)`, boxShadow: 'inset -2px -2px 4px rgba(0,0,0,0.15)' }} />
-                    {/* back face */}
-                    <div style={{ position: 'absolute', width: `${headD}px`, height: `${headD}px`, borderRadius: '50%', background: '#e8c9a0', transform: `rotateY(180deg) translateZ(${headR * 0.7}px)` }} />
-                    {/* left face */}
-                    <div style={{ position: 'absolute', width: `${headD}px`, height: `${headD}px`, borderRadius: '50%', background: '#f0d0a8', transform: `rotateY(-90deg) translateZ(${headR * 0.7}px)` }} />
-                    {/* right face */}
-                    <div style={{ position: 'absolute', width: `${headD}px`, height: `${headD}px`, borderRadius: '50%', background: '#f0d0a8', transform: `rotateY(90deg) translateZ(${headR * 0.7}px)` }} />
+                    {/* front */}
+                    <div style={{ position: 'absolute', width: `${headW}px`, height: `${headH}px`, background: '#fcd9b6', transform: `translateZ(${headD / 2}px)` }}>
+                      {/* eyes */}
+                      <div style={{ position: 'absolute', top: `${headH * 0.38}px`, left: `${headW * 0.22}px`, width: '3px', height: '3px', background: '#2d2d2d' }} />
+                      <div style={{ position: 'absolute', top: `${headH * 0.38}px`, right: `${headW * 0.22}px`, width: '3px', height: '3px', background: '#2d2d2d' }} />
+                      {/* mouth */}
+                      <div style={{ position: 'absolute', top: `${headH * 0.62}px`, left: '50%', width: '5px', height: '2px', background: '#c17c5e', transform: 'translateX(-50%)' }} />
+                    </div>
+                    {/* back */}
+                    <div style={{ position: 'absolute', width: `${headW}px`, height: `${headH}px`, background: '#d4a67a', transform: `rotateY(180deg) translateZ(${headD / 2}px)` }} />
+                    {/* left */}
+                    <div style={{ position: 'absolute', width: `${headD}px`, height: `${headH}px`, background: '#ecc9a0', transform: `rotateY(-90deg) translateZ(0px)` }} />
+                    {/* right */}
+                    <div style={{ position: 'absolute', width: `${headD}px`, height: `${headH}px`, background: '#ecc9a0', transform: `rotateY(90deg) translateZ(${headW}px)` }} />
                     {/* top */}
-                    <div style={{ position: 'absolute', width: `${headD}px`, height: `${headD}px`, borderRadius: '50%', background: '#dbb896', transform: `rotateX(90deg) translateZ(${headR * 0.7}px)` }} />
-                    {/* Eyes — two dots */}
-                    <div style={{ position: 'absolute', top: `${headD * 0.38}px`, left: `${headD * 0.28}px`, width: '3px', height: '3px', borderRadius: '50%', background: '#333', transform: `translateZ(${headR * 0.72}px)` }} />
-                    <div style={{ position: 'absolute', top: `${headD * 0.38}px`, right: `${headD * 0.28}px`, width: '3px', height: '3px', borderRadius: '50%', background: '#333', transform: `translateZ(${headR * 0.72}px)` }} />
-                    {/* Mouth — tiny arc */}
-                    <div style={{ position: 'absolute', top: `${headD * 0.6}px`, left: '50%', width: '5px', height: '2.5px', borderRadius: '0 0 5px 5px', background: '#c17c5e', transform: `translateX(-50%) translateZ(${headR * 0.72}px)` }} />
+                    <div style={{ position: 'absolute', width: `${headW}px`, height: `${headD}px`, background: '#5c3d2e', transform: 'rotateX(90deg) translateZ(0px)' }} />
+                    {/* bottom */}
+                    <div style={{ position: 'absolute', width: `${headW}px`, height: `${headD}px`, background: '#e8c09a', transform: `rotateX(-90deg) translateZ(${headH}px)` }} />
                   </div>
 
-                  {/* ── Torso (box) ── */}
+                  {/* ── Torso (6-face box) ── */}
                   <div style={{
                     position: 'absolute',
                     left: `${(S - bodyW) / 2}px`,
-                    top: `${headD}px`,
+                    top: `${headH}px`,
                     width: `${bodyW}px`,
                     height: `${bodyH}px`,
                     transformStyle: 'preserve-3d',
                   }}>
                     {/* front */}
-                    <div style={{ position: 'absolute', width: `${bodyW}px`, height: `${bodyH}px`, background: p.color, borderRadius: '3px 3px 0 0', transform: `translateZ(${bodyD / 2}px)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#fff', fontFamily: 'monospace', textShadow: '0 1px 2px rgba(0,0,0,0.4)' }}>{p.name.charAt(0).toUpperCase()}</span>
+                    <div style={{ position: 'absolute', width: `${bodyW}px`, height: `${bodyH}px`, background: p.color, transform: `translateZ(${bodyD / 2}px)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '10px', fontWeight: 'bold', color: '#fff', fontFamily: 'sans-serif', textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{p.name.charAt(0).toUpperCase()}</span>
                     </div>
                     {/* back */}
-                    <div style={{ position: 'absolute', width: `${bodyW}px`, height: `${bodyH}px`, background: p.color, filter: 'brightness(0.8)', borderRadius: '3px 3px 0 0', transform: `rotateY(180deg) translateZ(${bodyD / 2}px)` }} />
+                    <div style={{ position: 'absolute', width: `${bodyW}px`, height: `${bodyH}px`, background: p.color, filter: 'brightness(0.75)', transform: `rotateY(180deg) translateZ(${bodyD / 2}px)` }} />
                     {/* left */}
-                    <div style={{ position: 'absolute', width: `${bodyD}px`, height: `${bodyH}px`, background: p.color, filter: 'brightness(0.85)', transform: `rotateY(-90deg) translateZ(0px)` }} />
+                    <div style={{ position: 'absolute', width: `${bodyD}px`, height: `${bodyH}px`, background: p.color, filter: 'brightness(0.82)', transform: 'rotateY(-90deg) translateZ(0px)' }} />
                     {/* right */}
-                    <div style={{ position: 'absolute', width: `${bodyD}px`, height: `${bodyH}px`, background: p.color, filter: 'brightness(0.85)', transform: `rotateY(90deg) translateZ(${bodyW}px)` }} />
-                    {/* top (shoulders) */}
-                    <div style={{ position: 'absolute', width: `${bodyW}px`, height: `${bodyD}px`, background: p.color, filter: 'brightness(1.1)', transform: `rotateX(90deg) translateZ(0px)` }} />
+                    <div style={{ position: 'absolute', width: `${bodyD}px`, height: `${bodyH}px`, background: p.color, filter: 'brightness(0.82)', transform: `rotateY(90deg) translateZ(${bodyW}px)` }} />
+                    {/* top */}
+                    <div style={{ position: 'absolute', width: `${bodyW}px`, height: `${bodyD}px`, background: p.color, filter: 'brightness(1.08)', transform: 'rotateX(90deg) translateZ(0px)' }} />
                     {/* bottom */}
-                    <div style={{ position: 'absolute', width: `${bodyW}px`, height: `${bodyD}px`, background: p.color, filter: 'brightness(0.7)', transform: `rotateX(-90deg) translateZ(${bodyH}px)` }} />
+                    <div style={{ position: 'absolute', width: `${bodyW}px`, height: `${bodyD}px`, background: p.color, filter: 'brightness(0.68)', transform: `rotateX(-90deg) translateZ(${bodyH}px)` }} />
                   </div>
 
-                  {/* ── Left leg ── */}
+                  {/* ── Left leg (4-face box) ── */}
                   <div style={{
                     position: 'absolute',
                     left: `${(S - bodyW) / 2 + legGap}px`,
-                    top: `${headD + bodyH}px`,
+                    top: `${headH + bodyH}px`,
                     width: `${legW}px`,
                     height: `${legH}px`,
                     transformStyle: 'preserve-3d',
                   }}>
-                    <div style={{ position: 'absolute', width: `${legW}px`, height: `${legH}px`, background: '#3b4861', borderRadius: '0 0 2px 2px', transform: `translateZ(${legD / 2}px)` }} />
-                    <div style={{ position: 'absolute', width: `${legW}px`, height: `${legH}px`, background: '#2d3a4e', borderRadius: '0 0 2px 2px', transform: `rotateY(180deg) translateZ(${legD / 2}px)` }} />
-                    <div style={{ position: 'absolute', width: `${legD}px`, height: `${legH}px`, background: '#344054', transform: `rotateY(-90deg) translateZ(0px)` }} />
+                    <div style={{ position: 'absolute', width: `${legW}px`, height: `${legH}px`, background: '#3b4861', transform: `translateZ(${legD / 2}px)` }} />
+                    <div style={{ position: 'absolute', width: `${legW}px`, height: `${legH}px`, background: '#2d3a4e', transform: `rotateY(180deg) translateZ(${legD / 2}px)` }} />
+                    <div style={{ position: 'absolute', width: `${legD}px`, height: `${legH}px`, background: '#344054', transform: 'rotateY(-90deg) translateZ(0px)' }} />
                     <div style={{ position: 'absolute', width: `${legD}px`, height: `${legH}px`, background: '#344054', transform: `rotateY(90deg) translateZ(${legW}px)` }} />
                   </div>
 
-                  {/* ── Right leg ── */}
+                  {/* ── Right leg (4-face box) ── */}
                   <div style={{
                     position: 'absolute',
                     left: `${(S - bodyW) / 2 + bodyW - legGap - legW}px`,
-                    top: `${headD + bodyH}px`,
+                    top: `${headH + bodyH}px`,
                     width: `${legW}px`,
                     height: `${legH}px`,
                     transformStyle: 'preserve-3d',
                   }}>
-                    <div style={{ position: 'absolute', width: `${legW}px`, height: `${legH}px`, background: '#3b4861', borderRadius: '0 0 2px 2px', transform: `translateZ(${legD / 2}px)` }} />
-                    <div style={{ position: 'absolute', width: `${legW}px`, height: `${legH}px`, background: '#2d3a4e', borderRadius: '0 0 2px 2px', transform: `rotateY(180deg) translateZ(${legD / 2}px)` }} />
-                    <div style={{ position: 'absolute', width: `${legD}px`, height: `${legH}px`, background: '#344054', transform: `rotateY(-90deg) translateZ(0px)` }} />
+                    <div style={{ position: 'absolute', width: `${legW}px`, height: `${legH}px`, background: '#3b4861', transform: `translateZ(${legD / 2}px)` }} />
+                    <div style={{ position: 'absolute', width: `${legW}px`, height: `${legH}px`, background: '#2d3a4e', transform: `rotateY(180deg) translateZ(${legD / 2}px)` }} />
+                    <div style={{ position: 'absolute', width: `${legD}px`, height: `${legH}px`, background: '#344054', transform: 'rotateY(-90deg) translateZ(0px)' }} />
                     <div style={{ position: 'absolute', width: `${legD}px`, height: `${legH}px`, background: '#344054', transform: `rotateY(90deg) translateZ(${legW}px)` }} />
                   </div>
 
-                  {/* ── Name label floating above ── */}
+                  {/* ── Name label ── */}
                   <div style={{
                     position: 'absolute',
-                    top: `-14px`,
+                    top: '-14px',
                     left: '50%',
                     transform: 'translateX(-50%)',
                     color: '#fff',
-                    fontSize: '10px',
-                    fontFamily: 'monospace',
-                    fontWeight: 600,
+                    fontSize: '9px',
+                    fontFamily: 'sans-serif',
+                    fontWeight: 700,
                     whiteSpace: 'nowrap',
-                    textShadow: '0 1px 4px rgba(0,0,0,0.7)',
+                    textShadow: '0 1px 4px rgba(0,0,0,0.8)',
                     pointerEvents: 'none',
                   }}>
                     {p.name}
