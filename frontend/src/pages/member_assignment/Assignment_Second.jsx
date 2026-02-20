@@ -339,19 +339,26 @@ export default function AssignmentSecond() {
   };
 
   /** Convert a screen-space delta (dx, dy) to world XZ movement.
-   *  We need to invert the camera rotation so mouse movement
-   *  maps to floor-plane movement regardless of orbit angle.
+   *  Camera transform is  Rx(-orbitX) · Ry(-orbitY).
+   *  Screen coords for a floor point (wx, 0, wz):
+   *    screenX = wx·cos(orbitY) − wz·sin(orbitY)
+   *    screenY = (wx·sin(orbitY) + wz·cos(orbitY)) · sin(orbitX)
+   *  Invert to get world delta from screen delta.
    */
   const screenToFloorDelta = (dx, dy) => {
-    const ax = (-orbitX * Math.PI) / 180; // pitch in radians
-    const ay = (-orbitY * Math.PI) / 180; // yaw in radians
-    const cosY = Math.cos(ay);
-    const sinY = Math.sin(ay);
-    const cosX = Math.cos(ax);
-    // Project screen delta onto XZ plane through inverse rotation
-    // Negated to match screen→world direction (screen-right = +X, screen-down = +Z at default yaw)
-    const worldX = -(dx * cosY + dy * sinY * cosX);
-    const worldZ = -(-dx * sinY + dy * cosY * cosX);
+    const pitchRad = (orbitX * Math.PI) / 180;
+    const yawRad   = (orbitY * Math.PI) / 180;
+    const cosY = Math.cos(yawRad);
+    const sinY = Math.sin(yawRad);
+    const sinX = Math.sin(pitchRad);
+    // When looking near the horizon (sinX ≈ 0), vertical mouse movement
+    // can't meaningfully map to floor Z — clamp to avoid huge jumps.
+    const effSinX = Math.max(Math.abs(sinX), 0.05) * Math.sign(sinX || 1);
+    // dy' = vertical screen delta projected onto the floor plane
+    const dyPrime = dy / effSinX;
+    // Invert the yaw rotation
+    const worldX =  dx * cosY + dyPrime * sinY;
+    const worldZ = -dx * sinY + dyPrime * cosY;
     return { worldX, worldZ };
   };
 
@@ -546,30 +553,30 @@ export default function AssignmentSecond() {
             <div style={{ position: 'absolute', top: 0, left: 0, transformStyle: 'preserve-3d', pointerEvents: 'none' }}>
               {/* ── X axis (red) ── */}
               {/* +X ray — right */}
-              <div style={{ position: 'absolute', width: '180px', height: '3px', background: 'red', transform: 'translateY(-1.5px)' }} />
-              <div style={{ position: 'absolute', left: '185px', top: '-10px', color: 'red', fontSize: '14px', fontWeight: 'bold', fontFamily: 'monospace' }}>+X</div>
+              <div style={{ position: 'absolute', width: '300px', height: '4px', background: 'linear-gradient(90deg, #ff3333, #ff3333 80%, transparent)', transform: 'translateY(-2px)', boxShadow: '0 0 8px rgba(255,50,50,0.6)' }} />
+              <div style={{ position: 'absolute', left: '305px', top: '-14px', color: '#ff3333', fontSize: '18px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 10px rgba(255,50,50,0.8)' }}>+X</div>
               {/* −X ray — left (faded) */}
-              <div style={{ position: 'absolute', width: '180px', height: '2px', background: 'rgba(255,80,80,0.35)', transform: 'translate(-180px, -1px)' }} />
-              <div style={{ position: 'absolute', left: '-210px', top: '-10px', color: 'rgba(255,80,80,0.5)', fontSize: '12px', fontWeight: 'bold', fontFamily: 'monospace' }}>−X</div>
+              <div style={{ position: 'absolute', width: '300px', height: '3px', background: 'linear-gradient(270deg, rgba(255,80,80,0.5), transparent)', transform: 'translate(-300px, -1.5px)' }} />
+              <div style={{ position: 'absolute', left: '-335px', top: '-12px', color: 'rgba(255,80,80,0.6)', fontSize: '16px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 6px rgba(255,50,50,0.4)' }}>−X</div>
 
               {/* ── Y axis (green) ── */}
               {/* +Y ray — up */}
-              <div style={{ position: 'absolute', width: '3px', height: '180px', background: 'limegreen', transform: 'translate(-1.5px, -180px)' }} />
-              <div style={{ position: 'absolute', left: '-8px', top: '-202px', color: 'limegreen', fontSize: '14px', fontWeight: 'bold', fontFamily: 'monospace' }}>+Y</div>
+              <div style={{ position: 'absolute', width: '4px', height: '300px', background: 'linear-gradient(0deg, #33ff33, #33ff33 80%, transparent)', transform: 'translate(-2px, -300px)', boxShadow: '0 0 8px rgba(50,255,50,0.6)' }} />
+              <div style={{ position: 'absolute', left: '-12px', top: '-328px', color: '#33ff33', fontSize: '18px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 10px rgba(50,255,50,0.8)' }}>+Y</div>
               {/* −Y ray — down (faded) */}
-              <div style={{ position: 'absolute', width: '2px', height: '180px', background: 'rgba(50,255,50,0.35)', transform: 'translate(-1px, 0)' }} />
-              <div style={{ position: 'absolute', left: '-10px', top: '185px', color: 'rgba(50,255,50,0.5)', fontSize: '12px', fontWeight: 'bold', fontFamily: 'monospace' }}>−Y</div>
+              <div style={{ position: 'absolute', width: '3px', height: '300px', background: 'linear-gradient(180deg, rgba(50,255,50,0.5), transparent)', transform: 'translate(-1.5px, 0)' }} />
+              <div style={{ position: 'absolute', left: '-12px', top: '305px', color: 'rgba(50,255,50,0.6)', fontSize: '16px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 6px rgba(50,255,50,0.4)' }}>−Y</div>
 
               {/* ── Z axis (blue) — rotateX(90deg) so it extends toward viewer ── */}
               {/* +Z ray — toward viewer */}
-              <div style={{ position: 'absolute', width: '3px', height: '180px', background: 'dodgerblue', transform: 'translate(-1.5px, 0) rotateX(90deg)', transformOrigin: 'top center' }} />
-              <div style={{ position: 'absolute', left: '8px', color: 'dodgerblue', fontSize: '14px', fontWeight: 'bold', fontFamily: 'monospace', transform: 'translateZ(185px)', transformOrigin: 'center center' }}>+Z</div>
+              <div style={{ position: 'absolute', width: '4px', height: '300px', background: 'linear-gradient(0deg, #3399ff, #3399ff 80%, transparent)', transform: 'translate(-2px, 0) rotateX(90deg)', transformOrigin: 'top center', boxShadow: '0 0 8px rgba(50,150,255,0.6)' }} />
+              <div style={{ position: 'absolute', left: '10px', color: '#3399ff', fontSize: '18px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 10px rgba(50,150,255,0.8)', transform: 'translateZ(305px)', transformOrigin: 'center center' }}>+Z</div>
               {/* −Z ray — into screen (faded) */}
-              <div style={{ position: 'absolute', width: '2px', height: '180px', background: 'rgba(30,144,255,0.35)', transform: 'translate(-1px, 0) rotateX(-90deg)', transformOrigin: 'top center' }} />
-              <div style={{ position: 'absolute', left: '8px', color: 'rgba(30,144,255,0.5)', fontSize: '12px', fontWeight: 'bold', fontFamily: 'monospace', transform: 'translateZ(-190px)', transformOrigin: 'center center' }}>−Z</div>
+              <div style={{ position: 'absolute', width: '3px', height: '300px', background: 'linear-gradient(180deg, rgba(30,144,255,0.5), transparent)', transform: 'translate(-1.5px, 0) rotateX(-90deg)', transformOrigin: 'top center' }} />
+              <div style={{ position: 'absolute', left: '10px', color: 'rgba(30,144,255,0.6)', fontSize: '16px', fontWeight: 'bold', fontFamily: 'monospace', textShadow: '0 0 6px rgba(50,150,255,0.4)', transform: 'translateZ(-310px)', transformOrigin: 'center center' }}>−Z</div>
 
               {/* Origin dot */}
-              <div style={{ position: 'absolute', width: '8px', height: '8px', borderRadius: '50%', background: 'white', transform: 'translate(-4px, -4px)', boxShadow: '0 0 6px rgba(255,255,255,0.8)' }} />
+              <div style={{ position: 'absolute', width: '12px', height: '12px', borderRadius: '50%', background: 'white', transform: 'translate(-6px, -6px)', boxShadow: '0 0 12px rgba(255,255,255,1), 0 0 4px rgba(255,255,255,0.9)' }} />
             </div>
 
             {/* ── Layer 4b: Floor plane — XZ grid at Y=0 ──
@@ -1016,11 +1023,12 @@ export default function AssignmentSecond() {
                     left: 0,
                     width: `${S}px`,
                     height: `${S}px`,
-                    // Position: world X & Z, then lift by half-side so cube sits ON the floor
+                    // Position: world X & Z, then lift by full side so cube sits ON the floor
+                    // (half lifts center to Y=half, + half more clears the bottom face above Y=0)
                     transform: [
                       `translateX(${p.x}px)`,
                       `translateZ(${p.z}px)`,
-                      `translateY(-${half}px)`,
+                      `translateY(-${S}px)`,
                     ].join(' '),
                     transformStyle: 'preserve-3d',
                     cursor: draggingPersona.current === p.id ? 'grabbing' : 'grab',
