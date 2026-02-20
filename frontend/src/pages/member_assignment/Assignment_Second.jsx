@@ -67,6 +67,9 @@ const CAMERA_DEFAULT_TILT   = 30;    // deg — default vertical pitch (looking 
 const CAMERA_DEFAULT_YAW    = 30;    // deg — default horizontal rotation
 const CAMERA_ZOOM_MIN       = -800;  // px — minimum zoom (farthest away)
 const CAMERA_ZOOM_MAX       = 600;   // px — maximum zoom (closest)
+const CAMERA_SCALE_MIN      = 0.15;  // minimum scale (very zoomed out)
+const CAMERA_SCALE_MAX      = 3.0;   // maximum scale (very zoomed in)
+const CAMERA_DEFAULT_SCALE  = 1.0;   // default scale
 const PERSPECTIVE_DEPTH     = 1800;  // px — CSS perspective value
 // FLOOR_SIZE is computed dynamically from the board content dimensions
 
@@ -392,7 +395,9 @@ export default function AssignmentSecond() {
   const [orbitY, setOrbitY] = useState(CAMERA_DEFAULT_YAW);   // horizontal yaw
   const [panX, setPanX]     = useState(0);                     // screen-space pan X (px)
   const [panY, setPanY]     = useState(0);                     // screen-space pan Y (px)
-  const [zoom, setZoom]     = useState(CAMERA_DEFAULT_ZOOM);   // distance offset (px)
+  const [panZ, setPanZ]     = useState(0);                     // world-space Z pan (px) — Shift+wheel
+  const [zoom, setZoom]     = useState(CAMERA_DEFAULT_ZOOM);   // distance offset (px) — fixed
+  const [cameraScale, setCameraScale] = useState(CAMERA_DEFAULT_SCALE); // visual scale zoom
   const isDragging = useRef(false);
   const isPanning  = useRef(false);
   const lastMouse  = useRef({ x: 0, y: 0 });
@@ -401,13 +406,17 @@ export default function AssignmentSecond() {
   const orbitXRef = useRef(orbitX);
   const orbitYRef = useRef(orbitY);
   const zoomRef = useRef(zoom);
+  const cameraScaleRef = useRef(cameraScale);
   const panXRef = useRef(panX);
   const panYRef = useRef(panY);
   useEffect(() => { orbitXRef.current = orbitX; }, [orbitX]);
   useEffect(() => { orbitYRef.current = orbitY; }, [orbitY]);
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  useEffect(() => { cameraScaleRef.current = cameraScale; }, [cameraScale]);
   useEffect(() => { panXRef.current = panX; }, [panX]);
   useEffect(() => { panYRef.current = panY; }, [panY]);
+  const panZRef = useRef(panZ);
+  useEffect(() => { panZRef.current = panZ; }, [panZ]);
 
   // ── Protopersonas ──────────────────────────────────────────────
   // DB-persisted persona tokens on the XZ floor.
@@ -593,7 +602,7 @@ export default function AssignmentSecond() {
 
     const pitch = orbitXRef.current * Math.PI / 180;
     const yaw   = orbitYRef.current * Math.PI / 180;
-    const zOff  = zoomRef.current - CAMERA_BASE_DISTANCE;
+    const zOff  = zoomRef.current - CAMERA_BASE_DISTANCE + panZRef.current;
     const panXV = panXRef.current;
     const panYV = panYRef.current;
 
@@ -627,7 +636,8 @@ export default function AssignmentSecond() {
     const qx = ux * cyw + uz * syw;
     const qz = -ux * syw + uz * cyw;
 
-    return { x: qx, z: qz - zOff };
+    const s = cameraScaleRef.current;
+    return { x: qx / s, z: (qz - zOff) / s };
   };
 
   // Store an anchor point when drag starts: where on the floor the initial
@@ -757,17 +767,18 @@ export default function AssignmentSecond() {
     // Prevent context menu on right-click
     const onContextMenu = (e) => e.preventDefault();
 
-    // Scroll wheel = zoom, Shift+wheel = pan along Z-axis
+    // Scroll wheel = scale zoom, Shift+wheel = navigate along Z-axis
     const onWheel = (e) => {
       const inside = e.target.closest('[data-board-scroll]');
       if (inside) return;
       e.preventDefault();
       if (e.shiftKey) {
-        // Shift+wheel → scroll/pan along the Z-axis
-        setPanY((prev) => prev - e.deltaY * 0.8);
+        // Shift+wheel → navigate along the world Z-axis
+        setPanZ((prev) => prev + e.deltaY * 0.8);
       } else {
-        // Plain wheel → zoom (camera distance)
-        setZoom((prev) => Math.max(CAMERA_ZOOM_MIN, Math.min(CAMERA_ZOOM_MAX, prev - e.deltaY * 0.8)));
+        // Plain wheel → scale zoom (bigger/smaller)
+        const factor = Math.exp(-e.deltaY * 0.003);
+        setCameraScale((prev) => Math.max(CAMERA_SCALE_MIN, Math.min(CAMERA_SCALE_MAX, prev * factor)));
       }
     };
 
@@ -887,8 +898,8 @@ export default function AssignmentSecond() {
       }}>
         <div>orbitX: <span style={{ color: '#f87171' }}>{orbitX.toFixed(1)}°</span> (vertical tilt)</div>
         <div>orbitY: <span style={{ color: '#4ade80' }}>{orbitY.toFixed(1)}°</span> (horizontal)</div>
-        <div>zoom:  <span style={{ color: '#60a5fa' }}>{zoom.toFixed(0)}px</span></div>
-        <div>pan:   <span style={{ color: '#fbbf24' }}>{panX.toFixed(0)}, {panY.toFixed(0)}</span></div>
+        <div>scale: <span style={{ color: '#60a5fa' }}>{cameraScale.toFixed(2)}x</span></div>
+        <div>pan:   <span style={{ color: '#fbbf24' }}>{panX.toFixed(0)}, {panY.toFixed(0)} | Z: {panZ.toFixed(0)}</span></div>
         <div style={{ marginTop: '4px', fontSize: '10px', color: '#94a3b8' }}>
           Middle-drag = orbit | Right-drag = pan | Scroll = zoom | Shift+Scroll = nav
         </div>
@@ -926,7 +937,7 @@ export default function AssignmentSecond() {
         <div
           style={{
             transformStyle: 'preserve-3d',
-            transform: `translateZ(${zoom - CAMERA_BASE_DISTANCE}px)`,
+            transform: `translateZ(${zoom - CAMERA_BASE_DISTANCE + panZ}px) scale3d(${cameraScale}, ${cameraScale}, ${cameraScale})`,
             position: 'relative',
           }}
         >
