@@ -47,8 +47,10 @@ const WEIGHT_COLORS = {
  */
 export function buildConnectionGeometry(conn, srcMs, tgtMs) {
   // Bezier control points — S-curve matching the 2D dependency view
-  const p0x = srcMs.worldX, p0z = srcMs.worldZ;
-  const p3x = tgtMs.worldX, p3z = tgtMs.worldZ;
+  // Connect from the END (right edge) of source to START (left edge) of target.
+  // In world space Z is inverted: right edge → worldZ - halfZ, left edge → worldZ + halfZ
+  const p0x = srcMs.worldX, p0z = srcMs.worldZ - (srcMs.halfZ || 0);
+  const p3x = tgtMs.worldX, p3z = tgtMs.worldZ + (tgtMs.halfZ || 0);
   const midZ = (p0z + p3z) / 2;
   const p1x = p0x, p1z = midZ;
   const p2x = p3x, p2z = midZ;

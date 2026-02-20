@@ -944,7 +944,10 @@ export default function AssignmentSecond() {
               const slabZLen = Math.abs(teamSlab.nameWorldZEnd - teamSlab.nameWorldZStart);
               const slabXCenter = (teamSlab.worldXStart + teamSlab.worldXEnd) / 2;
               const slabZCenter = (teamSlab.nameWorldZStart + teamSlab.nameWorldZEnd) / 2;
-              const textColor = getContrastTextColor(teamColor);
+              const occupied = personas.some((p) => p.onTeamId === teamSlab.teamId);
+              const borderColor = occupied ? 'rgba(74,222,128,1)' : teamColor;
+              const topBg = occupied ? 'rgba(74,222,128,0.85)' : teamColor;
+              const textColor = getContrastTextColor(occupied ? '#4ade80' : teamColor);
 
               if (slabXLen < 1 || slabZLen < 1) return null;
 
@@ -974,8 +977,8 @@ export default function AssignmentSecond() {
                   <div style={{
                     position: 'absolute', top: 0, left: 0,
                     width: `${slabZLen}px`, height: `${slabXLen}px`,
-                    background: teamColor,
-                    border: `1.5px solid ${teamColor}`,
+                    background: topBg,
+                    border: `2px solid ${borderColor}`,
                     borderRadius: '2px',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     overflow: 'hidden',
@@ -993,28 +996,28 @@ export default function AssignmentSecond() {
                     position: 'absolute', left: 0, top: `${slabXLen}px`,
                     width: `${slabZLen}px`, height: `${slabH}px`,
                     transform: 'rotateX(90deg)', transformOrigin: 'top left',
-                    background: `color-mix(in srgb, ${teamColor} 85%, #000)`,
+                    background: `color-mix(in srgb, ${borderColor} 85%, #000)`,
                   }} />
                   {/* Back wall */}
                   <div style={{
                     position: 'absolute', left: 0, top: 0,
                     width: `${slabZLen}px`, height: `${slabH}px`,
                     transform: 'rotateX(90deg)', transformOrigin: 'top left',
-                    background: `color-mix(in srgb, ${teamColor} 75%, #000)`,
+                    background: `color-mix(in srgb, ${borderColor} 75%, #000)`,
                   }} />
                   {/* Left wall */}
                   <div style={{
                     position: 'absolute', left: 0, top: 0,
                     width: `${slabH}px`, height: `${slabXLen}px`,
                     transform: 'rotateY(-90deg)', transformOrigin: 'top left',
-                    background: `color-mix(in srgb, ${teamColor} 80%, #000)`,
+                    background: `color-mix(in srgb, ${borderColor} 80%, #000)`,
                   }} />
                   {/* Right wall */}
                   <div style={{
                     position: 'absolute', left: `${slabZLen}px`, top: 0,
                     width: `${slabH}px`, height: `${slabXLen}px`,
                     transform: 'rotateY(-90deg)', transformOrigin: 'top left',
-                    background: `color-mix(in srgb, ${teamColor} 70%, #000)`,
+                    background: `color-mix(in srgb, ${borderColor} 70%, #000)`,
                   }} />
                 </div>
               );
@@ -1035,7 +1038,10 @@ export default function AssignmentSecond() {
                 const slabXCenter = (taskSlab.worldXStart + taskSlab.worldXEnd) / 2;
                 const slabZCenter = (taskSlab.nameWorldZStart + taskSlab.nameWorldZEnd) / 2;
                 const bgColor = lightenColor(teamColor, 0.35);
-                const textColor = getContrastTextColor(bgColor);
+                const occupied = personas.some((p) => p.onTaskId === taskSlab.taskId);
+                const borderColor = occupied ? 'rgba(74,222,128,1)' : teamColor;
+                const topBg = occupied ? 'rgba(74,222,128,0.85)' : bgColor;
+                const textColor = getContrastTextColor(occupied ? '#4ade80' : bgColor);
 
                 if (slabXLen < 1 || slabZLen < 1) return null;
 
@@ -1065,8 +1071,8 @@ export default function AssignmentSecond() {
                     <div style={{
                       position: 'absolute', top: 0, left: 0,
                       width: `${slabZLen}px`, height: `${slabXLen}px`,
-                      background: bgColor,
-                      border: `1px solid ${teamColor}`,
+                      background: topBg,
+                      border: `2px solid ${borderColor}`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       overflow: 'hidden',
                     }}>
@@ -1083,28 +1089,28 @@ export default function AssignmentSecond() {
                       position: 'absolute', left: 0, top: `${slabXLen}px`,
                       width: `${slabZLen}px`, height: `${slabH}px`,
                       transform: 'rotateX(90deg)', transformOrigin: 'top left',
-                      background: `color-mix(in srgb, ${bgColor} 80%, #000)`,
+                      background: `color-mix(in srgb, ${borderColor} 80%, #000)`,
                     }} />
                     {/* Back wall */}
                     <div style={{
                       position: 'absolute', left: 0, top: 0,
                       width: `${slabZLen}px`, height: `${slabH}px`,
                       transform: 'rotateX(90deg)', transformOrigin: 'top left',
-                      background: `color-mix(in srgb, ${bgColor} 70%, #000)`,
+                      background: `color-mix(in srgb, ${borderColor} 70%, #000)`,
                     }} />
                     {/* Left wall */}
                     <div style={{
                       position: 'absolute', left: 0, top: 0,
                       width: `${slabH}px`, height: `${slabXLen}px`,
                       transform: 'rotateY(-90deg)', transformOrigin: 'top left',
-                      background: `color-mix(in srgb, ${bgColor} 75%, #000)`,
+                      background: `color-mix(in srgb, ${borderColor} 75%, #000)`,
                     }} />
                     {/* Right wall */}
                     <div style={{
                       position: 'absolute', left: `${slabZLen}px`, top: 0,
                       width: `${slabH}px`, height: `${slabXLen}px`,
                       transform: 'rotateY(-90deg)', transformOrigin: 'top left',
-                      background: `color-mix(in srgb, ${bgColor} 65%, #000)`,
+                      background: `color-mix(in srgb, ${borderColor} 65%, #000)`,
                     }} />
                   </div>
                 );
