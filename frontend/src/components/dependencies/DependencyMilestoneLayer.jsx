@@ -1,7 +1,7 @@
 import CloseIcon from '@mui/icons-material/Close';
 import EditIcon from '@mui/icons-material/Edit';
 import FlagIcon from '@mui/icons-material/Flag';
-import { lightenColor } from '../../pages/dependency/layoutMath';
+import { lightenColor, getContrastTextColor } from '../../pages/dependency/layoutMath';
 
 export default function DependencyMilestoneLayer({
   teamOrder,
@@ -335,7 +335,7 @@ export default function DependencyMilestoneLayer({
               >
                 {/* Milestone name */}
                 <div className="flex items-center h-full px-2 overflow-hidden">
-                  <span className={`truncate text-xs ${isSelected ? 'text-white' : ''}`}>
+                  <span className="truncate text-xs" style={{ color: isSelected ? '#fff' : getContrastTextColor(milestoneColor) }}>
                     {milestone.name}
                   </span>
                 </div>
