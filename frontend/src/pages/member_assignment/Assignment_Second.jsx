@@ -66,6 +66,7 @@ const PERSPECTIVE_DEPTH     = 1800;  // px — CSS perspective value
 // ── Protopersona defaults ────────────────────────────────────────
 const PERSONA_SIZE          = 25;    // px — cube side length
 const SNAP_RADIUS           = 40;    // px — max distance to snap to a milestone
+const MILESTONE_3D_HEIGHT   = 6;    // px — how far milestone pedestals rise above the XZ floor (+Y)
 const PERSONA_COLORS = [
   '#f87171', '#fb923c', '#facc15', '#4ade80',
   '#22d3ee', '#818cf8', '#e879f9', '#f472b6',
@@ -1132,7 +1133,7 @@ export default function AssignmentSecond() {
       </div>{/* canvas wrapper */}
       </div>{/* board */}
 
-            {/* ── Layer 4d: Milestone pedestals — slot markers on the floor ──
+            {/* ── Layer 4d: Milestone pedestals — raised slot markers above the floor ──
                  Each pedestal lies flat on XZ with text along world Z
                  (matching the board’s timeline direction).
                  Rotation: Rx(90°)·Rz(90°) maps local-X → world-Z.
@@ -1150,24 +1151,25 @@ export default function AssignmentSecond() {
                     left: 0,
                     width: `${slotW}px`,
                     height: `${slotH}px`,
-                    // 1. Center the div on its own origin
-                    // 2. Rz(90°) rotates text 90° in-plane
-                    // 3. Rx(90°) lays it flat on XZ
-                    // 4. Move to world position
-                    // Result: text flows along world Z, div lies on floor
+                    // 1. Move to world XZ position
+                    // 2. translateY(-MILESTONE_3D_HEIGHT) lifts pedestal above floor (+Y in world)
+                    // 3. Rx(90°) lays it flat on XZ (but elevated)
+                    // 4. Rz(90°) rotates text 90° in-plane so it flows along world Z
+                    // 5. Center the div on its world position
                     transform: [
                       `translateX(${m.worldX}px)`,
                       `translateZ(${m.worldZ}px)`,
+                      `translateY(-${MILESTONE_3D_HEIGHT}px)`,
                       'rotateX(90deg)',
                       'rotateZ(90deg)',
                       `translate(-${slotW / 2}px, -${slotH / 2}px)`,
                     ].join(' '),
                     transformOrigin: '0 0',
-                    border: occupied ? '2px solid rgba(74,222,128,0.6)' : '2px dashed rgba(255,255,255,0.4)',
-                    borderRadius: '6px',
+                    border: occupied ? `2px solid rgba(74,222,128,0.8)` : `2px solid ${m.color || m.teamColor || '#facc15'}99`,
+                    borderRadius: '4px',
                     background: occupied
-                      ? 'rgba(74,222,128,0.15)'
-                      : `${m.color || m.teamColor || '#facc15'}33`,
+                      ? 'rgba(74,222,128,0.25)'
+                      : `${m.color || m.teamColor || '#facc15'}55`,
                     pointerEvents: 'none',
                     display: 'flex',
                     alignItems: 'center',
@@ -1176,13 +1178,14 @@ export default function AssignmentSecond() {
                 >
                   <span style={{
                     fontSize: '8px',
-                    color: 'rgba(255,255,255,0.7)',
+                    color: 'rgba(255,255,255,0.9)',
                     fontFamily: 'monospace',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     maxWidth: '100%',
                     padding: '0 2px',
+                    textShadow: '0 1px 2px rgba(0,0,0,0.6)',
                   }}>
                     {m.name}
                   </span>
@@ -1224,12 +1227,13 @@ export default function AssignmentSecond() {
                     left: 0,
                     width: `${S}px`,
                     height: `${S}px`,
-                    // Position: world X & Z, then lift by full side so cube sits ON the floor
-                    // (half lifts center to Y=half, + half more clears the bottom face above Y=0)
+                    // Position: world X & Z, then lift by full side so cube sits ON the floor.
+                    // When snapped to a milestone, add MILESTONE_3D_HEIGHT so the cube
+                    // sits on top of the raised milestone pedestal instead of on the floor.
                     transform: [
                       `translateX(${p.x}px)`,
                       `translateZ(${p.z}px)`,
-                      `translateY(-${S}px)`,
+                      `translateY(-${S + (p.milestoneId != null ? MILESTONE_3D_HEIGHT : 0)}px)`,
                     ].join(' '),
                     transformStyle: 'preserve-3d',
                     cursor: draggingPersona.current === p.id ? 'grabbing' : 'grab',
