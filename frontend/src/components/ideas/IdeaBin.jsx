@@ -8,7 +8,7 @@ import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
 import { playSound } from "../../assets/sound_registry";
-import { useDimensions } from "../../pages/general/ideas/useDimensions";
+import { useDimensions } from "./useDimensions";
 import IdeaBinConfirmModal from "./IdeaBinConfirmModal";
 import useIdeaBinWindow from "./useIdeaBinWindow";
 import IdeaBinTransformModal from "./IdeaBinTransformModal";

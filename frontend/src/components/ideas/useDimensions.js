@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { authFetch } from '../../../auth';
+import { authFetch } from '../../auth';
 
 export function useDimensions() {
   const [dimensions, setDimensions] = useState([]);

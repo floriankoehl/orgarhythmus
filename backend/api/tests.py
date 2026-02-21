@@ -7,11 +7,10 @@ Structure:
     3. Project Tests        – CRUD, join/leave, access control
     4. Team Tests           – CRUD, join/leave, reorder, detail
     5. Task Tests           – CRUD, assign members, detail
-    6. Category & Idea Tests – CRUD, ordering, assignment
-    7. Legend Type Tests     – CRUD, assignment
-    8. Notification Tests   – List, read, delete
-    9. Demo Date Tests      – Get/set demo date
-   10. User Teams/Tasks     – Aggregated views
+    6. Legend Type Tests     – CRUD, assignment
+    7. Notification Tests   – List, read, delete
+    8. Demo Date Tests      – Get/set demo date
+    9. User Teams/Tasks     – Aggregated views
 """
 
 import json
@@ -24,9 +23,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from api.models import (
-    Category,
     DemoDate,
-    Idea,
     LegendType,
     Notification,
     Project,
@@ -136,25 +133,6 @@ class DemoDateModelTest(TestCase):
     def test_get_current_date_custom(self):
         DemoDate.objects.create(date=date(2030, 6, 15))
         self.assertEqual(DemoDate.get_current_date(), date(2030, 6, 15))
-
-
-class CategoryModelTest(TestCase):
-    def test_defaults(self):
-        user = User.objects.create_user(username="u1", password="p")
-        project = Project.objects.create(name="P", owner=user)
-        cat = Category.objects.create(name="Cat", project=project)
-        self.assertEqual(cat.x, 0)
-        self.assertEqual(cat.archived, False)
-
-
-class IdeaModelTest(TestCase):
-    def test_ordering(self):
-        user = User.objects.create_user(username="u1", password="p")
-        project = Project.objects.create(name="P", owner=user)
-        i1 = Idea.objects.create(title="B", description="D", order_index=2, project=project)
-        i2 = Idea.objects.create(title="A", description="D", order_index=1, project=project)
-        qs = list(Idea.objects.filter(project=project))
-        self.assertEqual(qs[0], i2)
 
 
 class LegendTypeModelTest(TestCase):
@@ -436,69 +414,7 @@ class TaskAssignMemberTest(APITestBase):
 
 
 # ═══════════════════════════════════════════════
-#  6. CATEGORY & IDEA TESTS
-# ═══════════════════════════════════════════════
-
-
-class CategoryIdeaTest(APITestBase):
-    def setUp(self):
-        super().setUp()
-        resp = self._create_project("IdeaProject")
-        self.project_id = resp.data["id"]
-
-    def test_create_category(self):
-        response = self.client.post(
-            f"/api/projects/{self.project_id}/create_category/",
-            {"name": "Cat1"},
-            format="json",
-        )
-        self.assertIn(response.status_code, [200, 201])
-
-    def test_create_idea(self):
-        response = self.client.post(
-            f"/api/projects/{self.project_id}/create_idea/",
-            {"idea_name": "Idea1", "description": "Desc"},
-            format="json",
-        )
-        self.assertIn(response.status_code, [200, 201])
-
-    def test_delete_idea(self):
-        resp = self.client.post(
-            f"/api/projects/{self.project_id}/create_idea/",
-            {"idea_name": "DelMe", "description": "D"},
-            format="json",
-        )
-        idea_id = resp.data["idea"]["id"]
-        response = self.client.delete(
-            f"/api/projects/{self.project_id}/delete_idea/",
-            {"id": idea_id},
-            format="json",
-        )
-        self.assertIn(response.status_code, [200, 204])
-
-    def test_assign_idea_to_category(self):
-        cat_resp = self.client.post(
-            f"/api/projects/{self.project_id}/create_category/",
-            {"name": "Cat"},
-            format="json",
-        )
-        cat_id = cat_resp.data["category"]["id"]
-        idea_resp = self.client.post(
-            f"/api/projects/{self.project_id}/create_idea/",
-            {"idea_name": "I", "description": "D"},
-            format="json",
-        )
-        idea_id = idea_resp.data["idea"]["id"]
-        response = self.client.post(
-            f"/api/projects/{self.project_id}/assign_idea_to_category/",
-            {"idea_id": idea_id, "category_id": cat_id},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 200)
-
-
-# ═══════════════════════════════════════════════
-#  7. LEGEND TYPE TESTS
+#  6. LEGEND TYPE TESTS
 # ═══════════════════════════════════════════════
 
 
@@ -534,22 +450,9 @@ class LegendTypeTest(APITestBase):
         )
         self.assertIn(response.status_code, [200, 204])
 
-    def test_delete_legend_type_unassigns_ideas(self):
-        lt = LegendType.objects.create(project_id=self.project_id, name="L")
-        idea = Idea.objects.create(
-            project_id=self.project_id, title="I", description="D", legend_type=lt
-        )
-        self.client.delete(
-            f"/api/projects/{self.project_id}/delete_legend_type/",
-            {"id": lt.id},
-            format="json",
-        )
-        idea.refresh_from_db()
-        self.assertIsNone(idea.legend_type)
-
 
 # ═══════════════════════════════════════════════
-#  8. NOTIFICATION TESTS
+#  7. NOTIFICATION TESTS
 # ═══════════════════════════════════════════════
 
 
@@ -592,7 +495,7 @@ class NotificationTest(APITestBase):
 
 
 # ═══════════════════════════════════════════════
-#  9. DEMO DATE TESTS
+#  8. DEMO DATE TESTS
 # ═══════════════════════════════════════════════
 
 
@@ -613,7 +516,7 @@ class DemoDateTest(APITestBase):
 
 
 # ═══════════════════════════════════════════════
-#  10. USER TEAMS / TASKS
+#  9. USER TEAMS / TASKS
 # ═══════════════════════════════════════════════
 
 
