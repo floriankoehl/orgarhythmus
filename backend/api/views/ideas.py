@@ -169,9 +169,11 @@ def assign_idea_to_category(request, project_id):
 
     if category_id is not None:
         category = get_object_or_404(Category, id=category_id, project=project)
-        # Prevent duplicate
-        if IdeaPlacement.objects.filter(idea=placement.idea, project=project, category=category).exclude(id=placement.id).exists():
-            return Response({"error": "Idea already in this category"}, status=400)
+        # If idea already exists in target category, just remove the source placement
+        existing = IdeaPlacement.objects.filter(idea=placement.idea, project=project, category=category).exclude(id=placement.id).first()
+        if existing:
+            placement.delete()
+            return Response({"updated": True, "merged": True})
         placement.category = category
         max_order = IdeaPlacement.objects.filter(project=project, category=category).aggregate(
             db_models.Max('order_index')

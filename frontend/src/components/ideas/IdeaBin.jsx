@@ -5,7 +5,7 @@ import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import EditIcon from "@mui/icons-material/Edit";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
-import { Lightbulb, Minus, Maximize2, Minimize2, Zap, Copy, List } from "lucide-react";
+import { Lightbulb, Minus, Maximize2, Minimize2, Zap, Copy, List, Settings, MoreVertical } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
@@ -92,6 +92,7 @@ export default function IdeaBin() {
   // ───── Collapse state ─────
   const [collapsedIdeas, setCollapsedIdeas] = useState({});
   const [minimizedCategories, setMinimizedCategories] = useState({});
+  const [ideaSettingsOpen, setIdeaSettingsOpen] = useState(null); // ideaId or null
 
   // ───── Drag state ─────
   const [dragging, setDragging] = useState(null);
@@ -130,6 +131,12 @@ export default function IdeaBin() {
 
   // ───── Sidebar resize ─────
   const [sidebarWidth, setSidebarWidth] = useState(240);
+
+  // ───── Selected category for paste ─────
+  const [selectedCategoryId, setSelectedCategoryId] = useState(null);
+
+  // ───── Category settings dropdown ─────
+  const [categorySettingsOpen, setCategorySettingsOpen] = useState(null); // catKey or null
 
   // ───── Dimensions (replaces per-project legend) ─────
   const dims = useDimensions();
@@ -939,15 +946,26 @@ export default function IdeaBin() {
           }
         } else if (dropTarget) {
           const targetCatId = dropTarget.type === "category" ? parseInt(dropTarget.id) : null;
-          // Dragging into a different category/unassigned → create a copy (new placement)
           if (targetCatId !== null || dropTarget.type === "unassigned") {
-            authFetch(`${API}/copy_idea/`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ idea_id: idea.idea_id, category_id: targetCatId }),
-            })
-              .then(() => { playSound('ideaCreate'); fetch_all_ideas(); })
-              .catch(err => console.error("Copy on drag failed:", err));
+            if (source.type === "all") {
+              // Drag from "All Ideas" → category = ADD reference (copy)
+              authFetch(`${API}/copy_idea/`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ idea_id: idea.idea_id, category_id: targetCatId }),
+              })
+                .then(() => { playSound('ideaCreate'); fetch_all_ideas(); })
+                .catch(err => console.error("Copy on drag failed:", err));
+            } else {
+              // Drag from category/unassigned → another category = MOVE placement
+              authFetch(`${API}/assign_idea_to_category/`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ placement_id: idea.placement_id, category_id: targetCatId }),
+              })
+                .then(() => { playSound('ideaDragDrop'); fetch_all_ideas(); })
+                .catch(err => console.error("Move on drag failed:", err));
+            }
           }
         }
       }
@@ -1037,12 +1055,12 @@ export default function IdeaBin() {
 
       if (e.ctrlKey && e.key === "v" && copiedIdeaId) {
         e.preventDefault();
-        paste_idea(null);
+        paste_idea(selectedCategoryId || null);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, copiedIdeaId]);
+  }, [isOpen, copiedIdeaId, selectedCategoryId]);
 
   // ── Listen for dep-refactor-drop events (Dependencies → IdeaBin reverse transform) ──
   useEffect(() => {
@@ -1306,18 +1324,42 @@ export default function IdeaBin() {
                   <>
                     {idea.headline && <div className="font-semibold text-xs mb-0.5">{idea.headline}</div>}
                     <span className="text-[10px] text-gray-600">{idea.title}</span>
+                    {/* Meta info: categories + dimensions — always shown when expanded */}
+                    {(() => {
+                      const cats = idea.placement_categories || [];
+                      const dimEntries = Object.entries(idea.dimension_types || {}).map(([dimId, dt]) => {
+                        const dim = dims.dimensions.find(d => String(d.id) === String(dimId));
+                        return dim ? { dimName: dim.name, typeName: dt.name, color: dt.color } : null;
+                      }).filter(Boolean);
+                      const hasMeta = cats.length > 0 || dimEntries.length > 0;
+                      if (!hasMeta) return null;
+                      return (
+                        <div className="mt-1 pl-1 border-l-2 border-gray-200 space-y-0.5">
+                          {cats.length > 0 && (
+                            <div className="text-[9px] text-gray-500">
+                              <span className="font-medium text-gray-600">Categories: </span>
+                              {cats.join(", ")}
+                            </div>
+                          )}
+                          {dimEntries.length > 0 && (
+                            <div className="text-[9px] text-gray-500">
+                              <span className="font-medium text-gray-600">Dimensions: </span>
+                              {dimEntries.map((e, i) => (
+                                <span key={i}>
+                                  {i > 0 && ", "}
+                                  {e.dimName} = <span style={{ color: e.color }} className="font-medium">{e.typeName}</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </>
-                )}
-                {source.type === "all" && idea.placement_categories?.length > 0 && (
-                  <div className="flex flex-wrap gap-0.5 mt-0.5">
-                    {idea.placement_categories.map((cat, i) => (
-                      <span key={i} className="text-[8px] bg-gray-100 text-gray-500 px-1 rounded">{cat}</span>
-                    ))}
-                  </div>
                 )}
               </div>
             </div>
-            <div className="flex-shrink-0 mt-0.5 flex items-center gap-0.5 text-gray-400">
+            <div className="flex-shrink-0 mt-0.5 flex items-center gap-0.5 text-gray-400" onMouseDown={(e) => e.stopPropagation()}>
               <Copy
                 size={12}
                 onClick={(e) => {
@@ -1327,51 +1369,77 @@ export default function IdeaBin() {
                 className={`cursor-pointer ${copiedIdeaId === idea.idea_id ? "text-indigo-500!" : "hover:text-indigo-500!"}`}
                 title="Copy idea (Ctrl+C)"
               />
-              <Zap
-                size={12}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openTransform(idea);
-                }}
-                className="hover:text-amber-500! cursor-pointer"
-                title="Transform to Task or Milestone"
-              />
-              <EditIcon
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditingIdeaId(ideaId);
-                  setEditingIdeaTitle(idea.title);
-                  setEditingIdeaHeadline(idea.headline || "");
-                }}
-                className="hover:text-blue-500! cursor-pointer"
-                style={{ fontSize: 12 }}
-              />
-              <DeleteForeverIcon
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const isMetaView = source.type === "all";
-                  setConfirmModal({
-                    message: (
-                      <div>
-                        <p className="mb-1 text-sm">{isMetaView ? "Delete this idea and ALL its copies?" : "Delete this idea?"}</p>
-                        {idea.headline && <p className="font-semibold text-xs">{idea.headline}</p>}
-                        <p className="text-xs text-gray-600 mt-0.5">{idea.title.length > 80 ? idea.title.slice(0, 80) + "..." : idea.title}</p>
-                        {isMetaView && idea.placement_count > 1 && (
-                          <p className="text-[10px] text-red-500 mt-1">{idea.placement_count} copies will be removed</p>
-                        )}
-                      </div>
-                    ),
-                    onConfirm: () => {
-                      if (isMetaView) { delete_meta_idea(idea.idea_id); }
-                      else { delete_idea(idea.id); }
-                      setConfirmModal(null);
-                    },
-                    onCancel: () => setConfirmModal(null),
-                  });
-                }}
-                className="hover:text-red-500! cursor-pointer"
-                style={{ fontSize: 13 }}
-              />
+              <div className="relative">
+                <MoreVertical
+                  size={13}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIdeaSettingsOpen(prev => prev === ideaId ? null : ideaId);
+                  }}
+                  className="cursor-pointer hover:text-gray-600"
+                  title="More actions"
+                />
+                {ideaSettingsOpen === ideaId && (
+                  <>
+                    <div className="fixed inset-0 z-[60]" onClick={() => setIdeaSettingsOpen(null)} />
+                    <div className="absolute right-0 top-4 z-[61] bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[130px]">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingIdeaId(ideaId);
+                          setEditingIdeaTitle(idea.title);
+                          setEditingIdeaHeadline(idea.headline || "");
+                          setIdeaSettingsOpen(null);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 transition-colors"
+                      >
+                        <EditIcon style={{ fontSize: 13 }} className="text-blue-500" />
+                        Edit
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openTransform(idea);
+                          setIdeaSettingsOpen(null);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 transition-colors"
+                      >
+                        <Zap size={13} className="text-amber-500" />
+                        Make Task
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIdeaSettingsOpen(null);
+                          const isMetaView = source.type === "all";
+                          setConfirmModal({
+                            message: (
+                              <div>
+                                <p className="mb-1 text-sm">{isMetaView ? "Delete this idea and ALL its copies?" : "Delete this idea?"}</p>
+                                {idea.headline && <p className="font-semibold text-xs">{idea.headline}</p>}
+                                <p className="text-xs text-gray-600 mt-0.5">{idea.title.length > 80 ? idea.title.slice(0, 80) + "..." : idea.title}</p>
+                                {isMetaView && idea.placement_count > 1 && (
+                                  <p className="text-[10px] text-red-500 mt-1">{idea.placement_count} copies will be removed</p>
+                                )}
+                              </div>
+                            ),
+                            onConfirm: () => {
+                              if (isMetaView) { delete_meta_idea(idea.idea_id); }
+                              else { delete_idea(idea.id); }
+                              setConfirmModal(null);
+                            },
+                            onCancel: () => setConfirmModal(null),
+                          });
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <DeleteForeverIcon style={{ fontSize: 13 }} />
+                        Delete
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -1468,11 +1536,11 @@ export default function IdeaBin() {
               {copiedIdeaId && (
                 <button
                   onMouseDown={(e) => e.stopPropagation()}
-                  onClick={() => paste_idea(null)}
+                  onClick={() => paste_idea(selectedCategoryId || null)}
                   className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[9px] font-semibold hover:bg-indigo-200 transition-colors"
-                  title="Paste copied idea (Ctrl+V)"
+                  title={`Paste copied idea${selectedCategoryId && categories[selectedCategoryId] ? ` into "${categories[selectedCategoryId].name}"` : " (unassigned)"} (Ctrl+V)`}
                 >
-                  Paste
+                  Paste{selectedCategoryId && categories[selectedCategoryId] ? ` → ${categories[selectedCategoryId].name}` : ""}
                 </button>
               )}
               <button
@@ -2269,6 +2337,7 @@ export default function IdeaBin() {
                 {activeCategories.map(([catKey, catData]) => {
                   const catIdeas = categoryOrders[catKey] || [];
                   const isHovered = dragging && String(hoverCategory) === String(catKey);
+                  const isSelected = String(selectedCategoryId) === String(catKey);
 
                   return (
                     <div
@@ -2277,11 +2346,14 @@ export default function IdeaBin() {
                         left: catData.x, top: catData.y + 36,
                         width: catData.width, height: catData.height,
                         zIndex: catData.z_index || 0,
-                        backgroundColor: isHovered ? "#fde68a" : "#fef08a",
+                        backgroundColor: isHovered ? "#fde68a" : isSelected ? "#fef9c3" : "#fef08a",
                         transition: "background-color 150ms ease",
                       }}
-                      className="absolute shadow-lg rounded p-1.5 flex flex-col"
-                      onMouseDown={() => bring_to_front_category(catKey)}
+                      className={`absolute shadow-lg rounded p-1.5 flex flex-col ${isSelected ? "ring-2 ring-indigo-400 ring-offset-1" : ""}`}
+                      onMouseDown={() => {
+                        bring_to_front_category(catKey);
+                        setSelectedCategoryId(prev => String(prev) === String(catKey) ? null : catKey);
+                      }}
                     >
                       {/* Category header */}
                       <div
@@ -2310,59 +2382,99 @@ export default function IdeaBin() {
                           <span className="font-semibold text-[11px] truncate">{catData.name}</span>
                         )}
                         <div className="flex items-center gap-0.5 flex-shrink-0">
-                          {/* Collapse all ideas toggle */}
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const allCollapsed = catIdeas.every(id => collapsedIdeas[id]);
-                              const newState = {};
-                              catIdeas.forEach(id => { newState[id] = !allCollapsed; });
-                              setCollapsedIdeas(prev => ({ ...prev, ...newState }));
-                            }}
-                            className="text-[10px] text-amber-700 hover:text-amber-900 cursor-pointer px-0.5"
-                          >
-                            <span style={{
-                              display: "inline-block", width: 0, height: 0, borderStyle: "solid",
-                              ...(catIdeas.every(id => collapsedIdeas[id])
-                                ? { borderWidth: "5px 3px 0 3px", borderColor: "currentColor transparent transparent transparent" }
-                                : { borderWidth: "0 3px 5px 3px", borderColor: "transparent transparent currentColor transparent" })
-                            }} />
-                          </span>
-                          {/* Minimize */}
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (minimizedCategories[catKey]) {
-                                const orig = minimizedCategories[catKey];
-                                setCategories(prev => ({ ...prev, [catKey]: { ...prev[catKey], width: orig.width, height: orig.height } }));
-                                set_area_category(catKey, orig.width, orig.height);
-                                setMinimizedCategories(prev => { const u = { ...prev }; delete u[catKey]; return u; });
-                              } else {
-                                const minW = Math.max(80, catData.name.length * 9 + 60);
-                                setMinimizedCategories(prev => ({ ...prev, [catKey]: { width: catData.width, height: catData.height } }));
-                                setCategories(prev => ({ ...prev, [catKey]: { ...prev[catKey], width: minW, height: 30 } }));
-                                set_area_category(catKey, minW, 30);
-                              }
-                            }}
-                            className="text-[10px] text-amber-700 hover:text-amber-900 cursor-pointer px-0.5"
-                          >
-                            {minimizedCategories[catKey] ? "◻" : "—"}
-                          </span>
+                          {/* Paste into this category */}
+                          {copiedIdeaId && (
+                            <Copy
+                              size={12}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                paste_idea(parseInt(catKey));
+                              }}
+                              className="text-indigo-400 hover:text-indigo-600! cursor-pointer"
+                              title="Paste copied idea here"
+                            />
+                          )}
+                          {/* Archive */}
                           <ArchiveIcon
                             onClick={(e) => { e.stopPropagation(); toggle_archive_category(catKey); }}
                             className="hover:text-amber-700! cursor-pointer" style={{ fontSize: 13 }}
                           />
-                          <DeleteForeverIcon
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setConfirmModal({
-                                message: `Delete "${catData.name}"? Its ideas become unassigned.`,
-                                onConfirm: () => { delete_category(catKey); setConfirmModal(null); },
-                                onCancel: () => setConfirmModal(null),
-                              });
-                            }}
-                            className="hover:text-red-500! cursor-pointer" style={{ fontSize: 14 }}
-                          />
+                          {/* Settings dropdown */}
+                          <div className="relative">
+                            <Settings
+                              size={12}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCategorySettingsOpen(prev => prev === catKey ? null : catKey);
+                              }}
+                              className="text-amber-700 hover:text-amber-900 cursor-pointer"
+                            />
+                            {categorySettingsOpen === catKey && (
+                              <>
+                                <div className="fixed inset-0 z-[60]" onClick={() => setCategorySettingsOpen(null)} />
+                                <div className="absolute right-0 top-full mt-1 bg-white rounded shadow-xl border border-gray-200 z-[61] min-w-[140px] py-1">
+                                  {/* Collapse all ideas */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const allCollapsed = catIdeas.every(id => collapsedIdeas[id]);
+                                      const newState = {};
+                                      catIdeas.forEach(id => { newState[id] = !allCollapsed; });
+                                      setCollapsedIdeas(prev => ({ ...prev, ...newState }));
+                                      setCategorySettingsOpen(null);
+                                    }}
+                                    className="w-full text-left px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                  >
+                                    <span style={{
+                                      display: "inline-block", width: 0, height: 0, borderStyle: "solid",
+                                      ...(catIdeas.every(id => collapsedIdeas[id])
+                                        ? { borderWidth: "4px 3px 0 3px", borderColor: "currentColor transparent transparent transparent" }
+                                        : { borderWidth: "0 3px 4px 3px", borderColor: "transparent transparent currentColor transparent" })
+                                    }} />
+                                    {catIdeas.every(id => collapsedIdeas[id]) ? "Show full ideas" : "Show headlines only"}
+                                  </button>
+                                  {/* Minimize / Restore */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (minimizedCategories[catKey]) {
+                                        const orig = minimizedCategories[catKey];
+                                        setCategories(prev => ({ ...prev, [catKey]: { ...prev[catKey], width: orig.width, height: orig.height } }));
+                                        set_area_category(catKey, orig.width, orig.height);
+                                        setMinimizedCategories(prev => { const u = { ...prev }; delete u[catKey]; return u; });
+                                      } else {
+                                        const minW = Math.max(80, catData.name.length * 9 + 60);
+                                        setMinimizedCategories(prev => ({ ...prev, [catKey]: { width: catData.width, height: catData.height } }));
+                                        setCategories(prev => ({ ...prev, [catKey]: { ...prev[catKey], width: minW, height: 30 } }));
+                                        set_area_category(catKey, minW, 30);
+                                      }
+                                      setCategorySettingsOpen(null);
+                                    }}
+                                    className="w-full text-left px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                  >
+                                    <span className="text-[10px]">{minimizedCategories[catKey] ? "◻" : "—"}</span>
+                                    {minimizedCategories[catKey] ? "Restore size" : "Collapse card"}
+                                  </button>
+                                  {/* Delete */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setCategorySettingsOpen(null);
+                                      setConfirmModal({
+                                        message: `Delete "${catData.name}"? Its ideas become unassigned.`,
+                                        onConfirm: () => { delete_category(catKey); setConfirmModal(null); },
+                                        onCancel: () => setConfirmModal(null),
+                                      });
+                                    }}
+                                    className="w-full text-left px-3 py-1.5 text-[11px] text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                  >
+                                    <DeleteForeverIcon style={{ fontSize: 13 }} />
+                                    Delete category
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
 
