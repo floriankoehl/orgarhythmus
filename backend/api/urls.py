@@ -154,6 +154,29 @@ urlpatterns = [
     # User Shortcuts (per-user keyboard shortcut configuration)
     path("user/shortcuts/", views.get_user_shortcuts, name="get_user_shortcuts"),
     path("user/shortcuts/save/", views.save_user_shortcuts, name="save_user_shortcuts"),
+
+    # Dimensions (user-scoped)
+    path("user/dimensions/", views.get_user_dimensions, name="get_user_dimensions"),
+    path("user/dimensions/create/", views.create_dimension, name="create_dimension"),
+    path("user/dimensions/public/", views.get_all_public_dimensions, name="get_all_public_dimensions"),
+    path("user/dimensions/<int:dimension_id>/", views.update_dimension, name="update_dimension"),
+    path("user/dimensions/<int:dimension_id>/delete/", views.delete_dimension, name="delete_dimension"),
+    path("user/dimensions/<int:dimension_id>/adopt/", views.adopt_dimension, name="adopt_dimension"),
+    path("user/dimensions/<int:dimension_id>/drop/", views.drop_dimension, name="drop_dimension"),
+
+    # Dimension types
+    path("user/dimensions/<int:dimension_id>/types/", views.get_dimension_types, name="get_dimension_types"),
+    path("user/dimensions/<int:dimension_id>/types/create/", views.create_dimension_type, name="create_dimension_type"),
+    path("user/dimensions/<int:dimension_id>/types/<int:type_id>/", views.update_dimension_type, name="update_dimension_type"),
+    path("user/dimensions/<int:dimension_id>/types/<int:type_id>/delete/", views.delete_dimension_type, name="delete_dimension_type"),
+
+    # Category adoption
+    path("categories/public/", views.get_all_public_categories, name="get_all_public_categories"),
+    path("categories/<int:category_id>/adopt/", views.adopt_category, name="adopt_category"),
+    path("categories/<int:category_id>/drop/", views.drop_category, name="drop_category"),
+
+    # User-level ideas
+    path("user/ideas/", views.get_user_ideas, name="get_user_ideas"),
 ]
 
 

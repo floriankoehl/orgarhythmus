@@ -7,8 +7,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..models import Project, Category, Idea, LegendType
-from .serializers import IdeaSerializer, CategorySerializer, LegendTypeSerializer
+from ..models import Project, Category, Idea, LegendType, Dimension, UserDimensionAdoption, UserCategoryAdoption
+from .serializers import IdeaSerializer, CategorySerializer, LegendTypeSerializer, DimensionSerializer
 from .helpers import user_has_project_access
 
 
@@ -30,6 +30,7 @@ def create_idea(request, project_id):
 
     idea = Idea.objects.create(
         project=project,
+        owner=request.user,
         title=title,
         description=description,
         headline=headline,
@@ -159,6 +160,7 @@ def create_category(request, project_id):
 
     category = Category.objects.create(
         project=project,
+        owner=request.user,
         name=name,
         x=50,
         y=50,
@@ -369,3 +371,165 @@ def assign_idea_legend_type(request, project_id):
         idea.legend_type = None
     idea.save()
     return Response({"updated": True})
+
+# ---- DIMENSION ENDPOINTS ----
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_user_dimensions(request):
+    """Get all dimensions owned by or adopted by the current user."""
+    owned = Dimension.objects.filter(owner=request.user)
+    adopted_ids = UserDimensionAdoption.objects.filter(user=request.user).values_list('dimension_id', flat=True)
+    adopted = Dimension.objects.filter(id__in=adopted_ids).exclude(owner=request.user)
+    all_dims = list(owned) + list(adopted)
+    return Response({"dimensions": DimensionSerializer(all_dims, many=True).data})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_dimension(request):
+    """Create a new dimension for the current user."""
+    name = request.data.get("name", "New Dimension").strip()
+    dim = Dimension.objects.create(owner=request.user, name=name)
+    return Response({"created": True, "dimension": DimensionSerializer(dim).data})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def update_dimension(request, dimension_id):
+    """Update a dimension's name."""
+    dim = get_object_or_404(Dimension, id=dimension_id, owner=request.user)
+    name = request.data.get("name", "").strip()
+    if name:
+        dim.name = name
+        dim.save()
+    return Response({"updated": True, "dimension": DimensionSerializer(dim).data})
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_dimension(request, dimension_id):
+    """Delete a dimension (and its types)."""
+    dim = get_object_or_404(Dimension, id=dimension_id, owner=request.user)
+    dim.delete()
+    return Response({"deleted": True})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def adopt_dimension(request, dimension_id):
+    """Adopt another user's dimension."""
+    dim = get_object_or_404(Dimension, id=dimension_id)
+    if dim.owner == request.user:
+        return Response({"error": "Cannot adopt your own dimension"}, status=400)
+    UserDimensionAdoption.objects.get_or_create(user=request.user, dimension=dim)
+    return Response({"adopted": True})
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def drop_dimension(request, dimension_id):
+    """Drop (unadopt) a dimension."""
+    UserDimensionAdoption.objects.filter(user=request.user, dimension_id=dimension_id).delete()
+    return Response({"dropped": True})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_all_public_dimensions(request):
+    """Get all dimensions (for browsing and adoption)."""
+    dims = Dimension.objects.exclude(owner=request.user)
+    return Response({"dimensions": DimensionSerializer(dims, many=True).data})
+
+
+# ---- DIMENSION TYPE (LegendType) ENDPOINTS ----
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_dimension_types(request, dimension_id):
+    """Get all types for a specific dimension."""
+    dim = get_object_or_404(Dimension, id=dimension_id)
+    is_owner = dim.owner == request.user
+    is_adopter = UserDimensionAdoption.objects.filter(user=request.user, dimension=dim).exists()
+    if not is_owner and not is_adopter:
+        return Response({"detail": "Forbidden"}, status=403)
+    types = LegendType.objects.filter(dimension=dim)
+    return Response({"types": LegendTypeSerializer(types, many=True).data})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_dimension_type(request, dimension_id):
+    """Create a type inside a specific dimension."""
+    dim = get_object_or_404(Dimension, id=dimension_id, owner=request.user)
+    name = request.data.get("name", "New Type").strip()
+    color = request.data.get("color", "#cccccc")
+    max_order = LegendType.objects.filter(dimension=dim).aggregate(db_models.Max('order_index'))['order_index__max']
+    next_order = (max_order + 1) if max_order is not None else 0
+    lt = LegendType.objects.create(dimension=dim, name=name, color=color, order_index=next_order)
+    return Response({"created": True, "type": LegendTypeSerializer(lt).data})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def update_dimension_type(request, dimension_id, type_id):
+    """Update a type inside a specific dimension."""
+    dim = get_object_or_404(Dimension, id=dimension_id, owner=request.user)
+    lt = get_object_or_404(LegendType, id=type_id, dimension=dim)
+    if "name" in request.data:
+        lt.name = request.data.get("name", "").strip()
+    if "color" in request.data:
+        lt.color = request.data.get("color")
+    lt.save()
+    return Response({"updated": True, "type": LegendTypeSerializer(lt).data})
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_dimension_type(request, dimension_id, type_id):
+    """Delete a type inside a specific dimension."""
+    dim = get_object_or_404(Dimension, id=dimension_id, owner=request.user)
+    LegendType.objects.filter(id=type_id, dimension=dim).delete()
+    return Response({"deleted": True})
+
+
+# ---- ADOPTION ENDPOINTS FOR CATEGORIES ----
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_all_public_categories(request):
+    """Get all categories accessible to the user (own + adopted)."""
+    owned_ids = list(Category.objects.filter(owner=request.user).values_list('id', flat=True))
+    adopted_ids = list(UserCategoryAdoption.objects.filter(user=request.user).values_list('category_id', flat=True))
+    all_ids = list(set(owned_ids + adopted_ids))
+    cats = Category.objects.filter(id__in=all_ids)
+    return Response({"categories": CategorySerializer(cats, many=True).data})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def adopt_category(request, category_id):
+    """Adopt a category from another user."""
+    cat = get_object_or_404(Category, id=category_id)
+    if cat.owner == request.user:
+        return Response({"error": "Cannot adopt your own category"}, status=400)
+    UserCategoryAdoption.objects.get_or_create(user=request.user, category=cat)
+    return Response({"adopted": True})
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def drop_category(request, category_id):
+    """Drop (unadopt) a category."""
+    UserCategoryAdoption.objects.filter(user=request.user, category_id=category_id).delete()
+    return Response({"dropped": True})
+
+
+# ---- USER-LEVEL IDEAS (cross-project) ----
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_user_ideas(request):
+    """Get all ideas owned by the current user (across all projects)."""
+    ideas = Idea.objects.filter(owner=request.user)
+    return Response({"ideas": IdeaSerializer(ideas, many=True).data})

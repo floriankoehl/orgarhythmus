@@ -327,11 +327,28 @@ class DemoDate(models.Model):
 
 
 # ═══════════════════════════════════════════════
+#  DIMENSION
+# ═══════════════════════════════════════════════
+
+class Dimension(models.Model):
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="dimensions")
+    name = models.CharField(max_length=200, default="General")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.owner.username})"
+
+
+# ═══════════════════════════════════════════════
 #  CATEGORY
 # ═══════════════════════════════════════════════
 
 class Category(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="categories", null=True, blank=True)
+    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="owned_categories")
     name = models.CharField(max_length=200)
     x = models.IntegerField(default=0)
     y = models.IntegerField(default=0)
@@ -347,12 +364,35 @@ class Category(models.Model):
 
 class LegendType(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="legend_types", null=True, blank=True)
+    dimension = models.ForeignKey('Dimension', on_delete=models.CASCADE, related_name="types", null=True, blank=True)
     name = models.CharField(max_length=100)
     color = models.CharField(max_length=20, default="#ffffff")
     order_index = models.IntegerField(default=0)
 
     class Meta:
         ordering = ["order_index"]
+
+
+# ═══════════════════════════════════════════════
+#  ADOPTION MODELS
+# ═══════════════════════════════════════════════
+
+class UserCategoryAdoption(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="adopted_categories")
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name="adopters")
+    adopted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["user", "category"]
+
+
+class UserDimensionAdoption(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="adopted_dimensions")
+    dimension = models.ForeignKey(Dimension, on_delete=models.CASCADE, related_name="adopters")
+    adopted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["user", "dimension"]
 
 
 # ═══════════════════════════════════════════════
@@ -432,6 +472,7 @@ class UserShortcuts(models.Model):
 
 class Idea(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="ideas", null=True, blank=True)
+    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="owned_ideas")
     title = models.CharField(max_length=500)
     headline = models.CharField(max_length=200, blank=True, default="")
     description = models.TextField()

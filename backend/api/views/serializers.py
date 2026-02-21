@@ -15,6 +15,7 @@ from ..models import (
     Phase,
     DependencyView,
     ProtoPersona,
+    Dimension,
 )
 
 
@@ -148,6 +149,18 @@ class LegendTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = LegendType
         fields = "__all__"
+
+
+# DimensionSerializer
+class DimensionSerializer(serializers.ModelSerializer):
+    owner_username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Dimension
+        fields = ['id', 'name', 'owner', 'owner_username', 'created_at']
+
+    def get_owner_username(self, obj):
+        return obj.owner.username if obj.owner else None
 
 
 

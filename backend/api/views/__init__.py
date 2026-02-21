@@ -131,6 +131,21 @@ from .ideas import (
     update_legend_type,
     delete_legend_type,
     assign_idea_legend_type,
+    get_user_dimensions,
+    create_dimension,
+    update_dimension,
+    delete_dimension,
+    adopt_dimension,
+    drop_dimension,
+    get_all_public_dimensions,
+    get_dimension_types,
+    create_dimension_type,
+    update_dimension_type,
+    delete_dimension_type,
+    get_all_public_categories,
+    adopt_category,
+    drop_category,
+    get_user_ideas,
 )
 
 from .notifications import (
