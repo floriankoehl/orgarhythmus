@@ -37,8 +37,9 @@ export default function MyIdeas() {
               )}
               <p className="text-sm text-gray-800">{idea.title}</p>
               <div className="flex gap-3 mt-1.5 text-xs text-gray-400">
-                {idea.category_name && <span>📂 {idea.category_name}</span>}
-                {idea.project_name && <span>🗂 {idea.project_name}</span>}
+                {idea.placement_categories && idea.placement_categories.length > 0 && (
+                  <span>📂 {idea.placement_categories.map(c => c.name).join(", ")}</span>
+                )}
               </div>
             </li>
           ))}

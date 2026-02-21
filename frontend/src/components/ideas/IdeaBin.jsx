@@ -41,8 +41,8 @@ function authFetch(url, options = {}) {
 // ═══════════════════  IDEA BIN COMPONENT  ═════════════════
 // ═══════════════════════════════════════════════════════════
 export default function IdeaBin() {
-  const { projectId } = useParams();
-  const API = `${BASE_URL}/api/projects/${projectId}`;
+  const { projectId } = useParams();   // optional — only present inside a project
+  const API = `${BASE_URL}/api`;
 
   // ───── Window state (extracted) ─────
   const headlineInputRef = useRef(null);
@@ -151,9 +151,8 @@ export default function IdeaBin() {
   // ═══════════════════════════════════════════════════════
 
   const fetch_categories = async () => {
-    if (!projectId) return;
     try {
-      const res = await authFetch(`${API}/get_all_categories/`);
+      const res = await authFetch(`${API}/user/categories/`);
       const data = await res.json();
       const all = data.categories || [];
       const serialized = {};
@@ -171,7 +170,7 @@ export default function IdeaBin() {
 
   const create_category_api = async () => {
     if (!newCategoryName.trim()) return;
-    await authFetch(`${API}/create_category/`, {
+    await authFetch(`${API}/user/categories/create/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newCategoryName }),
@@ -183,7 +182,7 @@ export default function IdeaBin() {
   };
 
   const set_position_category = async (id, pos) => {
-    await authFetch(`${API}/set_position_category/`, {
+    await authFetch(`${API}/user/categories/set_position/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, position: pos }),
@@ -191,7 +190,7 @@ export default function IdeaBin() {
   };
 
   const set_area_category = async (id, width, height) => {
-    await authFetch(`${API}/set_area_category/`, {
+    await authFetch(`${API}/user/categories/set_area/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, width, height }),
@@ -199,7 +198,7 @@ export default function IdeaBin() {
   };
 
   const bring_to_front_category = async (id) => {
-    await authFetch(`${API}/bring_to_front_category/`, {
+    await authFetch(`${API}/user/categories/bring_to_front/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
@@ -212,7 +211,7 @@ export default function IdeaBin() {
 
   const delete_category = async (id) => {
     try {
-      const res = await authFetch(`${API}/delete_category/`, {
+      const res = await authFetch(`${API}/user/categories/delete/`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
@@ -227,7 +226,7 @@ export default function IdeaBin() {
   };
 
   const rename_category_api = async (id, newName) => {
-    await authFetch(`${API}/rename_category/`, {
+    await authFetch(`${API}/user/categories/rename/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, name: newName }),
@@ -236,7 +235,7 @@ export default function IdeaBin() {
   };
 
   const toggle_archive_category = async (id) => {
-    const res = await authFetch(`${API}/toggle_archive_category/`, {
+    const res = await authFetch(`${API}/user/categories/toggle_archive/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
@@ -251,9 +250,8 @@ export default function IdeaBin() {
   // ═══════════════════════════════════════════════════════
 
   const fetch_all_ideas = async () => {
-    if (!projectId) return;
     try {
-      const res = await authFetch(`${API}/get_all_ideas/`);
+      const res = await authFetch(`${API}/user/ideas/all/`);
       const data = await res.json();
       const list = data?.data || [];
       const obj = {};
@@ -296,7 +294,7 @@ export default function IdeaBin() {
 
   const create_idea = async () => {
     if (!ideaName.trim() && !ideaHeadline.trim()) return;
-    await authFetch(`${API}/create_idea/`, {
+    await authFetch(`${API}/user/ideas/create/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -313,7 +311,7 @@ export default function IdeaBin() {
   };
 
   const delete_idea = async (id) => {
-    await authFetch(`${API}/delete_idea/`, {
+    await authFetch(`${API}/user/ideas/delete/`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
@@ -326,13 +324,13 @@ export default function IdeaBin() {
     if (!title.trim()) return;
     const idea = ideas[placementId];
     const ideaId = idea?.idea_id || placementId;
-    await authFetch(`${API}/update_idea_title/`, {
+    await authFetch(`${API}/user/ideas/update_title/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: ideaId, title }),
     });
     if (headline !== null) {
-      await authFetch(`${API}/update_idea_headline/`, {
+      await authFetch(`${API}/user/ideas/update_headline/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: ideaId, headline }),
@@ -351,7 +349,7 @@ export default function IdeaBin() {
   };
 
   const safe_order = async (order, categoryId = null) => {
-    await authFetch(`${API}/safe_order/`, {
+    await authFetch(`${API}/user/ideas/safe_order/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ order, category_id: categoryId }),
@@ -359,7 +357,7 @@ export default function IdeaBin() {
   };
 
   const assign_idea_to_category = async (placementId, categoryId) => {
-    await authFetch(`${API}/assign_idea_to_category/`, {
+    await authFetch(`${API}/user/ideas/assign_to_category/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ placement_id: placementId, category_id: categoryId }),
@@ -383,10 +381,7 @@ export default function IdeaBin() {
     if (!copiedIdeaId || pasteGuard.current) return;
     pasteGuard.current = true;
     try {
-      await authFetch(`${API}/copy_idea/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea_id: copiedIdeaId, category_id: categoryId }),
+      await authFetch(`${API}/user/ideas/copy/`, {
       });
       playSound('ideaCreate');
       await fetch_all_ideas();
@@ -396,7 +391,7 @@ export default function IdeaBin() {
   };
 
   const delete_meta_idea = async (ideaId) => {
-    await authFetch(`${API}/delete_meta_idea/`, {
+    await authFetch(`${API}/user/ideas/delete_meta/`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: ideaId }),
@@ -406,7 +401,7 @@ export default function IdeaBin() {
   };
 
   const remove_idea_from_category = async (placementId) => {
-    await authFetch(`${API}/remove_idea_from_category/`, {
+    await authFetch(`${API}/user/ideas/remove_from_category/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ placement_id: placementId }),
@@ -415,7 +410,7 @@ export default function IdeaBin() {
   };
 
   const remove_all_idea_categories = async (ideaId) => {
-    await authFetch(`${API}/remove_all_idea_categories/`, {
+    await authFetch(`${API}/user/ideas/remove_all_categories/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ idea_id: ideaId }),
@@ -424,7 +419,7 @@ export default function IdeaBin() {
   };
 
   const remove_all_idea_dimension_types = async (ideaId) => {
-    await authFetch(`${API}/remove_all_idea_dimension_types/`, {
+    await authFetch(`${API}/user/ideas/remove_all_dimension_types/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ idea_id: ideaId }),
@@ -433,7 +428,7 @@ export default function IdeaBin() {
   };
 
   const remove_idea_dimension_type = async (ideaId, dimensionId) => {
-    await authFetch(`${API}/assign_idea_legend_type/`, {
+    await authFetch(`${API}/user/ideas/assign_legend_type/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ idea_id: ideaId, dimension_id: dimensionId, legend_type_id: null }),
@@ -446,9 +441,8 @@ export default function IdeaBin() {
   const [metaIdeas, setMetaIdeas] = useState([]);
 
   const fetch_meta_ideas = async () => {
-    if (!projectId) return;
     try {
-      const res = await authFetch(`${API}/get_meta_ideas/`);
+      const res = await authFetch(`${API}/user/ideas/meta/`);
       const data = await res.json();
       setMetaIdeas(data?.ideas || []);
     } catch (err) { console.error("IdeaBin: fetch meta ideas failed", err); }
@@ -463,7 +457,7 @@ export default function IdeaBin() {
     const ideaId = idea?.idea_id || placementId;
     const dimensionId = dims.activeDimensionId;
     if (!dimensionId) return;
-    await authFetch(`${API}/assign_idea_legend_type/`, {
+    await authFetch(`${API}/user/ideas/assign_legend_type/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ idea_id: ideaId, dimension_id: dimensionId, legend_type_id: legendTypeId }),
@@ -821,7 +815,7 @@ export default function IdeaBin() {
           if (targetCatId !== null || dropTarget.type === "unassigned") {
             if (source.type === "all") {
               // Drag from "All Ideas" → category = ADD reference (copy)
-              authFetch(`${API}/copy_idea/`, {
+              authFetch(`${API}/user/ideas/copy/`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ idea_id: idea.idea_id, category_id: targetCatId }),
@@ -830,7 +824,7 @@ export default function IdeaBin() {
                 .catch(err => console.error("Copy on drag failed:", err));
             } else {
               // Drag from category/unassigned → another category = MOVE placement
-              authFetch(`${API}/assign_idea_to_category/`, {
+              authFetch(`${API}/user/ideas/assign_to_category/`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ placement_id: idea.placement_id, category_id: targetCatId }),
@@ -901,11 +895,11 @@ export default function IdeaBin() {
   // ═══════════════════════════════════════════════════════
 
   useEffect(() => {
-    if (projectId && isOpen) {
+    if (isOpen) {
       fetch_categories();
       fetch_all_ideas();
     }
-  }, [projectId, isOpen]);
+  }, [isOpen]);
 
   // Fetch teams & tasks when transform modal opens
   useEffect(() => {
@@ -963,7 +957,7 @@ export default function IdeaBin() {
           confirmColor: "bg-orange-500 hover:bg-orange-600",
           onConfirm: async () => {
             try {
-              await authFetch(`${API}/create_idea/`, {
+              await authFetch(`${API}/user/ideas/create/`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -1006,7 +1000,7 @@ export default function IdeaBin() {
           confirmColor: "bg-orange-500 hover:bg-orange-600",
           onConfirm: async () => {
             try {
-              await authFetch(`${API}/create_idea/`, {
+              await authFetch(`${API}/user/ideas/create/`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -1044,7 +1038,7 @@ export default function IdeaBin() {
           confirmColor: "bg-orange-500 hover:bg-orange-600",
           onConfirm: async () => {
             try {
-              await authFetch(`${API}/create_idea/`, {
+              await authFetch(`${API}/user/ideas/create/`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -1068,7 +1062,7 @@ export default function IdeaBin() {
     };
     window.addEventListener("dep-refactor-drop", handleRefactorDrop);
     return () => window.removeEventListener("dep-refactor-drop", handleRefactorDrop);
-  }, [projectId, API]);
+  }, [projectId]);
 
   // ── Transform handlers ──
   const openTransform = (idea) => {
@@ -1161,8 +1155,6 @@ export default function IdeaBin() {
   // ═══════════════════════════════════════════════════════
   // ═══════════  JSX  ═════════════════════════════════════
   // ═══════════════════════════════════════════════════════
-
-  if (!projectId) return null;
 
   return (
     <>

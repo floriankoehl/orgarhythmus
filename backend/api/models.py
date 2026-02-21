@@ -347,8 +347,7 @@ class Dimension(models.Model):
 # ═══════════════════════════════════════════════
 
 class Category(models.Model):
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="categories", null=True, blank=True)
-    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="owned_categories")
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="owned_categories", null=True, blank=True)
     name = models.CharField(max_length=200)
     x = models.IntegerField(default=0)
     y = models.IntegerField(default=0)
@@ -363,7 +362,6 @@ class Category(models.Model):
 # ═══════════════════════════════════════════════
 
 class LegendType(models.Model):
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="legend_types", null=True, blank=True)
     dimension = models.ForeignKey('Dimension', on_delete=models.CASCADE, related_name="types", null=True, blank=True)
     name = models.CharField(max_length=100)
     color = models.CharField(max_length=20, default="#ffffff")
@@ -476,8 +474,7 @@ class Idea(models.Model):
     IdeaPlacements are lightweight copies that sit inside categories.
     Deleting the Idea cascade-deletes every placement.
     """
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="ideas", null=True, blank=True)
-    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="owned_ideas")
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="owned_ideas", null=True, blank=True)
     title = models.CharField(max_length=500)
     headline = models.CharField(max_length=200, blank=True, default="")
     description = models.TextField(blank=True, default="")
@@ -501,7 +498,6 @@ class IdeaPlacement(models.Model):
     Multiple placements can point to the same Idea.
     """
     idea = models.ForeignKey(Idea, on_delete=models.CASCADE, related_name="placements")
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="idea_placements")
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True)
     order_index = models.IntegerField(default=0)
 

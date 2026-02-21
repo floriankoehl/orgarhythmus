@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
 import OrgaHeader from "../components/OrgaHeader";
+import IdeaBin from "../components/ideas/IdeaBin";
 
 export default function OrgaLayout() {
   return (
@@ -12,6 +13,9 @@ export default function OrgaLayout() {
       <main data-orga-main className="mt-15 min-h-screen   flex  justify-center items-center w-full items-stretch">
         <Outlet />
       </main>
+
+      {/* Floating Idea Bin — persists across all pages */}
+      <IdeaBin />
     </>
   );
 }
