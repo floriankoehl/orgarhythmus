@@ -5,7 +5,7 @@ import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import EditIcon from "@mui/icons-material/Edit";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
-import { Lightbulb, Minus, Maximize2, Minimize2, Zap } from "lucide-react";
+import { Lightbulb, Minus, Maximize2, Minimize2, Zap, Filter, Eye, EyeOff } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
@@ -52,12 +52,15 @@ function ConfirmModal({ message, onConfirm, onCancel, confirmLabel = "Delete", c
 // ═══════════════════════════════════════════════════════════
 // ═══════════════════  IDEA BIN COMPONENT  ═════════════════
 // ═══════════════════════════════════════════════════════════
-export default function IdeaBin() {
+// mode: "floating" (default) — draggable floating window
+//       "embedded" — fills parent container, always open, no float chrome
+export default function IdeaBin({ mode = "floating" }) {
   const { projectId } = useParams();
   const API = `${BASE_URL}/api/projects/${projectId}`;
+  const isEmbedded = mode === "embedded";
 
-  // ───── Window state ─────
-  const [isOpen, setIsOpen] = useState(false);
+  // ───── Window state (only used in floating mode) ─────
+  const [isOpen, setIsOpen] = useState(isEmbedded);
   const [windowPos, setWindowPos] = useState(() => ({
     x: Math.max(0, window.innerWidth - DEFAULT_W - 24),
     y: Math.max(0, window.innerHeight - DEFAULT_H - 80),
@@ -134,15 +137,27 @@ export default function IdeaBin() {
   const [editingLegendId, setEditingLegendId] = useState(null);
   const [editingLegendName, setEditingLegendName] = useState("");
   const [globalTypeFilter, setGlobalTypeFilter] = useState([]);
+  const [globalTypeExclude, setGlobalTypeExclude] = useState([]); // inverted filter
+  const [filterMode, setFilterMode] = useState("include"); // "include" | "exclude"
   const [draggingLegend, setDraggingLegend] = useState(null);
   const [hoverIdeaForLegend, setHoverIdeaForLegend] = useState(null);
+
+  // ───── Legend Variant state ─────
+  const [dimensions, setDimensions] = useState([]);
+  const [activeDimensionId, setActiveDimensionId] = useState(null);
+  const [showDimensionsPanel, setShowDimensionsPanel] = useState(false);
+  const [newDimensionName, setNewDimensionName] = useState("");
+  const [dimensionFilters, setDimensionFilters] = useState({}); // { dimensionId: { mode: "include"|"exclude", types: [typeId, ...] } }
+
+  // ───── IdeaReference state ─────
+  const [copiedIdeaId, setCopiedIdeaId] = useState(null);
 
   // Refs
   const IdeaListRef = useRef(null);
   const categoryRefs = useRef({});
   const ideaRefs = useRef({});
 
-  const showCategories = windowSize.w >= CATEGORY_THRESHOLD;
+  const showCategories = isEmbedded ? true : windowSize.w >= CATEGORY_THRESHOLD;
 
   // ═══════════════════════════════════════════════════════
   // ═══════════  WINDOW MANAGEMENT  ═══════════════════════
@@ -396,7 +411,10 @@ export default function IdeaBin() {
       body: JSON.stringify({ id }),
     });
     const data = await res.json();
-    setCategories(prev => ({ ...prev, [id]: { ...prev[id], archived: data.archived } }));
+    // When restoring from archive, server returns the new highest z_index
+    const updates = { archived: data.archived };
+    if (data.z_index !== undefined) updates.z_index = data.z_index;
+    setCategories(prev => ({ ...prev, [id]: { ...prev[id], ...updates } }));
     playSound('ideaCategoryArchive');
   };
 
@@ -443,6 +461,23 @@ export default function IdeaBin() {
     });
     playSound('ideaDelete');
     fetch_all_ideas();
+  };
+
+  const copy_idea_api = async (ideaId) => {
+    try {
+      const res = await authFetch(`${API}/copy_idea/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idea_id: ideaId }),
+      });
+      const data = await res.json();
+      if (data.idea) {
+        const idea = data.idea;
+        setIdeas(prev => ({ ...prev, [idea.id]: idea }));
+        setUnassignedOrder(prev => [...prev, idea.id]);
+        playSound('ideaAdd');
+      }
+    } catch (err) { console.error("copy idea failed", err); }
   };
 
   const update_idea_title_api = async (id, title, headline = null) => {
@@ -931,16 +966,103 @@ export default function IdeaBin() {
   };
 
   // ═══════════════════════════════════════════════════════
+  // ═══════════  LEGEND VARIANT API  ══════════════════════
+  // ═══════════════════════════════════════════════════════
+
+  const fetch_dimensions = async () => {
+    if (!projectId) return;
+    try {
+      const res = await authFetch(`${API}/dimensions/`);
+      const data = await res.json();
+      setDimensions(data?.dimensions || data?.legend_variants || []);
+    } catch (err) { console.error("IdeaBin: fetch legend variants failed", err); }
+  };
+
+  const create_dimension = async (name) => {
+    const res = await authFetch(`${API}/dimensions/create/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    if (data.dimension || data.legend_variant) {
+      setDimensions(prev => [...prev, data.dimension || data.legend_variant]);
+    }
+  };
+
+  const delete_dimension = async (id) => {
+    await authFetch(`${API}/dimensions/delete/`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    setDimensions(prev => prev.filter(v => v.id !== id));
+    if (activeDimensionId === id) setActiveDimensionId(null);
+  };
+
+  const create_dimension_legend_type = async (variantId, name, color) => {
+    const res = await authFetch(`${API}/dimensions/create_type/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ variant_id: variantId, name, color }),
+    });
+    const data = await res.json();
+    if (data.legend_type) {
+      setLegendTypes(prev => ({ ...prev, [data.legend_type.id]: data.legend_type }));
+      fetch_dimensions(); // refresh to get updated variant.legend_types
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════
+  // ═══════════  FILTERING LOGIC  ═════════════════════════
+  // ═══════════════════════════════════════════════════════
+
+  const passesFilter = (idea) => {
+    if (!idea) return false;
+
+    // Include mode: show only matching types
+    if (filterMode === "include" && globalTypeFilter.length > 0) {
+      if (globalTypeFilter.includes("unassigned") && !idea.legend_type_id) return true;
+      if (idea.legend_type_id && globalTypeFilter.includes(idea.legend_type_id)) return true;
+      return false;
+    }
+
+    // Exclude mode: show everything except matching types
+    if (filterMode === "exclude" && globalTypeExclude.length > 0) {
+      if (globalTypeExclude.includes("unassigned") && !idea.legend_type_id) return false;
+      if (idea.legend_type_id && globalTypeExclude.includes(idea.legend_type_id)) return false;
+      return true;
+    }
+
+    // Dimension filter: stackable across dimensions (AND logic)
+    const ideaTypeIds = idea.legend_type_ids || (idea.legend_type_id ? [idea.legend_type_id] : []);
+    for (const [dimId, filter] of Object.entries(dimensionFilters)) {
+      if (!filter || !filter.types || filter.types.length === 0) continue;
+      const { mode, types } = filter;
+      if (mode === "include") {
+        const hasMatch = types.some(t => t === "unassigned" ? ideaTypeIds.length === 0 : ideaTypeIds.includes(t));
+        if (!hasMatch) return false;
+      } else if (mode === "exclude") {
+        const hasExcluded = types.some(t => t === "unassigned" ? ideaTypeIds.length === 0 : ideaTypeIds.includes(t));
+        if (hasExcluded) return false;
+      }
+    }
+
+    return true;
+  };
+
+  // ═══════════════════════════════════════════════════════
   // ═══════════  EFFECTS  ═════════════════════════════════
   // ═══════════════════════════════════════════════════════
 
   useEffect(() => {
-    if (projectId && isOpen) {
+    if (projectId && (isOpen || isEmbedded)) {
       fetch_categories();
       fetch_all_ideas();
       fetch_legend_types();
+      fetch_dimensions();
     }
-  }, [projectId, isOpen]);
+  }, [projectId, isOpen, isEmbedded]);
 
   // Fetch teams & tasks when transform modal opens
   useEffect(() => {
@@ -1257,6 +1379,14 @@ export default function IdeaBin() {
                 className="hover:text-red-500! cursor-pointer"
                 style={{ fontSize: 13 }}
               />
+              <span
+                onClick={(e) => { e.stopPropagation(); copy_idea_api(ideaId); }}
+                className="hover:text-green-500 cursor-pointer text-[10px]"
+                title="Copy idea"
+              >📋</span>
+              {idea.idea_reference && (
+                <span className="text-[9px] text-gray-400" title="Has copies">📎</span>
+              )}
             </div>
           </div>
         )}
@@ -1264,16 +1394,949 @@ export default function IdeaBin() {
     );
   };
 
+  // ── Render helpers (shared between floating + embedded mode) ──
+
+  const renderTransformModal = () => (
+    <>
+        <div className="absolute inset-0 bg-black/30 z-[50] rounded-b-lg" onClick={closeTransform} />
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-2xl z-[51] min-w-[260px] max-w-[90%] overflow-hidden"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="bg-gradient-to-r from-amber-400 to-yellow-400 px-4 py-2 flex items-center justify-between">
+            <span className="text-sm font-semibold text-amber-900 flex items-center gap-1.5">
+              <Zap size={14} /> Transform Idea
+            </span>
+            <button onClick={closeTransform} className="text-amber-800 hover:text-amber-950 text-sm font-bold">✕</button>
+          </div>
+
+          {/* Idea preview */}
+          <div className="px-4 pt-3 pb-2 border-b border-gray-100 bg-gray-50">
+            {transformModal.idea.headline && (
+              <p className="text-xs font-semibold text-gray-700">{transformModal.idea.headline}</p>
+            )}
+            <p className="text-[11px] text-gray-500 line-clamp-2 mt-0.5">{transformModal.idea.title}</p>
+          </div>
+
+          <div className="p-4">
+            {/* Step: Choose */}
+            {transformModal.step === 'choose' && (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-gray-500 mb-1">Transform this idea into:</p>
+                <button
+                  onClick={() => setTransformModal(prev => ({ ...prev, step: 'task' }))}
+                  className="w-full text-left px-3 py-2.5 border border-gray-200 rounded-lg hover:border-amber-400 hover:bg-amber-50 transition-colors group"
+                >
+                  <span className="text-sm font-medium text-gray-800 group-hover:text-amber-800">📋 Task</span>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Create a new task assigned to a team</p>
+                </button>
+                <button
+                  onClick={() => { setTransformTeamId(null); setTransformTaskId(null); setTransformModal(prev => ({ ...prev, step: 'milestone' })); }}                          className="w-full text-left px-3 py-2.5 border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors group"
+                >
+                  <span className="text-sm font-medium text-gray-800 group-hover:text-blue-800">🏁 Milestone</span>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Create a milestone on an existing task</p>
+                </button>
+              </div>
+            )}
+
+            {/* Step: Task */}
+            {transformModal.step === 'task' && (
+              <div className="flex flex-col gap-2.5">
+                <div>
+                  <label className="text-[10px] text-gray-500 font-medium mb-0.5 block">Task Name</label>
+                  <input
+                    autoFocus
+                    value={transformName}
+                    onChange={(e) => setTransformName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Escape") closeTransform(); }}
+                    className="w-full text-xs px-2 py-1.5 border border-gray-300 rounded outline-none focus:border-amber-400"
+                    placeholder="Task name..."
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-500 font-medium mb-0.5 block">Select Team</label>
+                  <div className="max-h-[140px] overflow-y-auto border border-gray-200 rounded">
+                    {projectTeams.length === 0 && (
+                      <p className="text-[10px] text-gray-400 p-2 italic">No teams found...</p>
+                    )}
+                    {projectTeams.map(team => (
+                      <div
+                        key={team.id}
+                        onClick={() => setTransformTeamId(team.id)}
+                        className={`px-2 py-1.5 text-xs cursor-pointer transition-colors flex items-center gap-2 ${
+                          transformTeamId === team.id
+                            ? "bg-amber-100 text-amber-900 font-medium"
+                            : "hover:bg-gray-50 text-gray-700"
+                        }`}
+                      >
+                        {team.color && (
+                          <span className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-300" style={{ backgroundColor: team.color }} />
+                        )}
+                        {team.name}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex justify-between items-center pt-1">
+                  <button
+                    onClick={() => setTransformModal(prev => ({ ...prev, step: 'choose' }))}
+                    className="text-[10px] text-gray-500 hover:text-gray-700"
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    onClick={executeTransformToTask}
+                    disabled={!transformName.trim() || !transformTeamId || transformLoading}
+                    className="px-3 py-1 bg-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium"
+                  >
+                    {transformLoading ? "Creating..." : "Create Task"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step: Milestone */}
+            {transformModal.step === 'milestone' && (
+              <div className="flex flex-col gap-2.5">
+                <div>
+                  <label className="text-[10px] text-gray-500 font-medium mb-0.5 block">Milestone Name</label>
+                  <input
+                    autoFocus
+                    value={transformName}
+                    onChange={(e) => setTransformName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Escape") closeTransform(); }}
+                    className="w-full text-xs px-2 py-1.5 border border-gray-300 rounded outline-none focus:border-blue-400"
+                    placeholder="Milestone name..."
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-500 font-medium mb-0.5 block">Select Task</label>
+                  <input
+                    value={transformTaskSearch}
+                    onChange={(e) => setTransformTaskSearch(e.target.value)}
+                    className="w-full text-[10px] px-2 py-1 border border-gray-200 rounded outline-none focus:border-blue-300 mb-1"
+                    placeholder="Search tasks..."
+                  />
+                  <div className="max-h-[160px] overflow-y-auto border border-gray-200 rounded">
+                    {(() => {
+                      const filtered = projectTasks.filter(t => {
+                        if (!transformTaskSearch) return true;
+                        const q = transformTaskSearch.toLowerCase();
+                        const teamObj = projectTeams.find(tm => tm.id === (t.team || t.team_id));
+                        return (
+                          (t.name || '').toLowerCase().includes(q) ||
+                          (teamObj?.name || '').toLowerCase().includes(q)
+                        );
+                      });
+                      if (filtered.length === 0) return (
+                        <p className="text-[10px] text-gray-400 p-2 italic">No tasks found...</p>
+                      );
+                      return filtered.map(task => {
+                        const teamObj = projectTeams.find(tm => tm.id === (task.team || task.team_id));
+                        return (
+                          <div
+                            key={task.id}
+                            onClick={() => setTransformTaskId(task.id)}
+                            className={`px-2 py-1.5 text-xs cursor-pointer transition-colors flex items-center gap-1.5 ${
+                              transformTaskId === task.id
+                                ? "bg-blue-100 text-blue-900 font-medium"
+                                : "hover:bg-gray-50 text-gray-700"
+                            }`}
+                          >
+                            {teamObj?.color && (
+                              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: teamObj.color }} />
+                            )}
+                            <span>{task.name}</span>
+                            {teamObj?.name && <span className="text-[10px] text-gray-400 ml-auto">{teamObj.name}</span>}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+                <div className="flex justify-between items-center pt-1">
+                  <button
+                    onClick={() => setTransformModal(prev => ({ ...prev, step: 'choose' }))}
+                    className="text-[10px] text-gray-500 hover:text-gray-700"
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    onClick={executeTransformToMilestone}
+                    disabled={!transformName.trim() || !transformTaskId || transformLoading}
+                    className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium"
+                  >
+                    {transformLoading ? "Creating..." : "Create Milestone"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+    </>
+  );
+
+  const renderSidebar = () => (
+    <div
+      className="flex flex-col flex-shrink-0 border-r border-gray-200 bg-white"
+      style={{ width: showCategories ? 260 : "100%" }}
+    >
+      {/* ── Input form ── */}
+      <div className="p-2 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+        <h2 className="text-xs font-semibold text-gray-500 mb-1.5">
+          {editingIdeaId ? "Edit Idea" : "New Idea"}
+        </h2>
+        <TextField
+          inputRef={headlineInputRef}
+          value={editingIdeaId ? editingIdeaHeadline : ideaHeadline}
+          onChange={(e) => {
+            if (editingIdeaId) setEditingIdeaHeadline(e.target.value);
+            else setIdeaHeadline(e.target.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              if (editingIdeaId) {
+                update_idea_title_api(editingIdeaId, editingIdeaTitle || editingIdeaHeadline, editingIdeaHeadline);
+                setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline("");
+              } else { create_idea(); }
+            } else if (e.key === "Escape" && editingIdeaId) {
+              setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline("");
+            }
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          label="Headline (optional)"
+          variant="outlined"
+          size="small"
+          fullWidth
+          sx={{ backgroundColor: "white", borderRadius: 1, marginBottom: 0.5, "& .MuiInputLabel-root": { fontSize: 11 }, "& .MuiInputLabel-shrink": { fontSize: 12 }, "& .MuiInputBase-input": { fontSize: 12, padding: "6px 10px", caretColor: "#1f2937", color: "#1f2937" } }}
+        />
+        <TextField
+          value={editingIdeaId ? editingIdeaTitle : ideaName}
+          onChange={(e) => {
+            if (editingIdeaId) setEditingIdeaTitle(e.target.value);
+            else setIdeaName(e.target.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              if (editingIdeaId) {
+                update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaHeadline);
+                setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline("");
+              } else { create_idea(); }
+            } else if (e.key === "Escape" && editingIdeaId) {
+              setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline("");
+            }
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          label={editingIdeaId ? "Edit your idea..." : "What's your idea?"}
+          variant="outlined"
+          multiline
+          minRows={1}
+          maxRows={3}
+          fullWidth
+          sx={{ backgroundColor: "white", borderRadius: 1, "& .MuiInputBase-input": { fontSize: 12, caretColor: "#1f2937", color: "#1f2937" } }}
+        />
+        <div className="flex gap-1.5 mt-1.5">
+          {editingIdeaId ? (
+            <>
+              <button
+                onClick={() => {
+                  update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaHeadline);
+                  setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline("");
+                }}
+                className="px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-[11px]"
+              >
+                Update
+              </button>
+              <button
+                onClick={() => { setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline(""); }}
+                className="px-2 py-0.5 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 text-[11px]"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            (ideaName.trim() || ideaHeadline.trim()) && (
+              <button
+                onClick={create_idea}
+                className="px-2 py-0.5 bg-green-500 text-white rounded hover:bg-green-600 text-[11px]"
+              >
+                Create
+              </button>
+            )
+          )}
+        </div>
+      </div>
+
+      {/* ── Ideas list (switchable) ── */}
+      <div
+        ref={IdeaListRef}
+        style={{
+          backgroundColor: dragging && hoverUnassigned ? "#f3f4f6" : "#ffffff",
+          transition: "background-color 150ms ease",
+        }}
+        className="flex-1 p-1.5 overflow-y-auto overflow-x-hidden"
+      >
+        {/* List filter header */}
+        <div className="relative mb-1">
+          <button
+            onClick={() => setShowListFilterDropdown(p => !p)}
+            className="flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors"
+          >
+            {listFilter === "unassigned"
+              ? `Unassigned (${unassignedCount})`
+              : `${categories[listFilter]?.name || "Category"} (${(categoryOrders[listFilter] || []).length})`
+            }
+            <span className="text-[9px]">▼</span>
+          </button>
+          {showListFilterDropdown && (
+            <>
+              <div className="fixed inset-0 z-[60]" onClick={() => setShowListFilterDropdown(false)} />
+              <div className="absolute left-0 top-full mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg z-[61] min-w-[140px] max-h-[200px] overflow-y-auto py-0.5">
+                <div
+                  onClick={() => { setListFilter("unassigned"); setShowListFilterDropdown(false); }}
+                  className={`px-2.5 py-1.5 text-[11px] cursor-pointer transition-colors ${listFilter === "unassigned" ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-50 text-gray-700"}`}
+                >
+                  Unassigned ({unassignedCount})
+                </div>
+                {Object.entries(categories).map(([catKey, catData]) => (
+                  <div
+                    key={catKey}
+                    onClick={() => { setListFilter(catKey); setShowListFilterDropdown(false); }}
+                    className={`px-2.5 py-1.5 text-[11px] cursor-pointer transition-colors flex items-center gap-1.5 ${String(listFilter) === String(catKey) ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-50 text-gray-700"}`}
+                  >
+                    {catData.archived && <span className="text-[9px] text-gray-400">📦</span>}
+                    {catData.name} ({(categoryOrders[catKey] || []).length})
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        {/* Idea items for current filter */}
+        {listFilter === "unassigned"
+          ? unassignedOrder
+              .filter(ideaId => passesFilter(ideas[ideaId]))
+              .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "unassigned" }))
+          : (categoryOrders[listFilter] || [])
+              .filter(ideaId => passesFilter(ideas[ideaId]))
+              .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: listFilter }))
+        }              </div>
+
+      {/* ── Dimensions panel ── */}
+      <div className="bg-white border-t border-gray-200 p-2 flex-shrink-0">
+        <div
+          className="flex items-center justify-between cursor-pointer"
+          onClick={() => setLegendCollapsed(!legendCollapsed)}
+        >
+          <h3 className="text-[10px] font-semibold text-gray-500">
+            Dimensions {Object.values(dimensionFilters).some(f => f?.types?.length > 0) && <span className="text-blue-500">(filtered)</span>}
+          </h3>
+          <div className="flex items-center gap-1">
+            {Object.values(dimensionFilters).some(f => f?.types?.length > 0) && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setDimensionFilters({}); }}
+                className="text-[9px] px-1 py-0.5 bg-blue-100 text-blue-600 rounded hover:bg-blue-200"
+              >
+                Clear All
+              </button>
+            )}
+            <span className="text-gray-400 text-[10px]">{legendCollapsed ? "▲" : "▼"}</span>
+          </div>
+        </div>
+        {!legendCollapsed && (
+          <div className="mt-1">
+            {/* General (project-level) types */}
+            {Object.values(legendTypes).length > 0 && (
+              <div className="mb-2">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">General</span>
+                </div>
+                {/* Filter mode toggle for general types */}
+                <div className="flex items-center gap-1 mb-1">
+                  <button
+                    onClick={() => { setFilterMode("include"); setGlobalTypeExclude([]); }}
+                    className={`flex-1 text-[9px] px-1 py-0.5 rounded ${filterMode === "include" ? "bg-blue-100 text-blue-700 font-medium" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
+                  >
+                    <Eye size={9} className="inline mr-0.5" /> Show
+                  </button>
+                  <button
+                    onClick={() => { setFilterMode("exclude"); setGlobalTypeFilter([]); }}
+                    className={`flex-1 text-[9px] px-1 py-0.5 rounded ${filterMode === "exclude" ? "bg-red-100 text-red-700 font-medium" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
+                  >
+                    <EyeOff size={9} className="inline mr-0.5" /> Excl
+                  </button>
+                  {(globalTypeFilter.length > 0 || globalTypeExclude.length > 0) && (
+                    <button
+                      onClick={() => { setGlobalTypeFilter([]); setGlobalTypeExclude([]); }}
+                      className="text-[9px] px-1 py-0.5 bg-gray-100 text-gray-500 rounded hover:bg-gray-200"
+                    >✕</button>
+                  )}
+                </div>
+                {/* Unassigned type */}
+                <div
+                  className={`flex items-center gap-1.5 mb-1 cursor-pointer rounded px-1 py-0.5 text-[10px] ${
+                    (filterMode === "include" && globalTypeFilter.includes("unassigned")) || (filterMode === "exclude" && globalTypeExclude.includes("unassigned"))
+                      ? (filterMode === "exclude" ? "bg-red-100" : "bg-gray-200")
+                      : "hover:bg-gray-100"
+                  }`}
+                  onClick={() => {
+                    if (filterMode === "include") {
+                      setGlobalTypeFilter(prev => prev.includes("unassigned") ? prev.filter(t => t !== "unassigned") : [...prev, "unassigned"]);
+                    } else {
+                      setGlobalTypeExclude(prev => prev.includes("unassigned") ? prev.filter(t => t !== "unassigned") : [...prev, "unassigned"]);
+                    }
+                  }}
+                >
+                  <div
+                    onMouseDown={(e) => { e.stopPropagation(); handleLegendDrag(e, null); }}
+                    className="w-4 h-4 rounded-full cursor-grab bg-gray-700 border border-gray-300 hover:scale-110 transition-transform"
+                  />
+                  <span className="text-gray-500 italic flex-1">Unassigned</span>
+                  {filterMode === "include" && globalTypeFilter.includes("unassigned") && <span className="text-blue-500">✓</span>}
+                  {filterMode === "exclude" && globalTypeExclude.includes("unassigned") && <span className="text-red-500">✕</span>}
+                </div>
+                {Object.values(legendTypes).map(lt => (
+                  <div
+                    key={lt.id}
+                    className={`flex items-center gap-1.5 mb-1 group cursor-pointer rounded px-1 py-0.5 text-[10px] ${
+                      (filterMode === "include" && globalTypeFilter.includes(lt.id)) || (filterMode === "exclude" && globalTypeExclude.includes(lt.id))
+                        ? (filterMode === "exclude" ? "bg-red-100" : "bg-gray-200")
+                        : "hover:bg-gray-100"
+                    }`}
+                    onClick={() => {
+                      if (filterMode === "include") {
+                        setGlobalTypeFilter(prev => prev.includes(lt.id) ? prev.filter(t => t !== lt.id) : [...prev, lt.id]);
+                      } else {
+                        setGlobalTypeExclude(prev => prev.includes(lt.id) ? prev.filter(t => t !== lt.id) : [...prev, lt.id]);
+                      }
+                    }}
+                  >
+                    <div
+                      onMouseDown={(e) => { e.stopPropagation(); handleLegendDrag(e, lt.id); }}
+                      className="w-4 h-4 rounded-full cursor-grab border border-gray-200 hover:scale-110 transition-transform"
+                      style={{ backgroundColor: lt.color }}
+                    />
+                    {editingLegendId === lt.id ? (
+                      <input
+                        autoFocus
+                        value={editingLegendName}
+                        onChange={e => setEditingLegendName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") { update_legend_type(lt.id, { name: editingLegendName }); setEditingLegendId(null); }
+                          else if (e.key === "Escape") setEditingLegendId(null);
+                        }}
+                        onBlur={() => { update_legend_type(lt.id, { name: editingLegendName }); setEditingLegendId(null); }}
+                        onClick={e => e.stopPropagation()}
+                        className="text-[10px] px-1 py-0.5 border border-blue-400 rounded outline-none flex-1 min-w-0"
+                      />
+                    ) : (
+                      <span
+                        onDoubleClick={e => { e.stopPropagation(); setEditingLegendId(lt.id); setEditingLegendName(lt.name); }}
+                        className="text-gray-700 cursor-text flex-1"
+                      >
+                        {lt.name}
+                      </span>
+                    )}
+                    {globalTypeFilter.includes(lt.id) && <span className="text-blue-500">✓</span>}
+                    {globalTypeExclude.includes(lt.id) && <span className="text-red-500">✕</span>}
+                    <input
+                      type="color" value={lt.color}
+                      onChange={e => update_legend_type(lt.id, { color: e.target.value })}
+                      onClick={e => e.stopPropagation()}
+                      className="w-3 h-3 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                    />
+                    <DeleteForeverIcon
+                      onClick={e => { e.stopPropagation(); delete_legend_type(lt.id); }}
+                      className="text-gray-300 hover:text-red-500! cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{ fontSize: 13 }}
+                    />
+                  </div>
+                ))}
+                {/* Create general legend type */}
+                {showCreateLegend ? (
+                  <div className="mt-1 p-1.5 bg-gray-50 rounded border border-gray-200">
+                    <div className="flex items-center gap-1 mb-1">
+                      <input type="color" value={newLegendColor} onChange={e => setNewLegendColor(e.target.value)} className="w-4 h-4 cursor-pointer rounded" />
+                      <input
+                        autoFocus value={newLegendName} onChange={e => setNewLegendName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && newLegendName.trim()) {
+                            create_legend_type(newLegendName, newLegendColor);
+                            setNewLegendName(""); setNewLegendColor("#6366f1"); setShowCreateLegend(false);
+                          } else if (e.key === "Escape") setShowCreateLegend(false);
+                        }}
+                        placeholder="Type name..."
+                        className="text-[10px] px-1.5 py-0.5 border border-gray-300 rounded outline-none flex-1 focus:border-blue-400"
+                      />
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => {
+                          if (newLegendName.trim()) {
+                            create_legend_type(newLegendName, newLegendColor);
+                            setNewLegendName(""); setNewLegendColor("#6366f1"); setShowCreateLegend(false);
+                          }
+                        }}
+                        className="flex-1 text-[10px] px-1.5 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600"
+                      >
+                        Create
+                      </button>
+                      <button onClick={() => setShowCreateLegend(false)} className="text-[10px] px-1.5 py-0.5 bg-gray-200 rounded hover:bg-gray-300">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowCreateLegend(true)}
+                    className="w-full mt-1 text-[10px] px-1.5 py-1 border border-dashed border-gray-300 rounded text-gray-500 hover:border-gray-400 hover:bg-gray-50 transition-colors"
+                  >
+                    + Add Type
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Dimensions list */}
+            <div className="mt-1 pt-1 border-t border-gray-100">
+              <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Dimensions</span>
+              <div className="mt-1">
+                {dimensions.map(dimension => {
+                  const dimFilter = dimensionFilters[dimension.id] || { mode: "include", types: [] };
+                  const hasFilter = dimFilter.types.length > 0;
+                  const isExpanded = activeDimensionId === dimension.id;
+                  return (
+                    <div key={dimension.id} className="mb-1.5 border border-gray-100 rounded p-1 bg-gray-50">
+                      <div className="flex items-center justify-between">
+                        <span
+                          onClick={() => setActiveDimensionId(isExpanded ? null : dimension.id)}
+                          className={`text-[10px] font-medium cursor-pointer flex-1 ${isExpanded ? "text-blue-600" : "text-gray-600 hover:text-gray-800"}`}
+                        >
+                          {isExpanded ? "▼" : "▶"} {dimension.name}
+                        </span>
+                        <div className="flex items-center gap-0.5">
+                          {hasFilter && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDimensionFilters(prev => ({ ...prev, [dimension.id]: { mode: "include", types: [] } })); }}
+                              className="text-[8px] text-blue-500 hover:text-blue-700 px-0.5"
+                              title="Clear dimension filter"
+                            >✕</button>
+                          )}
+                          <DeleteForeverIcon
+                            onClick={(e) => { e.stopPropagation(); delete_dimension(dimension.id); }}
+                            className="text-gray-300 hover:text-red-500! cursor-pointer"
+                            style={{ fontSize: 11 }}
+                          />
+                        </div>
+                      </div>
+                      {isExpanded && (
+                        <div className="mt-1">
+                          {/* Filter mode toggle per dimension */}
+                          <div className="flex items-center gap-1 mb-1">
+                            <button
+                              onClick={() => setDimensionFilters(prev => ({ ...prev, [dimension.id]: { ...(prev[dimension.id] || {}), mode: "include", types: [] } }))}
+                              className={`flex-1 text-[8px] px-1 py-0.5 rounded ${dimFilter.mode === "include" ? "bg-blue-100 text-blue-700 font-medium" : "bg-gray-100 text-gray-500"}`}
+                            >
+                              <Eye size={8} className="inline" /> Show
+                            </button>
+                            <button
+                              onClick={() => setDimensionFilters(prev => ({ ...prev, [dimension.id]: { ...(prev[dimension.id] || {}), mode: "exclude", types: [] } }))}
+                              className={`flex-1 text-[8px] px-1 py-0.5 rounded ${dimFilter.mode === "exclude" ? "bg-red-100 text-red-700 font-medium" : "bg-gray-100 text-gray-500"}`}
+                            >
+                              <EyeOff size={8} className="inline" /> Excl
+                            </button>
+                          </div>
+                          {(dimension.legend_types || []).map(lt => {
+                            const isFiltered = dimFilter.types.includes(lt.id);
+                            return (
+                              <div
+                                key={lt.id}
+                                className={`flex items-center gap-1 text-[9px] py-0.5 cursor-pointer rounded px-1 ${
+                                  isFiltered ? (dimFilter.mode === "exclude" ? "bg-red-100" : "bg-blue-100") : "hover:bg-gray-100"
+                                }`}
+                                onClick={() => {
+                                  setDimensionFilters(prev => {
+                                    const cur = prev[dimension.id] || { mode: "include", types: [] };
+                                    const types = cur.types.includes(lt.id) ? cur.types.filter(t => t !== lt.id) : [...cur.types, lt.id];
+                                    return { ...prev, [dimension.id]: { ...cur, types } };
+                                  });
+                                }}
+                              >
+                                <div
+                                  onMouseDown={(e) => { e.stopPropagation(); handleLegendDrag(e, lt.id); }}
+                                  className="w-2.5 h-2.5 rounded-full flex-shrink-0 cursor-grab hover:scale-110 transition-transform"
+                                  style={{ backgroundColor: lt.color }}
+                                />
+                                <span className="flex-1">{lt.name}</span>
+                                {isFiltered && <span className={dimFilter.mode === "exclude" ? "text-red-500 text-[8px]" : "text-blue-500 text-[8px]"}>{dimFilter.mode === "exclude" ? "✕" : "✓"}</span>}
+                              </div>
+                            );
+                          })}
+                          <button
+                            onClick={() => {
+                              const name = prompt("New type name:");
+                              if (name?.trim()) create_dimension_legend_type(dimension.id, name.trim(), "#6366f1");
+                            }}
+                            className="text-[9px] text-gray-400 hover:text-gray-600 mt-0.5 pl-1"
+                          >
+                            + type
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div className="flex items-center gap-1 mt-1">
+                  <input
+                    value={newDimensionName}
+                    onChange={e => setNewDimensionName(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && newDimensionName.trim()) {
+                        create_dimension(newDimensionName.trim());
+                        setNewDimensionName("");
+                      } else if (e.key === "Escape") setNewDimensionName("");
+                    }}
+                    placeholder="New dimension..."
+                    className="text-[9px] px-1 py-0.5 border border-gray-200 rounded outline-none flex-1 focus:border-blue-300"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderCategoryCanvas = () => (
+    showCategories ? (
+      <div
+        ref={categoryContainerRef}
+        className="flex-1 relative overflow-auto bg-gray-50"
+      >
+        {/* Toolbar */}
+        <div className="sticky top-0 z-30 flex items-center gap-2 p-2 bg-gray-50/90 backdrop-blur-sm border-b border-gray-200">
+          {displayCategoryForm ? (
+            <div className="flex items-center gap-1 flex-1">
+              <input
+                autoFocus
+                value={newCategoryName}
+                onChange={e => setNewCategoryName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter") create_category_api();
+                  else if (e.key === "Escape") { setDisplayCategoryForm(false); setNewCategoryName(""); }
+                }}
+                placeholder="Category name..."
+                className="text-xs px-2 py-1 border border-gray-300 rounded outline-none flex-1 focus:border-amber-400"
+              />
+              <button onClick={create_category_api} className="text-[10px] px-2 py-1 bg-amber-400 rounded hover:bg-amber-500 font-medium">
+                Create
+              </button>
+              <button onClick={() => { setDisplayCategoryForm(false); setNewCategoryName(""); }} className="text-[10px] px-2 py-1 bg-gray-200 rounded hover:bg-gray-300">
+                ✕
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setDisplayCategoryForm(true)}
+              className="text-[10px] px-2 py-1 bg-amber-100 text-amber-800 border border-amber-300 rounded hover:bg-amber-200 font-medium"
+            >
+              + Category
+            </button>
+          )}
+          {archivedCategories.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setShowArchive(!showArchive)}
+                className="text-[10px] px-2 py-1 bg-gray-100 border border-gray-300 rounded hover:bg-gray-200 flex items-center gap-1"
+              >
+                <ArchiveIcon style={{ fontSize: 12 }} />
+                {archivedCategories.length}
+              </button>
+              {showArchive && (
+                <div className="absolute top-full left-0 mt-1 z-40 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[180px] max-h-[200px] overflow-y-auto">
+                  <h3 className="text-[10px] font-semibold mb-1 text-gray-500">Archived</h3>
+                  {archivedCategories.map(cat => (
+                    <div key={cat.id} className="flex justify-between items-center p-1 rounded hover:bg-gray-50 mb-0.5 text-[10px]">
+                      <span className="font-medium truncate flex-1">{cat.name}</span>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <UnarchiveIcon
+                          onClick={() => toggle_archive_category(cat.id)}
+                          className="hover:text-green-600! cursor-pointer"
+                          style={{ fontSize: 14 }}
+                        />
+                        <DeleteForeverIcon
+                          onClick={() => setConfirmModal({
+                            message: `Delete "${cat.name}"?`,
+                            onConfirm: () => { delete_category(cat.id); setConfirmModal(null); },
+                            onCancel: () => setConfirmModal(null),
+                          })}
+                          className="hover:text-red-500! cursor-pointer"
+                          style={{ fontSize: 14 }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Category cards */}
+        {activeCategories.map(([catKey, catData]) => {
+          const catIdeas = categoryOrders[catKey] || [];
+          const isHovered = dragging && String(hoverCategory) === String(catKey);
+
+          return (
+            <div
+              key={catKey}
+              style={{
+                left: catData.x, top: catData.y + 36,
+                width: catData.width, height: catData.height,
+                zIndex: catData.z_index || 0,
+                backgroundColor: isHovered ? "#fde68a" : "#fef08a",
+                transition: "background-color 150ms ease",
+              }}
+              className="absolute shadow-lg rounded p-1.5 flex flex-col"
+              onMouseDown={() => bring_to_front_category(catKey)}
+            >
+              {/* Category header */}
+              <div
+                onMouseDown={(e) => { e.stopPropagation(); handleCategoryDrag(e, catKey); }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  setEditingCategoryId(catKey);
+                  setEditingCategoryName(catData.name);
+                }}
+                className="flex justify-between items-center mb-0.5 flex-shrink-0 bg-amber-300/50 rounded-t px-1 py-0.5 cursor-grab active:cursor-grabbing border-b border-amber-400/40"
+              >
+                {editingCategoryId === catKey ? (
+                  <input
+                    autoFocus
+                    value={editingCategoryName}
+                    onChange={e => setEditingCategoryName(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") { rename_category_api(catKey, editingCategoryName); setEditingCategoryId(null); }
+                      else if (e.key === "Escape") setEditingCategoryId(null);
+                    }}
+                    onBlur={() => { rename_category_api(catKey, editingCategoryName); setEditingCategoryId(null); }}
+                    onMouseDown={e => e.stopPropagation()}
+                    className="bg-white text-[11px] font-semibold px-1 py-0.5 rounded outline-none border border-blue-400 flex-1 mr-1"
+                  />
+                ) : (
+                  <span className="font-semibold text-[11px] truncate">{catData.name}</span>
+                )}
+                <div className="flex items-center gap-0.5 flex-shrink-0">
+                  {/* Collapse all ideas toggle */}
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const allCollapsed = catIdeas.every(id => collapsedIdeas[id]);
+                      const newState = {};
+                      catIdeas.forEach(id => { newState[id] = !allCollapsed; });
+                      setCollapsedIdeas(prev => ({ ...prev, ...newState }));
+                    }}
+                    className="text-[10px] text-amber-700 hover:text-amber-900 cursor-pointer px-0.5"
+                  >
+                    <span style={{
+                      display: "inline-block", width: 0, height: 0, borderStyle: "solid",
+                      ...(catIdeas.every(id => collapsedIdeas[id])
+                        ? { borderWidth: "5px 3px 0 3px", borderColor: "currentColor transparent transparent transparent" }
+                        : { borderWidth: "0 3px 5px 3px", borderColor: "transparent transparent currentColor transparent" })
+                    }} />
+                  </span>
+                  {/* Minimize */}
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (minimizedCategories[catKey]) {
+                        const orig = minimizedCategories[catKey];
+                        setCategories(prev => ({ ...prev, [catKey]: { ...prev[catKey], width: orig.width, height: orig.height } }));
+                        set_area_category(catKey, orig.width, orig.height);
+                        setMinimizedCategories(prev => { const u = { ...prev }; delete u[catKey]; return u; });
+                      } else {
+                        const minW = Math.max(80, catData.name.length * 9 + 60);
+                        setMinimizedCategories(prev => ({ ...prev, [catKey]: { width: catData.width, height: catData.height } }));
+                        setCategories(prev => ({ ...prev, [catKey]: { ...prev[catKey], width: minW, height: 30 } }));
+                        set_area_category(catKey, minW, 30);
+                      }
+                    }}
+                    className="text-[10px] text-amber-700 hover:text-amber-900 cursor-pointer px-0.5"
+                  >
+                    {minimizedCategories[catKey] ? "◻" : "—"}
+                  </span>
+                  <ArchiveIcon
+                    onClick={(e) => { e.stopPropagation(); toggle_archive_category(catKey); }}
+                    className="hover:text-amber-700! cursor-pointer" style={{ fontSize: 13 }}
+                  />
+                  <DeleteForeverIcon
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmModal({
+                        message: `Delete "${catData.name}"? Its ideas become unassigned.`,
+                        onConfirm: () => { delete_category(catKey); setConfirmModal(null); },
+                        onCancel: () => setConfirmModal(null),
+                      });
+                    }}
+                    className="hover:text-red-500! cursor-pointer" style={{ fontSize: 14 }}
+                  />
+                </div>
+              </div>
+
+              {/* Ideas inside category */}
+              <div
+                ref={el => (categoryRefs.current[catKey] = el)}
+                className="flex-1 overflow-y-auto overflow-x-hidden"
+                onMouseDown={e => e.stopPropagation()}
+              >
+                {catIdeas
+                  .filter(ideaId => passesFilter(ideas[ideaId]))
+                  .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: catKey }))
+                }
+              </div>
+
+              {/* Resize grip */}
+              <div
+                onMouseDown={(e) => handleCategoryResize(e, catKey)}
+                className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize flex items-center justify-center"
+              >
+                <span className="text-amber-600/60 text-[8px] leading-none select-none">◢</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    ) : null
+  );
+
+  const renderDragGhosts = () => (
+    <>
+    {/* ── Drag ghosts (fixed, above everything) ── */}
+    {dragging && !externalGhost && (
+      <div
+        style={{
+          top: dragging.y, left: dragging.x,
+          transform: "translate(-50%, -100%)",
+          pointerEvents: "none", zIndex: 99999,
+        }}
+        className="fixed max-w-48 shadow-lg border border-gray-200 bg-white rounded text-gray-800 px-2 py-1 flex items-center text-[10px]"
+      >
+        <span className="whitespace-pre-wrap line-clamp-2">
+          {dragging.idea.headline && <span className="font-semibold">{dragging.idea.headline}: </span>}
+          {dragging.idea.title}
+        </span>
+      </div>
+    )}
+    {draggingLegend && (
+      <div
+        style={{
+          top: draggingLegend.y, left: draggingLegend.x,
+          transform: "translate(-50%, -50%)",
+          pointerEvents: "none", zIndex: 99999,
+          backgroundColor: draggingLegend.color,
+        }}
+        className="fixed w-6 h-6 rounded-full shadow-lg border-2 border-white"
+      />
+    )}
+
+    {/* External drag ghost — visible when dragging an idea outside the IdeaBin window */}
+    {externalGhost && (
+      <div
+        id="ideabin-external-ghost"
+        style={{
+          position: "fixed",
+          left: externalGhost.x + 12,
+          top: externalGhost.y - 8,
+          zIndex: 99999,
+          pointerEvents: "none",
+          maxWidth: 220,
+        }}
+      >
+        <div
+          className="rounded-lg shadow-xl border-2 px-2.5 py-1.5 text-xs font-medium"
+          style={{
+            backgroundColor: externalGhost.dayIndex !== null && externalGhost.dayIndex !== undefined
+              ? "#ede9fe"
+              : externalGhost.teamId
+                ? (externalGhost.taskId ? "#dbeafe" : "#fef3c7")
+                : "#ffffff",
+            borderColor: externalGhost.dayIndex !== null && externalGhost.dayIndex !== undefined
+              ? "#7c3aed"
+              : externalGhost.teamId
+                ? (externalGhost.taskId ? "#3b82f6" : (externalGhost.teamColor || "#f59e0b"))
+                : "#d1d5db",
+            color: "#1f2937",
+          }}
+        >
+          <div className="truncate">
+            {externalGhost.idea.headline || externalGhost.idea.title.split(/\s+/).slice(0, 5).join(" ")}
+          </div>
+          {externalGhost.dayIndex !== null && externalGhost.dayIndex !== undefined && externalGhost.taskId ? (
+            <div className="text-[10px] mt-0.5 opacity-80">
+              🏁 {externalGhost.dayLabel ? `${externalGhost.dayWeekday || ''} ${externalGhost.dayLabel}`.trim() : `Day ${parseInt(externalGhost.dayIndex) + 1}`}
+            </div>
+          ) : externalGhost.teamId ? (
+            <div className="text-[10px] mt-0.5 opacity-80">
+              {externalGhost.taskId
+                ? <>🏁 → <span className="font-semibold">{externalGhost.taskName}</span></>
+                : <>📋 → <span className="font-semibold" style={{ color: externalGhost.teamColor }}>{externalGhost.teamName}</span></>
+              }
+            </div>
+          ) : (
+            <div className="text-[10px] mt-0.5 text-gray-400 italic">Drag onto a team or task...</div>
+          )}
+        </div>
+      </div>
+    )}
+    </>
+  );
+
   const archivedCategories = Object.values(categories).filter(c => c.archived);
   const activeCategories = Object.entries(categories).filter(([, c]) => !c.archived);
   const unassignedCount = unassignedOrder.length;
 
-  // ═══════════════════════════════════════════════════════
   // ═══════════  JSX  ═════════════════════════════════════
   // ═══════════════════════════════════════════════════════
 
+
   if (!projectId) return null;
 
+  // ───── EMBEDDED MODE: renders inline, fills parent container ─────
+  if (isEmbedded) {
+    return (
+      <div className="h-full w-full flex flex-col bg-white rounded-lg shadow-2xl border border-gray-300 overflow-hidden select-none">
+        {/* Title bar */}
+        <div className="flex items-center justify-between px-4 py-2 bg-gradient-to-r from-amber-400 to-yellow-400 flex-shrink-0 border-b border-amber-500/30">
+          <div className="flex items-center gap-2">
+            <Lightbulb size={18} className="text-amber-800" />
+            <span className="text-sm font-semibold text-amber-900">Ideas</span>
+            {unassignedCount > 0 && (
+              <span className="text-[10px] bg-amber-600/20 text-amber-800 px-1.5 rounded-full font-medium">
+                {unassignedCount}
+              </span>
+            )}
+          </div>
+        </div>
+        {/* Content */}
+        <div className="flex-1 flex overflow-hidden relative">
+          {confirmModal && (
+            <ConfirmModal message={confirmModal.message} onConfirm={confirmModal.onConfirm} onCancel={confirmModal.onCancel} confirmLabel={confirmModal.confirmLabel} confirmColor={confirmModal.confirmColor} />
+          )}
+          {transformModal && renderTransformModal()}
+          {renderSidebar()}
+          {renderCategoryCanvas()}
+        </div>
+        {renderDragGhosts()}
+      </div>
+    );
+  }
+
+
+  // ───── FLOATING MODE (default) ─────
   return (
     <>
       {/* ───── COLLAPSED: Floating icon ───── */}
@@ -1368,684 +2431,9 @@ export default function IdeaBin() {
               <ConfirmModal message={confirmModal.message} onConfirm={confirmModal.onConfirm} onCancel={confirmModal.onCancel} confirmLabel={confirmModal.confirmLabel} confirmColor={confirmModal.confirmColor} />
             )}
 
-            {/* Transform modal overlay */}
-            {transformModal && (
-              <>
-                <div className="absolute inset-0 bg-black/30 z-[50] rounded-b-lg" onClick={closeTransform} />
-                <div
-                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-2xl z-[51] min-w-[260px] max-w-[90%] overflow-hidden"
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  {/* Header */}
-                  <div className="bg-gradient-to-r from-amber-400 to-yellow-400 px-4 py-2 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-amber-900 flex items-center gap-1.5">
-                      <Zap size={14} /> Transform Idea
-                    </span>
-                    <button onClick={closeTransform} className="text-amber-800 hover:text-amber-950 text-sm font-bold">✕</button>
-                  </div>
-
-                  {/* Idea preview */}
-                  <div className="px-4 pt-3 pb-2 border-b border-gray-100 bg-gray-50">
-                    {transformModal.idea.headline && (
-                      <p className="text-xs font-semibold text-gray-700">{transformModal.idea.headline}</p>
-                    )}
-                    <p className="text-[11px] text-gray-500 line-clamp-2 mt-0.5">{transformModal.idea.title}</p>
-                  </div>
-
-                  <div className="p-4">
-                    {/* Step: Choose */}
-                    {transformModal.step === 'choose' && (
-                      <div className="flex flex-col gap-2">
-                        <p className="text-xs text-gray-500 mb-1">Transform this idea into:</p>
-                        <button
-                          onClick={() => setTransformModal(prev => ({ ...prev, step: 'task' }))}
-                          className="w-full text-left px-3 py-2.5 border border-gray-200 rounded-lg hover:border-amber-400 hover:bg-amber-50 transition-colors group"
-                        >
-                          <span className="text-sm font-medium text-gray-800 group-hover:text-amber-800">📋 Task</span>
-                          <p className="text-[10px] text-gray-400 mt-0.5">Create a new task assigned to a team</p>
-                        </button>
-                        <button
-                          onClick={() => { setTransformTeamId(null); setTransformTaskId(null); setTransformModal(prev => ({ ...prev, step: 'milestone' })); }}                          className="w-full text-left px-3 py-2.5 border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors group"
-                        >
-                          <span className="text-sm font-medium text-gray-800 group-hover:text-blue-800">🏁 Milestone</span>
-                          <p className="text-[10px] text-gray-400 mt-0.5">Create a milestone on an existing task</p>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Step: Task */}
-                    {transformModal.step === 'task' && (
-                      <div className="flex flex-col gap-2.5">
-                        <div>
-                          <label className="text-[10px] text-gray-500 font-medium mb-0.5 block">Task Name</label>
-                          <input
-                            autoFocus
-                            value={transformName}
-                            onChange={(e) => setTransformName(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Escape") closeTransform(); }}
-                            className="w-full text-xs px-2 py-1.5 border border-gray-300 rounded outline-none focus:border-amber-400"
-                            placeholder="Task name..."
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-gray-500 font-medium mb-0.5 block">Select Team</label>
-                          <div className="max-h-[140px] overflow-y-auto border border-gray-200 rounded">
-                            {projectTeams.length === 0 && (
-                              <p className="text-[10px] text-gray-400 p-2 italic">No teams found...</p>
-                            )}
-                            {projectTeams.map(team => (
-                              <div
-                                key={team.id}
-                                onClick={() => setTransformTeamId(team.id)}
-                                className={`px-2 py-1.5 text-xs cursor-pointer transition-colors flex items-center gap-2 ${
-                                  transformTeamId === team.id
-                                    ? "bg-amber-100 text-amber-900 font-medium"
-                                    : "hover:bg-gray-50 text-gray-700"
-                                }`}
-                              >
-                                {team.color && (
-                                  <span className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-300" style={{ backgroundColor: team.color }} />
-                                )}
-                                {team.name}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="flex justify-between items-center pt-1">
-                          <button
-                            onClick={() => setTransformModal(prev => ({ ...prev, step: 'choose' }))}
-                            className="text-[10px] text-gray-500 hover:text-gray-700"
-                          >
-                            ← Back
-                          </button>
-                          <button
-                            onClick={executeTransformToTask}
-                            disabled={!transformName.trim() || !transformTeamId || transformLoading}
-                            className="px-3 py-1 bg-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium"
-                          >
-                            {transformLoading ? "Creating..." : "Create Task"}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Step: Milestone */}
-                    {transformModal.step === 'milestone' && (
-                      <div className="flex flex-col gap-2.5">
-                        <div>
-                          <label className="text-[10px] text-gray-500 font-medium mb-0.5 block">Milestone Name</label>
-                          <input
-                            autoFocus
-                            value={transformName}
-                            onChange={(e) => setTransformName(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Escape") closeTransform(); }}
-                            className="w-full text-xs px-2 py-1.5 border border-gray-300 rounded outline-none focus:border-blue-400"
-                            placeholder="Milestone name..."
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-gray-500 font-medium mb-0.5 block">Select Task</label>
-                          <input
-                            value={transformTaskSearch}
-                            onChange={(e) => setTransformTaskSearch(e.target.value)}
-                            className="w-full text-[10px] px-2 py-1 border border-gray-200 rounded outline-none focus:border-blue-300 mb-1"
-                            placeholder="Search tasks..."
-                          />
-                          <div className="max-h-[160px] overflow-y-auto border border-gray-200 rounded">
-                            {(() => {
-                              const filtered = projectTasks.filter(t => {
-                                if (!transformTaskSearch) return true;
-                                const q = transformTaskSearch.toLowerCase();
-                                const teamObj = projectTeams.find(tm => tm.id === (t.team || t.team_id));
-                                return (
-                                  (t.name || '').toLowerCase().includes(q) ||
-                                  (teamObj?.name || '').toLowerCase().includes(q)
-                                );
-                              });
-                              if (filtered.length === 0) return (
-                                <p className="text-[10px] text-gray-400 p-2 italic">No tasks found...</p>
-                              );
-                              return filtered.map(task => {
-                                const teamObj = projectTeams.find(tm => tm.id === (task.team || task.team_id));
-                                return (
-                                  <div
-                                    key={task.id}
-                                    onClick={() => setTransformTaskId(task.id)}
-                                    className={`px-2 py-1.5 text-xs cursor-pointer transition-colors flex items-center gap-1.5 ${
-                                      transformTaskId === task.id
-                                        ? "bg-blue-100 text-blue-900 font-medium"
-                                        : "hover:bg-gray-50 text-gray-700"
-                                    }`}
-                                  >
-                                    {teamObj?.color && (
-                                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: teamObj.color }} />
-                                    )}
-                                    <span>{task.name}</span>
-                                    {teamObj?.name && <span className="text-[10px] text-gray-400 ml-auto">{teamObj.name}</span>}
-                                  </div>
-                                );
-                              });
-                            })()}
-                          </div>
-                        </div>
-                        <div className="flex justify-between items-center pt-1">
-                          <button
-                            onClick={() => setTransformModal(prev => ({ ...prev, step: 'choose' }))}
-                            className="text-[10px] text-gray-500 hover:text-gray-700"
-                          >
-                            ← Back
-                          </button>
-                          <button
-                            onClick={executeTransformToMilestone}
-                            disabled={!transformName.trim() || !transformTaskId || transformLoading}
-                            className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium"
-                          >
-                            {transformLoading ? "Creating..." : "Create Milestone"}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* ── LEFT: Sidebar (always visible) ── */}
-            <div
-              className="flex flex-col flex-shrink-0 border-r border-gray-200 bg-white"
-              style={{ width: showCategories ? 260 : "100%" }}
-            >
-              {/* ── Input form ── */}
-              <div className="p-2 bg-gray-50 border-b border-gray-200 flex-shrink-0">
-                <h2 className="text-xs font-semibold text-gray-500 mb-1.5">
-                  {editingIdeaId ? "Edit Idea" : "New Idea"}
-                </h2>
-                <TextField
-                  inputRef={headlineInputRef}
-                  value={editingIdeaId ? editingIdeaHeadline : ideaHeadline}
-                  onChange={(e) => {
-                    if (editingIdeaId) setEditingIdeaHeadline(e.target.value);
-                    else setIdeaHeadline(e.target.value);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      if (editingIdeaId) {
-                        update_idea_title_api(editingIdeaId, editingIdeaTitle || editingIdeaHeadline, editingIdeaHeadline);
-                        setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline("");
-                      } else { create_idea(); }
-                    } else if (e.key === "Escape" && editingIdeaId) {
-                      setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline("");
-                    }
-                  }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  label="Headline (optional)"
-                  variant="outlined"
-                  size="small"
-                  fullWidth
-                  sx={{ backgroundColor: "white", borderRadius: 1, marginBottom: 0.5, "& .MuiInputLabel-root": { fontSize: 11 }, "& .MuiInputLabel-shrink": { fontSize: 12 }, "& .MuiInputBase-input": { fontSize: 12, padding: "6px 10px", caretColor: "#1f2937", color: "#1f2937" } }}
-                />
-                <TextField
-                  value={editingIdeaId ? editingIdeaTitle : ideaName}
-                  onChange={(e) => {
-                    if (editingIdeaId) setEditingIdeaTitle(e.target.value);
-                    else setIdeaName(e.target.value);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      if (editingIdeaId) {
-                        update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaHeadline);
-                        setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline("");
-                      } else { create_idea(); }
-                    } else if (e.key === "Escape" && editingIdeaId) {
-                      setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline("");
-                    }
-                  }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  label={editingIdeaId ? "Edit your idea..." : "What's your idea?"}
-                  variant="outlined"
-                  multiline
-                  minRows={1}
-                  maxRows={3}
-                  fullWidth
-                  sx={{ backgroundColor: "white", borderRadius: 1, "& .MuiInputBase-input": { fontSize: 12, caretColor: "#1f2937", color: "#1f2937" } }}
-                />
-                <div className="flex gap-1.5 mt-1.5">
-                  {editingIdeaId ? (
-                    <>
-                      <button
-                        onClick={() => {
-                          update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaHeadline);
-                          setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline("");
-                        }}
-                        className="px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-[11px]"
-                      >
-                        Update
-                      </button>
-                      <button
-                        onClick={() => { setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline(""); }}
-                        className="px-2 py-0.5 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 text-[11px]"
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    (ideaName.trim() || ideaHeadline.trim()) && (
-                      <button
-                        onClick={create_idea}
-                        className="px-2 py-0.5 bg-green-500 text-white rounded hover:bg-green-600 text-[11px]"
-                      >
-                        Create
-                      </button>
-                    )
-                  )}
-                </div>
-              </div>
-
-              {/* ── Ideas list (switchable) ── */}
-              <div
-                ref={IdeaListRef}
-                style={{
-                  backgroundColor: dragging && hoverUnassigned ? "#f3f4f6" : "#ffffff",
-                  transition: "background-color 150ms ease",
-                }}
-                className="flex-1 p-1.5 overflow-y-auto overflow-x-hidden"
-              >
-                {/* List filter header */}
-                <div className="relative mb-1">
-                  <button
-                    onClick={() => setShowListFilterDropdown(p => !p)}
-                    className="flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors"
-                  >
-                    {listFilter === "unassigned"
-                      ? `Unassigned (${unassignedCount})`
-                      : `${categories[listFilter]?.name || "Category"} (${(categoryOrders[listFilter] || []).length})`
-                    }
-                    <span className="text-[9px]">▼</span>
-                  </button>
-                  {showListFilterDropdown && (
-                    <>
-                      <div className="fixed inset-0 z-[60]" onClick={() => setShowListFilterDropdown(false)} />
-                      <div className="absolute left-0 top-full mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg z-[61] min-w-[140px] max-h-[200px] overflow-y-auto py-0.5">
-                        <div
-                          onClick={() => { setListFilter("unassigned"); setShowListFilterDropdown(false); }}
-                          className={`px-2.5 py-1.5 text-[11px] cursor-pointer transition-colors ${listFilter === "unassigned" ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-50 text-gray-700"}`}
-                        >
-                          Unassigned ({unassignedCount})
-                        </div>
-                        {Object.entries(categories).map(([catKey, catData]) => (
-                          <div
-                            key={catKey}
-                            onClick={() => { setListFilter(catKey); setShowListFilterDropdown(false); }}
-                            className={`px-2.5 py-1.5 text-[11px] cursor-pointer transition-colors flex items-center gap-1.5 ${String(listFilter) === String(catKey) ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-50 text-gray-700"}`}
-                          >
-                            {catData.archived && <span className="text-[9px] text-gray-400">📦</span>}
-                            {catData.name} ({(categoryOrders[catKey] || []).length})
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-                {/* Idea items for current filter */}
-                {listFilter === "unassigned"
-                  ? unassignedOrder
-                      .filter(ideaId => {
-                        if (globalTypeFilter.length === 0) return true;
-                        const idea = ideas[ideaId];
-                        if (!idea) return false;
-                        if (globalTypeFilter.includes("unassigned") && !idea.legend_type_id) return true;
-                        if (idea.legend_type_id && globalTypeFilter.includes(idea.legend_type_id)) return true;
-                        return false;
-                      })
-                      .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "unassigned" }))
-                  : (categoryOrders[listFilter] || [])
-                      .filter(ideaId => {
-                        if (globalTypeFilter.length === 0) return true;
-                        const idea = ideas[ideaId];
-                        if (!idea) return false;
-                        if (globalTypeFilter.includes("unassigned") && !idea.legend_type_id) return true;
-                        if (idea.legend_type_id && globalTypeFilter.includes(idea.legend_type_id)) return true;
-                        return false;
-                      })
-                      .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: listFilter }))
-                }              </div>
-
-              {/* ── Legend panel ── */}
-              <div className="bg-white border-t border-gray-200 p-2 flex-shrink-0">
-                <div
-                  className="flex items-center justify-between cursor-pointer"
-                  onClick={() => setLegendCollapsed(!legendCollapsed)}
-                >
-                  <h3 className="text-[10px] font-semibold text-gray-500">
-                    Legend {globalTypeFilter.length > 0 && <span className="text-blue-500">(filtered)</span>}
-                  </h3>
-                  <span className="text-gray-400 text-[10px]">{legendCollapsed ? "▲" : "▼"}</span>
-                </div>
-                {!legendCollapsed && (
-                  <div className="mt-1">
-                    {globalTypeFilter.length > 0 && (
-                      <button
-                        onClick={() => setGlobalTypeFilter([])}
-                        className="w-full mb-1 text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded hover:bg-blue-200"
-                      >
-                        Clear Filter
-                      </button>
-                    )}
-                    {/* Unassigned type */}
-                    <div
-                      className={`flex items-center gap-1.5 mb-1 cursor-pointer rounded px-1 py-0.5 text-[10px] ${globalTypeFilter.includes("unassigned") ? "bg-gray-200" : "hover:bg-gray-100"}`}
-                      onClick={() => setGlobalTypeFilter(prev => prev.includes("unassigned") ? prev.filter(t => t !== "unassigned") : [...prev, "unassigned"])}
-                    >
-                      <div
-                        onMouseDown={(e) => { e.stopPropagation(); handleLegendDrag(e, null); }}
-                        className="w-4 h-4 rounded-full cursor-grab bg-gray-700 border border-gray-300 hover:scale-110 transition-transform"
-                      />
-                      <span className="text-gray-500 italic flex-1">Unassigned</span>
-                      {globalTypeFilter.includes("unassigned") && <span className="text-blue-500">✓</span>}
-                    </div>
-                    {/* Custom types */}
-                    {Object.values(legendTypes).map(lt => (
-                      <div
-                        key={lt.id}
-                        className={`flex items-center gap-1.5 mb-1 group cursor-pointer rounded px-1 py-0.5 text-[10px] ${globalTypeFilter.includes(lt.id) ? "bg-gray-200" : "hover:bg-gray-100"}`}
-                        onClick={() => setGlobalTypeFilter(prev => prev.includes(lt.id) ? prev.filter(t => t !== lt.id) : [...prev, lt.id])}
-                      >
-                        <div
-                          onMouseDown={(e) => { e.stopPropagation(); handleLegendDrag(e, lt.id); }}
-                          className="w-4 h-4 rounded-full cursor-grab border border-gray-200 hover:scale-110 transition-transform"
-                          style={{ backgroundColor: lt.color }}
-                        />
-                        {editingLegendId === lt.id ? (
-                          <input
-                            autoFocus
-                            value={editingLegendName}
-                            onChange={e => setEditingLegendName(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter") { update_legend_type(lt.id, { name: editingLegendName }); setEditingLegendId(null); }
-                              else if (e.key === "Escape") setEditingLegendId(null);
-                            }}
-                            onBlur={() => { update_legend_type(lt.id, { name: editingLegendName }); setEditingLegendId(null); }}
-                            onClick={e => e.stopPropagation()}
-                            className="text-[10px] px-1 py-0.5 border border-blue-400 rounded outline-none flex-1 min-w-0"
-                          />
-                        ) : (
-                          <span
-                            onDoubleClick={e => { e.stopPropagation(); setEditingLegendId(lt.id); setEditingLegendName(lt.name); }}
-                            className="text-gray-700 cursor-text flex-1"
-                          >
-                            {lt.name}
-                          </span>
-                        )}
-                        {globalTypeFilter.includes(lt.id) && <span className="text-blue-500">✓</span>}
-                        <input
-                          type="color" value={lt.color}
-                          onChange={e => update_legend_type(lt.id, { color: e.target.value })}
-                          onClick={e => e.stopPropagation()}
-                          className="w-3 h-3 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-                        />
-                        <DeleteForeverIcon
-                          onClick={e => { e.stopPropagation(); delete_legend_type(lt.id); }}
-                          className="text-gray-300 hover:text-red-500! cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-                          style={{ fontSize: 13 }}
-                        />
-                      </div>
-                    ))}
-                    {/* Create legend */}
-                    {showCreateLegend ? (
-                      <div className="mt-1 p-1.5 bg-gray-50 rounded border border-gray-200">
-                        <div className="flex items-center gap-1 mb-1">
-                          <input type="color" value={newLegendColor} onChange={e => setNewLegendColor(e.target.value)} className="w-4 h-4 cursor-pointer rounded" />
-                          <input
-                            autoFocus value={newLegendName} onChange={e => setNewLegendName(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter" && newLegendName.trim()) {
-                                create_legend_type(newLegendName, newLegendColor);
-                                setNewLegendName(""); setNewLegendColor("#6366f1"); setShowCreateLegend(false);
-                              } else if (e.key === "Escape") setShowCreateLegend(false);
-                            }}
-                            placeholder="Type name..."
-                            className="text-[10px] px-1.5 py-0.5 border border-gray-300 rounded outline-none flex-1 focus:border-blue-400"
-                          />
-                        </div>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => {
-                              if (newLegendName.trim()) {
-                                create_legend_type(newLegendName, newLegendColor);
-                                setNewLegendName(""); setNewLegendColor("#6366f1"); setShowCreateLegend(false);
-                              }
-                            }}
-                            className="flex-1 text-[10px] px-1.5 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600"
-                          >
-                            Create
-                          </button>
-                          <button onClick={() => setShowCreateLegend(false)} className="text-[10px] px-1.5 py-0.5 bg-gray-200 rounded hover:bg-gray-300">
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setShowCreateLegend(true)}
-                        className="w-full mt-1 text-[10px] px-1.5 py-1 border border-dashed border-gray-300 rounded text-gray-500 hover:border-gray-400 hover:bg-gray-50 transition-colors"
-                      >
-                        + Add Type
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* ── RIGHT: Category canvas (only when wide enough) ── */}
-            {showCategories && (
-              <div
-                ref={categoryContainerRef}
-                className="flex-1 relative overflow-auto bg-gray-50"
-              >
-                {/* Toolbar */}
-                <div className="sticky top-0 z-30 flex items-center gap-2 p-2 bg-gray-50/90 backdrop-blur-sm border-b border-gray-200">
-                  {displayCategoryForm ? (
-                    <div className="flex items-center gap-1 flex-1">
-                      <input
-                        autoFocus
-                        value={newCategoryName}
-                        onChange={e => setNewCategoryName(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === "Enter") create_category_api();
-                          else if (e.key === "Escape") { setDisplayCategoryForm(false); setNewCategoryName(""); }
-                        }}
-                        placeholder="Category name..."
-                        className="text-xs px-2 py-1 border border-gray-300 rounded outline-none flex-1 focus:border-amber-400"
-                      />
-                      <button onClick={create_category_api} className="text-[10px] px-2 py-1 bg-amber-400 rounded hover:bg-amber-500 font-medium">
-                        Create
-                      </button>
-                      <button onClick={() => { setDisplayCategoryForm(false); setNewCategoryName(""); }} className="text-[10px] px-2 py-1 bg-gray-200 rounded hover:bg-gray-300">
-                        ✕
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setDisplayCategoryForm(true)}
-                      className="text-[10px] px-2 py-1 bg-amber-100 text-amber-800 border border-amber-300 rounded hover:bg-amber-200 font-medium"
-                    >
-                      + Category
-                    </button>
-                  )}
-                  {archivedCategories.length > 0 && (
-                    <button
-                      onClick={() => setShowArchive(!showArchive)}
-                      className="text-[10px] px-2 py-1 bg-gray-100 border border-gray-300 rounded hover:bg-gray-200 flex items-center gap-1"
-                    >
-                      <ArchiveIcon style={{ fontSize: 12 }} />
-                      {archivedCategories.length}
-                    </button>
-                  )}
-                </div>
-
-                {/* Archive dropdown */}
-                {showArchive && archivedCategories.length > 0 && (
-                  <div className="absolute top-10 right-2 z-40 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[180px] max-h-[200px] overflow-y-auto">
-                    <h3 className="text-[10px] font-semibold mb-1 text-gray-500">Archived</h3>
-                    {archivedCategories.map(cat => (
-                      <div key={cat.id} className="flex justify-between items-center p-1 rounded hover:bg-gray-50 mb-0.5 text-[10px]">
-                        <span className="font-medium truncate flex-1">{cat.name}</span>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <UnarchiveIcon
-                            onClick={() => toggle_archive_category(cat.id)}
-                            className="hover:text-green-600! cursor-pointer"
-                            style={{ fontSize: 14 }}
-                          />
-                          <DeleteForeverIcon
-                            onClick={() => setConfirmModal({
-                              message: `Delete "${cat.name}"?`,
-                              onConfirm: () => { delete_category(cat.id); setConfirmModal(null); },
-                              onCancel: () => setConfirmModal(null),
-                            })}
-                            className="hover:text-red-500! cursor-pointer"
-                            style={{ fontSize: 14 }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Category cards */}
-                {activeCategories.map(([catKey, catData]) => {
-                  const catIdeas = categoryOrders[catKey] || [];
-                  const isHovered = dragging && String(hoverCategory) === String(catKey);
-
-                  return (
-                    <div
-                      key={catKey}
-                      style={{
-                        left: catData.x, top: catData.y + 36,
-                        width: catData.width, height: catData.height,
-                        zIndex: catData.z_index || 0,
-                        backgroundColor: isHovered ? "#fde68a" : "#fef08a",
-                        transition: "background-color 150ms ease",
-                      }}
-                      className="absolute shadow-lg rounded p-1.5 flex flex-col"
-                      onMouseDown={() => bring_to_front_category(catKey)}
-                    >
-                      {/* Category header */}
-                      <div
-                        onMouseDown={(e) => { e.stopPropagation(); handleCategoryDrag(e, catKey); }}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          setEditingCategoryId(catKey);
-                          setEditingCategoryName(catData.name);
-                        }}
-                        className="flex justify-between items-center mb-0.5 flex-shrink-0 bg-amber-300/50 rounded-t px-1 py-0.5 cursor-grab active:cursor-grabbing border-b border-amber-400/40"
-                      >
-                        {editingCategoryId === catKey ? (
-                          <input
-                            autoFocus
-                            value={editingCategoryName}
-                            onChange={e => setEditingCategoryName(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter") { rename_category_api(catKey, editingCategoryName); setEditingCategoryId(null); }
-                              else if (e.key === "Escape") setEditingCategoryId(null);
-                            }}
-                            onBlur={() => { rename_category_api(catKey, editingCategoryName); setEditingCategoryId(null); }}
-                            onMouseDown={e => e.stopPropagation()}
-                            className="bg-white text-[11px] font-semibold px-1 py-0.5 rounded outline-none border border-blue-400 flex-1 mr-1"
-                          />
-                        ) : (
-                          <span className="font-semibold text-[11px] truncate">{catData.name}</span>
-                        )}
-                        <div className="flex items-center gap-0.5 flex-shrink-0">
-                          {/* Collapse all ideas toggle */}
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const allCollapsed = catIdeas.every(id => collapsedIdeas[id]);
-                              const newState = {};
-                              catIdeas.forEach(id => { newState[id] = !allCollapsed; });
-                              setCollapsedIdeas(prev => ({ ...prev, ...newState }));
-                            }}
-                            className="text-[10px] text-amber-700 hover:text-amber-900 cursor-pointer px-0.5"
-                          >
-                            <span style={{
-                              display: "inline-block", width: 0, height: 0, borderStyle: "solid",
-                              ...(catIdeas.every(id => collapsedIdeas[id])
-                                ? { borderWidth: "5px 3px 0 3px", borderColor: "currentColor transparent transparent transparent" }
-                                : { borderWidth: "0 3px 5px 3px", borderColor: "transparent transparent currentColor transparent" })
-                            }} />
-                          </span>
-                          {/* Minimize */}
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (minimizedCategories[catKey]) {
-                                const orig = minimizedCategories[catKey];
-                                setCategories(prev => ({ ...prev, [catKey]: { ...prev[catKey], width: orig.width, height: orig.height } }));
-                                set_area_category(catKey, orig.width, orig.height);
-                                setMinimizedCategories(prev => { const u = { ...prev }; delete u[catKey]; return u; });
-                              } else {
-                                const minW = Math.max(80, catData.name.length * 9 + 60);
-                                setMinimizedCategories(prev => ({ ...prev, [catKey]: { width: catData.width, height: catData.height } }));
-                                setCategories(prev => ({ ...prev, [catKey]: { ...prev[catKey], width: minW, height: 30 } }));
-                                set_area_category(catKey, minW, 30);
-                              }
-                            }}
-                            className="text-[10px] text-amber-700 hover:text-amber-900 cursor-pointer px-0.5"
-                          >
-                            {minimizedCategories[catKey] ? "◻" : "—"}
-                          </span>
-                          <ArchiveIcon
-                            onClick={(e) => { e.stopPropagation(); toggle_archive_category(catKey); }}
-                            className="hover:text-amber-700! cursor-pointer" style={{ fontSize: 13 }}
-                          />
-                          <DeleteForeverIcon
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setConfirmModal({
-                                message: `Delete "${catData.name}"? Its ideas become unassigned.`,
-                                onConfirm: () => { delete_category(catKey); setConfirmModal(null); },
-                                onCancel: () => setConfirmModal(null),
-                              });
-                            }}
-                            className="hover:text-red-500! cursor-pointer" style={{ fontSize: 14 }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Ideas inside category */}
-                      <div
-                        ref={el => (categoryRefs.current[catKey] = el)}
-                        className="flex-1 overflow-y-auto overflow-x-hidden"
-                        onMouseDown={e => e.stopPropagation()}
-                      >
-                        {catIdeas
-                          .filter(ideaId => {
-                            if (globalTypeFilter.length === 0) return true;
-                            const idea = ideas[ideaId];
-                            if (!idea) return false;
-                            if (globalTypeFilter.includes("unassigned") && !idea.legend_type_id) return true;
-                            if (idea.legend_type_id && globalTypeFilter.includes(idea.legend_type_id)) return true;
-                            return false;
-                          })
-                          .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: catKey }))
-                        }
-                      </div>
-
-                      {/* Resize grip */}
-                      <div
-                        onMouseDown={(e) => handleCategoryResize(e, catKey)}
-                        className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize flex items-center justify-center"
-                      >
-                        <span className="text-amber-600/60 text-[8px] leading-none select-none">◢</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            {transformModal && renderTransformModal()}
+            {renderSidebar()}
+            {renderCategoryCanvas()}
           </div>
 
           {/* ── Window resize grip (bottom-right) ── */}
@@ -2062,83 +2450,7 @@ export default function IdeaBin() {
         </div>
       )}
 
-      {/* ── Drag ghosts (fixed, above everything) ── */}
-      {dragging && !externalGhost && (
-        <div
-          style={{
-            top: dragging.y, left: dragging.x,
-            transform: "translate(-50%, -100%)",
-            pointerEvents: "none", zIndex: 99999,
-          }}
-          className="fixed max-w-48 shadow-lg border border-gray-200 bg-white rounded text-gray-800 px-2 py-1 flex items-center text-[10px]"
-        >
-          <span className="whitespace-pre-wrap line-clamp-2">
-            {dragging.idea.headline && <span className="font-semibold">{dragging.idea.headline}: </span>}
-            {dragging.idea.title}
-          </span>
-        </div>
-      )}
-      {draggingLegend && (
-        <div
-          style={{
-            top: draggingLegend.y, left: draggingLegend.x,
-            transform: "translate(-50%, -50%)",
-            pointerEvents: "none", zIndex: 99999,
-            backgroundColor: draggingLegend.color,
-          }}
-          className="fixed w-6 h-6 rounded-full shadow-lg border-2 border-white"
-        />
-      )}
-
-      {/* External drag ghost — visible when dragging an idea outside the IdeaBin window */}
-      {externalGhost && (
-        <div
-          id="ideabin-external-ghost"
-          style={{
-            position: "fixed",
-            left: externalGhost.x + 12,
-            top: externalGhost.y - 8,
-            zIndex: 99999,
-            pointerEvents: "none",
-            maxWidth: 220,
-          }}
-        >
-          <div
-            className="rounded-lg shadow-xl border-2 px-2.5 py-1.5 text-xs font-medium"
-            style={{
-              backgroundColor: externalGhost.dayIndex !== null && externalGhost.dayIndex !== undefined
-                ? "#ede9fe"
-                : externalGhost.teamId
-                  ? (externalGhost.taskId ? "#dbeafe" : "#fef3c7")
-                  : "#ffffff",
-              borderColor: externalGhost.dayIndex !== null && externalGhost.dayIndex !== undefined
-                ? "#7c3aed"
-                : externalGhost.teamId
-                  ? (externalGhost.taskId ? "#3b82f6" : (externalGhost.teamColor || "#f59e0b"))
-                  : "#d1d5db",
-              color: "#1f2937",
-            }}
-          >
-            <div className="truncate">
-              {externalGhost.idea.headline || externalGhost.idea.title.split(/\s+/).slice(0, 5).join(" ")}
-            </div>
-            {externalGhost.dayIndex !== null && externalGhost.dayIndex !== undefined && externalGhost.taskId ? (
-              <div className="text-[10px] mt-0.5 opacity-80">
-                🏁 {externalGhost.dayLabel ? `${externalGhost.dayWeekday || ''} ${externalGhost.dayLabel}`.trim() : `Day ${parseInt(externalGhost.dayIndex) + 1}`}
-              </div>
-            ) : externalGhost.teamId ? (
-              <div className="text-[10px] mt-0.5 opacity-80">
-                {externalGhost.taskId
-                  ? <>🏁 → <span className="font-semibold">{externalGhost.taskName}</span></>
-                  : <>📋 → <span className="font-semibold" style={{ color: externalGhost.teamColor }}>{externalGhost.teamName}</span></>
-                }
-              </div>
-            ) : (
-              <div className="text-[10px] mt-0.5 text-gray-400 italic">Drag onto a team or task...</div>
-            )}
-          </div>
-        </div>
-      )}
+      {renderDragGhosts()}
     </>
   );
 }

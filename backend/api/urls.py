@@ -87,6 +87,33 @@ urlpatterns = [
     path("projects/<int:project_id>/delete_legend_type/", views.delete_legend_type),
     path("projects/<int:project_id>/assign_idea_legend_type/", views.assign_idea_legend_type),
 
+    # Dimensions (formerly Legend Variants / Perspectives)
+    path("projects/<int:project_id>/dimensions/", views.get_all_dimensions),
+    path("projects/<int:project_id>/dimensions/create/", views.create_dimension),
+    path("projects/<int:project_id>/dimensions/update/", views.update_dimension),
+    path("projects/<int:project_id>/dimensions/delete/", views.delete_dimension),
+    path("projects/<int:project_id>/dimensions/create_type/", views.create_dimension_legend_type),
+    # Backward compat aliases (keep old URLs working)
+    path("projects/<int:project_id>/legend_variants/", views.get_all_dimensions),
+    path("projects/<int:project_id>/legend_variants/create/", views.create_dimension),
+    path("projects/<int:project_id>/legend_variants/update/", views.update_dimension),
+    path("projects/<int:project_id>/legend_variants/delete/", views.delete_dimension),
+    path("projects/<int:project_id>/legend_variants/create_type/", views.create_dimension_legend_type),
+
+    # Multi-assignment (ideas ↔ categories, ideas ↔ legend types)
+    path("projects/<int:project_id>/assign_idea_legend_types/", views.assign_idea_legend_types),
+    path("projects/<int:project_id>/assign_idea_categories/", views.assign_idea_categories),
+    path("projects/<int:project_id>/add_idea_to_category/", views.add_idea_to_category),
+    path("projects/<int:project_id>/remove_idea_from_category/", views.remove_idea_from_category),
+
+    # Category visibility
+    path("projects/<int:project_id>/set_category_visibility/", views.set_category_visibility),
+
+    # IdeaReference (meta container for ideas)
+    path("projects/<int:project_id>/idea_references/", views.get_all_idea_references),
+    path("projects/<int:project_id>/copy_idea/", views.copy_idea),
+    path("projects/<int:project_id>/delete_idea_reference/", views.delete_idea_reference),
+
 
     # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
     # Project

@@ -11,8 +11,11 @@ from .serializers import (
     TaskSerializer_TeamView,
     TaskExpandedSerializer,
     IdeaSerializer,
+    IdeaReferenceSerializer,
     CategorySerializer,
     LegendTypeSerializer,
+    DimensionSerializer,
+    LegendVariantSerializer,
     DaySerializer,
 )
 
@@ -131,6 +134,29 @@ from .ideas import (
     update_legend_type,
     delete_legend_type,
     assign_idea_legend_type,
+    # Dimensions (formerly Legend Variants)
+    get_all_dimensions,
+    create_dimension,
+    update_dimension,
+    delete_dimension,
+    create_dimension_legend_type,
+    # Backward compat aliases
+    get_all_legend_variants,
+    create_legend_variant,
+    update_legend_variant,
+    delete_legend_variant,
+    create_variant_legend_type,
+    # Multi-assignment
+    assign_idea_legend_types,
+    assign_idea_categories,
+    add_idea_to_category,
+    remove_idea_from_category,
+    # Category visibility
+    set_category_visibility,
+    # IdeaReference
+    get_all_idea_references,
+    copy_idea,
+    delete_idea_reference,
 )
 
 from .notifications import (

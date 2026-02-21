@@ -1,5 +1,3 @@
-from datetime import timedelta
-
 from rest_framework import serializers
 
 from ..models import (
@@ -9,8 +7,10 @@ from ..models import (
     Milestone,
     Dependency,
     Idea,
+    IdeaReference,
     Category,
     LegendType,
+    Dimension,
     Day,
     Phase,
     DependencyView,
@@ -130,17 +130,53 @@ class IdeaSerializer(serializers.ModelSerializer):
         allow_null=True,
         required=False
     )
+    legend_type_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=LegendType.objects.all(),
+        source='legend_types',
+        required=False
+    )
+    category_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Category.objects.all(),
+        source='categories',
+        required=False
+    )
+    primary_legend_type_id = serializers.PrimaryKeyRelatedField(
+        queryset=LegendType.objects.all(),
+        source='primary_legend_type',
+        allow_null=True,
+        required=False
+    )
 
     class Meta:
         model = Idea
-        fields = ["id", "title", "headline", "description", "category", "order_index", "legend_type_id"]
+        fields = [
+            "id", "title", "headline", "description", "category",
+            "order_index", "legend_type_id", "owner",
+            "legend_type_ids", "category_ids", "primary_legend_type_id",
+            "idea_reference",
+        ]
+
+
+# IdeaReferenceSerializer
+class IdeaReferenceSerializer(serializers.ModelSerializer):
+    instance_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IdeaReference
+        fields = ["id", "title", "headline", "description", "created_at", "updated_at", "owner", "instance_count"]
+        read_only_fields = ["id", "created_at", "updated_at", "owner", "instance_count"]
+
+    def get_instance_count(self, obj):
+        return obj.instances.count()
 
 
 # CategorySerializer
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ["id", "name", "x", "y", "width", "height", "z_index", "archived"]
+        fields = ["id", "name", "x", "y", "width", "height", "z_index", "archived", "visibility", "created_by"]
 
 
 # LegendTypeSerializer
@@ -148,6 +184,19 @@ class LegendTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = LegendType
         fields = "__all__"
+
+
+# DimensionSerializer (formerly LegendVariantSerializer)
+class DimensionSerializer(serializers.ModelSerializer):
+    legend_types = LegendTypeSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Dimension
+        fields = ["id", "name", "created_by", "created_at", "order_index", "legend_types"]
+
+
+# Keep backward compat alias
+LegendVariantSerializer = DimensionSerializer
 
 
 

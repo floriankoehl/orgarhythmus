@@ -7,8 +7,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..models import Project, Category, Idea, LegendType
-from .serializers import IdeaSerializer, CategorySerializer, LegendTypeSerializer
+from ..models import Project, Category, Idea, IdeaReference, LegendType, Dimension
+from .serializers import IdeaSerializer, IdeaReferenceSerializer, CategorySerializer, LegendTypeSerializer, DimensionSerializer
 from .helpers import user_has_project_access
 
 
@@ -28,8 +28,19 @@ def create_idea(request, project_id):
     max_order = Idea.objects.filter(project=project).aggregate(Max('order_index'))['order_index__max']
     next_order = (max_order + 1) if max_order is not None else 0
 
+    # Create an IdeaReference (meta container) and link the new Idea to it
+    ref = IdeaReference.objects.create(
+        project=project,
+        owner=request.user,
+        title=title,
+        headline=headline,
+        description=description,
+    )
+
     idea = Idea.objects.create(
         project=project,
+        owner=request.user,
+        idea_reference=ref,
         title=title,
         description=description,
         headline=headline,
@@ -288,8 +299,12 @@ def toggle_archive_category(request, project_id):
     category_id = request.data.get("id")
     category = get_object_or_404(Category, id=category_id, project=project)
     category.archived = not category.archived
+    # When restoring from archive, assign the highest z-index so it appears on top
+    if not category.archived:
+        max_z = Category.objects.filter(project=project).aggregate(db_models.Max('z_index'))['z_index__max'] or 0
+        category.z_index = max_z + 1
     category.save()
-    return Response({"archived": category.archived})
+    return Response({"archived": category.archived, "z_index": category.z_index})
 
 
 # ===== LEGEND TYPE ENDPOINTS =====
@@ -369,3 +384,300 @@ def assign_idea_legend_type(request, project_id):
         idea.legend_type = None
     idea.save()
     return Response({"updated": True})
+
+
+# ===== LEGEND VARIANT ENDPOINTS =====
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_all_dimensions(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    variants = Dimension.objects.filter(project=project).prefetch_related('legend_types')
+    return Response({"dimensions": DimensionSerializer(variants, many=True).data})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_dimension(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    name = request.data.get("name", "New Variant").strip()
+    if not name:
+        return Response({"error": "Name is required"}, status=400)
+
+    max_order = Dimension.objects.filter(project=project).aggregate(Max('order_index'))['order_index__max']
+    next_order = (max_order + 1) if max_order is not None else 0
+
+    variant = Dimension.objects.create(
+        project=project,
+        name=name,
+        created_by=request.user,
+        order_index=next_order,
+    )
+    return Response({"created": True, "dimension": DimensionSerializer(variant).data})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def update_dimension(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    variant_id = request.data.get("id")
+    variant = get_object_or_404(Dimension, id=variant_id, project=project)
+    if "name" in request.data:
+        variant.name = request.data["name"].strip()
+    variant.save()
+    return Response({"updated": True, "dimension": DimensionSerializer(variant).data})
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_dimension(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    variant_id = request.data.get("id")
+    # Deleting a variant cascades to its legend types
+    Dimension.objects.filter(id=variant_id, project=project).delete()
+    return Response({"deleted": True})
+
+
+# ===== MULTI-LEGEND-TYPE ASSIGNMENT =====
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def assign_idea_legend_types(request, project_id):
+    """Assign multiple legend types to an idea (across variants)."""
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    idea_id = request.data.get("idea_id")
+    legend_type_ids = request.data.get("legend_type_ids", [])
+    primary_legend_type_id = request.data.get("primary_legend_type_id")
+
+    idea = get_object_or_404(Idea, id=idea_id, project=project)
+    types = LegendType.objects.filter(id__in=legend_type_ids, project=project)
+    idea.legend_types.set(types)
+
+    if primary_legend_type_id is not None:
+        primary = LegendType.objects.filter(id=primary_legend_type_id, project=project).first()
+        idea.primary_legend_type = primary
+    else:
+        idea.primary_legend_type = None
+
+    # Also update legacy single legend_type for backward compat
+    if types.exists():
+        idea.legend_type = idea.primary_legend_type or types.first()
+    else:
+        idea.legend_type = None
+        idea.primary_legend_type = None
+
+    idea.save()
+    return Response({"updated": True, "idea": IdeaSerializer(idea).data})
+
+
+# ===== MULTI-CATEGORY MEMBERSHIP =====
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def assign_idea_categories(request, project_id):
+    """Assign an idea to multiple categories."""
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    idea_id = request.data.get("idea_id")
+    category_ids = request.data.get("category_ids", [])
+
+    idea = get_object_or_404(Idea, id=idea_id, project=project)
+    cats = Category.objects.filter(id__in=category_ids, project=project)
+    idea.categories.set(cats)
+
+    # Also update legacy single category FK
+    if cats.exists():
+        idea.category = cats.first()
+    else:
+        idea.category = None
+    idea.save()
+
+    return Response({"updated": True, "idea": IdeaSerializer(idea).data})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def add_idea_to_category(request, project_id):
+    """Add an idea to a category (additive, does not remove from others)."""
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    idea_id = request.data.get("idea_id")
+    category_id = request.data.get("category_id")
+
+    idea = get_object_or_404(Idea, id=idea_id, project=project)
+    category = get_object_or_404(Category, id=category_id, project=project)
+    idea.categories.add(category)
+    return Response({"updated": True})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def remove_idea_from_category(request, project_id):
+    """Remove an idea from a category (does NOT delete the idea)."""
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    idea_id = request.data.get("idea_id")
+    category_id = request.data.get("category_id")
+
+    idea = get_object_or_404(Idea, id=idea_id, project=project)
+    category = get_object_or_404(Category, id=category_id, project=project)
+    idea.categories.remove(category)
+    return Response({"updated": True})
+
+
+# ===== CATEGORY VISIBILITY =====
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def set_category_visibility(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    category_id = request.data.get("id")
+    visibility = request.data.get("visibility", "private")
+
+    if visibility not in ("private", "public"):
+        return Response({"error": "Invalid visibility"}, status=400)
+
+    category = get_object_or_404(Category, id=category_id, project=project)
+    category.visibility = visibility
+    category.save()
+    return Response({"updated": True, "visibility": category.visibility})
+
+
+# ===== VARIANT-SCOPED LEGEND TYPE CRUD =====
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_dimension_legend_type(request, project_id):
+    """Create a legend type inside a specific dimension."""
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    dimension_id = request.data.get("dimension_id") or request.data.get("variant_id")
+    dimension = get_object_or_404(Dimension, id=dimension_id, project=project)
+
+    name = request.data.get("name", "New Type").strip()
+    color = request.data.get("color", "#cccccc")
+    max_order = LegendType.objects.filter(dimension=dimension).aggregate(Max('order_index'))['order_index__max']
+    next_order = (max_order + 1) if max_order is not None else 0
+
+    legend_type = LegendType.objects.create(
+        project=project,
+        dimension=dimension,
+        name=name,
+        color=color,
+        order_index=next_order,
+    )
+    return Response({"created": True, "legend_type": LegendTypeSerializer(legend_type).data})
+
+# ===== IDEA REFERENCE ENDPOINTS =====
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_all_idea_references(request, project_id):
+    """Return all IdeaReferences for a project (global meta view)."""
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    refs = IdeaReference.objects.filter(project=project)
+    return Response({"idea_references": IdeaReferenceSerializer(refs, many=True).data})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def copy_idea(request, project_id):
+    """Copy an idea: create a new Idea instance linked to the same IdeaReference."""
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    idea_id = request.data.get("idea_id")
+    category_id = request.data.get("category_id")  # optional: place copy in category
+
+    source = get_object_or_404(Idea, id=idea_id, project=project)
+
+    # Ensure the source idea has an IdeaReference; create one if missing
+    ref = source.idea_reference
+    if ref is None:
+        ref = IdeaReference.objects.create(
+            project=project,
+            owner=source.owner,
+            title=source.title,
+            headline=source.headline,
+            description=source.description,
+        )
+        source.idea_reference = ref
+        source.save(update_fields=["idea_reference"])
+
+    category = None
+    if category_id:
+        category = Category.objects.filter(id=category_id, project=project).first()
+
+    max_order = Idea.objects.filter(project=project, category=category).aggregate(
+        db_models.Max('order_index')
+    )['order_index__max']
+    next_order = (max_order + 1) if max_order is not None else 0
+
+    copy = Idea.objects.create(
+        project=project,
+        owner=request.user,
+        idea_reference=ref,
+        title=source.title,
+        headline=source.headline,
+        description=source.description,
+        category=category,
+        order_index=next_order,
+    )
+    return Response({"created": True, "idea": IdeaSerializer(copy).data, "idea_reference_id": ref.id})
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_idea_reference(request, project_id):
+    """Delete an IdeaReference and all linked Idea instances."""
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    ref_id = request.data.get("id")
+    IdeaReference.objects.filter(id=ref_id, project=project).delete()
+    return Response({"deleted": True})
+
+
+# Backward compat aliases (old names still used in URLs and imports)
+get_all_legend_variants = get_all_dimensions
+create_legend_variant = create_dimension
+update_legend_variant = update_dimension
+delete_legend_variant = delete_dimension
+create_variant_legend_type = create_dimension_legend_type

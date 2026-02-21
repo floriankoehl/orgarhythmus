@@ -1,5 +1,3 @@
-from gc import set_debug
-
 from django.db import models
 from django.db.models import SET_NULL
 from django.conf import settings
@@ -331,6 +329,13 @@ class DemoDate(models.Model):
 # ═══════════════════════════════════════════════
 
 class Category(models.Model):
+    VISIBILITY_PRIVATE = "private"
+    VISIBILITY_PUBLIC = "public"
+    VISIBILITY_CHOICES = [
+        (VISIBILITY_PRIVATE, "Private"),
+        (VISIBILITY_PUBLIC, "Public"),
+    ]
+
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="categories", null=True, blank=True)
     name = models.CharField(max_length=200)
     x = models.IntegerField(default=0)
@@ -339,6 +344,36 @@ class Category(models.Model):
     height = models.IntegerField(default=100)
     z_index = models.IntegerField(default=0)
     archived = models.BooleanField(default=False)
+    visibility = models.CharField(max_length=10, choices=VISIBILITY_CHOICES, default=VISIBILITY_PRIVATE)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_categories")
+
+
+# ═══════════════════════════════════════════════
+#  DIMENSION (classification axis, formerly LegendVariant/Perspective)
+# ═══════════════════════════════════════════════
+
+class Dimension(models.Model):
+    """
+    A named classification axis for ideas.
+    Each Dimension contains its own set of types (LegendType), allowing
+    users to classify the same ideas differently across dimensions.
+    """
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="dimensions")
+    name = models.CharField(max_length=200)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_dimensions")
+    created_at = models.DateTimeField(auto_now_add=True)
+    order_index = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ["order_index"]
+        unique_together = [("project", "name")]
+
+    def __str__(self):
+        return f"{self.name} ({self.project.name})"
+
+
+# Keep LegendVariant as an alias for backward compatibility
+LegendVariant = Dimension
 
 
 # ═══════════════════════════════════════════════
@@ -347,6 +382,7 @@ class Category(models.Model):
 
 class LegendType(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="legend_types", null=True, blank=True)
+    dimension = models.ForeignKey(Dimension, on_delete=models.CASCADE, related_name="legend_types", null=True, blank=True)
     name = models.CharField(max_length=100)
     color = models.CharField(max_length=20, default="#ffffff")
     order_index = models.IntegerField(default=0)
@@ -427,17 +463,54 @@ class UserShortcuts(models.Model):
 
 
 # ═══════════════════════════════════════════════
+#  IDEA REFERENCE (meta container for ideas)
+# ═══════════════════════════════════════════════
+
+class IdeaReference(models.Model):
+    """
+    The canonical meta container for an idea.
+    Each IdeaReference can have multiple Idea instances (copies) across categories.
+    Deleting an IdeaReference cascades to all linked Idea instances.
+    """
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="idea_references", null=True, blank=True)
+    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="owned_idea_references")
+    title = models.CharField(max_length=500)
+    headline = models.CharField(max_length=200, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Ref: {self.title}"
+
+
+# ═══════════════════════════════════════════════
 #  IDEA
 # ═══════════════════════════════════════════════
 
 class Idea(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="ideas", null=True, blank=True)
+    owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="owned_ideas")
+    idea_reference = models.ForeignKey(IdeaReference, on_delete=models.CASCADE, null=True, blank=True, related_name="instances")
     title = models.CharField(max_length=500)
     headline = models.CharField(max_length=200, blank=True, default="")
     description = models.TextField()
+    # Legacy single-category FK (kept for backward compatibility)
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True)
+    # New: multi-category membership
+    categories = models.ManyToManyField(Category, blank=True, related_name="ideas_multi")
     order_index = models.IntegerField(default=0)
+    # Legacy single legend type (kept for backward compatibility)
     legend_type = models.ForeignKey(LegendType, on_delete=models.SET_NULL, null=True, blank=True)
+    # New: multiple legend types per idea (across dimensions)
+    legend_types = models.ManyToManyField(LegendType, blank=True, related_name="ideas_multi")
+    # Optional: primary type for main color display
+    primary_legend_type = models.ForeignKey(
+        LegendType, on_delete=models.SET_NULL, null=True, blank=True, related_name="primary_ideas"
+    )
 
     class Meta:
         ordering = ["order_index"]
