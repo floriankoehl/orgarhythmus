@@ -467,21 +467,77 @@ class UserShortcuts(models.Model):
 
 
 # ═══════════════════════════════════════════════
-#  IDEA
+#  IDEA  (meta container – the "original" idea)
 # ═══════════════════════════════════════════════
 
 class Idea(models.Model):
+    """
+    The canonical idea.  All editable content lives here.
+    IdeaPlacements are lightweight copies that sit inside categories.
+    Deleting the Idea cascade-deletes every placement.
+    """
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="ideas", null=True, blank=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="owned_ideas")
     title = models.CharField(max_length=500)
     headline = models.CharField(max_length=200, blank=True, default="")
-    description = models.TextField()
-    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True)
+    description = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+
+
+# ═══════════════════════════════════════════════
+#  IDEA PLACEMENT  (a "copy" living in a category)
+# ═══════════════════════════════════════════════
+
+class IdeaPlacement(models.Model):
+    """
+    A lightweight reference that places an Idea inside a Category.
+    Each placement belongs to exactly one category (or none = unassigned).
+    Multiple placements can point to the same Idea.
+    """
+    idea = models.ForeignKey(Idea, on_delete=models.CASCADE, related_name="placements")
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="idea_placements")
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True)
     order_index = models.IntegerField(default=0)
-    legend_type = models.ForeignKey(LegendType, on_delete=models.SET_NULL, null=True, blank=True)
 
     class Meta:
         ordering = ["order_index"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["idea", "category"],
+                condition=models.Q(category__isnull=False),
+                name="unique_idea_per_category",
+            ),
+        ]
+
+    def __str__(self):
+        cat = self.category.name if self.category else "Unassigned"
+        return f"{self.idea.title} → {cat}"
+
+
+# ═══════════════════════════════════════════════
+#  IDEA ↔ DIMENSION TYPE  (one type per dimension per idea)
+# ═══════════════════════════════════════════════
+
+class IdeaDimensionType(models.Model):
+    """
+    Links an Idea to a LegendType within a specific Dimension.
+    Each idea can have at most one type per dimension.
+    """
+    idea = models.ForeignKey(Idea, on_delete=models.CASCADE, related_name="dimension_types")
+    dimension = models.ForeignKey(Dimension, on_delete=models.CASCADE, related_name="idea_type_assignments")
+    legend_type = models.ForeignKey(LegendType, on_delete=models.CASCADE, related_name="idea_assignments")
+
+    class Meta:
+        unique_together = ["idea", "dimension"]
+
+    def __str__(self):
+        return f"{self.idea.title} → {self.dimension.name}: {self.legend_type.name}"
 
 
 # ═══════════════════════════════════════════════

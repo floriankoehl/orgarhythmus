@@ -9,6 +9,8 @@ from ..models import (
     Milestone,
     Dependency,
     Idea,
+    IdeaPlacement,
+    IdeaDimensionType,
     Category,
     LegendType,
     Day,
@@ -125,16 +127,52 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
 
 # IdeaSerializer
 class IdeaSerializer(serializers.ModelSerializer):
-    legend_type_id = serializers.PrimaryKeyRelatedField(
-        queryset=LegendType.objects.all(),
-        source='legend_type',
-        allow_null=True,
-        required=False
-    )
+    owner_username = serializers.SerializerMethodField()
+    placement_count = serializers.SerializerMethodField()
+    placement_categories = serializers.SerializerMethodField()
+    dimension_types = serializers.SerializerMethodField()
 
     class Meta:
         model = Idea
-        fields = ["id", "title", "headline", "description", "category", "order_index", "legend_type_id"]
+        fields = [
+            "id", "title", "headline", "description",
+            "owner", "owner_username",
+            "created_at", "placement_count", "placement_categories",
+            "dimension_types",
+        ]
+
+    def get_owner_username(self, obj):
+        return obj.owner.username if obj.owner else None
+
+    def get_placement_count(self, obj):
+        return obj.placements.count()
+
+    def get_placement_categories(self, obj):
+        """Return list of category names where this idea is placed."""
+        cats = []
+        for p in obj.placements.select_related('category').all():
+            cats.append(p.category.name if p.category else "Unassigned")
+        return cats
+
+    def get_dimension_types(self, obj):
+        """Return {dimension_id: {legend_type_id, name, color}} for every assigned dimension."""
+        result = {}
+        for dt in obj.dimension_types.select_related('dimension', 'legend_type').all():
+            result[str(dt.dimension_id)] = {
+                "legend_type_id": dt.legend_type_id,
+                "name": dt.legend_type.name,
+                "color": dt.legend_type.color,
+            }
+        return result
+
+
+class IdeaPlacementSerializer(serializers.ModelSerializer):
+    """Serialises a placement with the full idea data nested."""
+    idea = IdeaSerializer(read_only=True)
+
+    class Meta:
+        model = IdeaPlacement
+        fields = ["id", "idea", "category", "order_index"]
 
 
 # CategorySerializer

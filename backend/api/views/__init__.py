@@ -113,9 +113,12 @@ from .snapshots import (
 from .ideas import (
     create_idea,
     delete_idea,
+    delete_meta_idea,
+    copy_idea_to_category,
     safe_order,
     assign_idea_to_category,
     get_all_ideas,
+    get_meta_ideas,
     get_all_categories,
     create_category,
     set_position_category,

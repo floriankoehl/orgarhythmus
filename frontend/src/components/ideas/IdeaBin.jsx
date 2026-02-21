@@ -5,7 +5,7 @@ import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import EditIcon from "@mui/icons-material/Edit";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
-import { Lightbulb, Minus, Maximize2, Minimize2, Zap } from "lucide-react";
+import { Lightbulb, Minus, Maximize2, Minimize2, Zap, Copy, List } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
@@ -125,7 +125,7 @@ export default function IdeaBin() {
   const [showArchive, setShowArchive] = useState(false);
 
   // ───── List view filter ─────
-  const [listFilter, setListFilter] = useState("unassigned"); // "unassigned" | category id
+  const [listFilter, setListFilter] = useState("all"); // "all" | "unassigned" | category id
   const [showListFilterDropdown, setShowListFilterDropdown] = useState(false);
 
   // ───── Sidebar resize ─────
@@ -421,12 +421,42 @@ export default function IdeaBin() {
       const data = await res.json();
       const list = data?.data || [];
       const obj = {};
-      for (const idea of list) obj[idea.id] = { ...idea };
+      // Flatten placement + nested idea into a single object keyed by placement id
+      for (const p of list) {
+        obj[p.id] = {
+          placement_id: p.id,
+          id: p.id,                          // for ordering / drag — this is the placement id
+          idea_id: p.idea?.id,               // the meta idea id
+          title: p.idea?.title || "",
+          headline: p.idea?.headline || "",
+          description: p.idea?.description || "",
+          dimension_types: p.idea?.dimension_types || {},  // {dim_id: {legend_type_id, name, color}}
+          owner: p.idea?.owner,
+          owner_username: p.idea?.owner_username,
+          created_at: p.idea?.created_at,
+          placement_count: p.idea?.placement_count || 1,
+          placement_categories: p.idea?.placement_categories || [],
+          category: p.category,
+          order_index: p.order_index,
+        };
+      }
       setIdeas(obj);
       setUnassignedOrder(data?.order || []);
       setCategoryOrders(data?.category_orders || {});
     } catch (err) { console.error("IdeaBin: fetch ideas failed", err); }
   };
+
+  // Compute unique meta ideas from placements (deduplicated by idea_id)
+  const metaIdeaList = (() => {
+    const seen = new Set();
+    const result = [];
+    for (const p of Object.values(ideas)) {
+      if (!p.idea_id || seen.has(p.idea_id)) continue;
+      seen.add(p.idea_id);
+      result.push(p);
+    }
+    return result;
+  })();
 
   const create_idea = async () => {
     if (!ideaName.trim() && !ideaHeadline.trim()) return;
@@ -455,24 +485,32 @@ export default function IdeaBin() {
     fetch_all_ideas();
   };
 
-  const update_idea_title_api = async (id, title, headline = null) => {
+  const update_idea_title_api = async (placementId, title, headline = null) => {
     if (!title.trim()) return;
+    const idea = ideas[placementId];
+    const ideaId = idea?.idea_id || placementId;
     await authFetch(`${API}/update_idea_title/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, title }),
+      body: JSON.stringify({ id: ideaId, title }),
     });
     if (headline !== null) {
       await authFetch(`${API}/update_idea_headline/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, headline }),
+        body: JSON.stringify({ id: ideaId, headline }),
       });
     }
-    setIdeas(prev => ({
-      ...prev,
-      [id]: { ...prev[id], title, headline: headline !== null ? headline : prev[id].headline },
-    }));
+    // Update all placements of the same idea in local state
+    setIdeas(prev => {
+      const updated = { ...prev };
+      for (const [pid, p] of Object.entries(updated)) {
+        if (p.idea_id === ideaId) {
+          updated[pid] = { ...p, title, headline: headline !== null ? headline : p.headline };
+        }
+      }
+      return updated;
+    });
   };
 
   const safe_order = async (order, categoryId = null) => {
@@ -483,26 +521,91 @@ export default function IdeaBin() {
     });
   };
 
-  const assign_idea_to_category = async (ideaId, categoryId) => {
+  const assign_idea_to_category = async (placementId, categoryId) => {
     await authFetch(`${API}/assign_idea_to_category/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idea_id: ideaId, category_id: categoryId }),
+      body: JSON.stringify({ placement_id: placementId, category_id: categoryId }),
     });
     fetch_all_ideas();
+  };
+
+  // ── Copy idea to another category ──
+  const [copiedIdeaId, setCopiedIdeaId] = useState(null);  // meta idea id for Ctrl+C
+
+  const copy_idea = (placementId) => {
+    const idea = ideas[placementId];
+    if (idea) {
+      setCopiedIdeaId(idea.idea_id);
+      playSound('ideaCopy');
+    }
+  };
+
+  const paste_idea = async (categoryId = null) => {
+    if (!copiedIdeaId) return;
+    await authFetch(`${API}/copy_idea/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idea_id: copiedIdeaId, category_id: categoryId }),
+    });
+    playSound('ideaCreate');
+    fetch_all_ideas();
+  };
+
+  const delete_meta_idea = async (ideaId) => {
+    await authFetch(`${API}/delete_meta_idea/`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: ideaId }),
+    });
+    playSound('ideaDelete');
+    fetch_all_ideas();
+  };
+
+  // ── Meta ideas list ──
+  const [showMetaList, setShowMetaList] = useState(false);
+  const [metaIdeas, setMetaIdeas] = useState([]);
+
+  const fetch_meta_ideas = async () => {
+    if (!projectId) return;
+    try {
+      const res = await authFetch(`${API}/get_meta_ideas/`);
+      const data = await res.json();
+      setMetaIdeas(data?.ideas || []);
+    } catch (err) { console.error("IdeaBin: fetch meta ideas failed", err); }
   };
 
   // ═══════════════════════════════════════════════════════
   // ═══════════  DRAG HANDLERS  ═══════════════════════════
   // ═══════════════════════════════════════════════════════
 
-  const assign_idea_legend_type = async (ideaId, legendTypeId) => {
+  const assign_idea_legend_type = async (placementId, legendTypeId) => {
+    const idea = ideas[placementId];
+    const ideaId = idea?.idea_id || placementId;
+    const dimensionId = dims.activeDimensionId;
+    if (!dimensionId) return;
     await authFetch(`${API}/assign_idea_legend_type/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idea_id: ideaId, legend_type_id: legendTypeId }),
+      body: JSON.stringify({ idea_id: ideaId, dimension_id: dimensionId, legend_type_id: legendTypeId }),
     });
-    setIdeas(prev => ({ ...prev, [ideaId]: { ...prev[ideaId], legend_type_id: legendTypeId } }));
+    // Update all placements of the same idea in local state
+    setIdeas(prev => {
+      const updated = { ...prev };
+      for (const [pid, p] of Object.entries(updated)) {
+        if (p.idea_id === ideaId) {
+          const newDt = { ...p.dimension_types };
+          if (legendTypeId) {
+            const lt = dims.dimensionTypes[legendTypeId];
+            newDt[String(dimensionId)] = { legend_type_id: legendTypeId, name: lt?.name || "", color: lt?.color || "#ccc" };
+          } else {
+            delete newDt[String(dimensionId)];
+          }
+          updated[pid] = { ...p, dimension_types: newDt };
+        }
+      }
+      return updated;
+    });
   };
 
   // ── Category drag ──
@@ -579,7 +682,7 @@ export default function IdeaBin() {
     setDragSource(source);
 
     let srcElements = [];
-    if (source.type === "unassigned" && IdeaListRef.current) {
+    if ((source.type === "unassigned" || source.type === "all") && IdeaListRef.current) {
       srcElements = [...IdeaListRef.current.querySelectorAll("[data-idea-item]")];
     } else if (source.type === "category" && categoryRefs.current[source.id]) {
       srcElements = [...categoryRefs.current[source.id].querySelectorAll("[data-idea-item]")];
@@ -836,7 +939,16 @@ export default function IdeaBin() {
           }
         } else if (dropTarget) {
           const targetCatId = dropTarget.type === "category" ? parseInt(dropTarget.id) : null;
-          assign_idea_to_category(idea.id, targetCatId);
+          // Dragging into a different category/unassigned → create a copy (new placement)
+          if (targetCatId !== null || dropTarget.type === "unassigned") {
+            authFetch(`${API}/copy_idea/`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ idea_id: idea.idea_id, category_id: targetCatId }),
+            })
+              .then(() => { playSound('ideaCreate'); fetch_all_ideas(); })
+              .catch(err => console.error("Copy on drag failed:", err));
+          }
         }
       }
 
@@ -914,6 +1026,23 @@ export default function IdeaBin() {
       }).catch(() => {});
     }
   }, [transformModal, projectId]);
+
+  // ── Ctrl+V to paste copied idea ──
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      // Only handle if IdeaBin window is visible and no text input is focused
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      if (e.ctrlKey && e.key === "v" && copiedIdeaId) {
+        e.preventDefault();
+        paste_idea(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, copiedIdeaId]);
 
   // ── Listen for dep-refactor-drop events (Dependencies → IdeaBin reverse transform) ──
   useEffect(() => {
@@ -1109,9 +1238,14 @@ export default function IdeaBin() {
 
     const isSource = dragSource &&
       dragSource.type === source.type &&
-      (source.type === "unassigned" || String(dragSource.id) === String(source.id));
+      (source.type === "unassigned" || source.type === "all" || String(dragSource.id) === String(source.id));
     const isEditing = editingIdeaId === ideaId;
-    const legendType = idea.legend_type_id ? dims.dimensionTypes[idea.legend_type_id] : null;
+    const legendType = (() => {
+      const dimId = String(dims.activeDimensionId || "");
+      const dt = idea.dimension_types?.[dimId];
+      if (dt) return { id: dt.legend_type_id, color: dt.color, name: dt.name };
+      return null;
+    })();
     const isHoveredForLegend = hoverIdeaForLegend === ideaId;
     const isIdeaCollapsed = collapsedIdeas[ideaId] ?? false;
 
@@ -1174,9 +1308,25 @@ export default function IdeaBin() {
                     <span className="text-[10px] text-gray-600">{idea.title}</span>
                   </>
                 )}
+                {source.type === "all" && idea.placement_categories?.length > 0 && (
+                  <div className="flex flex-wrap gap-0.5 mt-0.5">
+                    {idea.placement_categories.map((cat, i) => (
+                      <span key={i} className="text-[8px] bg-gray-100 text-gray-500 px-1 rounded">{cat}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex-shrink-0 mt-0.5 flex items-center gap-0.5 text-gray-400">
+              <Copy
+                size={12}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  copy_idea(ideaId);
+                }}
+                className={`cursor-pointer ${copiedIdeaId === idea.idea_id ? "text-indigo-500!" : "hover:text-indigo-500!"}`}
+                title="Copy idea (Ctrl+C)"
+              />
               <Zap
                 size={12}
                 onClick={(e) => {
@@ -1199,15 +1349,23 @@ export default function IdeaBin() {
               <DeleteForeverIcon
                 onClick={(e) => {
                   e.stopPropagation();
+                  const isMetaView = source.type === "all";
                   setConfirmModal({
                     message: (
                       <div>
-                        <p className="mb-1 text-sm">Delete this idea?</p>
+                        <p className="mb-1 text-sm">{isMetaView ? "Delete this idea and ALL its copies?" : "Delete this idea?"}</p>
                         {idea.headline && <p className="font-semibold text-xs">{idea.headline}</p>}
                         <p className="text-xs text-gray-600 mt-0.5">{idea.title.length > 80 ? idea.title.slice(0, 80) + "..." : idea.title}</p>
+                        {isMetaView && idea.placement_count > 1 && (
+                          <p className="text-[10px] text-red-500 mt-1">{idea.placement_count} copies will be removed</p>
+                        )}
                       </div>
                     ),
-                    onConfirm: () => { delete_idea(idea.id); setConfirmModal(null); },
+                    onConfirm: () => {
+                      if (isMetaView) { delete_meta_idea(idea.idea_id); }
+                      else { delete_idea(idea.id); }
+                      setConfirmModal(null);
+                    },
                     onCancel: () => setConfirmModal(null),
                   });
                 }}
@@ -1301,6 +1459,24 @@ export default function IdeaBin() {
             <div className="flex items-center gap-1">
               <button
                 onMouseDown={(e) => e.stopPropagation()}
+                onClick={() => { setShowMetaList(v => !v); if (!showMetaList) fetch_meta_ideas(); }}
+                className={`p-1 rounded transition-colors ${showMetaList ? "bg-amber-600/30" : "hover:bg-amber-500/30"}`}
+                title="All Ideas (Meta View)"
+              >
+                <List size={13} className="text-amber-800" />
+              </button>
+              {copiedIdeaId && (
+                <button
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => paste_idea(null)}
+                  className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[9px] font-semibold hover:bg-indigo-200 transition-colors"
+                  title="Paste copied idea (Ctrl+V)"
+                >
+                  Paste
+                </button>
+              )}
+              <button
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={toggleMaximize}
                 className="p-1 rounded hover:bg-amber-500/30 transition-colors"
                 title={isMaximized ? "Restore" : "Maximize"}
@@ -1323,6 +1499,77 @@ export default function IdeaBin() {
             {/* Confirm modal overlay */}
             {confirmModal && (
               <ConfirmModal message={confirmModal.message} onConfirm={confirmModal.onConfirm} onCancel={confirmModal.onCancel} confirmLabel={confirmModal.confirmLabel} confirmColor={confirmModal.confirmColor} />
+            )}
+
+            {/* ── Meta Ideas list overlay ── */}
+            {showMetaList && (
+              <>
+                <div className="absolute inset-0 bg-black/20 z-[48]" onClick={() => setShowMetaList(false)} />
+                <div className="absolute inset-2 bg-white rounded-lg shadow-2xl z-[49] flex flex-col overflow-hidden border border-gray-200">
+                  <div className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white">
+                    <span className="text-sm font-semibold flex items-center gap-1.5">
+                      <List size={14} /> All Ideas
+                    </span>
+                    <button onClick={() => setShowMetaList(false)} className="text-white/80 hover:text-white text-sm font-bold">✕</button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                    {metaIdeas.length === 0 && (
+                      <p className="text-xs text-gray-400 text-center py-4">No ideas yet</p>
+                    )}
+                    {metaIdeas.map(idea => (
+                      <div key={idea.id} className="flex items-start gap-2 p-2 rounded-lg border border-gray-100 hover:bg-gray-50 group">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-xs text-gray-800 truncate">{idea.headline || idea.title}</span>
+                            {idea.placement_count > 1 && (
+                              <span className="text-[9px] bg-indigo-100 text-indigo-600 px-1 rounded flex-shrink-0">×{idea.placement_count}</span>
+                            )}
+                          </div>
+                          {idea.headline && <p className="text-[10px] text-gray-500 truncate">{idea.title}</p>}
+                          <div className="flex items-center gap-2 mt-1 text-[9px] text-gray-400">
+                            {idea.owner_username && <span>by {idea.owner_username}</span>}
+                            {idea.created_at && <span>{new Date(idea.created_at).toLocaleDateString()}</span>}
+                          </div>
+                          {idea.placement_categories?.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {idea.placement_categories.map((cat, i) => (
+                                <span key={i} className="text-[8px] bg-gray-100 text-gray-500 px-1 rounded">{cat}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Copy
+                            size={12}
+                            onClick={() => { setCopiedIdeaId(idea.id); playSound('ideaCopy'); }}
+                            className={`cursor-pointer ${copiedIdeaId === idea.id ? "text-indigo-500" : "text-gray-400 hover:text-indigo-500"}`}
+                            title="Copy idea"
+                          />
+                          <DeleteForeverIcon
+                            onClick={() => {
+                              setConfirmModal({
+                                message: (
+                                  <div>
+                                    <p className="mb-1 text-sm font-medium">Delete this idea and ALL its copies?</p>
+                                    <p className="text-xs text-gray-600">{idea.headline || idea.title}</p>
+                                    {idea.placement_count > 1 && (
+                                      <p className="text-[10px] text-red-500 mt-1">{idea.placement_count} copies will be removed</p>
+                                    )}
+                                  </div>
+                                ),
+                                onConfirm: () => { delete_meta_idea(idea.id); setShowMetaList(false); setConfirmModal(null); },
+                                onCancel: () => setConfirmModal(null),
+                              });
+                            }}
+                            className="text-gray-400 hover:text-red-500! cursor-pointer"
+                            style={{ fontSize: 13 }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
 
             {/* Transform modal overlay */}
@@ -1615,7 +1862,9 @@ export default function IdeaBin() {
                     onClick={() => setShowListFilterDropdown(p => !p)}
                     className="flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors"
                   >
-                    {listFilter === "unassigned"
+                    {listFilter === "all"
+                      ? `All Ideas (${metaIdeaList.length})`
+                      : listFilter === "unassigned"
                       ? `Unassigned (${unassignedCount})`
                       : `${categories[listFilter]?.name || "Category"} (${(categoryOrders[listFilter] || []).length})`
                     }
@@ -1625,6 +1874,12 @@ export default function IdeaBin() {
                     <>
                       <div className="fixed inset-0 z-[60]" onClick={() => setShowListFilterDropdown(false)} />
                       <div className="absolute left-0 top-full mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg z-[61] min-w-[140px] max-h-[200px] overflow-y-auto py-0.5">
+                        <div
+                          onClick={() => { setListFilter("all"); setShowListFilterDropdown(false); }}
+                          className={`px-2.5 py-1.5 text-[11px] cursor-pointer transition-colors ${listFilter === "all" ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-50 text-gray-700"}`}
+                        >
+                          All Ideas ({metaIdeaList.length})
+                        </div>
                         <div
                           onClick={() => { setListFilter("unassigned"); setShowListFilterDropdown(false); }}
                           className={`px-2.5 py-1.5 text-[11px] cursor-pointer transition-colors ${listFilter === "unassigned" ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-50 text-gray-700"}`}
@@ -1646,14 +1901,28 @@ export default function IdeaBin() {
                   )}
                 </div>
                 {/* Idea items for current filter */}
-                {listFilter === "unassigned"
+                {listFilter === "all"
+                  ? metaIdeaList
+                      .filter(idea => {
+                        if (globalTypeFilter.length === 0) return true;
+                        if (!idea) return false;
+                        const dimId = String(dims.activeDimensionId || "");
+                        const dt = idea.dimension_types?.[dimId];
+                        if (globalTypeFilter.includes("unassigned") && !dt) return true;
+                        if (dt && globalTypeFilter.includes(dt.legend_type_id)) return true;
+                        return false;
+                      })
+                      .map((idea, idx) => renderIdeaItem(idea.id, idx, { type: "all" }))
+                  : listFilter === "unassigned"
                   ? unassignedOrder
                       .filter(ideaId => {
                         if (globalTypeFilter.length === 0) return true;
                         const idea = ideas[ideaId];
                         if (!idea) return false;
-                        if (globalTypeFilter.includes("unassigned") && !idea.legend_type_id) return true;
-                        if (idea.legend_type_id && globalTypeFilter.includes(idea.legend_type_id)) return true;
+                        const dimId = String(dims.activeDimensionId || "");
+                        const dt = idea.dimension_types?.[dimId];
+                        if (globalTypeFilter.includes("unassigned") && !dt) return true;
+                        if (dt && globalTypeFilter.includes(dt.legend_type_id)) return true;
                         return false;
                       })
                       .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "unassigned" }))
@@ -1662,8 +1931,10 @@ export default function IdeaBin() {
                         if (globalTypeFilter.length === 0) return true;
                         const idea = ideas[ideaId];
                         if (!idea) return false;
-                        if (globalTypeFilter.includes("unassigned") && !idea.legend_type_id) return true;
-                        if (idea.legend_type_id && globalTypeFilter.includes(idea.legend_type_id)) return true;
+                        const dimId = String(dims.activeDimensionId || "");
+                        const dt = idea.dimension_types?.[dimId];
+                        if (globalTypeFilter.includes("unassigned") && !dt) return true;
+                        if (dt && globalTypeFilter.includes(dt.legend_type_id)) return true;
                         return false;
                       })
                       .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: listFilter }))
@@ -2106,8 +2377,10 @@ export default function IdeaBin() {
                             if (globalTypeFilter.length === 0) return true;
                             const idea = ideas[ideaId];
                             if (!idea) return false;
-                            if (globalTypeFilter.includes("unassigned") && !idea.legend_type_id) return true;
-                            if (idea.legend_type_id && globalTypeFilter.includes(idea.legend_type_id)) return true;
+                            const dimId = String(dims.activeDimensionId || "");
+                            const dt = idea.dimension_types?.[dimId];
+                            if (globalTypeFilter.includes("unassigned") && !dt) return true;
+                            if (dt && globalTypeFilter.includes(dt.legend_type_id)) return true;
                             return false;
                           })
                           .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: catKey }))

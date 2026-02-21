@@ -7,8 +7,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..models import Project, Category, Idea, LegendType, Dimension, UserDimensionAdoption, UserCategoryAdoption
-from .serializers import IdeaSerializer, CategorySerializer, LegendTypeSerializer, DimensionSerializer
+from ..models import Project, Category, Idea, IdeaPlacement, IdeaDimensionType, LegendType, Dimension, UserDimensionAdoption, UserCategoryAdoption
+from .serializers import IdeaSerializer, IdeaPlacementSerializer, CategorySerializer, LegendTypeSerializer, DimensionSerializer
 from .helpers import user_has_project_access
 
 
@@ -22,33 +22,114 @@ def create_idea(request, project_id):
     title = request.data.get("idea_name", "").strip()
     description = request.data.get("description", "")
     headline = request.data.get("headline", "").strip()
+    category_id = request.data.get("category_id")  # optional — place into category
     if not title:
         return Response({"error": "Title is required"}, status=400)
 
-    max_order = Idea.objects.filter(project=project).aggregate(Max('order_index'))['order_index__max']
-    next_order = (max_order + 1) if max_order is not None else 0
-
+    # Create the meta idea
     idea = Idea.objects.create(
         project=project,
         owner=request.user,
         title=title,
         description=description,
         headline=headline,
+    )
+
+    # Auto-create one placement
+    max_order = IdeaPlacement.objects.filter(project=project, category_id=category_id).aggregate(
+        Max('order_index')
+    )['order_index__max']
+    next_order = (max_order + 1) if max_order is not None else 0
+
+    category = None
+    if category_id:
+        category = Category.objects.filter(id=category_id, project=project).first()
+
+    placement = IdeaPlacement.objects.create(
+        idea=idea,
+        project=project,
+        category=category,
         order_index=next_order,
     )
-    return Response({"created": True, "idea": IdeaSerializer(idea).data})
+    return Response({
+        "created": True,
+        "idea": IdeaSerializer(idea).data,
+        "placement": IdeaPlacementSerializer(placement).data,
+    })
 
 
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def delete_idea(request, project_id):
+    """Delete a single placement.  If it's the last placement, the meta idea is also deleted."""
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    placement_id = request.data.get("id")  # This is now a placement id
+    placement = IdeaPlacement.objects.filter(id=placement_id, project=project).first()
+    if not placement:
+        return Response({"deleted": False, "error": "Not found"}, status=404)
+
+    idea = placement.idea
+    placement.delete()
+
+    # If no more placements exist, also delete the meta idea
+    if not idea.placements.exists():
+        idea.delete()
+
+    return Response({"deleted": True})
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_meta_idea(request, project_id):
+    """Delete a meta idea and ALL its placements (cascade)."""
     project = get_object_or_404(Project, id=project_id)
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
     idea_id = request.data.get("id")
-    Idea.objects.filter(id=idea_id, project=project).delete()
+    Idea.objects.filter(id=idea_id, project=project).delete()  # cascade deletes placements
     return Response({"deleted": True})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def copy_idea_to_category(request, project_id):
+    """Copy an existing idea into a (possibly different) category — creates a new placement."""
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    idea_id = request.data.get("idea_id")
+    category_id = request.data.get("category_id")  # None for unassigned
+
+    idea = get_object_or_404(Idea, id=idea_id)
+
+    category = None
+    if category_id:
+        category = get_object_or_404(Category, id=category_id, project=project)
+
+    # Prevent duplicate: one idea can only be in a category once
+    if category and IdeaPlacement.objects.filter(idea=idea, project=project, category=category).exists():
+        return Response({"created": False, "error": "Idea already in this category"}, status=400)
+
+    max_order = IdeaPlacement.objects.filter(project=project, category=category).aggregate(
+        Max('order_index')
+    )['order_index__max']
+    next_order = (max_order + 1) if max_order is not None else 0
+
+    placement = IdeaPlacement.objects.create(
+        idea=idea,
+        project=project,
+        category=category,
+        order_index=next_order,
+    )
+    return Response({
+        "created": True,
+        "placement": IdeaPlacementSerializer(placement).data,
+    })
 
 
 @api_view(["POST"])
@@ -58,76 +139,79 @@ def safe_order(request, project_id):
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
-    new_order = request.data.get("order", [])
+    new_order = request.data.get("order", [])  # list of placement ids
     category_id = request.data.get("category_id")  # None for unassigned list
 
-    for index, idea_id in enumerate(new_order):
+    for index, placement_id in enumerate(new_order):
         updates = {"order_index": index}
         if category_id is not None:
-            # ensure category is in this project
             if not Category.objects.filter(id=category_id, project=project).exists():
                 return Response({"error": "Category not in project"}, status=400)
             updates["category_id"] = category_id
         else:
             updates["category"] = None
-        Idea.objects.filter(id=idea_id, project=project).update(**updates)
+        IdeaPlacement.objects.filter(id=placement_id, project=project).update(**updates)
     return Response({"successful": True})
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def assign_idea_to_category(request, project_id):
+    """Move a placement to a different category."""
     project = get_object_or_404(Project, id=project_id)
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
-    idea_id = request.data.get("idea_id")
+    placement_id = request.data.get("placement_id") or request.data.get("idea_id")
     category_id = request.data.get("category_id")  # None to unassign
 
-    idea = get_object_or_404(Idea, id=idea_id, project=project)
+    placement = get_object_or_404(IdeaPlacement, id=placement_id, project=project)
 
     if category_id is not None:
         category = get_object_or_404(Category, id=category_id, project=project)
-        idea.category = category
-        max_order = Idea.objects.filter(project=project, category=category).aggregate(
+        # Prevent duplicate
+        if IdeaPlacement.objects.filter(idea=placement.idea, project=project, category=category).exclude(id=placement.id).exists():
+            return Response({"error": "Idea already in this category"}, status=400)
+        placement.category = category
+        max_order = IdeaPlacement.objects.filter(project=project, category=category).aggregate(
             db_models.Max('order_index')
         )['order_index__max']
-        idea.order_index = (max_order + 1) if max_order is not None else 0
+        placement.order_index = (max_order + 1) if max_order is not None else 0
     else:
-        idea.category = None
-        max_order = Idea.objects.filter(project=project, category__isnull=True).aggregate(
+        placement.category = None
+        max_order = IdeaPlacement.objects.filter(project=project, category__isnull=True).aggregate(
             db_models.Max('order_index')
         )['order_index__max']
-        idea.order_index = (max_order + 1) if max_order is not None else 0
-    idea.save()
+        placement.order_index = (max_order + 1) if max_order is not None else 0
+    placement.save()
     return Response({"updated": True})
 
 
-# get_all_ideas
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_all_ideas(request, project_id):
+    """Return all idea placements for this project, grouped by category."""
     project = get_object_or_404(Project, id=project_id)
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
-    all_ideas = Idea.objects.filter(project=project)
-    all_ideas_serialized = IdeaSerializer(all_ideas, many=True).data
+    placements = IdeaPlacement.objects.filter(project=project).select_related('idea', 'idea__owner', 'category').prefetch_related('idea__dimension_types__legend_type', 'idea__dimension_types__dimension')
+    all_placements_serialized = IdeaPlacementSerializer(placements, many=True).data
 
     unassigned_order = list(
-        Idea.objects.filter(project=project, category__isnull=True)
+        IdeaPlacement.objects.filter(project=project, category__isnull=True)
         .order_by('order_index')
         .values_list('id', flat=True)
     )
     category_orders = {}
     for cat in Category.objects.filter(project=project):
         category_orders[cat.id] = list(
-            Idea.objects.filter(project=project, category=cat)
+            IdeaPlacement.objects.filter(project=project, category=cat)
             .order_by('order_index')
             .values_list('id', flat=True)
         )
     return Response({
-        "data": all_ideas_serialized,
+        "data": all_placements_serialized,
         "order": unassigned_order,
         "category_orders": category_orders,
     })
@@ -213,7 +297,7 @@ def delete_category(request, project_id):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
     category_id = request.data.get("id")
-    Idea.objects.filter(project=project, category_id=category_id).update(category=None)
+    IdeaPlacement.objects.filter(project=project, category_id=category_id).update(category=None)
     Category.objects.filter(id=category_id, project=project).delete()
     return Response({"deleted": True})
 
@@ -260,7 +344,15 @@ def update_idea_title(request, project_id):
     new_title = request.data.get("title", "").strip()
     if not new_title:
         return Response({"error": "Title is required"}, status=400)
-    Idea.objects.filter(id=idea_id, project=project).update(title=new_title)
+    # idea_id might be a placement id from old frontend — check both
+    idea = Idea.objects.filter(id=idea_id).first()
+    if not idea:
+        placement = IdeaPlacement.objects.filter(id=idea_id, project=project).first()
+        if placement:
+            idea = placement.idea
+    if idea:
+        idea.title = new_title
+        idea.save()
     return Response({"updated": True})
 
 
@@ -274,8 +366,14 @@ def update_idea_headline(request, project_id):
 
     idea_id = request.data.get("id")
     new_headline = request.data.get("headline", "").strip()
-    # Headline can be empty (optional)
-    Idea.objects.filter(id=idea_id, project=project).update(headline=new_headline)
+    idea = Idea.objects.filter(id=idea_id).first()
+    if not idea:
+        placement = IdeaPlacement.objects.filter(id=idea_id, project=project).first()
+        if placement:
+            idea = placement.idea
+    if idea:
+        idea.headline = new_headline
+        idea.save()
     return Response({"updated": True})
 
 
@@ -348,7 +446,7 @@ def delete_legend_type(request, project_id):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
     legend_type_id = request.data.get("id")
-    Idea.objects.filter(project=project, legend_type_id=legend_type_id).update(legend_type=None)
+    IdeaDimensionType.objects.filter(legend_type_id=legend_type_id).delete()
     LegendType.objects.filter(id=legend_type_id, project=project).delete()
     return Response({"deleted": True})
 
@@ -361,15 +459,30 @@ def assign_idea_legend_type(request, project_id):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
     idea_id = request.data.get("idea_id")
+    dimension_id = request.data.get("dimension_id")
     legend_type_id = request.data.get("legend_type_id")  # None to unassign
 
-    idea = get_object_or_404(Idea, id=idea_id, project=project)
+    idea = Idea.objects.filter(id=idea_id).first()
+    if not idea:
+        # Maybe a placement id
+        placement = IdeaPlacement.objects.filter(id=idea_id, project=project).first()
+        if placement:
+            idea = placement.idea
+    if not idea:
+        return Response({"error": "Not found"}, status=404)
+    if not dimension_id:
+        return Response({"error": "dimension_id required"}, status=400)
+
+    dimension = get_object_or_404(Dimension, id=dimension_id)
+
     if legend_type_id is not None:
-        legend = get_object_or_404(LegendType, id=legend_type_id, project=project)
-        idea.legend_type = legend
+        legend = get_object_or_404(LegendType, id=legend_type_id)
+        IdeaDimensionType.objects.update_or_create(
+            idea=idea, dimension=dimension,
+            defaults={"legend_type": legend},
+        )
     else:
-        idea.legend_type = None
-    idea.save()
+        IdeaDimensionType.objects.filter(idea=idea, dimension=dimension).delete()
     return Response({"updated": True})
 
 # ---- DIMENSION ENDPOINTS ----
@@ -530,12 +643,26 @@ def drop_category(request, category_id):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_user_ideas(request):
-    """Get all ideas owned by the current user (across all projects)."""
-    ideas = Idea.objects.filter(owner=request.user).select_related('category', 'project')
+    """Get all ideas owned by the current user (across all projects) — the meta view."""
+    ideas = Idea.objects.filter(owner=request.user).select_related('project').prefetch_related('placements__category', 'dimension_types__legend_type', 'dimension_types__dimension')
     result = []
     for idea in ideas:
         d = IdeaSerializer(idea).data
-        d['category_name'] = idea.category.name if idea.category else None
         d['project_name'] = idea.project.name if idea.project else None
+        d['project_id'] = idea.project.id if idea.project else None
         result.append(d)
     return Response({"ideas": result})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_meta_ideas(request, project_id):
+    """Get all unique ideas for a project (meta view — no placement duplicates)."""
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    ideas = Idea.objects.filter(project=project).select_related('owner').prefetch_related('placements__category', 'dimension_types__legend_type', 'dimension_types__dimension')
+    return Response({
+        "ideas": IdeaSerializer(ideas, many=True).data,
+    })

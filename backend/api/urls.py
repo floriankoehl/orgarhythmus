@@ -71,8 +71,11 @@ urlpatterns = [
     path("projects/<int:project_id>/set_area_category/", views.set_area_category),
 
     path("projects/<int:project_id>/get_all_ideas/", views.get_all_ideas),
+    path("projects/<int:project_id>/get_meta_ideas/", views.get_meta_ideas),
     path("projects/<int:project_id>/create_idea/", views.create_idea),
     path("projects/<int:project_id>/delete_idea/", views.delete_idea),
+    path("projects/<int:project_id>/delete_meta_idea/", views.delete_meta_idea),
+    path("projects/<int:project_id>/copy_idea/", views.copy_idea_to_category),
     path("projects/<int:project_id>/safe_order/", views.safe_order),
     path("projects/<int:project_id>/assign_idea_to_category/", views.assign_idea_to_category),
     path("projects/<int:project_id>/rename_category/", views.rename_category),
