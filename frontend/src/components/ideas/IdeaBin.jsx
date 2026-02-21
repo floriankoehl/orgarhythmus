@@ -1,16 +1,21 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
-import EditIcon from "@mui/icons-material/Edit";
-import ArchiveIcon from "@mui/icons-material/Archive";
-import UnarchiveIcon from "@mui/icons-material/Unarchive";
-import { Lightbulb, Minus, Maximize2, Minimize2, Zap, Copy, List, Settings, MoreVertical, Locate, X } from "lucide-react";
+
+import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
 import { playSound } from "../../assets/sound_registry";
 import { useDimensions } from "../../pages/general/ideas/useDimensions";
+import IdeaBinConfirmModal from "./IdeaBinConfirmModal";
+import useIdeaBinWindow from "./useIdeaBinWindow";
+import IdeaBinTransformModal from "./IdeaBinTransformModal";
+import IdeaBinDimensionPanel from "./IdeaBinDimensionPanel";
+import IdeaBinDragGhosts from "./IdeaBinDragGhosts";
+import IdeaBinIdeaCard from "./IdeaBinIdeaCard";
+import IdeaBinCategoryCanvas from "./IdeaBinCategoryCanvas";
 
 // ───────────────────── Constants ─────────────────────
 const MIN_W = 290;
@@ -32,26 +37,6 @@ function authFetch(url, options = {}) {
   });
 }
 
-// ───────────────────── Confirm Modal ─────────────────────
-function ConfirmModal({ message, onConfirm, onCancel, confirmLabel = "Delete", confirmColor = "bg-red-500 hover:bg-red-600" }) {
-  return (
-    <>
-      <div className="absolute inset-0 bg-black/30 z-[50] rounded-b-lg" onClick={onCancel} />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-2xl p-5 z-[51] min-w-[240px] max-w-[90%]">
-        <div className="text-sm mb-4">{message}</div>
-        <div className="flex justify-end gap-2">
-          <button onClick={onCancel} className="px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-100 text-xs">
-            Cancel
-          </button>
-          <button onClick={onConfirm} className={`px-3 py-1.5 rounded text-white text-xs ${confirmColor}`}>
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </>
-  );
-}
-
 // ═══════════════════════════════════════════════════════════
 // ═══════════════════  IDEA BIN COMPONENT  ═════════════════
 // ═══════════════════════════════════════════════════════════
@@ -59,22 +44,17 @@ export default function IdeaBin() {
   const { projectId } = useParams();
   const API = `${BASE_URL}/api/projects/${projectId}`;
 
-  // ───── Window state ─────
-  const [isOpen, setIsOpen] = useState(false);
-  const [windowPos, setWindowPos] = useState(() => ({
-    x: Math.max(0, window.innerWidth - DEFAULT_W - 24),
-    y: Math.max(0, window.innerHeight - DEFAULT_H - 80),
-  }));
-  const [windowSize, setWindowSize] = useState({ w: DEFAULT_W, h: DEFAULT_H });
-  const [iconPos, setIconPos] = useState(() => ({
-    x: Math.max(0, window.innerWidth - 68),
-    y: Math.max(0, window.innerHeight - 68),
-  }));
-  const [isMaximized, setIsMaximized] = useState(false);
-  const [preMaxState, setPreMaxState] = useState(null);
-  const windowRef = useRef(null);
+  // ───── Window state (extracted) ─────
   const headlineInputRef = useRef(null);
-  const iconRef = useRef(null);
+  const {
+    isOpen, setIsOpen,
+    windowPos, windowSize,
+    iconPos,
+    isMaximized,
+    windowRef, iconRef,
+    openWindow, minimizeWindow, toggleMaximize,
+    handleIconDrag, handleWindowDrag, handleWindowResize, handleEdgeResize,
+  } = useIdeaBinWindow(headlineInputRef);
 
   // ───── Category state ─────
   const [categories, setCategories] = useState({});
@@ -165,162 +145,6 @@ export default function IdeaBin() {
   const ideaRefs = useRef({});
 
   const showCategories = windowSize.w >= CATEGORY_THRESHOLD;
-
-  // ═══════════════════════════════════════════════════════
-  // ═══════════  WINDOW MANAGEMENT  ═══════════════════════
-  // ═══════════════════════════════════════════════════════
-
-  const openWindow = useCallback(() => {
-    setWindowPos({
-      x: Math.max(0, Math.min(iconPos.x - windowSize.w + 48, window.innerWidth - windowSize.w)),
-      y: Math.max(0, Math.min(iconPos.y - windowSize.h + 48, window.innerHeight - windowSize.h)),
-    });
-    setIsOpen(true);
-    playSound('ideaOpen');
-    setTimeout(() => headlineInputRef.current?.focus(), 100);
-  }, [iconPos, windowSize]);
-
-  const minimizeWindow = useCallback(() => {
-    setIconPos({
-      x: Math.min(window.innerWidth - 56, Math.max(0, windowPos.x + windowSize.w - 48)),
-      y: Math.min(window.innerHeight - 56, Math.max(0, windowPos.y + windowSize.h - 48)),
-    });
-    setIsOpen(false);
-    setIsMaximized(false);
-    setPreMaxState(null);
-    playSound('ideaClose');
-  }, [windowPos, windowSize]);
-
-  const toggleMaximize = useCallback(() => {
-    if (isMaximized) {
-      if (preMaxState) {
-        setWindowPos(preMaxState.pos);
-        setWindowSize(preMaxState.size);
-      }
-      setIsMaximized(false);
-      setPreMaxState(null);
-    } else {
-      setPreMaxState({ pos: { ...windowPos }, size: { ...windowSize } });
-      setWindowPos({ x: 8, y: 60 });
-      setWindowSize({ w: window.innerWidth - 16, h: window.innerHeight - 68 });
-      setIsMaximized(true);
-    }
-  }, [isMaximized, preMaxState, windowPos, windowSize]);
-
-  // ── Icon drag (direct DOM for performance) ──
-  const handleIconDrag = useCallback((e) => {
-    e.preventDefault();
-    const el = iconRef.current;
-    if (!el) return;
-    const startX = e.clientX - iconPos.x;
-    const startY = e.clientY - iconPos.y;
-    let moved = false;
-    let curX = iconPos.x;
-    let curY = iconPos.y;
-
-    // Disable CSS transitions during drag for instant feedback
-    el.style.transition = 'none';
-
-    const onMove = (ev) => {
-      moved = true;
-      curX = Math.max(0, Math.min(ev.clientX - startX, window.innerWidth - 56));
-      curY = Math.max(0, Math.min(ev.clientY - startY, window.innerHeight - 56));
-      el.style.left = curX + 'px';
-      el.style.top = curY + 'px';
-    };
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      el.style.transition = '';
-      // Sync React state once
-      setIconPos({ x: curX, y: curY });
-      if (!moved) openWindow();
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, [iconPos, openWindow]);
-
-  // ── Window title bar drag ──
-  const handleWindowDrag = useCallback((e) => {
-    if (isMaximized) return;
-    e.preventDefault();
-    const startX = e.clientX - windowPos.x;
-    const startY = e.clientY - windowPos.y;
-
-    const onMove = (ev) => {
-      setWindowPos({
-        x: Math.max(0, Math.min(ev.clientX - startX, window.innerWidth - 60)),
-        y: Math.max(0, Math.min(ev.clientY - startY, window.innerHeight - 40)),
-      });
-    };
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, [windowPos, isMaximized]);
-
-  // ── Window resize (bottom-right corner) ──
-  const handleWindowResize = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (isMaximized) return;
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const startW = windowSize.w;
-    const startH = windowSize.h;
-
-    const onMove = (ev) => {
-      setWindowSize({
-        w: Math.max(MIN_W, startW + (ev.clientX - startX)),
-        h: Math.max(MIN_H, startH + (ev.clientY - startY)),
-      });
-    };
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, [windowSize, isMaximized]);
-
-  // ── Window resize edges ──
-  const handleEdgeResize = useCallback((e, edge) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (isMaximized) return;
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const startW = windowSize.w;
-    const startH = windowSize.h;
-    const startPosX = windowPos.x;
-    const startPosY = windowPos.y;
-
-    const onMove = (ev) => {
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
-      if (edge === "right") {
-        setWindowSize(s => ({ ...s, w: Math.max(MIN_W, startW + dx) }));
-      } else if (edge === "bottom") {
-        setWindowSize(s => ({ ...s, h: Math.max(MIN_H, startH + dy) }));
-      } else if (edge === "left") {
-        const newW = Math.max(MIN_W, startW - dx);
-        setWindowSize(s => ({ ...s, w: newW }));
-        setWindowPos(p => ({ ...p, x: startPosX + startW - newW }));
-      } else if (edge === "top") {
-        const newH = Math.max(MIN_H, startH - dy);
-        setWindowSize(s => ({ ...s, h: newH }));
-        setWindowPos(p => ({ ...p, y: startPosY + startH - newH }));
-      }
-    };
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, [windowSize, windowPos, isMaximized]);
 
   // ═══════════════════════════════════════════════════════
   // ═══════════  CATEGORY API  ════════════════════════════
@@ -1304,288 +1128,31 @@ export default function IdeaBin() {
   // ═══════════  RENDER HELPERS  ══════════════════════════
   // ═══════════════════════════════════════════════════════
 
-  const renderIdeaItem = (ideaId, arrayIndex, source) => {
-    const idea = ideas[ideaId];
-    if (!idea) return null;
-
-    const isSource = dragSource &&
-      dragSource.type === source.type &&
-      (source.type === "unassigned" || source.type === "all" || String(dragSource.id) === String(source.id));
-    const isEditing = editingIdeaId === ideaId;
-    const legendType = (() => {
-      const dimId = String(dims.activeDimensionId || "");
-      const dt = idea.dimension_types?.[dimId];
-      if (dt) return { id: dt.legend_type_id, color: dt.color, name: dt.name };
-      return null;
-    })();
-    const isHoveredForLegend = hoverIdeaForLegend === ideaId || hoverIdeaForLegend === `meta_${ideaId}`;
-    const collapseKey = source.type === "all" ? `meta_${ideaId}` : ideaId;
-    const isIdeaCollapsed = sidebarHeadlineOnly && source.type !== "all"
-      ? (collapsedIdeas[collapseKey] ?? true)
-      : (collapsedIdeas[collapseKey] ?? (source.type !== "all"));
-    const isWiggling = wigglingIdeaId && idea.idea_id === wigglingIdeaId && source.type !== "all";
-
-    const getDisplayText = () => {
-      if (idea.headline) return <span className="font-semibold text-xs">{idea.headline}</span>;
-      const words = idea.title.split(/\s+/);
-      return words.length > 5
-        ? <span className="font-semibold text-[11px]">{words.slice(0, 5).join(" ")}...</span>
-        : <span className="font-semibold text-[11px]">{idea.title}</span>;
-    };
-
-    return (
-      <div key={`idea_${ideaId}`} data-idea-item="true">
-        <div
-          style={{
-            opacity: isSource && arrayIndex === hoverIndex ? 1 : 0,
-            transition: "opacity 100ms ease",
-          }}
-          className="w-full h-0.5 my-[1px] rounded bg-gray-700"
-        />
-        {isEditing ? (
-          <div className="w-full rounded bg-blue-50 text-blue-600 px-2 py-1 text-[10px] mb-0.5 border border-blue-200 italic">
-            Editing above...
-          </div>
-        ) : (
-          <div
-            ref={el => {
-              const refKey = source.type === "all" ? `meta_${ideaId}` : ideaId;
-              ideaRefs.current[refKey] = el;
-            }}
-            onMouseDown={(e) => { e.stopPropagation(); handleIdeaDrag(e, idea, arrayIndex, source); }}
-            style={{
-              backgroundColor: isHoveredForLegend
-                ? (draggingLegend?.color || "#e0e7ff")
-                : isSource && arrayIndex === prevIndex ? "#e5e7eb"
-                : legendType ? `${legendType.color}20` : "#ffffff4b",
-              borderLeftColor: legendType ? legendType.color : "#374151",
-              borderLeftWidth: "3px",
-              transform: isSource && hoverIndex !== null && arrayIndex >= hoverIndex && arrayIndex !== prevIndex
-                ? "translateY(4px)" : "translateY(0px)",
-              transition: "transform 150ms ease, background-color 150ms ease",
-            }}
-            className={`w-full rounded text-gray-800 px-1.5 py-1 flex justify-between ${isIdeaCollapsed ? "items-center" : "items-start"} text-[11px] mb-0.5 cursor-grab leading-tight shadow-sm border border-gray-200 hover:shadow-md ${isHoveredForLegend ? "ring-2 ring-offset-1" : ""} ${isWiggling ? "ideabin-wiggle" : ""}`}
-          >
-            <div className={`flex ${isIdeaCollapsed ? "items-center" : "items-start"} gap-1 flex-1 mr-1`}>
-              <span
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const currentDefault = source.type !== "all";
-                  setCollapsedIdeas(prev => {
-                    const current = prev[collapseKey] ?? currentDefault;
-                    return { ...prev, [collapseKey]: !current };
-                  });
-                }}
-                className="cursor-pointer flex-shrink-0"
-                style={{
-                  width: 0, height: 0, display: "inline-block", borderStyle: "solid",
-                  ...(isIdeaCollapsed ? {} : { marginTop: "3px" }),
-                  ...(isIdeaCollapsed
-                    ? { borderWidth: "5px 0 5px 8px", borderColor: `transparent transparent transparent ${legendType?.color || "#374151"}` }
-                    : { borderWidth: "8px 5px 0 5px", borderColor: `${legendType?.color || "#374151"} transparent transparent transparent` }),
-                }}
-              />
-              <div className="break-words whitespace-pre-wrap">
-                {isIdeaCollapsed ? getDisplayText() : (
-                  <>
-                    {idea.headline && <div className="font-semibold text-xs mb-0.5">{idea.headline}</div>}
-                    <span className="text-[10px] text-gray-600">{idea.title}</span>
-                    {/* Meta info: categories + dimensions */}
-                    {(source.type === "all" || showSidebarMeta) && (() => {
-                      const cats = idea.placement_categories || [];
-                      const dimEntries = Object.entries(idea.dimension_types || {}).map(([dimId, dt]) => {
-                        const dim = dims.dimensions.find(d => String(d.id) === String(dimId));
-                        return dim ? { dimId, dimName: dim.name, typeName: dt.name, color: dt.color } : null;
-                      }).filter(Boolean);
-                      const hasMeta = cats.length > 0 || dimEntries.length > 0;
-                      if (!hasMeta) return null;
-                      const isMetaView = source.type === "all";
-                      return (
-                        <div className="mt-1 pl-1 border-l-2 border-gray-200 space-y-0.5">
-                          {cats.length > 0 && (
-                            <div className="text-[9px] text-gray-500">
-                              <div className="flex items-center gap-1 mb-0.5">
-                                <span className="font-medium text-gray-600">Categories:</span>
-                                {isMetaView && cats.length > 1 && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setConfirmModal({
-                                        message: <p className="text-sm">Remove <strong>{idea.headline || idea.title}</strong> from <strong>all {cats.length} categories</strong>?</p>,
-                                        onConfirm: () => { remove_all_idea_categories(idea.idea_id); setConfirmModal(null); },
-                                        onCancel: () => setConfirmModal(null),
-                                      });
-                                    }}
-                                    className="text-[8px] text-red-400 hover:text-red-600 transition-colors"
-                                    title="Remove from all categories"
-                                  >✕ all</button>
-                                )}
-                              </div>
-                              <div className="flex flex-wrap gap-0.5">
-                                {cats.map((cat, i) => (
-                                  <span key={i} className="inline-flex items-center gap-0.5 bg-gray-100 rounded px-1 py-0.5">
-                                    {cat.name}
-                                    {isMetaView && cat.id && (
-                                      <X
-                                        size={8}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          remove_idea_from_category(cat.placement_id);
-                                        }}
-                                        className="text-gray-400 hover:text-red-500 cursor-pointer flex-shrink-0"
-                                        title={`Remove from ${cat.name}`}
-                                      />
-                                    )}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {dimEntries.length > 0 && (
-                            <div className="text-[9px] text-gray-500">
-                              <div className="flex items-center gap-1 mb-0.5">
-                                <span className="font-medium text-gray-600">Dimensions:</span>
-                                {isMetaView && dimEntries.length > 1 && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setConfirmModal({
-                                        message: <p className="text-sm">Remove <strong>{idea.headline || idea.title}</strong> from <strong>all {dimEntries.length} dimension types</strong>?</p>,
-                                        onConfirm: () => { remove_all_idea_dimension_types(idea.idea_id); setConfirmModal(null); },
-                                        onCancel: () => setConfirmModal(null),
-                                      });
-                                    }}
-                                    className="text-[8px] text-red-400 hover:text-red-600 transition-colors"
-                                    title="Remove all dimension types"
-                                  >✕ all</button>
-                                )}
-                              </div>
-                              <div className="flex flex-wrap gap-0.5">
-                                {dimEntries.map((e, i) => (
-                                  <span key={i} className="inline-flex items-center gap-0.5 bg-gray-100 rounded px-1 py-0.5">
-                                    {e.dimName} = <span style={{ color: e.color }} className="font-medium">{e.typeName}</span>
-                                    {isMetaView && (
-                                      <X
-                                        size={8}
-                                        onClick={(ev) => {
-                                          ev.stopPropagation();
-                                          remove_idea_dimension_type(idea.idea_id, parseInt(e.dimId));
-                                        }}
-                                        className="text-gray-400 hover:text-red-500 cursor-pointer flex-shrink-0"
-                                        title={`Remove ${e.dimName} type`}
-                                      />
-                                    )}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </>
-                )}
-              </div>
-            </div>
-            <div className={`flex-shrink-0 flex items-center gap-0.5 text-gray-400 ${isIdeaCollapsed ? "" : "mt-0.5"}`} onMouseDown={(e) => e.stopPropagation()}>
-              <Copy
-                size={12}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  copy_idea(ideaId);
-                }}
-                className={`cursor-pointer ${copiedIdeaId === idea.idea_id ? "text-indigo-500!" : "hover:text-indigo-500!"}`}
-                title="Copy idea (Ctrl+C)"
-              />
-              {source.type === "all" && showCategories && (
-                <Locate
-                  size={12}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setWigglingIdeaId(idea.idea_id);
-                    setTimeout(() => setWigglingIdeaId(null), 1500);
-                  }}
-                  className="cursor-pointer hover:text-emerald-500!"
-                  title="Locate in categories"
-                />
-              )}
-              <div className="relative">
-                <MoreVertical
-                  size={13}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIdeaSettingsOpen(prev => prev === ideaId ? null : ideaId);
-                  }}
-                  className="cursor-pointer hover:text-gray-600"
-                  title="More actions"
-                />
-                {ideaSettingsOpen === ideaId && (
-                  <>
-                    <div className="fixed inset-0 z-[60]" onClick={() => setIdeaSettingsOpen(null)} />
-                    <div className="absolute right-0 top-4 z-[61] bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[130px]">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingIdeaId(ideaId);
-                          setEditingIdeaTitle(idea.title);
-                          setEditingIdeaHeadline(idea.headline || "");
-                          setIdeaSettingsOpen(null);
-                        }}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 transition-colors"
-                      >
-                        <EditIcon style={{ fontSize: 13 }} className="text-blue-500" />
-                        Edit
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openTransform(idea);
-                          setIdeaSettingsOpen(null);
-                        }}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 transition-colors"
-                      >
-                        <Zap size={13} className="text-amber-500" />
-                        Make Task
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIdeaSettingsOpen(null);
-                          const isMetaView = source.type === "all";
-                          setConfirmModal({
-                            message: (
-                              <div>
-                                <p className="mb-1 text-sm">{isMetaView ? "Delete this idea and ALL its copies?" : "Delete this idea?"}</p>
-                                {idea.headline && <p className="font-semibold text-xs">{idea.headline}</p>}
-                                <p className="text-xs text-gray-600 mt-0.5">{idea.title.length > 80 ? idea.title.slice(0, 80) + "..." : idea.title}</p>
-                                {isMetaView && idea.placement_count > 1 && (
-                                  <p className="text-[10px] text-red-500 mt-1">{idea.placement_count} copies will be removed</p>
-                                )}
-                              </div>
-                            ),
-                            onConfirm: () => {
-                              if (isMetaView) { delete_meta_idea(idea.idea_id); }
-                              else { delete_idea(idea.id); }
-                              setConfirmModal(null);
-                            },
-                            onCancel: () => setConfirmModal(null),
-                          });
-                        }}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-red-600 hover:bg-red-50 transition-colors"
-                      >
-                        <DeleteForeverIcon style={{ fontSize: 13 }} />
-                        Delete
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
+  const renderIdeaItem = (ideaId, arrayIndex, source) => (
+    <IdeaBinIdeaCard
+      key={`idea_${ideaId}`}
+      ideaId={ideaId} arrayIndex={arrayIndex} source={source}
+      ideas={ideas} dims={dims} draggingLegend={draggingLegend}
+      dragSource={dragSource} hoverIndex={hoverIndex} prevIndex={prevIndex}
+      editingIdeaId={editingIdeaId} setEditingIdeaId={setEditingIdeaId}
+      setEditingIdeaTitle={setEditingIdeaTitle} setEditingIdeaHeadline={setEditingIdeaHeadline}
+      hoverIdeaForLegend={hoverIdeaForLegend} sidebarHeadlineOnly={sidebarHeadlineOnly}
+      showSidebarMeta={showSidebarMeta}
+      collapsedIdeas={collapsedIdeas} setCollapsedIdeas={setCollapsedIdeas}
+      wigglingIdeaId={wigglingIdeaId} setWigglingIdeaId={setWigglingIdeaId}
+      handleIdeaDrag={handleIdeaDrag}
+      copiedIdeaId={copiedIdeaId} copy_idea={copy_idea}
+      showCategories={showCategories}
+      ideaSettingsOpen={ideaSettingsOpen} setIdeaSettingsOpen={setIdeaSettingsOpen}
+      openTransform={openTransform} setConfirmModal={setConfirmModal}
+      delete_meta_idea={delete_meta_idea} delete_idea={delete_idea}
+      ideaRefs={ideaRefs}
+      remove_all_idea_categories={remove_all_idea_categories}
+      remove_idea_from_category={remove_idea_from_category}
+      remove_all_idea_dimension_types={remove_all_idea_dimension_types}
+      remove_idea_dimension_type={remove_idea_dimension_type}
+    />
+  );
 
   const archivedCategories = Object.values(categories).filter(c => c.archived);
   const activeCategories = Object.entries(categories).filter(([, c]) => !c.archived);
@@ -1725,7 +1292,7 @@ export default function IdeaBin() {
           <div className="flex-1 flex overflow-hidden relative">
             {/* Confirm modal overlay */}
             {confirmModal && (
-              <ConfirmModal message={confirmModal.message} onConfirm={confirmModal.onConfirm} onCancel={confirmModal.onCancel} confirmLabel={confirmModal.confirmLabel} confirmColor={confirmModal.confirmColor} />
+              <IdeaBinConfirmModal message={confirmModal.message} onConfirm={confirmModal.onConfirm} onCancel={confirmModal.onCancel} confirmLabel={confirmModal.confirmLabel} confirmColor={confirmModal.confirmColor} />
             )}
 
             {/* ── Meta Ideas list overlay ── */}
@@ -1800,186 +1367,15 @@ export default function IdeaBin() {
             )}
 
             {/* Transform modal overlay */}
-            {transformModal && (
-              <>
-                <div className="absolute inset-0 bg-black/30 z-[50] rounded-b-lg" onClick={closeTransform} />
-                <div
-                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-2xl z-[51] min-w-[260px] max-w-[90%] overflow-hidden"
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  {/* Header */}
-                  <div className="bg-gradient-to-r from-amber-400 to-yellow-400 px-4 py-2 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-amber-900 flex items-center gap-1.5">
-                      <Zap size={14} /> Transform Idea
-                    </span>
-                    <button onClick={closeTransform} className="text-amber-800 hover:text-amber-950 text-sm font-bold">✕</button>
-                  </div>
-
-                  {/* Idea preview */}
-                  <div className="px-4 pt-3 pb-2 border-b border-gray-100 bg-gray-50">
-                    {transformModal.idea.headline && (
-                      <p className="text-xs font-semibold text-gray-700">{transformModal.idea.headline}</p>
-                    )}
-                    <p className="text-[11px] text-gray-500 line-clamp-2 mt-0.5">{transformModal.idea.title}</p>
-                  </div>
-
-                  <div className="p-4">
-                    {/* Step: Choose */}
-                    {transformModal.step === 'choose' && (
-                      <div className="flex flex-col gap-2">
-                        <p className="text-xs text-gray-500 mb-1">Transform this idea into:</p>
-                        <button
-                          onClick={() => setTransformModal(prev => ({ ...prev, step: 'task' }))}
-                          className="w-full text-left px-3 py-2.5 border border-gray-200 rounded-lg hover:border-amber-400 hover:bg-amber-50 transition-colors group"
-                        >
-                          <span className="text-sm font-medium text-gray-800 group-hover:text-amber-800">📋 Task</span>
-                          <p className="text-[10px] text-gray-400 mt-0.5">Create a new task assigned to a team</p>
-                        </button>
-                        <button
-                          onClick={() => { setTransformTeamId(null); setTransformTaskId(null); setTransformModal(prev => ({ ...prev, step: 'milestone' })); }}                          className="w-full text-left px-3 py-2.5 border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors group"
-                        >
-                          <span className="text-sm font-medium text-gray-800 group-hover:text-blue-800">🏁 Milestone</span>
-                          <p className="text-[10px] text-gray-400 mt-0.5">Create a milestone on an existing task</p>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Step: Task */}
-                    {transformModal.step === 'task' && (
-                      <div className="flex flex-col gap-2.5">
-                        <div>
-                          <label className="text-[10px] text-gray-500 font-medium mb-0.5 block">Task Name</label>
-                          <input
-                            autoFocus
-                            value={transformName}
-                            onChange={(e) => setTransformName(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Escape") closeTransform(); }}
-                            className="w-full text-xs px-2 py-1.5 border border-gray-300 rounded outline-none focus:border-amber-400"
-                            placeholder="Task name..."
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-gray-500 font-medium mb-0.5 block">Select Team</label>
-                          <div className="max-h-[140px] overflow-y-auto border border-gray-200 rounded">
-                            {projectTeams.length === 0 && (
-                              <p className="text-[10px] text-gray-400 p-2 italic">No teams found...</p>
-                            )}
-                            {projectTeams.map(team => (
-                              <div
-                                key={team.id}
-                                onClick={() => setTransformTeamId(team.id)}
-                                className={`px-2 py-1.5 text-xs cursor-pointer transition-colors flex items-center gap-2 ${
-                                  transformTeamId === team.id
-                                    ? "bg-amber-100 text-amber-900 font-medium"
-                                    : "hover:bg-gray-50 text-gray-700"
-                                }`}
-                              >
-                                {team.color && (
-                                  <span className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-300" style={{ backgroundColor: team.color }} />
-                                )}
-                                {team.name}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="flex justify-between items-center pt-1">
-                          <button
-                            onClick={() => setTransformModal(prev => ({ ...prev, step: 'choose' }))}
-                            className="text-[10px] text-gray-500 hover:text-gray-700"
-                          >
-                            ← Back
-                          </button>
-                          <button
-                            onClick={executeTransformToTask}
-                            disabled={!transformName.trim() || !transformTeamId || transformLoading}
-                            className="px-3 py-1 bg-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium"
-                          >
-                            {transformLoading ? "Creating..." : "Create Task"}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Step: Milestone */}
-                    {transformModal.step === 'milestone' && (
-                      <div className="flex flex-col gap-2.5">
-                        <div>
-                          <label className="text-[10px] text-gray-500 font-medium mb-0.5 block">Milestone Name</label>
-                          <input
-                            autoFocus
-                            value={transformName}
-                            onChange={(e) => setTransformName(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Escape") closeTransform(); }}
-                            className="w-full text-xs px-2 py-1.5 border border-gray-300 rounded outline-none focus:border-blue-400"
-                            placeholder="Milestone name..."
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-gray-500 font-medium mb-0.5 block">Select Task</label>
-                          <input
-                            value={transformTaskSearch}
-                            onChange={(e) => setTransformTaskSearch(e.target.value)}
-                            className="w-full text-[10px] px-2 py-1 border border-gray-200 rounded outline-none focus:border-blue-300 mb-1"
-                            placeholder="Search tasks..."
-                          />
-                          <div className="max-h-[160px] overflow-y-auto border border-gray-200 rounded">
-                            {(() => {
-                              const filtered = projectTasks.filter(t => {
-                                if (!transformTaskSearch) return true;
-                                const q = transformTaskSearch.toLowerCase();
-                                const teamObj = projectTeams.find(tm => tm.id === (t.team || t.team_id));
-                                return (
-                                  (t.name || '').toLowerCase().includes(q) ||
-                                  (teamObj?.name || '').toLowerCase().includes(q)
-                                );
-                              });
-                              if (filtered.length === 0) return (
-                                <p className="text-[10px] text-gray-400 p-2 italic">No tasks found...</p>
-                              );
-                              return filtered.map(task => {
-                                const teamObj = projectTeams.find(tm => tm.id === (task.team || task.team_id));
-                                return (
-                                  <div
-                                    key={task.id}
-                                    onClick={() => setTransformTaskId(task.id)}
-                                    className={`px-2 py-1.5 text-xs cursor-pointer transition-colors flex items-center gap-1.5 ${
-                                      transformTaskId === task.id
-                                        ? "bg-blue-100 text-blue-900 font-medium"
-                                        : "hover:bg-gray-50 text-gray-700"
-                                    }`}
-                                  >
-                                    {teamObj?.color && (
-                                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: teamObj.color }} />
-                                    )}
-                                    <span>{task.name}</span>
-                                    {teamObj?.name && <span className="text-[10px] text-gray-400 ml-auto">{teamObj.name}</span>}
-                                  </div>
-                                );
-                              });
-                            })()}
-                          </div>
-                        </div>
-                        <div className="flex justify-between items-center pt-1">
-                          <button
-                            onClick={() => setTransformModal(prev => ({ ...prev, step: 'choose' }))}
-                            className="text-[10px] text-gray-500 hover:text-gray-700"
-                          >
-                            ← Back
-                          </button>
-                          <button
-                            onClick={executeTransformToMilestone}
-                            disabled={!transformName.trim() || !transformTaskId || transformLoading}
-                            className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium"
-                          >
-                            {transformLoading ? "Creating..." : "Create Milestone"}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
+            <IdeaBinTransformModal
+              transformModal={transformModal} setTransformModal={setTransformModal} closeTransform={closeTransform}
+              transformName={transformName} setTransformName={setTransformName}
+              transformTeamId={transformTeamId} setTransformTeamId={setTransformTeamId}
+              transformTaskId={transformTaskId} setTransformTaskId={setTransformTaskId}
+              transformTaskSearch={transformTaskSearch} setTransformTaskSearch={setTransformTaskSearch}
+              projectTeams={projectTeams} projectTasks={projectTasks} transformLoading={transformLoading}
+              executeTransformToTask={executeTransformToTask} executeTransformToMilestone={executeTransformToMilestone}
+            />
 
             {/* ── LEFT: Sidebar (always visible) ── */}
             <div
@@ -2214,236 +1610,22 @@ export default function IdeaBin() {
                       .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: listFilter }))
                 }              </div>
 
-              {/* ── Dimensions panel (selector only — types managed on Ideas page) ── */}
-              <div className="bg-white border-t border-gray-200 p-2 flex-shrink-0">
-                <div
-                  className="flex items-center justify-between cursor-pointer"
-                  onClick={() => setDimPanelCollapsed(!dimPanelCollapsed)}
-                >
-                  <div className="flex items-center gap-1">
-                    <h3 className="text-[10px] font-semibold text-gray-500">
-                      Dimensions {globalTypeFilter.length > 0 && <span className="text-blue-500">(filtered)</span>}
-                    </h3>
-                    {!dimPanelCollapsed && !showCreateDimension && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setShowCreateDimension(true); }}
-                        className="w-4 h-4 flex items-center justify-center rounded text-[11px] font-bold text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
-                        title="New Dimension"
-                      >+</button>
-                    )}
-                  </div>
-                  <span className="text-gray-400 text-[10px]">{dimPanelCollapsed ? "▲" : "▼"}</span>
-                </div>
-                {!dimPanelCollapsed && (
-                  <div className="mt-1">
-                    {/* Dimension selector — hidden while creating */}
-                    {dims.dimensions.length > 0 && !showCreateDimension && (
-                      <div className="mb-1">
-                        {editingDimensionId ? (
-                          <div className="flex gap-1">
-                            <input
-                              autoFocus
-                              value={editingDimensionNameLocal}
-                              onChange={(e) => setEditingDimensionNameLocal(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" && editingDimensionNameLocal.trim()) {
-                                  dims.update_dimension(editingDimensionId, editingDimensionNameLocal.trim());
-                                  setEditingDimensionId(null);
-                                } else if (e.key === "Escape") setEditingDimensionId(null);
-                              }}
-                              onBlur={() => {
-                                if (editingDimensionNameLocal.trim()) dims.update_dimension(editingDimensionId, editingDimensionNameLocal.trim());
-                                setEditingDimensionId(null);
-                              }}
-                              className="flex-1 text-[10px] px-1 py-0.5 border border-blue-400 rounded outline-none"
-                            />
-                            <button onClick={() => setEditingDimensionId(null)} className="text-[10px] text-gray-400 hover:text-gray-600 px-1">✕</button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1">
-                            <select
-                              value={dims.activeDimensionId || ""}
-                              onChange={(e) => dims.setActiveDimensionId(e.target.value ? parseInt(e.target.value) : null)}
-                              className="flex-1 text-[10px] px-1 py-0.5 border border-gray-300 rounded outline-none bg-white"
-                            >
-                              {dims.dimensions.map(d => (
-                                <option key={d.id} value={d.id}>{d.name}</option>
-                              ))}
-                            </select>
-                            <button
-                              onClick={() => {
-                                const dim = dims.dimensions.find(d => d.id === dims.activeDimensionId);
-                                if (dim) { setEditingDimensionId(dim.id); setEditingDimensionNameLocal(dim.name); }
-                              }}
-                              title="Rename"
-                              className="text-[10px] text-gray-400 hover:text-blue-500 px-0.5"
-                            >✎</button>
-                            <button
-                              onClick={() => {
-                                if (dims.activeDimensionId && window.confirm("Delete this dimension?")) {
-                                  dims.delete_dimension(dims.activeDimensionId);
-                                }
-                              }}
-                              title="Delete"
-                              className="text-[10px] text-gray-400 hover:text-red-500 px-0.5"
-                            >✕</button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {/* Create dimension */}
-                    {showCreateDimension ? (
-                      <div className="flex gap-1 mb-1">
-                        <input
-                          autoFocus
-                          value={newDimensionName}
-                          onChange={(e) => setNewDimensionName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && newDimensionName.trim()) {
-                              dims.create_dimension(newDimensionName.trim());
-                              setNewDimensionName(""); setShowCreateDimension(false);
-                            } else if (e.key === "Escape") setShowCreateDimension(false);
-                          }}
-                          placeholder="Dimension name..."
-                          className="flex-1 text-[10px] px-1 py-0.5 border border-gray-300 rounded outline-none focus:border-blue-400"
-                        />
-                        <button
-                          onClick={() => {
-                            if (newDimensionName.trim()) {
-                              dims.create_dimension(newDimensionName.trim());
-                              setNewDimensionName("");
-                              setShowCreateDimension(false);
-                            }
-                          }}
-                          className="text-[10px] px-1.5 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600"
-                        >+</button>
-                        <button onClick={() => setShowCreateDimension(false)} className="text-[10px] text-gray-400 hover:text-gray-600 px-1">✕</button>
-                      </div>
-                    ) : null}
-                    {globalTypeFilter.length > 0 && (
-                      <button
-                        onClick={() => setGlobalTypeFilter([])}
-                        className="w-full mb-1 text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded hover:bg-blue-200"
-                      >
-                        Clear Filter
-                      </button>
-                    )}
-                    {/* Unassigned type */}
-                    <div
-                      className={`flex items-center gap-1.5 mb-1 cursor-pointer rounded px-1 py-0.5 text-[10px] ${globalTypeFilter.includes("unassigned") ? "bg-gray-200" : "hover:bg-gray-100"}`}
-                      onClick={() => setGlobalTypeFilter(prev => prev.includes("unassigned") ? prev.filter(t => t !== "unassigned") : [...prev, "unassigned"])}
-                    >
-                      <div
-                        onMouseDown={(e) => { e.stopPropagation(); handleLegendDrag(e, null); }}
-                        className="w-4 h-4 rounded-full cursor-grab bg-gray-700 border border-gray-300 hover:scale-110 transition-transform"
-                      />
-                      <span className="text-gray-500 italic flex-1">Unassigned</span>
-                      {globalTypeFilter.includes("unassigned") && <span className="text-blue-500">✓</span>}
-                    </div>
-                    {/* Dimension types */}
-                    {Object.values(dims.dimensionTypes).map(lt => (
-                      <div
-                        key={lt.id}
-                        className={`flex items-center gap-1.5 mb-1 group cursor-pointer rounded px-1 py-0.5 text-[10px] ${globalTypeFilter.includes(lt.id) ? "bg-gray-200" : "hover:bg-gray-100"}`}
-                        onClick={() => setGlobalTypeFilter(prev => prev.includes(lt.id) ? prev.filter(t => t !== lt.id) : [...prev, lt.id])}
-                      >
-                        <div
-                          onMouseDown={(e) => { e.stopPropagation(); handleLegendDrag(e, lt.id); }}
-                          className="w-4 h-4 rounded-full cursor-grab border border-gray-200 hover:scale-110 transition-transform"
-                          style={{ backgroundColor: lt.color }}
-                        />
-                        {editingLegendId === lt.id ? (
-                          <input
-                            autoFocus
-                            value={editingLegendName}
-                            onChange={e => setEditingLegendName(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter") { dims.update_dimension_type(lt.id, { name: editingLegendName }); setEditingLegendId(null); }
-                              else if (e.key === "Escape") setEditingLegendId(null);
-                            }}
-                            onBlur={() => { dims.update_dimension_type(lt.id, { name: editingLegendName }); setEditingLegendId(null); }}
-                            onClick={e => e.stopPropagation()}
-                            className="text-[10px] px-1 py-0.5 border border-blue-400 rounded outline-none flex-1 min-w-0"
-                          />
-                        ) : (
-                          <span
-                            onDoubleClick={e => { e.stopPropagation(); setEditingLegendId(lt.id); setEditingLegendName(lt.name); }}
-                            className="text-gray-700 cursor-text flex-1"
-                          >
-                            {lt.name}
-                          </span>
-                        )}
-                        {globalTypeFilter.includes(lt.id) && <span className="text-blue-500">✓</span>}
-                        <label
-                          className="relative w-4 h-4 rounded cursor-pointer border border-gray-300 hover:border-blue-400 transition-colors flex-shrink-0"
-                          style={{ backgroundColor: lt.color }}
-                          title="Pick color"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <input
-                            type="color" value={lt.color}
-                            onChange={e => dims.update_dimension_type(lt.id, { color: e.target.value })}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                          />
-                        </label>
-                        <DeleteForeverIcon
-                          onClick={e => { e.stopPropagation(); dims.delete_dimension_type(lt.id); }}
-                          className="text-gray-300 hover:text-red-500! cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-                          style={{ fontSize: 13 }}
-                        />
-                      </div>
-                    ))}
-                    {/* Create type */}
-                    {showCreateLegend ? (
-                      <div className="mt-1 p-1.5 bg-gray-50 rounded border border-gray-200">
-                        <div className="flex items-center gap-1 mb-1">
-                          <label
-                            className="relative w-5 h-5 rounded cursor-pointer border border-gray-300 hover:border-blue-400 transition-colors flex-shrink-0"
-                            style={{ backgroundColor: newLegendColor }}
-                            title="Pick color"
-                          >
-                            <input type="color" value={newLegendColor} onChange={e => setNewLegendColor(e.target.value)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                          </label>
-                          <input
-                            autoFocus value={newLegendName} onChange={e => setNewLegendName(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter" && newLegendName.trim()) {
-                                dims.create_dimension_type(newLegendName, newLegendColor);
-                                setNewLegendName(""); setNewLegendColor("#6366f1"); setShowCreateLegend(false);
-                              } else if (e.key === "Escape") setShowCreateLegend(false);
-                            }}
-                            placeholder="Type name..."
-                            className="text-[10px] px-1.5 py-0.5 border border-gray-300 rounded outline-none flex-1 focus:border-blue-400"
-                          />
-                        </div>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => {
-                              if (newLegendName.trim()) {
-                                dims.create_dimension_type(newLegendName, newLegendColor);
-                                setNewLegendName(""); setNewLegendColor("#6366f1"); setShowCreateLegend(false);
-                              }
-                            }}
-                            className="flex-1 text-[10px] px-1.5 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600"
-                          >
-                            Create
-                          </button>
-                          <button onClick={() => setShowCreateLegend(false)} className="text-[10px] px-1.5 py-0.5 bg-gray-200 rounded hover:bg-gray-300">
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setShowCreateLegend(true)}
-                        className="w-full mt-1 text-[10px] px-1.5 py-1 border border-dashed border-gray-300 rounded text-gray-500 hover:border-gray-400 hover:bg-gray-50 transition-colors"
-                      >
-                        + Add Type
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
+              {/* ── Dimensions panel (extracted) ── */}
+              <IdeaBinDimensionPanel
+                dims={dims}
+                dimPanelCollapsed={dimPanelCollapsed} setDimPanelCollapsed={setDimPanelCollapsed}
+                showCreateDimension={showCreateDimension} setShowCreateDimension={setShowCreateDimension}
+                newDimensionName={newDimensionName} setNewDimensionName={setNewDimensionName}
+                editingDimensionId={editingDimensionId} setEditingDimensionId={setEditingDimensionId}
+                editingDimensionNameLocal={editingDimensionNameLocal} setEditingDimensionNameLocal={setEditingDimensionNameLocal}
+                globalTypeFilter={globalTypeFilter} setGlobalTypeFilter={setGlobalTypeFilter}
+                handleLegendDrag={handleLegendDrag}
+                editingLegendId={editingLegendId} setEditingLegendId={setEditingLegendId}
+                editingLegendName={editingLegendName} setEditingLegendName={setEditingLegendName}
+                showCreateLegend={showCreateLegend} setShowCreateLegend={setShowCreateLegend}
+                newLegendColor={newLegendColor} setNewLegendColor={setNewLegendColor}
+                newLegendName={newLegendName} setNewLegendName={setNewLegendName}
+              />
             </div>
 
             {/* ── Sidebar resize handle ── */}
@@ -2468,265 +1650,39 @@ export default function IdeaBin() {
 
             {/* ── RIGHT: Category canvas (only when wide enough) ── */}
             {showCategories && (
-              <div
-                ref={categoryContainerRef}
-                className="flex-1 relative overflow-auto bg-gray-50"
-              >
-                {/* Toolbar */}
-                <div className="sticky top-0 z-30 flex items-center gap-2 p-2 bg-gray-50/90 backdrop-blur-sm border-b border-gray-200">
-                  {displayCategoryForm ? (
-                    <div className="flex items-center gap-1 flex-1">
-                      <input
-                        autoFocus
-                        value={newCategoryName}
-                        onChange={e => setNewCategoryName(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === "Enter") create_category_api();
-                          else if (e.key === "Escape") { setDisplayCategoryForm(false); setNewCategoryName(""); }
-                        }}
-                        placeholder="Category name..."
-                        className="text-xs px-2 py-1 border border-gray-300 rounded outline-none flex-1 focus:border-amber-400"
-                      />
-                      <button onClick={create_category_api} className="text-[10px] px-2 py-1 bg-amber-400 rounded hover:bg-amber-500 font-medium">
-                        Create
-                      </button>
-                      <button onClick={() => { setDisplayCategoryForm(false); setNewCategoryName(""); }} className="text-[10px] px-2 py-1 bg-gray-200 rounded hover:bg-gray-300">
-                        ✕
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setDisplayCategoryForm(true)}
-                      className="text-[10px] px-2 py-1 bg-amber-100 text-amber-800 border border-amber-300 rounded hover:bg-amber-200 font-medium"
-                    >
-                      + Category
-                    </button>
-                  )}
-                  {archivedCategories.length > 0 && (
-                    <div className="relative">
-                      <button
-                        onClick={() => setShowArchive(!showArchive)}
-                        className="text-[10px] px-2 py-1 bg-gray-100 border border-gray-300 rounded hover:bg-gray-200 flex items-center gap-1"
-                      >
-                        <ArchiveIcon style={{ fontSize: 12 }} />
-                        {archivedCategories.length}
-                      </button>
-                      {/* Archive dropdown */}
-                      {showArchive && (
-                        <>
-                          <div className="fixed inset-0 z-[39]" onClick={() => setShowArchive(false)} />
-                          <div className="absolute left-0 top-full mt-1 z-40 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[180px] max-h-[200px] overflow-y-auto">
-                            <h3 className="text-[10px] font-semibold mb-1 text-gray-500">Archived</h3>
-                            {archivedCategories.map(cat => (
-                              <div key={cat.id} className="flex justify-between items-center p-1 rounded hover:bg-gray-50 mb-0.5 text-[10px]">
-                                <span className="font-medium truncate flex-1">{cat.name}</span>
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                  <UnarchiveIcon
-                                    onClick={() => toggle_archive_category(cat.id)}
-                                    className="hover:text-green-600! cursor-pointer"
-                                    style={{ fontSize: 14 }}
-                                  />
-                                  <DeleteForeverIcon
-                                    onClick={() => setConfirmModal({
-                                      message: `Delete "${cat.name}"?`,
-                                      onConfirm: () => { delete_category(cat.id); setConfirmModal(null); },
-                                      onCancel: () => setConfirmModal(null),
-                                    })}
-                                    className="hover:text-red-500! cursor-pointer"
-                                    style={{ fontSize: 14 }}
-                                  />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Category cards */}
-                {activeCategories.map(([catKey, catData]) => {
-                  const catIdeas = categoryOrders[catKey] || [];
-                  const isHovered = dragging && String(hoverCategory) === String(catKey);
-                  const isSelected = String(selectedCategoryId) === String(catKey);
-
-                  return (
-                    <div
-                      key={catKey}
-                      style={{
-                        left: catData.x, top: catData.y + 36,
-                        width: catData.width, height: catData.height,
-                        zIndex: catData.z_index || 0,
-                        backgroundColor: isHovered ? "#fde68a" : isSelected ? "#fef9c3" : "#fef08a",
-                        transition: "background-color 150ms ease",
-                      }}
-                      className={`absolute shadow-lg rounded p-1.5 flex flex-col ${isSelected ? "ring-2 ring-indigo-400 ring-offset-1" : ""}`}
-                      onMouseDown={() => {
-                        bring_to_front_category(catKey);
-                        setSelectedCategoryId(prev => String(prev) === String(catKey) ? null : catKey);
-                      }}
-                    >
-                      {/* Category header */}
-                      <div
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          bring_to_front_category(catKey);
-                          setSelectedCategoryId(prev => String(prev) === String(catKey) ? null : catKey);
-                          handleCategoryDrag(e, catKey);
-                        }}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          setEditingCategoryId(catKey);
-                          setEditingCategoryName(catData.name);
-                        }}
-                        className="flex justify-between items-center mb-0.5 flex-shrink-0 bg-amber-300/50 rounded-t px-1 py-0.5 cursor-grab active:cursor-grabbing border-b border-amber-400/40"
-                      >
-                        {editingCategoryId === catKey ? (
-                          <input
-                            autoFocus
-                            value={editingCategoryName}
-                            onChange={e => setEditingCategoryName(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter") { rename_category_api(catKey, editingCategoryName); setEditingCategoryId(null); }
-                              else if (e.key === "Escape") setEditingCategoryId(null);
-                            }}
-                            onBlur={() => { rename_category_api(catKey, editingCategoryName); setEditingCategoryId(null); }}
-                            onMouseDown={e => e.stopPropagation()}
-                            className="bg-white text-[11px] font-semibold px-1 py-0.5 rounded outline-none border border-blue-400 flex-1 mr-1"
-                          />
-                        ) : (
-                          <span className="font-semibold text-[11px] truncate">{catData.name}</span>
-                        )}
-                        <div className="flex items-center gap-0.5 flex-shrink-0">
-                          {/* Paste into this category */}
-                          {copiedIdeaId && (
-                            <Copy
-                              size={12}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                paste_idea(parseInt(catKey));
-                              }}
-                              className="text-indigo-400 hover:text-indigo-600! cursor-pointer"
-                              title="Paste copied idea here"
-                            />
-                          )}
-                          {/* Archive */}
-                          <ArchiveIcon
-                            onClick={(e) => { e.stopPropagation(); toggle_archive_category(catKey); }}
-                            className="hover:text-amber-700! cursor-pointer" style={{ fontSize: 13 }}
-                          />
-                          {/* Settings dropdown */}
-                          <div className="relative">
-                            <Settings
-                              size={12}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCategorySettingsOpen(prev => prev === catKey ? null : catKey);
-                              }}
-                              className="text-amber-700 hover:text-amber-900 cursor-pointer"
-                            />
-                            {categorySettingsOpen === catKey && (
-                              <>
-                                <div className="fixed inset-0 z-[60]" onClick={() => setCategorySettingsOpen(null)} />
-                                <div className="absolute right-0 top-full mt-1 bg-white rounded shadow-xl border border-gray-200 z-[61] min-w-[140px] py-1">
-                                  {/* Collapse all ideas */}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      const allCollapsed = catIdeas.every(id => collapsedIdeas[id] ?? true);
-                                      const newState = {};
-                                      catIdeas.forEach(id => { newState[id] = allCollapsed ? false : true; });
-                                      setCollapsedIdeas(prev => ({ ...prev, ...newState }));
-                                      setCategorySettingsOpen(null);
-                                    }}
-                                    className="w-full text-left px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                                  >
-                                    <span style={{
-                                      display: "inline-block", width: 0, height: 0, borderStyle: "solid",
-                                      ...(catIdeas.every(id => collapsedIdeas[id] ?? true)
-                                        ? { borderWidth: "4px 3px 0 3px", borderColor: "currentColor transparent transparent transparent" }
-                                        : { borderWidth: "0 3px 4px 3px", borderColor: "transparent transparent currentColor transparent" })
-                                    }} />
-                                    {catIdeas.every(id => collapsedIdeas[id] ?? true) ? "Show full ideas" : "Show headlines only"}
-                                  </button>
-                                  {/* Minimize / Restore */}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (minimizedCategories[catKey]) {
-                                        const orig = minimizedCategories[catKey];
-                                        setCategories(prev => ({ ...prev, [catKey]: { ...prev[catKey], width: orig.width, height: orig.height } }));
-                                        set_area_category(catKey, orig.width, orig.height);
-                                        setMinimizedCategories(prev => { const u = { ...prev }; delete u[catKey]; return u; });
-                                      } else {
-                                        const minW = Math.max(80, catData.name.length * 9 + 60);
-                                        setMinimizedCategories(prev => ({ ...prev, [catKey]: { width: catData.width, height: catData.height } }));
-                                        setCategories(prev => ({ ...prev, [catKey]: { ...prev[catKey], width: minW, height: 30 } }));
-                                        set_area_category(catKey, minW, 30);
-                                      }
-                                      setCategorySettingsOpen(null);
-                                    }}
-                                    className="w-full text-left px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                                  >
-                                    <span className="text-[10px]">{minimizedCategories[catKey] ? "◻" : "—"}</span>
-                                    {minimizedCategories[catKey] ? "Restore size" : "Collapse card"}
-                                  </button>
-                                  {/* Delete */}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setCategorySettingsOpen(null);
-                                      setConfirmModal({
-                                        message: `Delete "${catData.name}"? Its ideas become unassigned.`,
-                                        onConfirm: () => { delete_category(catKey); setConfirmModal(null); },
-                                        onCancel: () => setConfirmModal(null),
-                                      });
-                                    }}
-                                    className="w-full text-left px-3 py-1.5 text-[11px] text-red-600 hover:bg-red-50 flex items-center gap-2"
-                                  >
-                                    <DeleteForeverIcon style={{ fontSize: 13 }} />
-                                    Delete category
-                                  </button>
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Ideas inside category */}
-                      <div
-                        ref={el => (categoryRefs.current[catKey] = el)}
-                        className="flex-1 overflow-y-auto overflow-x-hidden"
-                        onMouseDown={e => e.stopPropagation()}
-                      >
-                        {catIdeas
-                          .filter(ideaId => {
-                            if (globalTypeFilter.length === 0) return true;
-                            const idea = ideas[ideaId];
-                            if (!idea) return false;
-                            const dimId = String(dims.activeDimensionId || "");
-                            const dt = idea.dimension_types?.[dimId];
-                            if (globalTypeFilter.includes("unassigned") && !dt) return true;
-                            if (dt && globalTypeFilter.includes(dt.legend_type_id)) return true;
-                            return false;
-                          })
-                          .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: catKey }))
-                        }
-                      </div>
-
-                      {/* Resize grip */}
-                      <div
-                        onMouseDown={(e) => handleCategoryResize(e, catKey)}
-                        className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize flex items-center justify-center"
-                      >
-                        <span className="text-amber-600/60 text-[8px] leading-none select-none">◢</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <IdeaBinCategoryCanvas
+                categoryContainerRef={categoryContainerRef}
+                displayCategoryForm={displayCategoryForm} setDisplayCategoryForm={setDisplayCategoryForm}
+                newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName}
+                create_category_api={create_category_api}
+                archivedCategories={archivedCategories}
+                showArchive={showArchive} setShowArchive={setShowArchive}
+                toggle_archive_category={toggle_archive_category}
+                delete_category={delete_category}
+                setConfirmModal={setConfirmModal}
+                activeCategories={activeCategories}
+                categoryOrders={categoryOrders}
+                dragging={dragging}
+                hoverCategory={hoverCategory}
+                selectedCategoryId={selectedCategoryId} setSelectedCategoryId={setSelectedCategoryId}
+                bring_to_front_category={bring_to_front_category}
+                handleCategoryDrag={handleCategoryDrag}
+                editingCategoryId={editingCategoryId} setEditingCategoryId={setEditingCategoryId}
+                editingCategoryName={editingCategoryName} setEditingCategoryName={setEditingCategoryName}
+                rename_category_api={rename_category_api}
+                copiedIdeaId={copiedIdeaId}
+                paste_idea={paste_idea}
+                categorySettingsOpen={categorySettingsOpen} setCategorySettingsOpen={setCategorySettingsOpen}
+                collapsedIdeas={collapsedIdeas} setCollapsedIdeas={setCollapsedIdeas}
+                minimizedCategories={minimizedCategories} setMinimizedCategories={setMinimizedCategories}
+                categories={categories} setCategories={setCategories}
+                set_area_category={set_area_category}
+                categoryRefs={categoryRefs}
+                globalTypeFilter={globalTypeFilter}
+                ideas={ideas} dims={dims}
+                renderIdeaItem={renderIdeaItem}
+                handleCategoryResize={handleCategoryResize}
+              />
             )}
           </div>
 
@@ -2744,83 +1700,8 @@ export default function IdeaBin() {
         </div>
       )}
 
-      {/* ── Drag ghosts (fixed, above everything) ── */}
-      {dragging && !externalGhost && (
-        <div
-          style={{
-            top: dragging.y, left: dragging.x,
-            transform: "translate(-50%, -100%)",
-            pointerEvents: "none", zIndex: 99999,
-          }}
-          className="fixed max-w-48 shadow-lg border border-gray-200 bg-white rounded text-gray-800 px-2 py-1 flex items-center text-[10px]"
-        >
-          <span className="whitespace-pre-wrap line-clamp-2">
-            {dragging.idea.headline && <span className="font-semibold">{dragging.idea.headline}: </span>}
-            {dragging.idea.title}
-          </span>
-        </div>
-      )}
-      {draggingLegend && (
-        <div
-          style={{
-            top: draggingLegend.y, left: draggingLegend.x,
-            transform: "translate(-50%, -50%)",
-            pointerEvents: "none", zIndex: 99999,
-            backgroundColor: draggingLegend.color,
-          }}
-          className="fixed w-6 h-6 rounded-full shadow-lg border-2 border-white"
-        />
-      )}
-
-      {/* External drag ghost — visible when dragging an idea outside the IdeaBin window */}
-      {externalGhost && (
-        <div
-          id="ideabin-external-ghost"
-          style={{
-            position: "fixed",
-            left: externalGhost.x + 12,
-            top: externalGhost.y - 8,
-            zIndex: 99999,
-            pointerEvents: "none",
-            maxWidth: 220,
-          }}
-        >
-          <div
-            className="rounded-lg shadow-xl border-2 px-2.5 py-1.5 text-xs font-medium"
-            style={{
-              backgroundColor: externalGhost.dayIndex !== null && externalGhost.dayIndex !== undefined
-                ? "#ede9fe"
-                : externalGhost.teamId
-                  ? (externalGhost.taskId ? "#dbeafe" : "#fef3c7")
-                  : "#ffffff",
-              borderColor: externalGhost.dayIndex !== null && externalGhost.dayIndex !== undefined
-                ? "#7c3aed"
-                : externalGhost.teamId
-                  ? (externalGhost.taskId ? "#3b82f6" : (externalGhost.teamColor || "#f59e0b"))
-                  : "#d1d5db",
-              color: "#1f2937",
-            }}
-          >
-            <div className="truncate">
-              {externalGhost.idea.headline || externalGhost.idea.title.split(/\s+/).slice(0, 5).join(" ")}
-            </div>
-            {externalGhost.dayIndex !== null && externalGhost.dayIndex !== undefined && externalGhost.taskId ? (
-              <div className="text-[10px] mt-0.5 opacity-80">
-                🏁 {externalGhost.dayLabel ? `${externalGhost.dayWeekday || ''} ${externalGhost.dayLabel}`.trim() : `Day ${parseInt(externalGhost.dayIndex) + 1}`}
-              </div>
-            ) : externalGhost.teamId ? (
-              <div className="text-[10px] mt-0.5 opacity-80">
-                {externalGhost.taskId
-                  ? <>🏁 → <span className="font-semibold">{externalGhost.taskName}</span></>
-                  : <>📋 → <span className="font-semibold" style={{ color: externalGhost.teamColor }}>{externalGhost.teamName}</span></>
-                }
-              </div>
-            ) : (
-              <div className="text-[10px] mt-0.5 text-gray-400 italic">Drag onto a team or task...</div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* ── Drag ghosts (extracted) ── */}
+      <IdeaBinDragGhosts dragging={dragging} externalGhost={externalGhost} draggingLegend={draggingLegend} />
     </>
   );
 }
