@@ -24,7 +24,7 @@ from rest_framework.test import APIClient
 
 from api.models import (
     DemoDate,
-    Dimension,
+    Legend,
     LegendType,
     Notification,
     Project,
@@ -139,10 +139,10 @@ class DemoDateModelTest(TestCase):
 class LegendTypeModelTest(TestCase):
     def test_ordering(self):
         user = User.objects.create_user(username="u1", password="p")
-        dim = Dimension.objects.create(name="D", owner=user)
-        lt1 = LegendType.objects.create(name="B", order_index=2, dimension=dim)
-        lt2 = LegendType.objects.create(name="A", order_index=1, dimension=dim)
-        qs = list(LegendType.objects.filter(dimension=dim))
+        dim = Legend.objects.create(name="D", owner=user)
+        lt1 = LegendType.objects.create(name="B", order_index=2, legend=dim)
+        lt2 = LegendType.objects.create(name="A", order_index=1, legend=dim)
+        qs = list(LegendType.objects.filter(legend=dim))
         self.assertEqual(qs[0], lt2)
 
 
@@ -422,30 +422,30 @@ class TaskAssignMemberTest(APITestBase):
 class LegendTypeTest(APITestBase):
     def setUp(self):
         super().setUp()
-        self.dimension = Dimension.objects.create(name="Priority", owner=self.user)
-        self.dim_id = self.dimension.id
+        self.legend = Legend.objects.create(name="Priority", owner=self.user)
+        self.legend_id = self.legend.id
 
     def test_create_legend_type(self):
         response = self.client.post(
-            f"/api/user/dimensions/{self.dim_id}/types/create/",
+            f"/api/user/legends/{self.legend_id}/types/create/",
             {"name": "Bug", "color": "#ff0000"},
             format="json",
         )
         self.assertIn(response.status_code, [200, 201])
 
     def test_update_legend_type(self):
-        lt = LegendType.objects.create(dimension=self.dimension, name="Old", color="#000")
+        lt = LegendType.objects.create(legend=self.legend, name="Old", color="#000")
         response = self.client.post(
-            f"/api/user/dimensions/{self.dim_id}/types/{lt.id}/",
+            f"/api/user/legends/{self.legend_id}/types/{lt.id}/",
             {"name": "New", "color": "#fff"},
             format="json",
         )
         self.assertEqual(response.status_code, 200)
 
     def test_delete_legend_type(self):
-        lt = LegendType.objects.create(dimension=self.dimension, name="Del")
+        lt = LegendType.objects.create(legend=self.legend, name="Del")
         response = self.client.delete(
-            f"/api/user/dimensions/{self.dim_id}/types/{lt.id}/delete/",
+            f"/api/user/legends/{self.legend_id}/types/{lt.id}/delete/",
         )
         self.assertIn(response.status_code, [200, 204])
 
