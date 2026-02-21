@@ -467,14 +467,19 @@ export default function IdeasSidebar({
                   </span>
                 )}
                 {globalTypeFilter.includes(lt.id) && <span className="text-blue-500 text-xs">✓</span>}
-                <input
-                  type="color"
-                  value={lt.color}
-                  onChange={(e) => update_dimension_type(lt.id, { color: e.target.value })}
+                <label
+                  className="relative w-5 h-5 rounded cursor-pointer border border-gray-300 hover:border-blue-400 transition-colors flex-shrink-0"
+                  style={{ backgroundColor: lt.color }}
+                  title="Pick color"
                   onClick={(e) => e.stopPropagation()}
-                  className="w-4 h-4 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="Change color"
-                />
+                >
+                  <input
+                    type="color"
+                    value={lt.color}
+                    onChange={(e) => update_dimension_type(lt.id, { color: e.target.value })}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                </label>
                 <DeleteForeverIcon
                   onClick={(e) => { e.stopPropagation(); delete_dimension_type(lt.id); }}
                   className="text-gray-300 hover:text-red-500! cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"

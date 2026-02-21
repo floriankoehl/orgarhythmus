@@ -1669,7 +1669,7 @@ export default function IdeaBin() {
                       .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: listFilter }))
                 }              </div>
 
-              {/* ── Dimensions panel ── */}
+              {/* ── Dimensions panel (selector only — types managed on Ideas page) ── */}
               <div className="bg-white border-t border-gray-200 p-2 flex-shrink-0">
                 <div
                   className="flex items-center justify-between cursor-pointer"
@@ -1827,12 +1827,18 @@ export default function IdeaBin() {
                           </span>
                         )}
                         {globalTypeFilter.includes(lt.id) && <span className="text-blue-500">✓</span>}
-                        <input
-                          type="color" value={lt.color}
-                          onChange={e => dims.update_dimension_type(lt.id, { color: e.target.value })}
-                          onClick={e => e.stopPropagation()}
-                          className="w-3 h-3 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-                        />
+                        <label
+                          className="relative w-4 h-4 rounded cursor-pointer border border-gray-300 hover:border-blue-400 transition-colors flex-shrink-0"
+                          style={{ backgroundColor: lt.color }}
+                          title="Pick color"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="color" value={lt.color}
+                            onChange={e => dims.update_dimension_type(lt.id, { color: e.target.value })}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          />
+                        </label>
                         <DeleteForeverIcon
                           onClick={e => { e.stopPropagation(); dims.delete_dimension_type(lt.id); }}
                           className="text-gray-300 hover:text-red-500! cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
@@ -1844,7 +1850,13 @@ export default function IdeaBin() {
                     {showCreateLegend ? (
                       <div className="mt-1 p-1.5 bg-gray-50 rounded border border-gray-200">
                         <div className="flex items-center gap-1 mb-1">
-                          <input type="color" value={newLegendColor} onChange={e => setNewLegendColor(e.target.value)} className="w-4 h-4 cursor-pointer rounded" />
+                          <label
+                            className="relative w-5 h-5 rounded cursor-pointer border border-gray-300 hover:border-blue-400 transition-colors flex-shrink-0"
+                            style={{ backgroundColor: newLegendColor }}
+                            title="Pick color"
+                          >
+                            <input type="color" value={newLegendColor} onChange={e => setNewLegendColor(e.target.value)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                          </label>
                           <input
                             autoFocus value={newLegendName} onChange={e => setNewLegendName(e.target.value)}
                             onKeyDown={e => {
