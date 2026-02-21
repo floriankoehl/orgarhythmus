@@ -143,11 +143,14 @@ export default function IdeaBin({ mode = "floating" }) {
   const [hoverIdeaForLegend, setHoverIdeaForLegend] = useState(null);
 
   // ───── Legend Variant state ─────
-  const [legendVariants, setLegendVariants] = useState([]);
-  const [activeVariantId, setActiveVariantId] = useState(null);
-  const [showVariantPanel, setShowVariantPanel] = useState(false);
-  const [newVariantName, setNewVariantName] = useState("");
-  const [variantFilters, setVariantFilters] = useState({}); // { variantId: [typeId, ...] }
+  const [dimensions, setDimensions] = useState([]);
+  const [activeDimensionId, setActiveDimensionId] = useState(null);
+  const [showDimensionsPanel, setShowDimensionsPanel] = useState(false);
+  const [newDimensionName, setNewDimensionName] = useState("");
+  const [dimensionFilters, setDimensionFilters] = useState({}); // { dimensionId: { mode: "include"|"exclude", types: [typeId, ...] } }
+
+  // ───── IdeaReference state ─────
+  const [copiedIdeaId, setCopiedIdeaId] = useState(null);
 
   // Refs
   const IdeaListRef = useRef(null);
@@ -458,6 +461,23 @@ export default function IdeaBin({ mode = "floating" }) {
     });
     playSound('ideaDelete');
     fetch_all_ideas();
+  };
+
+  const copy_idea_api = async (ideaId) => {
+    try {
+      const res = await authFetch(`${API}/copy_idea/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idea_id: ideaId }),
+      });
+      const data = await res.json();
+      if (data.idea) {
+        const idea = data.idea;
+        setIdeas(prev => ({ ...prev, [idea.id]: idea }));
+        setUnassignedOrder(prev => [...prev, idea.id]);
+        playSound('ideaAdd');
+      }
+    } catch (err) { console.error("copy idea failed", err); }
   };
 
   const update_idea_title_api = async (id, title, headline = null) => {
@@ -949,39 +969,39 @@ export default function IdeaBin({ mode = "floating" }) {
   // ═══════════  LEGEND VARIANT API  ══════════════════════
   // ═══════════════════════════════════════════════════════
 
-  const fetch_legend_variants = async () => {
+  const fetch_dimensions = async () => {
     if (!projectId) return;
     try {
-      const res = await authFetch(`${API}/legend_variants/`);
+      const res = await authFetch(`${API}/dimensions/`);
       const data = await res.json();
-      setLegendVariants(data?.legend_variants || []);
+      setDimensions(data?.dimensions || data?.legend_variants || []);
     } catch (err) { console.error("IdeaBin: fetch legend variants failed", err); }
   };
 
-  const create_legend_variant = async (name) => {
-    const res = await authFetch(`${API}/legend_variants/create/`, {
+  const create_dimension = async (name) => {
+    const res = await authFetch(`${API}/dimensions/create/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
     const data = await res.json();
-    if (data.legend_variant) {
-      setLegendVariants(prev => [...prev, data.legend_variant]);
+    if (data.dimension || data.legend_variant) {
+      setDimensions(prev => [...prev, data.dimension || data.legend_variant]);
     }
   };
 
-  const delete_legend_variant = async (id) => {
-    await authFetch(`${API}/legend_variants/delete/`, {
+  const delete_dimension = async (id) => {
+    await authFetch(`${API}/dimensions/delete/`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
     });
-    setLegendVariants(prev => prev.filter(v => v.id !== id));
-    if (activeVariantId === id) setActiveVariantId(null);
+    setDimensions(prev => prev.filter(v => v.id !== id));
+    if (activeDimensionId === id) setActiveDimensionId(null);
   };
 
-  const create_variant_legend_type = async (variantId, name, color) => {
-    const res = await authFetch(`${API}/legend_variants/create_type/`, {
+  const create_dimension_legend_type = async (variantId, name, color) => {
+    const res = await authFetch(`${API}/dimensions/create_type/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ variant_id: variantId, name, color }),
@@ -989,7 +1009,7 @@ export default function IdeaBin({ mode = "floating" }) {
     const data = await res.json();
     if (data.legend_type) {
       setLegendTypes(prev => ({ ...prev, [data.legend_type.id]: data.legend_type }));
-      fetch_legend_variants(); // refresh to get updated variant.legend_types
+      fetch_dimensions(); // refresh to get updated variant.legend_types
     }
   };
 
@@ -1014,14 +1034,17 @@ export default function IdeaBin({ mode = "floating" }) {
       return true;
     }
 
-    // Variant filter: stackable across variants
-    const activeVariantFilters = Object.entries(variantFilters).filter(([, types]) => types.length > 0);
-    if (activeVariantFilters.length > 0) {
-      // ALL variant filters must match (AND logic)
-      const ideaTypeIds = idea.legend_type_ids || (idea.legend_type_id ? [idea.legend_type_id] : []);
-      for (const [, requiredTypes] of activeVariantFilters) {
-        const hasMatch = requiredTypes.some(t => ideaTypeIds.includes(t));
+    // Dimension filter: stackable across dimensions (AND logic)
+    const ideaTypeIds = idea.legend_type_ids || (idea.legend_type_id ? [idea.legend_type_id] : []);
+    for (const [dimId, filter] of Object.entries(dimensionFilters)) {
+      if (!filter || !filter.types || filter.types.length === 0) continue;
+      const { mode, types } = filter;
+      if (mode === "include") {
+        const hasMatch = types.some(t => t === "unassigned" ? ideaTypeIds.length === 0 : ideaTypeIds.includes(t));
         if (!hasMatch) return false;
+      } else if (mode === "exclude") {
+        const hasExcluded = types.some(t => t === "unassigned" ? ideaTypeIds.length === 0 : ideaTypeIds.includes(t));
+        if (hasExcluded) return false;
       }
     }
 
@@ -1037,7 +1060,7 @@ export default function IdeaBin({ mode = "floating" }) {
       fetch_categories();
       fetch_all_ideas();
       fetch_legend_types();
-      fetch_legend_variants();
+      fetch_dimensions();
     }
   }, [projectId, isOpen, isEmbedded]);
 
@@ -1356,6 +1379,14 @@ export default function IdeaBin({ mode = "floating" }) {
                 className="hover:text-red-500! cursor-pointer"
                 style={{ fontSize: 13 }}
               />
+              <span
+                onClick={(e) => { e.stopPropagation(); copy_idea_api(ideaId); }}
+                className="hover:text-green-500 cursor-pointer text-[10px]"
+                title="Copy idea"
+              >📋</span>
+              {idea.idea_reference && (
+                <span className="text-[9px] text-gray-400" title="Has copies">📎</span>
+              )}
             </div>
           </div>
         )}
@@ -1694,217 +1725,260 @@ export default function IdeaBin({ mode = "floating" }) {
               .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: listFilter }))
         }              </div>
 
-      {/* ── Legend panel ── */}
+      {/* ── Dimensions panel ── */}
       <div className="bg-white border-t border-gray-200 p-2 flex-shrink-0">
         <div
           className="flex items-center justify-between cursor-pointer"
           onClick={() => setLegendCollapsed(!legendCollapsed)}
         >
           <h3 className="text-[10px] font-semibold text-gray-500">
-            Legend {(globalTypeFilter.length > 0 || globalTypeExclude.length > 0) && <span className="text-blue-500">(filtered)</span>}
+            Dimensions {Object.values(dimensionFilters).some(f => f?.types?.length > 0) && <span className="text-blue-500">(filtered)</span>}
           </h3>
-          <span className="text-gray-400 text-[10px]">{legendCollapsed ? "▲" : "▼"}</span>
+          <div className="flex items-center gap-1">
+            {Object.values(dimensionFilters).some(f => f?.types?.length > 0) && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setDimensionFilters({}); }}
+                className="text-[9px] px-1 py-0.5 bg-blue-100 text-blue-600 rounded hover:bg-blue-200"
+              >
+                Clear All
+              </button>
+            )}
+            <span className="text-gray-400 text-[10px]">{legendCollapsed ? "▲" : "▼"}</span>
+          </div>
         </div>
         {!legendCollapsed && (
           <div className="mt-1">
-            {/* Filter mode toggle */}
-            <div className="flex items-center gap-1 mb-1.5">
-              <button
-                onClick={() => { setFilterMode("include"); setGlobalTypeExclude([]); }}
-                className={`flex-1 text-[9px] px-1 py-0.5 rounded ${filterMode === "include" ? "bg-blue-100 text-blue-700 font-medium" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
-              >
-                <Eye size={9} className="inline mr-0.5" /> Show only
-              </button>
-              <button
-                onClick={() => { setFilterMode("exclude"); setGlobalTypeFilter([]); }}
-                className={`flex-1 text-[9px] px-1 py-0.5 rounded ${filterMode === "exclude" ? "bg-red-100 text-red-700 font-medium" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
-              >
-                <EyeOff size={9} className="inline mr-0.5" /> Exclude
-              </button>
-            </div>
-            {(globalTypeFilter.length > 0 || globalTypeExclude.length > 0) && (
-              <button
-                onClick={() => { setGlobalTypeFilter([]); setGlobalTypeExclude([]); }}
-                className="w-full mb-1 text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded hover:bg-blue-200"
-              >
-                Clear Filter
-              </button>
-            )}
-            {/* Unassigned type */}
-            <div
-              className={`flex items-center gap-1.5 mb-1 cursor-pointer rounded px-1 py-0.5 text-[10px] ${
-                (filterMode === "include" && globalTypeFilter.includes("unassigned")) || (filterMode === "exclude" && globalTypeExclude.includes("unassigned"))
-                  ? (filterMode === "exclude" ? "bg-red-100" : "bg-gray-200")
-                  : "hover:bg-gray-100"
-              }`}
-              onClick={() => {
-                if (filterMode === "include") {
-                  setGlobalTypeFilter(prev => prev.includes("unassigned") ? prev.filter(t => t !== "unassigned") : [...prev, "unassigned"]);
-                } else {
-                  setGlobalTypeExclude(prev => prev.includes("unassigned") ? prev.filter(t => t !== "unassigned") : [...prev, "unassigned"]);
-                }
-              }}
-            >
-              <div
-                onMouseDown={(e) => { e.stopPropagation(); handleLegendDrag(e, null); }}
-                className="w-4 h-4 rounded-full cursor-grab bg-gray-700 border border-gray-300 hover:scale-110 transition-transform"
-              />
-              <span className="text-gray-500 italic flex-1">Unassigned</span>
-              {filterMode === "include" && globalTypeFilter.includes("unassigned") && <span className="text-blue-500">✓</span>}
-              {filterMode === "exclude" && globalTypeExclude.includes("unassigned") && <span className="text-red-500">✕</span>}
-            </div>
-            {/* Custom types */}
-            {Object.values(legendTypes).map(lt => (
-              <div
-                key={lt.id}
-                className={`flex items-center gap-1.5 mb-1 group cursor-pointer rounded px-1 py-0.5 text-[10px] ${
-                  (filterMode === "include" && globalTypeFilter.includes(lt.id)) || (filterMode === "exclude" && globalTypeExclude.includes(lt.id))
-                    ? (filterMode === "exclude" ? "bg-red-100" : "bg-gray-200")
-                    : "hover:bg-gray-100"
-                }`}
-                onClick={() => {
-                  if (filterMode === "include") {
-                    setGlobalTypeFilter(prev => prev.includes(lt.id) ? prev.filter(t => t !== lt.id) : [...prev, lt.id]);
-                  } else {
-                    setGlobalTypeExclude(prev => prev.includes(lt.id) ? prev.filter(t => t !== lt.id) : [...prev, lt.id]);
-                  }
-                }}
-              >
-                <div
-                  onMouseDown={(e) => { e.stopPropagation(); handleLegendDrag(e, lt.id); }}
-                  className="w-4 h-4 rounded-full cursor-grab border border-gray-200 hover:scale-110 transition-transform"
-                  style={{ backgroundColor: lt.color }}
-                />
-                {editingLegendId === lt.id ? (
-                  <input
-                    autoFocus
-                    value={editingLegendName}
-                    onChange={e => setEditingLegendName(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === "Enter") { update_legend_type(lt.id, { name: editingLegendName }); setEditingLegendId(null); }
-                      else if (e.key === "Escape") setEditingLegendId(null);
-                    }}
-                    onBlur={() => { update_legend_type(lt.id, { name: editingLegendName }); setEditingLegendId(null); }}
-                    onClick={e => e.stopPropagation()}
-                    className="text-[10px] px-1 py-0.5 border border-blue-400 rounded outline-none flex-1 min-w-0"
-                  />
-                ) : (
-                  <span
-                    onDoubleClick={e => { e.stopPropagation(); setEditingLegendId(lt.id); setEditingLegendName(lt.name); }}
-                    className="text-gray-700 cursor-text flex-1"
-                  >
-                    {lt.name}
-                  </span>
-                )}
-                {globalTypeFilter.includes(lt.id) && <span className="text-blue-500">✓</span>}
-                {globalTypeExclude.includes(lt.id) && <span className="text-red-500">✕</span>}
-                <input
-                  type="color" value={lt.color}
-                  onChange={e => update_legend_type(lt.id, { color: e.target.value })}
-                  onClick={e => e.stopPropagation()}
-                  className="w-3 h-3 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-                />
-                <DeleteForeverIcon
-                  onClick={e => { e.stopPropagation(); delete_legend_type(lt.id); }}
-                  className="text-gray-300 hover:text-red-500! cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ fontSize: 13 }}
-                />
-              </div>
-            ))}
-            {/* Create legend */}
-            {showCreateLegend ? (
-              <div className="mt-1 p-1.5 bg-gray-50 rounded border border-gray-200">
-                <div className="flex items-center gap-1 mb-1">
-                  <input type="color" value={newLegendColor} onChange={e => setNewLegendColor(e.target.value)} className="w-4 h-4 cursor-pointer rounded" />
-                  <input
-                    autoFocus value={newLegendName} onChange={e => setNewLegendName(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === "Enter" && newLegendName.trim()) {
-                        create_legend_type(newLegendName, newLegendColor);
-                        setNewLegendName(""); setNewLegendColor("#6366f1"); setShowCreateLegend(false);
-                      } else if (e.key === "Escape") setShowCreateLegend(false);
-                    }}
-                    placeholder="Type name..."
-                    className="text-[10px] px-1.5 py-0.5 border border-gray-300 rounded outline-none flex-1 focus:border-blue-400"
-                  />
+            {/* General (project-level) types */}
+            {Object.values(legendTypes).length > 0 && (
+              <div className="mb-2">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">General</span>
                 </div>
-                <div className="flex gap-1">
+                {/* Filter mode toggle for general types */}
+                <div className="flex items-center gap-1 mb-1">
                   <button
+                    onClick={() => { setFilterMode("include"); setGlobalTypeExclude([]); }}
+                    className={`flex-1 text-[9px] px-1 py-0.5 rounded ${filterMode === "include" ? "bg-blue-100 text-blue-700 font-medium" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
+                  >
+                    <Eye size={9} className="inline mr-0.5" /> Show
+                  </button>
+                  <button
+                    onClick={() => { setFilterMode("exclude"); setGlobalTypeFilter([]); }}
+                    className={`flex-1 text-[9px] px-1 py-0.5 rounded ${filterMode === "exclude" ? "bg-red-100 text-red-700 font-medium" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
+                  >
+                    <EyeOff size={9} className="inline mr-0.5" /> Excl
+                  </button>
+                  {(globalTypeFilter.length > 0 || globalTypeExclude.length > 0) && (
+                    <button
+                      onClick={() => { setGlobalTypeFilter([]); setGlobalTypeExclude([]); }}
+                      className="text-[9px] px-1 py-0.5 bg-gray-100 text-gray-500 rounded hover:bg-gray-200"
+                    >✕</button>
+                  )}
+                </div>
+                {/* Unassigned type */}
+                <div
+                  className={`flex items-center gap-1.5 mb-1 cursor-pointer rounded px-1 py-0.5 text-[10px] ${
+                    (filterMode === "include" && globalTypeFilter.includes("unassigned")) || (filterMode === "exclude" && globalTypeExclude.includes("unassigned"))
+                      ? (filterMode === "exclude" ? "bg-red-100" : "bg-gray-200")
+                      : "hover:bg-gray-100"
+                  }`}
+                  onClick={() => {
+                    if (filterMode === "include") {
+                      setGlobalTypeFilter(prev => prev.includes("unassigned") ? prev.filter(t => t !== "unassigned") : [...prev, "unassigned"]);
+                    } else {
+                      setGlobalTypeExclude(prev => prev.includes("unassigned") ? prev.filter(t => t !== "unassigned") : [...prev, "unassigned"]);
+                    }
+                  }}
+                >
+                  <div
+                    onMouseDown={(e) => { e.stopPropagation(); handleLegendDrag(e, null); }}
+                    className="w-4 h-4 rounded-full cursor-grab bg-gray-700 border border-gray-300 hover:scale-110 transition-transform"
+                  />
+                  <span className="text-gray-500 italic flex-1">Unassigned</span>
+                  {filterMode === "include" && globalTypeFilter.includes("unassigned") && <span className="text-blue-500">✓</span>}
+                  {filterMode === "exclude" && globalTypeExclude.includes("unassigned") && <span className="text-red-500">✕</span>}
+                </div>
+                {Object.values(legendTypes).map(lt => (
+                  <div
+                    key={lt.id}
+                    className={`flex items-center gap-1.5 mb-1 group cursor-pointer rounded px-1 py-0.5 text-[10px] ${
+                      (filterMode === "include" && globalTypeFilter.includes(lt.id)) || (filterMode === "exclude" && globalTypeExclude.includes(lt.id))
+                        ? (filterMode === "exclude" ? "bg-red-100" : "bg-gray-200")
+                        : "hover:bg-gray-100"
+                    }`}
                     onClick={() => {
-                      if (newLegendName.trim()) {
-                        create_legend_type(newLegendName, newLegendColor);
-                        setNewLegendName(""); setNewLegendColor("#6366f1"); setShowCreateLegend(false);
+                      if (filterMode === "include") {
+                        setGlobalTypeFilter(prev => prev.includes(lt.id) ? prev.filter(t => t !== lt.id) : [...prev, lt.id]);
+                      } else {
+                        setGlobalTypeExclude(prev => prev.includes(lt.id) ? prev.filter(t => t !== lt.id) : [...prev, lt.id]);
                       }
                     }}
-                    className="flex-1 text-[10px] px-1.5 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600"
                   >
-                    Create
+                    <div
+                      onMouseDown={(e) => { e.stopPropagation(); handleLegendDrag(e, lt.id); }}
+                      className="w-4 h-4 rounded-full cursor-grab border border-gray-200 hover:scale-110 transition-transform"
+                      style={{ backgroundColor: lt.color }}
+                    />
+                    {editingLegendId === lt.id ? (
+                      <input
+                        autoFocus
+                        value={editingLegendName}
+                        onChange={e => setEditingLegendName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") { update_legend_type(lt.id, { name: editingLegendName }); setEditingLegendId(null); }
+                          else if (e.key === "Escape") setEditingLegendId(null);
+                        }}
+                        onBlur={() => { update_legend_type(lt.id, { name: editingLegendName }); setEditingLegendId(null); }}
+                        onClick={e => e.stopPropagation()}
+                        className="text-[10px] px-1 py-0.5 border border-blue-400 rounded outline-none flex-1 min-w-0"
+                      />
+                    ) : (
+                      <span
+                        onDoubleClick={e => { e.stopPropagation(); setEditingLegendId(lt.id); setEditingLegendName(lt.name); }}
+                        className="text-gray-700 cursor-text flex-1"
+                      >
+                        {lt.name}
+                      </span>
+                    )}
+                    {globalTypeFilter.includes(lt.id) && <span className="text-blue-500">✓</span>}
+                    {globalTypeExclude.includes(lt.id) && <span className="text-red-500">✕</span>}
+                    <input
+                      type="color" value={lt.color}
+                      onChange={e => update_legend_type(lt.id, { color: e.target.value })}
+                      onClick={e => e.stopPropagation()}
+                      className="w-3 h-3 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                    />
+                    <DeleteForeverIcon
+                      onClick={e => { e.stopPropagation(); delete_legend_type(lt.id); }}
+                      className="text-gray-300 hover:text-red-500! cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                      style={{ fontSize: 13 }}
+                    />
+                  </div>
+                ))}
+                {/* Create general legend type */}
+                {showCreateLegend ? (
+                  <div className="mt-1 p-1.5 bg-gray-50 rounded border border-gray-200">
+                    <div className="flex items-center gap-1 mb-1">
+                      <input type="color" value={newLegendColor} onChange={e => setNewLegendColor(e.target.value)} className="w-4 h-4 cursor-pointer rounded" />
+                      <input
+                        autoFocus value={newLegendName} onChange={e => setNewLegendName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && newLegendName.trim()) {
+                            create_legend_type(newLegendName, newLegendColor);
+                            setNewLegendName(""); setNewLegendColor("#6366f1"); setShowCreateLegend(false);
+                          } else if (e.key === "Escape") setShowCreateLegend(false);
+                        }}
+                        placeholder="Type name..."
+                        className="text-[10px] px-1.5 py-0.5 border border-gray-300 rounded outline-none flex-1 focus:border-blue-400"
+                      />
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => {
+                          if (newLegendName.trim()) {
+                            create_legend_type(newLegendName, newLegendColor);
+                            setNewLegendName(""); setNewLegendColor("#6366f1"); setShowCreateLegend(false);
+                          }
+                        }}
+                        className="flex-1 text-[10px] px-1.5 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600"
+                      >
+                        Create
+                      </button>
+                      <button onClick={() => setShowCreateLegend(false)} className="text-[10px] px-1.5 py-0.5 bg-gray-200 rounded hover:bg-gray-300">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowCreateLegend(true)}
+                    className="w-full mt-1 text-[10px] px-1.5 py-1 border border-dashed border-gray-300 rounded text-gray-500 hover:border-gray-400 hover:bg-gray-50 transition-colors"
+                  >
+                    + Add Type
                   </button>
-                  <button onClick={() => setShowCreateLegend(false)} className="text-[10px] px-1.5 py-0.5 bg-gray-200 rounded hover:bg-gray-300">
-                    Cancel
-                  </button>
-                </div>
+                )}
               </div>
-            ) : (
-              <button
-                onClick={() => setShowCreateLegend(true)}
-                className="w-full mt-1 text-[10px] px-1.5 py-1 border border-dashed border-gray-300 rounded text-gray-500 hover:border-gray-400 hover:bg-gray-50 transition-colors"
-              >
-                + Add Type
-              </button>
             )}
 
-            {/* Legend Variants (Perspectives) */}
-            <div className="mt-2 pt-2 border-t border-gray-200">
-              <div
-                className="flex items-center justify-between cursor-pointer mb-1"
-                onClick={() => setShowVariantPanel(!showVariantPanel)}
-              >
-                <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Perspectives</span>
-                <span className="text-gray-400 text-[9px]">{showVariantPanel ? "▼" : "▶"}</span>
-              </div>
-              {showVariantPanel && (
-                <div>
-                  {legendVariants.map(variant => (
-                    <div key={variant.id} className="mb-1.5">
+            {/* Dimensions list */}
+            <div className="mt-1 pt-1 border-t border-gray-100">
+              <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Dimensions</span>
+              <div className="mt-1">
+                {dimensions.map(dimension => {
+                  const dimFilter = dimensionFilters[dimension.id] || { mode: "include", types: [] };
+                  const hasFilter = dimFilter.types.length > 0;
+                  const isExpanded = activeDimensionId === dimension.id;
+                  return (
+                    <div key={dimension.id} className="mb-1.5 border border-gray-100 rounded p-1 bg-gray-50">
                       <div className="flex items-center justify-between">
                         <span
-                          onClick={() => setActiveVariantId(activeVariantId === variant.id ? null : variant.id)}
-                          className={`text-[10px] font-medium cursor-pointer ${activeVariantId === variant.id ? "text-blue-600" : "text-gray-600 hover:text-gray-800"}`}
+                          onClick={() => setActiveDimensionId(isExpanded ? null : dimension.id)}
+                          className={`text-[10px] font-medium cursor-pointer flex-1 ${isExpanded ? "text-blue-600" : "text-gray-600 hover:text-gray-800"}`}
                         >
-                          {variant.name}
+                          {isExpanded ? "▼" : "▶"} {dimension.name}
                         </span>
-                        <DeleteForeverIcon
-                          onClick={(e) => { e.stopPropagation(); delete_legend_variant(variant.id); }}
-                          className="text-gray-300 hover:text-red-500! cursor-pointer"
-                          style={{ fontSize: 11 }}
-                        />
+                        <div className="flex items-center gap-0.5">
+                          {hasFilter && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDimensionFilters(prev => ({ ...prev, [dimension.id]: { mode: "include", types: [] } })); }}
+                              className="text-[8px] text-blue-500 hover:text-blue-700 px-0.5"
+                              title="Clear dimension filter"
+                            >✕</button>
+                          )}
+                          <DeleteForeverIcon
+                            onClick={(e) => { e.stopPropagation(); delete_dimension(dimension.id); }}
+                            className="text-gray-300 hover:text-red-500! cursor-pointer"
+                            style={{ fontSize: 11 }}
+                          />
+                        </div>
                       </div>
-                      {activeVariantId === variant.id && (
-                        <div className="ml-2 mt-0.5">
-                          {(variant.legend_types || []).map(lt => (
-                            <div
-                              key={lt.id}
-                              className={`flex items-center gap-1 text-[9px] py-0.5 cursor-pointer rounded px-1 ${
-                                (variantFilters[variant.id] || []).includes(lt.id) ? "bg-blue-100" : "hover:bg-gray-100"
-                              }`}
-                              onClick={() => {
-                                setVariantFilters(prev => {
-                                  const current = prev[variant.id] || [];
-                                  const updated = current.includes(lt.id) ? current.filter(t => t !== lt.id) : [...current, lt.id];
-                                  return { ...prev, [variant.id]: updated };
-                                });
-                              }}
+                      {isExpanded && (
+                        <div className="mt-1">
+                          {/* Filter mode toggle per dimension */}
+                          <div className="flex items-center gap-1 mb-1">
+                            <button
+                              onClick={() => setDimensionFilters(prev => ({ ...prev, [dimension.id]: { ...(prev[dimension.id] || {}), mode: "include", types: [] } }))}
+                              className={`flex-1 text-[8px] px-1 py-0.5 rounded ${dimFilter.mode === "include" ? "bg-blue-100 text-blue-700 font-medium" : "bg-gray-100 text-gray-500"}`}
                             >
-                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: lt.color }} />
-                              <span className="flex-1">{lt.name}</span>
-                              {(variantFilters[variant.id] || []).includes(lt.id) && <span className="text-blue-500 text-[8px]">✓</span>}
-                            </div>
-                          ))}
+                              <Eye size={8} className="inline" /> Show
+                            </button>
+                            <button
+                              onClick={() => setDimensionFilters(prev => ({ ...prev, [dimension.id]: { ...(prev[dimension.id] || {}), mode: "exclude", types: [] } }))}
+                              className={`flex-1 text-[8px] px-1 py-0.5 rounded ${dimFilter.mode === "exclude" ? "bg-red-100 text-red-700 font-medium" : "bg-gray-100 text-gray-500"}`}
+                            >
+                              <EyeOff size={8} className="inline" /> Excl
+                            </button>
+                          </div>
+                          {(dimension.legend_types || []).map(lt => {
+                            const isFiltered = dimFilter.types.includes(lt.id);
+                            return (
+                              <div
+                                key={lt.id}
+                                className={`flex items-center gap-1 text-[9px] py-0.5 cursor-pointer rounded px-1 ${
+                                  isFiltered ? (dimFilter.mode === "exclude" ? "bg-red-100" : "bg-blue-100") : "hover:bg-gray-100"
+                                }`}
+                                onClick={() => {
+                                  setDimensionFilters(prev => {
+                                    const cur = prev[dimension.id] || { mode: "include", types: [] };
+                                    const types = cur.types.includes(lt.id) ? cur.types.filter(t => t !== lt.id) : [...cur.types, lt.id];
+                                    return { ...prev, [dimension.id]: { ...cur, types } };
+                                  });
+                                }}
+                              >
+                                <div
+                                  onMouseDown={(e) => { e.stopPropagation(); handleLegendDrag(e, lt.id); }}
+                                  className="w-2.5 h-2.5 rounded-full flex-shrink-0 cursor-grab hover:scale-110 transition-transform"
+                                  style={{ backgroundColor: lt.color }}
+                                />
+                                <span className="flex-1">{lt.name}</span>
+                                {isFiltered && <span className={dimFilter.mode === "exclude" ? "text-red-500 text-[8px]" : "text-blue-500 text-[8px]"}>{dimFilter.mode === "exclude" ? "✕" : "✓"}</span>}
+                              </div>
+                            );
+                          })}
                           <button
                             onClick={() => {
                               const name = prompt("New type name:");
-                              if (name?.trim()) create_variant_legend_type(variant.id, name.trim(), "#6366f1");
+                              if (name?.trim()) create_dimension_legend_type(dimension.id, name.trim(), "#6366f1");
                             }}
                             className="text-[9px] text-gray-400 hover:text-gray-600 mt-0.5 pl-1"
                           >
@@ -1913,23 +1987,23 @@ export default function IdeaBin({ mode = "floating" }) {
                         </div>
                       )}
                     </div>
-                  ))}
-                  <div className="flex items-center gap-1 mt-1">
-                    <input
-                      value={newVariantName}
-                      onChange={e => setNewVariantName(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === "Enter" && newVariantName.trim()) {
-                          create_legend_variant(newVariantName.trim());
-                          setNewVariantName("");
-                        } else if (e.key === "Escape") setNewVariantName("");
-                      }}
-                      placeholder="New perspective..."
-                      className="text-[9px] px-1 py-0.5 border border-gray-200 rounded outline-none flex-1 focus:border-blue-300"
-                    />
-                  </div>
+                  );
+                })}
+                <div className="flex items-center gap-1 mt-1">
+                  <input
+                    value={newDimensionName}
+                    onChange={e => setNewDimensionName(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && newDimensionName.trim()) {
+                        create_dimension(newDimensionName.trim());
+                        setNewDimensionName("");
+                      } else if (e.key === "Escape") setNewDimensionName("");
+                    }}
+                    placeholder="New dimension..."
+                    className="text-[9px] px-1 py-0.5 border border-gray-200 rounded outline-none flex-1 focus:border-blue-300"
+                  />
                 </div>
-              )}
+              </div>
             </div>
           </div>
         )}
@@ -1974,43 +2048,43 @@ export default function IdeaBin({ mode = "floating" }) {
             </button>
           )}
           {archivedCategories.length > 0 && (
-            <button
-              onClick={() => setShowArchive(!showArchive)}
-              className="text-[10px] px-2 py-1 bg-gray-100 border border-gray-300 rounded hover:bg-gray-200 flex items-center gap-1"
-            >
-              <ArchiveIcon style={{ fontSize: 12 }} />
-              {archivedCategories.length}
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowArchive(!showArchive)}
+                className="text-[10px] px-2 py-1 bg-gray-100 border border-gray-300 rounded hover:bg-gray-200 flex items-center gap-1"
+              >
+                <ArchiveIcon style={{ fontSize: 12 }} />
+                {archivedCategories.length}
+              </button>
+              {showArchive && (
+                <div className="absolute top-full left-0 mt-1 z-40 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[180px] max-h-[200px] overflow-y-auto">
+                  <h3 className="text-[10px] font-semibold mb-1 text-gray-500">Archived</h3>
+                  {archivedCategories.map(cat => (
+                    <div key={cat.id} className="flex justify-between items-center p-1 rounded hover:bg-gray-50 mb-0.5 text-[10px]">
+                      <span className="font-medium truncate flex-1">{cat.name}</span>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <UnarchiveIcon
+                          onClick={() => toggle_archive_category(cat.id)}
+                          className="hover:text-green-600! cursor-pointer"
+                          style={{ fontSize: 14 }}
+                        />
+                        <DeleteForeverIcon
+                          onClick={() => setConfirmModal({
+                            message: `Delete "${cat.name}"?`,
+                            onConfirm: () => { delete_category(cat.id); setConfirmModal(null); },
+                            onCancel: () => setConfirmModal(null),
+                          })}
+                          className="hover:text-red-500! cursor-pointer"
+                          style={{ fontSize: 14 }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
-
-        {/* Archive dropdown */}
-        {showArchive && archivedCategories.length > 0 && (
-          <div className="absolute top-10 right-2 z-40 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[180px] max-h-[200px] overflow-y-auto">
-            <h3 className="text-[10px] font-semibold mb-1 text-gray-500">Archived</h3>
-            {archivedCategories.map(cat => (
-              <div key={cat.id} className="flex justify-between items-center p-1 rounded hover:bg-gray-50 mb-0.5 text-[10px]">
-                <span className="font-medium truncate flex-1">{cat.name}</span>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <UnarchiveIcon
-                    onClick={() => toggle_archive_category(cat.id)}
-                    className="hover:text-green-600! cursor-pointer"
-                    style={{ fontSize: 14 }}
-                  />
-                  <DeleteForeverIcon
-                    onClick={() => setConfirmModal({
-                      message: `Delete "${cat.name}"?`,
-                      onConfirm: () => { delete_category(cat.id); setConfirmModal(null); },
-                      onCancel: () => setConfirmModal(null),
-                    })}
-                    className="hover:text-red-500! cursor-pointer"
-                    style={{ fontSize: 14 }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* Category cards */}
         {activeCategories.map(([catKey, catData]) => {
