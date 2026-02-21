@@ -1,7 +1,7 @@
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
-import { Copy, Settings } from "lucide-react";
+import { Copy, Settings, Globe, Lock, UserRound, LinkIcon } from "lucide-react";
 
 /**
  * RIGHT panel – category toolbar + draggable/resizable category cards.
@@ -11,10 +11,13 @@ export default function IdeaBinCategoryCanvas({
   categoryContainerRef,
   displayCategoryForm, setDisplayCategoryForm,
   newCategoryName, setNewCategoryName,
+  newCategoryPublic, setNewCategoryPublic,
   create_category_api,
   archivedCategories,
   showArchive, setShowArchive,
   toggle_archive_category,
+  toggle_public_category,
+  drop_adopted_category,
   delete_category,
   setConfirmModal,
   activeCategories,
@@ -56,15 +59,27 @@ export default function IdeaBinCategoryCanvas({
               onChange={e => setNewCategoryName(e.target.value)}
               onKeyDown={e => {
                 if (e.key === "Enter") create_category_api();
-                else if (e.key === "Escape") { setDisplayCategoryForm(false); setNewCategoryName(""); }
+                else if (e.key === "Escape") { setDisplayCategoryForm(false); setNewCategoryName(""); setNewCategoryPublic(false); }
               }}
               placeholder="Category name..."
               className="text-xs px-2 py-1 border border-gray-300 rounded outline-none flex-1 focus:border-amber-400"
             />
+            <button
+              onClick={() => setNewCategoryPublic(p => !p)}
+              title={newCategoryPublic ? "Public – visible to everyone" : "Private – only you"}
+              className={`flex items-center gap-0.5 text-[10px] px-1.5 py-1 rounded border transition-colors ${
+                newCategoryPublic
+                  ? "bg-emerald-100 text-emerald-700 border-emerald-300 hover:bg-emerald-200"
+                  : "bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200"
+              }`}
+            >
+              {newCategoryPublic ? <Globe size={10} /> : <Lock size={10} />}
+              {newCategoryPublic ? "Public" : "Private"}
+            </button>
             <button onClick={create_category_api} className="text-[10px] px-2 py-1 bg-amber-400 rounded hover:bg-amber-500 font-medium">
               Create
             </button>
-            <button onClick={() => { setDisplayCategoryForm(false); setNewCategoryName(""); }} className="text-[10px] px-2 py-1 bg-gray-200 rounded hover:bg-gray-300">
+            <button onClick={() => { setDisplayCategoryForm(false); setNewCategoryName(""); setNewCategoryPublic(false); }} className="text-[10px] px-2 py-1 bg-gray-200 rounded hover:bg-gray-300">
               ✕
             </button>
           </div>
@@ -124,6 +139,7 @@ export default function IdeaBinCategoryCanvas({
         const catIdeas = categoryOrders[catKey] || [];
         const isHovered = dragging && String(hoverCategory) === String(catKey);
         const isSelected = String(selectedCategoryId) === String(catKey);
+        const isAdopted = catData.adopted;
 
         return (
           <div
@@ -132,12 +148,14 @@ export default function IdeaBinCategoryCanvas({
               left: catData.x, top: catData.y + 36,
               width: catData.width, height: catData.height,
               zIndex: catData.z_index || 0,
-              backgroundColor: isHovered ? "#fde68a" : isSelected ? "#fef9c3" : "#fef08a",
+              backgroundColor: isAdopted
+                ? (isHovered ? "#c7d2fe" : isSelected ? "#e0e7ff" : "#eef2ff")
+                : (isHovered ? "#fde68a" : isSelected ? "#fef9c3" : "#fef08a"),
               transition: "background-color 150ms ease",
             }}
-            className={`absolute shadow-lg rounded p-1.5 flex flex-col ${isSelected ? "ring-2 ring-indigo-400 ring-offset-1" : ""}`}
+            className={`absolute shadow-lg rounded p-1.5 flex flex-col ${isSelected ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${isAdopted ? "border border-indigo-300" : ""}`}
             onMouseDown={() => {
-              bring_to_front_category(catKey);
+              if (!isAdopted) bring_to_front_category(catKey);
               setSelectedCategoryId(prev => String(prev) === String(catKey) ? null : catKey);
             }}
           >
@@ -145,18 +163,21 @@ export default function IdeaBinCategoryCanvas({
             <div
               onMouseDown={(e) => {
                 e.stopPropagation();
-                bring_to_front_category(catKey);
+                if (!isAdopted) bring_to_front_category(catKey);
                 setSelectedCategoryId(prev => String(prev) === String(catKey) ? null : catKey);
                 handleCategoryDrag(e, catKey);
               }}
               onDoubleClick={(e) => {
+                if (isAdopted) return; // no rename on adopted
                 e.stopPropagation();
                 setEditingCategoryId(catKey);
                 setEditingCategoryName(catData.name);
               }}
-              className="flex justify-between items-center mb-0.5 flex-shrink-0 bg-amber-300/50 rounded-t px-1 py-0.5 cursor-grab active:cursor-grabbing border-b border-amber-400/40"
+              className={`flex justify-between items-center mb-0.5 flex-shrink-0 rounded-t px-1 py-0.5 cursor-grab active:cursor-grabbing border-b ${
+                isAdopted ? "bg-indigo-200/50 border-indigo-300/40" : "bg-amber-300/50 border-amber-400/40"
+              }`}
             >
-              {editingCategoryId === catKey ? (
+              {!isAdopted && editingCategoryId === catKey ? (
                 <input
                   autoFocus
                   value={editingCategoryName}
@@ -170,9 +191,76 @@ export default function IdeaBinCategoryCanvas({
                   className="bg-white text-[11px] font-semibold px-1 py-0.5 rounded outline-none border border-blue-400 flex-1 mr-1"
                 />
               ) : (
-                <span className="font-semibold text-[11px] truncate">{catData.name}</span>
+                <span className="font-semibold text-[11px] truncate flex items-center gap-1">
+                  {catData.name}
+                  {isAdopted && (
+                    <span className="text-[9px] font-normal text-indigo-500 flex items-center gap-0.5" title={`By ${catData.owner_username}`}>
+                      <UserRound size={8} />{catData.owner_username}
+                    </span>
+                  )}
+                  {catData.is_public && !isAdopted && (
+                    <Globe size={9} className="text-emerald-600 flex-shrink-0" title="Public category" />
+                  )}
+                </span>
               )}
               <div className="flex items-center gap-0.5 flex-shrink-0">
+                {isAdopted ? (
+                  /* Adopted category: only settings with unadopt */
+                  <div className="relative">
+                    <Settings
+                      size={12}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCategorySettingsOpen(prev => prev === catKey ? null : catKey);
+                      }}
+                      className="text-indigo-500 hover:text-indigo-700 cursor-pointer"
+                    />
+                    {categorySettingsOpen === catKey && (
+                      <>
+                        <div className="fixed inset-0 z-[60]" onClick={() => setCategorySettingsOpen(null)} />
+                        <div className="absolute right-0 top-full mt-1 bg-white rounded shadow-xl border border-gray-200 z-[61] min-w-[140px] py-1">
+                          {/* Collapse all ideas */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const allCollapsed = catIdeas.every(id => collapsedIdeas[id] ?? true);
+                              const newState = {};
+                              catIdeas.forEach(id => { newState[id] = allCollapsed ? false : true; });
+                              setCollapsedIdeas(prev => ({ ...prev, ...newState }));
+                              setCategorySettingsOpen(null);
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                          >
+                            <span style={{
+                              display: "inline-block", width: 0, height: 0, borderStyle: "solid",
+                              ...(catIdeas.every(id => collapsedIdeas[id] ?? true)
+                                ? { borderWidth: "4px 3px 0 3px", borderColor: "currentColor transparent transparent transparent" }
+                                : { borderWidth: "0 3px 4px 3px", borderColor: "transparent transparent currentColor transparent" })
+                            }} />
+                            {catIdeas.every(id => collapsedIdeas[id] ?? true) ? "Show full ideas" : "Show headlines only"}
+                          </button>
+                          {/* Unadopt */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCategorySettingsOpen(null);
+                              setConfirmModal({
+                                message: `Stop following "${catData.name}" from ${catData.owner_username}?`,
+                                onConfirm: () => { drop_adopted_category(catKey); setConfirmModal(null); },
+                                onCancel: () => setConfirmModal(null),
+                              });
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-[11px] text-red-600 hover:bg-red-50 flex items-center gap-2"
+                          >
+                            <LinkIcon size={11} />
+                            Unadopt category
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <>
                 {/* Paste into this category */}
                 {copiedIdeaId && (
                   <Copy
@@ -246,6 +334,18 @@ export default function IdeaBinCategoryCanvas({
                           <span className="text-[10px]">{minimizedCategories[catKey] ? "◻" : "—"}</span>
                           {minimizedCategories[catKey] ? "Restore size" : "Collapse card"}
                         </button>
+                        {/* Toggle public/private */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggle_public_category(catKey);
+                            setCategorySettingsOpen(null);
+                          }}
+                          className="w-full text-left px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                        >
+                          {catData.is_public ? <Lock size={11} /> : <Globe size={11} />}
+                          {catData.is_public ? "Make private" : "Make public"}
+                        </button>
                         {/* Delete */}
                         <button
                           onClick={(e) => {
@@ -266,6 +366,8 @@ export default function IdeaBinCategoryCanvas({
                     </>
                   )}
                 </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -280,8 +382,8 @@ export default function IdeaBinCategoryCanvas({
                   if (globalTypeFilter.length === 0) return true;
                   const idea = ideas[ideaId];
                   if (!idea) return false;
-                  const dimId = String(dims.activeDimensionId || "");
-                  const dt = idea.dimension_types?.[dimId];
+                  const legId = String(dims.activeLegendId || "");
+                  const dt = idea.legend_types?.[legId];
                   if (globalTypeFilter.includes("unassigned") && !dt) return true;
                   if (dt && globalTypeFilter.includes(dt.legend_type_id)) return true;
                   return false;
@@ -295,7 +397,7 @@ export default function IdeaBinCategoryCanvas({
               onMouseDown={(e) => handleCategoryResize(e, catKey)}
               className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize flex items-center justify-center"
             >
-              <span className="text-amber-600/60 text-[8px] leading-none select-none">◢</span>
+              <span className={`text-[8px] leading-none select-none ${isAdopted ? "text-indigo-400/60" : "text-amber-600/60"}`}>◢</span>
             </div>
           </div>
         );

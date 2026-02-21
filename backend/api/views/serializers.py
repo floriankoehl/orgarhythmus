@@ -10,14 +10,14 @@ from ..models import (
     Dependency,
     Idea,
     IdeaPlacement,
-    IdeaDimensionType,
+    IdeaLegendType,
     Category,
     LegendType,
     Day,
     Phase,
     DependencyView,
     ProtoPersona,
-    Dimension,
+    Legend,
 )
 
 
@@ -130,7 +130,7 @@ class IdeaSerializer(serializers.ModelSerializer):
     owner_username = serializers.SerializerMethodField()
     placement_count = serializers.SerializerMethodField()
     placement_categories = serializers.SerializerMethodField()
-    dimension_types = serializers.SerializerMethodField()
+    legend_types = serializers.SerializerMethodField()
 
     class Meta:
         model = Idea
@@ -138,7 +138,7 @@ class IdeaSerializer(serializers.ModelSerializer):
             "id", "title", "headline", "description",
             "owner", "owner_username",
             "created_at", "placement_count", "placement_categories",
-            "dimension_types",
+            "legend_types",
         ]
 
     def get_owner_username(self, obj):
@@ -158,11 +158,11 @@ class IdeaSerializer(serializers.ModelSerializer):
             })
         return cats
 
-    def get_dimension_types(self, obj):
-        """Return {dimension_id: {legend_type_id, name, color}} for every assigned dimension."""
+    def get_legend_types(self, obj):
+        """Return {legend_id: {legend_type_id, name, color}} for every assigned legend."""
         result = {}
-        for dt in obj.dimension_types.select_related('dimension', 'legend_type').all():
-            result[str(dt.dimension_id)] = {
+        for dt in obj.legend_types.select_related('legend', 'legend_type').all():
+            result[str(dt.legend_id)] = {
                 "legend_type_id": dt.legend_type_id,
                 "name": dt.legend_type.name,
                 "color": dt.legend_type.color,
@@ -181,9 +181,18 @@ class IdeaPlacementSerializer(serializers.ModelSerializer):
 
 # CategorySerializer
 class CategorySerializer(serializers.ModelSerializer):
+    owner_username = serializers.SerializerMethodField()
+    owner_id = serializers.SerializerMethodField()
+
     class Meta:
         model = Category
-        fields = ["id", "name", "x", "y", "width", "height", "z_index", "archived"]
+        fields = ["id", "name", "x", "y", "width", "height", "z_index", "archived", "is_public", "owner_username", "owner_id"]
+
+    def get_owner_username(self, obj):
+        return obj.owner.username if obj.owner else None
+
+    def get_owner_id(self, obj):
+        return obj.owner.id if obj.owner else None
 
 
 # LegendTypeSerializer
@@ -193,12 +202,12 @@ class LegendTypeSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-# DimensionSerializer
-class DimensionSerializer(serializers.ModelSerializer):
+# LegendSerializer
+class LegendSerializer(serializers.ModelSerializer):
     owner_username = serializers.SerializerMethodField()
 
     class Meta:
-        model = Dimension
+        model = Legend
         fields = ['id', 'name', 'owner', 'owner_username', 'created_at']
 
     def get_owner_username(self, obj):

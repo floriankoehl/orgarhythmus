@@ -7,8 +7,24 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..models import Category, Idea, IdeaPlacement, IdeaDimensionType, LegendType, Dimension, UserDimensionAdoption, UserCategoryAdoption
-from .serializers import IdeaSerializer, IdeaPlacementSerializer, CategorySerializer, LegendTypeSerializer, DimensionSerializer
+from ..models import Category, Idea, IdeaPlacement, IdeaLegendType, LegendType, Legend, UserLegendAdoption, UserCategoryAdoption
+from .serializers import IdeaSerializer, IdeaPlacementSerializer, CategorySerializer, LegendTypeSerializer, LegendSerializer
+
+
+# ═══════════════════════════════════════════════════════
+#  HELPERS
+# ═══════════════════════════════════════════════════════
+
+def _get_accessible_category(user, category_id):
+    """Return a Category the user either owns OR has adopted, or None."""
+    cat = Category.objects.filter(id=category_id).first()
+    if cat is None:
+        return None
+    if cat.owner == user:
+        return cat
+    if UserCategoryAdoption.objects.filter(user=user, category=cat).exists():
+        return cat
+    return None
 
 
 # ═══════════════════════════════════════════════════════
@@ -33,10 +49,10 @@ def create_idea(request):
         headline=headline,
     )
 
-    # Auto-create one placement
+    # Auto-create one placement (own OR adopted category)
     category = None
     if category_id:
-        category = Category.objects.filter(id=category_id, owner=request.user).first()
+        category = _get_accessible_category(request.user, category_id)
 
     max_order = IdeaPlacement.objects.filter(idea__owner=request.user, category=category).aggregate(
         Max('order_index')
@@ -94,7 +110,9 @@ def copy_idea_to_category(request):
 
     category = None
     if category_id:
-        category = get_object_or_404(Category, id=category_id, owner=request.user)
+        category = _get_accessible_category(request.user, category_id)
+        if not category:
+            return Response({"error": "Category not found"}, status=404)
 
     # Prevent duplicate
     if IdeaPlacement.objects.filter(idea=idea, category=category).exists():
@@ -125,7 +143,7 @@ def safe_order(request):
     for index, placement_id in enumerate(new_order):
         updates = {"order_index": index}
         if category_id is not None:
-            if not Category.objects.filter(id=category_id, owner=request.user).exists():
+            if not _get_accessible_category(request.user, category_id):
                 return Response({"error": "Category not found"}, status=400)
             updates["category_id"] = category_id
         else:
@@ -144,7 +162,9 @@ def assign_idea_to_category(request):
     placement = get_object_or_404(IdeaPlacement, id=placement_id, idea__owner=request.user)
 
     if category_id is not None:
-        category = get_object_or_404(Category, id=category_id, owner=request.user)
+        category = _get_accessible_category(request.user, category_id)
+        if not category:
+            return Response({"error": "Category not found"}, status=404)
         existing = IdeaPlacement.objects.filter(idea=placement.idea, category=category).exclude(id=placement.id).first()
         if existing:
             placement.delete()
@@ -167,8 +187,10 @@ def assign_idea_to_category(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_all_ideas(request):
-    """Return all idea placements for the current user, grouped by category."""
-    placements = IdeaPlacement.objects.filter(idea__owner=request.user).select_related('idea', 'idea__owner', 'category').prefetch_related('idea__dimension_types__legend_type', 'idea__dimension_types__dimension')
+    """Return all idea placements for the current user, grouped by category.
+    Also includes placements from adopted categories (read-only)."""
+    # Own placements
+    placements = IdeaPlacement.objects.filter(idea__owner=request.user).select_related('idea', 'idea__owner', 'category').prefetch_related('idea__legend_types__legend_type', 'idea__legend_types__legend')
     all_placements_serialized = IdeaPlacementSerializer(placements, many=True).data
 
     unassigned_order = list(
@@ -183,6 +205,20 @@ def get_all_ideas(request):
             .order_by('order_index')
             .values_list('id', flat=True)
         )
+
+    # Adopted category placements
+    adopted_cat_ids = list(UserCategoryAdoption.objects.filter(user=request.user).values_list('category_id', flat=True))
+    if adopted_cat_ids:
+        adopted_placements = IdeaPlacement.objects.filter(category_id__in=adopted_cat_ids).select_related('idea', 'idea__owner', 'category').prefetch_related('idea__legend_types__legend_type', 'idea__legend_types__legend')
+        adopted_data = IdeaPlacementSerializer(adopted_placements, many=True).data
+        all_placements_serialized += adopted_data
+        for cat_id in adopted_cat_ids:
+            category_orders[cat_id] = list(
+                IdeaPlacement.objects.filter(category_id=cat_id)
+                .order_by('order_index')
+                .values_list('id', flat=True)
+            )
+
     return Response({
         "data": all_placements_serialized,
         "order": unassigned_order,
@@ -198,21 +234,33 @@ def get_all_ideas(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_all_categories(request):
-    all_categories = Category.objects.filter(owner=request.user)
-    all_cats_ready = CategorySerializer(all_categories, many=True).data
-    return Response({"categories": all_cats_ready})
+    owned = Category.objects.filter(owner=request.user).select_related('owner')
+    adopted_ids = list(UserCategoryAdoption.objects.filter(user=request.user).values_list('category_id', flat=True))
+    adopted = Category.objects.filter(id__in=adopted_ids).select_related('owner')
+
+    owned_data = CategorySerializer(owned, many=True).data
+    for c in owned_data:
+        c['adopted'] = False
+
+    adopted_data = CategorySerializer(adopted, many=True).data
+    for c in adopted_data:
+        c['adopted'] = True
+
+    return Response({"categories": owned_data + adopted_data})
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def create_category(request):
     name = request.data.get("name", "New Category").strip()
+    is_public = request.data.get("is_public", False)
     max_z = Category.objects.filter(owner=request.user).aggregate(db_models.Max('z_index'))['z_index__max']
     next_z = (max_z + 1) if max_z is not None else 0
 
     category = Category.objects.create(
         owner=request.user,
         name=name,
+        is_public=is_public,
         x=50,
         y=50,
         width=max(250, len(name) * 9 + 80),
@@ -318,8 +366,18 @@ def toggle_archive_category(request):
     return Response({"archived": category.archived})
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def toggle_public_category(request):
+    category_id = request.data.get("id")
+    category = get_object_or_404(Category, id=category_id, owner=request.user)
+    category.is_public = not category.is_public
+    category.save()
+    return Response({"is_public": category.is_public})
+
+
 # ═══════════════════════════════════════════════════════
-#  LEGEND TYPE ENDPOINTS  (kept for backward compat — now dimension-only)
+#  LEGEND TYPE ENDPOINTS
 # ═══════════════════════════════════════════════════════
 
 
@@ -327,7 +385,7 @@ def toggle_archive_category(request):
 @permission_classes([IsAuthenticated])
 def assign_idea_legend_type(request):
     idea_id = request.data.get("idea_id")
-    dimension_id = request.data.get("dimension_id")
+    legend_id = request.data.get("legend_id")
     legend_type_id = request.data.get("legend_type_id")  # None to unassign
 
     idea = Idea.objects.filter(id=idea_id, owner=request.user).first()
@@ -337,19 +395,19 @@ def assign_idea_legend_type(request):
             idea = placement.idea
     if not idea:
         return Response({"error": "Not found"}, status=404)
-    if not dimension_id:
-        return Response({"error": "dimension_id required"}, status=400)
+    if not legend_id:
+        return Response({"error": "legend_id required"}, status=400)
 
-    dimension = get_object_or_404(Dimension, id=dimension_id)
+    leg = get_object_or_404(Legend, id=legend_id)
 
     if legend_type_id is not None:
-        legend = get_object_or_404(LegendType, id=legend_type_id)
-        IdeaDimensionType.objects.update_or_create(
-            idea=idea, dimension=dimension,
-            defaults={"legend_type": legend},
+        lt = get_object_or_404(LegendType, id=legend_type_id)
+        IdeaLegendType.objects.update_or_create(
+            idea=idea, legend=leg,
+            defaults={"legend_type": lt},
         )
     else:
-        IdeaDimensionType.objects.filter(idea=idea, dimension=dimension).delete()
+        IdeaLegendType.objects.filter(idea=idea, legend=leg).delete()
     return Response({"updated": True})
 
 
@@ -387,118 +445,118 @@ def remove_all_idea_categories(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-def remove_all_idea_dimension_types(request):
-    """Remove idea from ALL dimension type assignments."""
+def remove_all_idea_legend_types(request):
+    """Remove idea from ALL legend type assignments."""
     idea_id = request.data.get("idea_id")
     idea = get_object_or_404(Idea, id=idea_id, owner=request.user)
-    IdeaDimensionType.objects.filter(idea=idea).delete()
+    IdeaLegendType.objects.filter(idea=idea).delete()
 
     return Response({"removed": True})
 
-# ---- DIMENSION ENDPOINTS ----
+# ---- LEGEND ENDPOINTS ----
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def get_user_dimensions(request):
-    """Get all dimensions owned by or adopted by the current user."""
-    owned = Dimension.objects.filter(owner=request.user)
-    adopted_ids = UserDimensionAdoption.objects.filter(user=request.user).values_list('dimension_id', flat=True)
-    adopted = Dimension.objects.filter(id__in=adopted_ids).exclude(owner=request.user)
-    all_dims = list(owned) + list(adopted)
-    return Response({"dimensions": DimensionSerializer(all_dims, many=True).data})
+def get_user_legends(request):
+    """Get all legends owned by or adopted by the current user."""
+    owned = Legend.objects.filter(owner=request.user)
+    adopted_ids = UserLegendAdoption.objects.filter(user=request.user).values_list('legend_id', flat=True)
+    adopted = Legend.objects.filter(id__in=adopted_ids).exclude(owner=request.user)
+    all_legends = list(owned) + list(adopted)
+    return Response({"legends": LegendSerializer(all_legends, many=True).data})
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-def create_dimension(request):
-    """Create a new dimension for the current user."""
-    name = request.data.get("name", "New Dimension").strip()
-    dim = Dimension.objects.create(owner=request.user, name=name)
-    return Response({"created": True, "dimension": DimensionSerializer(dim).data})
+def create_legend(request):
+    """Create a new legend for the current user."""
+    name = request.data.get("name", "New Legend").strip()
+    leg = Legend.objects.create(owner=request.user, name=name)
+    return Response({"created": True, "legend": LegendSerializer(leg).data})
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-def update_dimension(request, dimension_id):
-    """Update a dimension's name."""
-    dim = get_object_or_404(Dimension, id=dimension_id, owner=request.user)
+def update_legend(request, legend_id):
+    """Update a legend's name."""
+    leg = get_object_or_404(Legend, id=legend_id, owner=request.user)
     name = request.data.get("name", "").strip()
     if name:
-        dim.name = name
-        dim.save()
-    return Response({"updated": True, "dimension": DimensionSerializer(dim).data})
+        leg.name = name
+        leg.save()
+    return Response({"updated": True, "legend": LegendSerializer(leg).data})
 
 
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
-def delete_dimension(request, dimension_id):
-    """Delete a dimension (and its types)."""
-    dim = get_object_or_404(Dimension, id=dimension_id, owner=request.user)
-    dim.delete()
+def delete_legend(request, legend_id):
+    """Delete a legend (and its types)."""
+    leg = get_object_or_404(Legend, id=legend_id, owner=request.user)
+    leg.delete()
     return Response({"deleted": True})
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-def adopt_dimension(request, dimension_id):
-    """Adopt another user's dimension."""
-    dim = get_object_or_404(Dimension, id=dimension_id)
-    if dim.owner == request.user:
-        return Response({"error": "Cannot adopt your own dimension"}, status=400)
-    UserDimensionAdoption.objects.get_or_create(user=request.user, dimension=dim)
+def adopt_legend(request, legend_id):
+    """Adopt another user's legend."""
+    leg = get_object_or_404(Legend, id=legend_id)
+    if leg.owner == request.user:
+        return Response({"error": "Cannot adopt your own legend"}, status=400)
+    UserLegendAdoption.objects.get_or_create(user=request.user, legend=leg)
     return Response({"adopted": True})
 
 
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
-def drop_dimension(request, dimension_id):
-    """Drop (unadopt) a dimension."""
-    UserDimensionAdoption.objects.filter(user=request.user, dimension_id=dimension_id).delete()
+def drop_legend(request, legend_id):
+    """Drop (unadopt) a legend."""
+    UserLegendAdoption.objects.filter(user=request.user, legend_id=legend_id).delete()
     return Response({"dropped": True})
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def get_all_public_dimensions(request):
-    """Get all dimensions (for browsing and adoption)."""
-    dims = Dimension.objects.exclude(owner=request.user)
-    return Response({"dimensions": DimensionSerializer(dims, many=True).data})
+def get_all_public_legends(request):
+    """Get all legends (for browsing and adoption)."""
+    legs = Legend.objects.exclude(owner=request.user)
+    return Response({"legends": LegendSerializer(legs, many=True).data})
 
 
-# ---- DIMENSION TYPE (LegendType) ENDPOINTS ----
+# ---- TYPE (LegendType) ENDPOINTS ----
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def get_dimension_types(request, dimension_id):
-    """Get all types for a specific dimension."""
-    dim = get_object_or_404(Dimension, id=dimension_id)
-    is_owner = dim.owner == request.user
-    is_adopter = UserDimensionAdoption.objects.filter(user=request.user, dimension=dim).exists()
+def get_legend_types(request, legend_id):
+    """Get all types for a specific legend."""
+    leg = get_object_or_404(Legend, id=legend_id)
+    is_owner = leg.owner == request.user
+    is_adopter = UserLegendAdoption.objects.filter(user=request.user, legend=leg).exists()
     if not is_owner and not is_adopter:
         return Response({"detail": "Forbidden"}, status=403)
-    types = LegendType.objects.filter(dimension=dim)
+    types = LegendType.objects.filter(legend=leg)
     return Response({"types": LegendTypeSerializer(types, many=True).data})
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-def create_dimension_type(request, dimension_id):
-    """Create a type inside a specific dimension."""
-    dim = get_object_or_404(Dimension, id=dimension_id, owner=request.user)
+def create_legend_type(request, legend_id):
+    """Create a type inside a specific legend."""
+    leg = get_object_or_404(Legend, id=legend_id, owner=request.user)
     name = request.data.get("name", "New Type").strip()
     color = request.data.get("color", "#cccccc")
-    max_order = LegendType.objects.filter(dimension=dim).aggregate(db_models.Max('order_index'))['order_index__max']
+    max_order = LegendType.objects.filter(legend=leg).aggregate(db_models.Max('order_index'))['order_index__max']
     next_order = (max_order + 1) if max_order is not None else 0
-    lt = LegendType.objects.create(dimension=dim, name=name, color=color, order_index=next_order)
+    lt = LegendType.objects.create(legend=leg, name=name, color=color, order_index=next_order)
     return Response({"created": True, "type": LegendTypeSerializer(lt).data})
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-def update_dimension_type(request, dimension_id, type_id):
-    """Update a type inside a specific dimension."""
-    dim = get_object_or_404(Dimension, id=dimension_id, owner=request.user)
-    lt = get_object_or_404(LegendType, id=type_id, dimension=dim)
+def update_legend_type(request, legend_id, type_id):
+    """Update a type inside a specific legend."""
+    leg = get_object_or_404(Legend, id=legend_id, owner=request.user)
+    lt = get_object_or_404(LegendType, id=type_id, legend=leg)
     if "name" in request.data:
         lt.name = request.data.get("name", "").strip()
     if "color" in request.data:
@@ -509,10 +567,10 @@ def update_dimension_type(request, dimension_id, type_id):
 
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
-def delete_dimension_type(request, dimension_id, type_id):
-    """Delete a type inside a specific dimension."""
-    dim = get_object_or_404(Dimension, id=dimension_id, owner=request.user)
-    LegendType.objects.filter(id=type_id, dimension=dim).delete()
+def delete_legend_type(request, legend_id, type_id):
+    """Delete a type inside a specific legend."""
+    leg = get_object_or_404(Legend, id=legend_id, owner=request.user)
+    LegendType.objects.filter(id=type_id, legend=leg).delete()
     return Response({"deleted": True})
 
 
@@ -521,12 +579,14 @@ def delete_dimension_type(request, dimension_id, type_id):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_all_public_categories(request):
-    """Get all categories accessible to the user (own + adopted)."""
-    owned_ids = list(Category.objects.filter(owner=request.user).values_list('id', flat=True))
-    adopted_ids = list(UserCategoryAdoption.objects.filter(user=request.user).values_list('category_id', flat=True))
-    all_ids = list(set(owned_ids + adopted_ids))
-    cats = Category.objects.filter(id__in=all_ids)
-    return Response({"categories": CategorySerializer(cats, many=True).data})
+    """Get all public categories from all users, with adoption status."""
+    cats = Category.objects.filter(is_public=True).select_related('owner')
+    adopted_ids = set(UserCategoryAdoption.objects.filter(user=request.user).values_list('category_id', flat=True))
+    data = CategorySerializer(cats, many=True).data
+    for c in data:
+        c['is_adopted'] = c['id'] in adopted_ids
+        c['is_own'] = c['owner_id'] == request.user.id
+    return Response({"categories": data})
 
 
 @api_view(["POST"])
@@ -550,11 +610,63 @@ def drop_category(request, category_id):
 
 # ---- USER-LEVEL IDEAS ----
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def spinoff_idea(request):
+    """Create a personal copy (spinoff) of another user's idea.
+    Copies title, headline, description, and all legend-type assignments.
+    The new idea is owned by the requesting user with a fresh timestamp."""
+    idea_id = request.data.get("idea_id")
+    if not idea_id:
+        return Response({"error": "idea_id is required"}, status=400)
+
+    original = Idea.objects.filter(id=idea_id).prefetch_related('legend_types').first()
+    if not original:
+        return Response({"error": "Idea not found"}, status=404)
+
+    if original.owner == request.user:
+        return Response({"error": "Cannot spinoff your own idea — use copy instead"}, status=400)
+
+    # Create the new idea owned by the current user
+    new_idea = Idea.objects.create(
+        owner=request.user,
+        title=original.title,
+        headline=original.headline,
+        description=original.description,
+    )
+
+    # Copy all legend-type assignments
+    for dt in original.legend_types.all():
+        IdeaLegendType.objects.create(
+            idea=new_idea,
+            legend=dt.legend,
+            legend_type=dt.legend_type,
+        )
+
+    # Create an unassigned placement
+    max_order = IdeaPlacement.objects.filter(
+        idea__owner=request.user, category__isnull=True
+    ).aggregate(Max('order_index'))['order_index__max']
+    next_order = (max_order + 1) if max_order is not None else 0
+
+    placement = IdeaPlacement.objects.create(
+        idea=new_idea,
+        category=None,
+        order_index=next_order,
+    )
+
+    return Response({
+        "created": True,
+        "idea": IdeaSerializer(new_idea).data,
+        "placement": IdeaPlacementSerializer(placement).data,
+    })
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_user_ideas(request):
     """Get all ideas owned by the current user — the meta view."""
-    ideas = Idea.objects.filter(owner=request.user).prefetch_related('placements__category', 'dimension_types__legend_type', 'dimension_types__dimension')
+    ideas = Idea.objects.filter(owner=request.user).prefetch_related('placements__category', 'legend_types__legend_type', 'legend_types__legend')
     return Response({"ideas": IdeaSerializer(ideas, many=True).data})
 
 
@@ -562,7 +674,7 @@ def get_user_ideas(request):
 @permission_classes([IsAuthenticated])
 def get_meta_ideas(request):
     """Get all unique ideas for the current user (meta view — no placement duplicates)."""
-    ideas = Idea.objects.filter(owner=request.user).select_related('owner').prefetch_related('placements__category', 'dimension_types__legend_type', 'dimension_types__dimension')
+    ideas = Idea.objects.filter(owner=request.user).select_related('owner').prefetch_related('placements__category', 'legend_types__legend_type', 'legend_types__legend')
     return Response({
         "ideas": IdeaSerializer(ideas, many=True).data,
     })

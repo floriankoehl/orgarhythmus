@@ -12,17 +12,14 @@ const DEFAULT_H = 460;
  * position, size, icon position, maximize/minimize, and all drag/resize handlers.
  */
 export default function useIdeaBinWindow(headlineInputRef) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [windowPos, setWindowPos] = useState(() => ({
-    x: Math.max(0, window.innerWidth - DEFAULT_W - 24),
-    y: Math.max(0, window.innerHeight - DEFAULT_H - 80),
-  }));
-  const [windowSize, setWindowSize] = useState({ w: DEFAULT_W, h: DEFAULT_H });
+  const [isOpen, setIsOpen] = useState(true);          // DEV: default open
+  const [windowPos, setWindowPos] = useState({ x: 0, y: 0 });
+  const [windowSize, setWindowSize] = useState({ w: window.innerWidth, h: window.innerHeight });
   const [iconPos, setIconPos] = useState(() => ({
     x: Math.max(0, window.innerWidth - 68),
     y: Math.max(0, window.innerHeight - 68),
   }));
-  const [isMaximized, setIsMaximized] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(true);  // DEV: default maximized
   const [preMaxState, setPreMaxState] = useState(null);
   const windowRef = useRef(null);
   const iconRef = useRef(null);

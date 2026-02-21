@@ -13,8 +13,9 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import dayjs from 'dayjs';
-import { Plus, Folder, Calendar, User, LogIn, LogOut, Loader2 } from 'lucide-react';
+import { Plus, Folder, Calendar, User, LogIn, LogOut, Loader2, Globe, LayoutGrid } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { authFetch } from '../auth';
 
 // Tab component
 function TabButton({ active, onClick, children }) {
@@ -164,7 +165,7 @@ export default function AllProjects() {
   const navigate = useNavigate();
 
   // Tab state
-  const [activeTab, setActiveTab] = useState('member-projects'); // 'member-projects', 'other-projects'
+  const [activeTab, setActiveTab] = useState('member-projects'); // 'member-projects', 'other-projects', 'public-categories'
 
   // Create form state
   const [name, setName] = useState('');
@@ -177,6 +178,7 @@ export default function AllProjects() {
   // Projects data
   const [memberProjects, setMemberProjects] = useState([]);
   const [otherProjects, setOtherProjects] = useState([]);
+  const [publicCategories, setPublicCategories] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Loading states for join/leave actions
@@ -188,9 +190,10 @@ export default function AllProjects() {
   async function loadProjects() {
     try {
       setLoading(true);
-      const [yourData, allData] = await Promise.all([
+      const [yourData, allData, catData] = await Promise.all([
         fetch_all_projects(),
         fetch_all_projects_browsable(),
+        authFetch('/api/categories/public/').then(r => r.json()).catch(() => ({ categories: [] })),
       ]);
 
       // All projects where user is owner or member
@@ -198,6 +201,7 @@ export default function AllProjects() {
       // Only projects where user is NOT owner and NOT member
       const filteredOther = (allData || []).filter((p) => !p.is_owner && !p.is_member);
       setOtherProjects(filteredOther);
+      setPublicCategories(catData.categories || []);
     } catch (err) {
       console.error(err);
       setError('Could not load projects.');
@@ -283,6 +287,7 @@ export default function AllProjects() {
 
   const hasMemberProjects = memberProjects && memberProjects.length > 0;
   const hasOtherProjects = otherProjects && otherProjects.length > 0;
+  const hasPublicCategories = publicCategories && publicCategories.length > 0;
 
   
   return (
@@ -442,6 +447,12 @@ export default function AllProjects() {
           >
             Andere Projekte ({otherProjects.length})
           </TabButton>
+          <TabButton
+            active={activeTab === 'public-categories'}
+            onClick={() => setActiveTab('public-categories')}
+          >
+            Öffentliche Kategorien ({publicCategories.length})
+          </TabButton>
         </div>
 
         {/* Projects Section */}
@@ -510,6 +521,118 @@ export default function AllProjects() {
                     <p className="text-sm text-slate-500">Keine weiteren Projekte verfügbar</p>
                     <p className="mt-1 text-xs text-slate-400">
                       Du bist bereits Mitglied in allen existierenden Projekten!
+                    </p>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* Public Categories Tab */}
+            {activeTab === 'public-categories' && (
+              <section className="rounded-2xl border border-slate-200 bg-white/75 p-4 shadow-sm backdrop-blur-sm sm:p-5">
+                {hasPublicCategories ? (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {publicCategories.map((cat) => (
+                      <div
+                        key={cat.id}
+                        className={`group relative flex flex-col gap-3 rounded-xl border p-5 transition-all duration-200 hover:shadow-lg ${
+                          cat.is_adopted
+                            ? 'border-indigo-200 bg-gradient-to-br from-indigo-50 to-white'
+                            : 'border-slate-200 bg-gradient-to-br from-amber-50 to-white'
+                        }`}
+                      >
+                        {/* Top accent bar */}
+                        <div className={`absolute inset-x-0 top-0 h-1 rounded-t-lg bg-gradient-to-r ${
+                          cat.is_adopted
+                            ? 'from-indigo-400 via-purple-400 to-blue-400'
+                            : 'from-amber-400 via-yellow-400 to-orange-400'
+                        }`} />
+
+                        {/* Category Header */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <LayoutGrid size={16} className={cat.is_adopted ? 'text-indigo-500' : 'text-amber-500'} />
+                            <h3 className={`text-lg font-semibold text-slate-900 transition-colors ${
+                              cat.is_adopted ? 'group-hover:text-indigo-600' : 'group-hover:text-amber-600'
+                            }`}>
+                              {cat.name}
+                            </h3>
+                          </div>
+                          <Globe size={14} className="text-emerald-500 flex-shrink-0 mt-1" title="Öffentliche Kategorie" />
+                        </div>
+
+                        {/* Meta info */}
+                        <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                          <span className="inline-flex items-center gap-1">
+                            <User size={11} />
+                            <span>{cat.owner_username || 'Unknown'}</span>
+                          </span>
+                        </div>
+
+                        {/* Status badges */}
+                        <div className="flex flex-wrap gap-2">
+                          <span className="inline-block rounded bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
+                            Öffentlich
+                          </span>
+                          {cat.is_adopted && (
+                            <span className="inline-block rounded bg-indigo-100 px-2 py-1 text-xs font-semibold text-indigo-700">
+                              Adoptiert
+                            </span>
+                          )}
+                          {cat.is_own && (
+                            <span className="inline-block rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
+                              Eigene
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Adopt / Unadopt button */}
+                        {!cat.is_own && (
+                          <div className="mt-auto pt-1">
+                            {cat.is_adopted ? (
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={async () => {
+                                  setLoadingActions(p => ({ ...p, [`cat-${cat.id}`]: true }));
+                                  await authFetch(`/api/categories/${cat.id}/drop/`, { method: 'DELETE' });
+                                  await loadProjects();
+                                  setLoadingActions(p => ({ ...p, [`cat-${cat.id}`]: false }));
+                                }}
+                                disabled={loadingActions[`cat-${cat.id}`]}
+                                startIcon={loadingActions[`cat-${cat.id}`] ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}
+                                style={{ textTransform: 'none', borderRadius: '6px', width: '100%', color: '#ef4444', borderColor: '#ef4444' }}
+                              >
+                                {loadingActions[`cat-${cat.id}`] ? '...' : 'Nicht mehr folgen'}
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="contained"
+                                size="small"
+                                onClick={async () => {
+                                  setLoadingActions(p => ({ ...p, [`cat-${cat.id}`]: true }));
+                                  await authFetch(`/api/categories/${cat.id}/adopt/`, { method: 'POST' });
+                                  await loadProjects();
+                                  setLoadingActions(p => ({ ...p, [`cat-${cat.id}`]: false }));
+                                }}
+                                disabled={loadingActions[`cat-${cat.id}`]}
+                                startIcon={loadingActions[`cat-${cat.id}`] ? <Loader2 size={14} className="animate-spin" /> : <LogIn size={14} />}
+                                style={{ textTransform: 'none', borderRadius: '6px', width: '100%' }}
+                              >
+                                {loadingActions[`cat-${cat.id}`] ? 'Wird adoptiert...' : 'Kategorie adoptieren'}
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-12 text-center">
+                    <Globe size={32} className="mx-auto mb-2 text-slate-300" />
+                    <p className="text-sm text-slate-500">Keine öffentlichen Kategorien vorhanden</p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Erstelle eine Kategorie im IdeaBin und mache sie öffentlich!
                     </p>
                   </div>
                 )}

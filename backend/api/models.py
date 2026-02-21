@@ -327,11 +327,11 @@ class DemoDate(models.Model):
 
 
 # ═══════════════════════════════════════════════
-#  DIMENSION
+#  LEGEND
 # ═══════════════════════════════════════════════
 
-class Dimension(models.Model):
-    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="dimensions")
+class Legend(models.Model):
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="legends")
     name = models.CharField(max_length=200, default="General")
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -355,6 +355,7 @@ class Category(models.Model):
     height = models.IntegerField(default=100)
     z_index = models.IntegerField(default=0)
     archived = models.BooleanField(default=False)
+    is_public = models.BooleanField(default=False)
 
 
 # ═══════════════════════════════════════════════
@@ -362,7 +363,7 @@ class Category(models.Model):
 # ═══════════════════════════════════════════════
 
 class LegendType(models.Model):
-    dimension = models.ForeignKey('Dimension', on_delete=models.CASCADE, related_name="types", null=True, blank=True)
+    legend = models.ForeignKey('Legend', on_delete=models.CASCADE, related_name="types", null=True, blank=True)
     name = models.CharField(max_length=100)
     color = models.CharField(max_length=20, default="#ffffff")
     order_index = models.IntegerField(default=0)
@@ -384,13 +385,13 @@ class UserCategoryAdoption(models.Model):
         unique_together = ["user", "category"]
 
 
-class UserDimensionAdoption(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="adopted_dimensions")
-    dimension = models.ForeignKey(Dimension, on_delete=models.CASCADE, related_name="adopters")
+class UserLegendAdoption(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="adopted_legends")
+    legend = models.ForeignKey(Legend, on_delete=models.CASCADE, related_name="adopters")
     adopted_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ["user", "dimension"]
+        unique_together = ["user", "legend"]
 
 
 # ═══════════════════════════════════════════════
@@ -517,23 +518,23 @@ class IdeaPlacement(models.Model):
 
 
 # ═══════════════════════════════════════════════
-#  IDEA ↔ DIMENSION TYPE  (one type per dimension per idea)
+#  IDEA ↔ LEGEND TYPE  (one type per legend per idea)
 # ═══════════════════════════════════════════════
 
-class IdeaDimensionType(models.Model):
+class IdeaLegendType(models.Model):
     """
-    Links an Idea to a LegendType within a specific Dimension.
-    Each idea can have at most one type per dimension.
+    Links an Idea to a LegendType within a specific Legend.
+    Each idea can have at most one type per legend.
     """
-    idea = models.ForeignKey(Idea, on_delete=models.CASCADE, related_name="dimension_types")
-    dimension = models.ForeignKey(Dimension, on_delete=models.CASCADE, related_name="idea_type_assignments")
+    idea = models.ForeignKey(Idea, on_delete=models.CASCADE, related_name="legend_types")
+    legend = models.ForeignKey(Legend, on_delete=models.CASCADE, related_name="idea_type_assignments")
     legend_type = models.ForeignKey(LegendType, on_delete=models.CASCADE, related_name="idea_assignments")
 
     class Meta:
-        unique_together = ["idea", "dimension"]
+        unique_together = ["idea", "legend"]
 
     def __str__(self):
-        return f"{self.idea.title} → {self.dimension.name}: {self.legend_type.name}"
+        return f"{self.idea.title} → {self.legend.name}: {self.legend_type.name}"
 
 
 # ═══════════════════════════════════════════════

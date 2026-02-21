@@ -3,19 +3,20 @@ import { useParams } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 
-import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X } from "lucide-react";
+import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
 import { playSound } from "../../assets/sound_registry";
-import { useDimensions } from "./useDimensions";
+import { useLegends } from "./useLegends";
 import IdeaBinConfirmModal from "./IdeaBinConfirmModal";
 import useIdeaBinWindow from "./useIdeaBinWindow";
 import IdeaBinTransformModal from "./IdeaBinTransformModal";
-import IdeaBinDimensionPanel from "./IdeaBinDimensionPanel";
+import IdeaBinLegendPanel from "./IdeaBinLegendPanel";
 import IdeaBinDragGhosts from "./IdeaBinDragGhosts";
 import IdeaBinIdeaCard from "./IdeaBinIdeaCard";
 import IdeaBinCategoryCanvas from "./IdeaBinCategoryCanvas";
+import { useAuth } from "../../auth/AuthContext";
 
 // ───────────────────── Constants ─────────────────────
 const MIN_W = 290;
@@ -42,6 +43,8 @@ function authFetch(url, options = {}) {
 // ═══════════════════════════════════════════════════════════
 export default function IdeaBin() {
   const { projectId } = useParams();   // optional — only present inside a project
+  const { user } = useAuth();
+  const currentUserId = user?.id;
   const API = `${BASE_URL}/api`;
 
   // ───── Window state (extracted) ─────
@@ -60,6 +63,7 @@ export default function IdeaBin() {
   const [categories, setCategories] = useState({});
   const [displayCategoryForm, setDisplayCategoryForm] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryPublic, setNewCategoryPublic] = useState(false);
   const categoryContainerRef = useRef(null);
 
   // ───── Idea state ─────
@@ -113,6 +117,7 @@ export default function IdeaBin() {
   const [showListFilterDropdown, setShowListFilterDropdown] = useState(false);
   const [showSidebarMeta, setShowSidebarMeta] = useState(false);   // show meta info in sidebar
   const [sidebarHeadlineOnly, setSidebarHeadlineOnly] = useState(false); // collapse all in sidebar
+  const [showListSettings, setShowListSettings] = useState(false); // settings dropdown
 
   // ───── Sidebar resize ─────
   const [sidebarWidth, setSidebarWidth] = useState(240);
@@ -123,21 +128,21 @@ export default function IdeaBin() {
   // ───── Category settings dropdown ─────
   const [categorySettingsOpen, setCategorySettingsOpen] = useState(null); // catKey or null
 
-  // ───── Dimensions (replaces per-project legend) ─────
-  const dims = useDimensions();
-  const [dimPanelCollapsed, setDimPanelCollapsed] = useState(true);
-  const [showCreateDimension, setShowCreateDimension] = useState(false);
-  const [newDimensionName, setNewDimensionName] = useState("");
-  const [editingDimensionId, setEditingDimensionId] = useState(null);
-  const [editingDimensionNameLocal, setEditingDimensionNameLocal] = useState("");
+  // ───── Legends ─────
+  const dims = useLegends();
+  const [legendPanelCollapsed, setLegendPanelCollapsed] = useState(true);
   const [showCreateLegend, setShowCreateLegend] = useState(false);
-  const [newLegendColor, setNewLegendColor] = useState("#6366f1");
   const [newLegendName, setNewLegendName] = useState("");
   const [editingLegendId, setEditingLegendId] = useState(null);
-  const [editingLegendName, setEditingLegendName] = useState("");
+  const [editingLegendNameLocal, setEditingLegendNameLocal] = useState("");
+  const [showCreateType, setShowCreateType] = useState(false);
+  const [newTypeColor, setNewTypeColor] = useState("#6366f1");
+  const [newTypeName, setNewTypeName] = useState("");
+  const [editingTypeId, setEditingTypeId] = useState(null);
+  const [editingTypeName, setEditingTypeName] = useState("");
   const [globalTypeFilter, setGlobalTypeFilter] = useState([]);
-  const [draggingLegend, setDraggingLegend] = useState(null);
-  const [hoverIdeaForLegend, setHoverIdeaForLegend] = useState(null);
+  const [draggingType, setDraggingType] = useState(null);
+  const [hoverIdeaForType, setHoverIdeaForType] = useState(null);
 
   // Refs
   const IdeaListRef = useRef(null);
@@ -162,6 +167,9 @@ export default function IdeaBin() {
           id: c.id, name: c.name, x: c.x, y: c.y,
           width: Math.max(c.width, minW), height: c.height,
           z_index: c.z_index || 0, archived: c.archived || false,
+          is_public: c.is_public || false,
+          adopted: c.adopted || false,
+          owner_username: c.owner_username || null,
         };
       }
       setCategories(serialized);
@@ -173,9 +181,10 @@ export default function IdeaBin() {
     await authFetch(`${API}/user/categories/create/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newCategoryName }),
+      body: JSON.stringify({ name: newCategoryName, is_public: newCategoryPublic }),
     });
     setNewCategoryName("");
+    setNewCategoryPublic(false);
     setDisplayCategoryForm(false);
     playSound('ideaCategoryCreate');
     fetch_categories();
@@ -245,6 +254,30 @@ export default function IdeaBin() {
     playSound('ideaCategoryArchive');
   };
 
+  const toggle_public_category = async (id) => {
+    const res = await authFetch(`${API}/user/categories/toggle_public/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json();
+    setCategories(prev => ({ ...prev, [id]: { ...prev[id], is_public: data.is_public } }));
+  };
+
+  const drop_adopted_category = async (id) => {
+    await authFetch(`${API}/categories/${id}/drop/`, { method: "DELETE" });
+    setCategories(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setCategoryOrders(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
   // ═══════════════════════════════════════════════════════
   // ═══════════  IDEA API  ════════════════════════════════
   // ═══════════════════════════════════════════════════════
@@ -264,7 +297,7 @@ export default function IdeaBin() {
           title: p.idea?.title || "",
           headline: p.idea?.headline || "",
           description: p.idea?.description || "",
-          dimension_types: p.idea?.dimension_types || {},  // {dim_id: {legend_type_id, name, color}}
+          legend_types: p.idea?.legend_types || {},  // {legend_id: {legend_type_id, name, color}}
           owner: p.idea?.owner,
           owner_username: p.idea?.owner_username,
           created_at: p.idea?.created_at,
@@ -390,6 +423,20 @@ export default function IdeaBin() {
     }
   };
 
+  // ── Spinoff: create a personal copy of someone else's idea ──
+  const spinoff_idea = async (metaIdeaId) => {
+    if (!metaIdeaId) return;
+    try {
+      await authFetch(`${API}/user/ideas/spinoff/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idea_id: metaIdeaId }),
+      });
+      playSound('ideaCreate');
+      await fetch_all_ideas();
+    } catch (err) { console.error("Spinoff failed:", err); }
+  };
+
   const delete_meta_idea = async (ideaId) => {
     await authFetch(`${API}/user/ideas/delete_meta/`, {
       method: "DELETE",
@@ -418,8 +465,8 @@ export default function IdeaBin() {
     fetch_all_ideas();
   };
 
-  const remove_all_idea_dimension_types = async (ideaId) => {
-    await authFetch(`${API}/user/ideas/remove_all_dimension_types/`, {
+  const remove_all_idea_legend_types = async (ideaId) => {
+    await authFetch(`${API}/user/ideas/remove_all_legend_types/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ idea_id: ideaId }),
@@ -427,11 +474,11 @@ export default function IdeaBin() {
     fetch_all_ideas();
   };
 
-  const remove_idea_dimension_type = async (ideaId, dimensionId) => {
+  const remove_idea_legend_type = async (ideaId, legendId) => {
     await authFetch(`${API}/user/ideas/assign_legend_type/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idea_id: ideaId, dimension_id: dimensionId, legend_type_id: null }),
+      body: JSON.stringify({ idea_id: ideaId, legend_id: legendId, legend_type_id: null }),
     });
     fetch_all_ideas();
   };
@@ -455,26 +502,26 @@ export default function IdeaBin() {
   const assign_idea_legend_type = async (placementId, legendTypeId) => {
     const idea = ideas[placementId];
     const ideaId = idea?.idea_id || placementId;
-    const dimensionId = dims.activeDimensionId;
-    if (!dimensionId) return;
+    const legendId = dims.activeLegendId;
+    if (!legendId) return;
     await authFetch(`${API}/user/ideas/assign_legend_type/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idea_id: ideaId, dimension_id: dimensionId, legend_type_id: legendTypeId }),
+      body: JSON.stringify({ idea_id: ideaId, legend_id: legendId, legend_type_id: legendTypeId }),
     });
     // Update all placements of the same idea in local state
     setIdeas(prev => {
       const updated = { ...prev };
       for (const [pid, p] of Object.entries(updated)) {
         if (p.idea_id === ideaId) {
-          const newDt = { ...p.dimension_types };
+          const newDt = { ...p.legend_types };
           if (legendTypeId) {
-            const lt = dims.dimensionTypes[legendTypeId];
-            newDt[String(dimensionId)] = { legend_type_id: legendTypeId, name: lt?.name || "", color: lt?.color || "#ccc" };
+            const lt = dims.legendTypes[legendTypeId];
+            newDt[String(legendId)] = { legend_type_id: legendTypeId, name: lt?.name || "", color: lt?.color || "#ccc" };
           } else {
-            delete newDt[String(dimensionId)];
+            delete newDt[String(legendId)];
           }
-          updated[pid] = { ...p, dimension_types: newDt };
+          updated[pid] = { ...p, legend_types: newDt };
         }
       }
       return updated;
@@ -850,39 +897,41 @@ export default function IdeaBin() {
     document.addEventListener("mouseup", onUp);
   };
 
-  // ── Legend drag handler ──
-  const handleLegendDrag = (e, legendTypeId) => {
+  // ── Type drag handler ──
+  const handleTypeDrag = (e, legendTypeId) => {
     e.preventDefault();
     e.stopPropagation();
     let currentHoverIdeaId = null;
-    setDraggingLegend({
+    setDraggingType({
       id: legendTypeId, x: e.clientX, y: e.clientY,
-      color: legendTypeId ? dims.dimensionTypes[legendTypeId]?.color : "#374151",
+      color: legendTypeId ? dims.legendTypes[legendTypeId]?.color : "#374151",
     });
     const onMove = (ev) => {
-      setDraggingLegend(prev => ({ ...prev, x: ev.clientX, y: ev.clientY }));
+      setDraggingType(prev => ({ ...prev, x: ev.clientX, y: ev.clientY }));
       let found = null;
       for (const [refKey, ref] of Object.entries(ideaRefs.current)) {
         if (ref) {
           const r = ref.getBoundingClientRect();
           if (ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) {
-            found = refKey.startsWith("meta_") ? refKey : parseInt(refKey); break;
+            found = (refKey.startsWith("meta_") || refKey.startsWith("all_")) ? refKey : parseInt(refKey); break;
           }
         }
       }
       currentHoverIdeaId = found;
-      setHoverIdeaForLegend(found);
+      setHoverIdeaForType(found);
     };
     const onUp = () => {
       if (currentHoverIdeaId) {
-        // Resolve the actual placement ID from the ref key (strip "meta_" prefix)
+        // Resolve the actual placement ID from the ref key (strip "meta_" or "all_" prefix)
         const actualId = String(currentHoverIdeaId).startsWith("meta_")
           ? parseInt(String(currentHoverIdeaId).replace("meta_", ""))
+          : String(currentHoverIdeaId).startsWith("all_")
+          ? parseInt(String(currentHoverIdeaId).replace("all_", ""))
           : currentHoverIdeaId;
         assign_idea_legend_type(actualId, legendTypeId);
       }
-      setDraggingLegend(null);
-      setHoverIdeaForLegend(null);
+      setDraggingType(null);
+      setHoverIdeaForType(null);
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
@@ -1126,11 +1175,11 @@ export default function IdeaBin() {
     <IdeaBinIdeaCard
       key={`idea_${ideaId}`}
       ideaId={ideaId} arrayIndex={arrayIndex} source={source}
-      ideas={ideas} dims={dims} draggingLegend={draggingLegend}
+      ideas={ideas} dims={dims} draggingType={draggingType}
       dragSource={dragSource} hoverIndex={hoverIndex} prevIndex={prevIndex}
       editingIdeaId={editingIdeaId} setEditingIdeaId={setEditingIdeaId}
       setEditingIdeaTitle={setEditingIdeaTitle} setEditingIdeaHeadline={setEditingIdeaHeadline}
-      hoverIdeaForLegend={hoverIdeaForLegend} sidebarHeadlineOnly={sidebarHeadlineOnly}
+      hoverIdeaForType={hoverIdeaForType} sidebarHeadlineOnly={sidebarHeadlineOnly}
       showSidebarMeta={showSidebarMeta}
       collapsedIdeas={collapsedIdeas} setCollapsedIdeas={setCollapsedIdeas}
       wigglingIdeaId={wigglingIdeaId} setWigglingIdeaId={setWigglingIdeaId}
@@ -1143,8 +1192,11 @@ export default function IdeaBin() {
       ideaRefs={ideaRefs}
       remove_all_idea_categories={remove_all_idea_categories}
       remove_idea_from_category={remove_idea_from_category}
-      remove_all_idea_dimension_types={remove_all_idea_dimension_types}
-      remove_idea_dimension_type={remove_idea_dimension_type}
+      remove_all_idea_legend_types={remove_all_idea_legend_types}
+      remove_idea_legend_type={remove_idea_legend_type}
+      spinoff_idea={spinoff_idea}
+      categories={categories}
+      currentUserId={currentUserId}
     />
   );
 
@@ -1245,7 +1297,7 @@ export default function IdeaBin() {
             <div className="flex items-center gap-1">
               <button
                 onMouseDown={(e) => e.stopPropagation()}
-                onClick={() => { setShowMetaList(v => !v); if (!showMetaList) fetch_meta_ideas(); }}
+                onClick={() => setShowMetaList(v => !v)}
                 className={`p-1 rounded transition-colors ${showMetaList ? "bg-amber-600/30" : "hover:bg-amber-500/30"}`}
                 title="All Ideas (Meta View)"
               >
@@ -1294,65 +1346,15 @@ export default function IdeaBin() {
                 <div className="absolute inset-2 bg-white rounded-lg shadow-2xl z-[49] flex flex-col overflow-hidden border border-gray-200">
                   <div className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white">
                     <span className="text-sm font-semibold flex items-center gap-1.5">
-                      <List size={14} /> All Ideas
+                      <List size={14} /> All Ideas ({metaIdeaList.length})
                     </span>
                     <button onClick={() => setShowMetaList(false)} className="text-white/80 hover:text-white text-sm font-bold">✕</button>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-2 space-y-1">
-                    {metaIdeas.length === 0 && (
+                  <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+                    {metaIdeaList.length === 0 && (
                       <p className="text-xs text-gray-400 text-center py-4">No ideas yet</p>
                     )}
-                    {metaIdeas.map(idea => (
-                      <div key={idea.id} className="flex items-start gap-2 p-2 rounded-lg border border-gray-100 hover:bg-gray-50 group">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-semibold text-xs text-gray-800 truncate">{idea.headline || idea.title}</span>
-                            {idea.placement_count > 1 && (
-                              <span className="text-[9px] bg-indigo-100 text-indigo-600 px-1 rounded flex-shrink-0">×{idea.placement_count}</span>
-                            )}
-                          </div>
-                          {idea.headline && <p className="text-[10px] text-gray-500 truncate">{idea.title}</p>}
-                          <div className="flex items-center gap-2 mt-1 text-[9px] text-gray-400">
-                            {idea.owner_username && <span>by {idea.owner_username}</span>}
-                            {idea.created_at && <span>{new Date(idea.created_at).toLocaleDateString()}</span>}
-                          </div>
-                          {idea.placement_categories?.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {idea.placement_categories.map((cat, i) => (
-                                <span key={i} className="text-[8px] bg-gray-100 text-gray-500 px-1 rounded">{cat.name}</span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Copy
-                            size={12}
-                            onClick={() => { setCopiedIdeaId(idea.id); playSound('ideaCopy'); }}
-                            className={`cursor-pointer ${copiedIdeaId === idea.id ? "text-indigo-500" : "text-gray-400 hover:text-indigo-500"}`}
-                            title="Copy idea"
-                          />
-                          <DeleteForeverIcon
-                            onClick={() => {
-                              setConfirmModal({
-                                message: (
-                                  <div>
-                                    <p className="mb-1 text-sm font-medium">Delete this idea and ALL its copies?</p>
-                                    <p className="text-xs text-gray-600">{idea.headline || idea.title}</p>
-                                    {idea.placement_count > 1 && (
-                                      <p className="text-[10px] text-red-500 mt-1">{idea.placement_count} copies will be removed</p>
-                                    )}
-                                  </div>
-                                ),
-                                onConfirm: () => { delete_meta_idea(idea.id); setShowMetaList(false); setConfirmModal(null); },
-                                onCancel: () => setConfirmModal(null),
-                              });
-                            }}
-                            className="text-gray-400 hover:text-red-500! cursor-pointer"
-                            style={{ fontSize: 13 }}
-                          />
-                        </div>
-                      </div>
-                    ))}
+                    {metaIdeaList.map((idea, idx) => renderIdeaItem(idea.id, idx, { type: "meta" }))}
                   </div>
                 </div>
               </>
@@ -1503,33 +1505,40 @@ export default function IdeaBin() {
                       }
                       <span className="text-[9px]">▼</span>
                     </button>
-                    <div className="flex items-center gap-1.5">
+                    <div className="relative">
                       <button
-                        onClick={() => {
-                          const newVal = !sidebarHeadlineOnly;
-                          setSidebarHeadlineOnly(newVal);
-                          // reset individual collapse states for sidebar items
-                          setCollapsedIdeas(prev => {
-                            const next = { ...prev };
-                            // keep meta_ keys, reset others
-                            Object.keys(next).forEach(k => { if (!k.startsWith('meta_')) next[k] = newVal; });
-                            return next;
-                          });
-                        }}
-                        className="text-[9px] text-gray-400 hover:text-gray-600 transition-colors"
-                        title={sidebarHeadlineOnly ? "Show full ideas" : "Show headlines only"}
+                        onClick={() => setShowListSettings(p => !p)}
+                        className={`p-0.5 rounded transition-colors ${showListSettings ? "bg-gray-200 text-gray-700" : "text-gray-400 hover:text-gray-600"}`}
+                        title="List settings"
                       >
-                        {sidebarHeadlineOnly ? "▶ Full" : "▼ Headlines"}
+                        <Settings size={13} />
                       </button>
-                      <label className="flex items-center gap-0.5 text-[9px] text-gray-400 hover:text-gray-600 cursor-pointer" title="Show meta info (categories, dimensions)">
-                        <input
-                          type="checkbox"
-                          checked={showSidebarMeta}
-                          onChange={(e) => setShowSidebarMeta(e.target.checked)}
-                          className="w-2.5 h-2.5 accent-indigo-500"
-                        />
-                        Meta
-                      </label>
+                      {showListSettings && (
+                        <>
+                          <div className="fixed inset-0 z-[70]" onClick={() => setShowListSettings(false)} />
+                          <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-[71] min-w-[160px] py-1">
+                            <button
+                              onClick={() => {
+                                const newVal = !sidebarHeadlineOnly;
+                                setSidebarHeadlineOnly(newVal);
+                                // Reset ALL collapse states so the toggle takes effect everywhere
+                                setCollapsedIdeas({});
+                              }}
+                              className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 transition-colors"
+                            >
+                              <span className="w-3 text-center">{sidebarHeadlineOnly ? "▶" : "▼"}</span>
+                              {sidebarHeadlineOnly ? "Show full ideas" : "Headlines only"}
+                            </button>
+                            <button
+                              onClick={() => setShowSidebarMeta(p => !p)}
+                              className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 transition-colors"
+                            >
+                              <span className="w-3 text-center">{showSidebarMeta ? "✓" : ""}</span>
+                              Show meta info
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                   {showListFilterDropdown && (
@@ -1568,8 +1577,8 @@ export default function IdeaBin() {
                       .filter(idea => {
                         if (globalTypeFilter.length === 0) return true;
                         if (!idea) return false;
-                        const dimId = String(dims.activeDimensionId || "");
-                        const dt = idea.dimension_types?.[dimId];
+                        const dimId = String(dims.activeLegendId || "");
+                        const dt = idea.legend_types?.[dimId];
                         if (globalTypeFilter.includes("unassigned") && !dt) return true;
                         if (dt && globalTypeFilter.includes(dt.legend_type_id)) return true;
                         return false;
@@ -1581,8 +1590,8 @@ export default function IdeaBin() {
                         if (globalTypeFilter.length === 0) return true;
                         const idea = ideas[ideaId];
                         if (!idea) return false;
-                        const dimId = String(dims.activeDimensionId || "");
-                        const dt = idea.dimension_types?.[dimId];
+                        const dimId = String(dims.activeLegendId || "");
+                        const dt = idea.legend_types?.[dimId];
                         if (globalTypeFilter.includes("unassigned") && !dt) return true;
                         if (dt && globalTypeFilter.includes(dt.legend_type_id)) return true;
                         return false;
@@ -1593,8 +1602,8 @@ export default function IdeaBin() {
                         if (globalTypeFilter.length === 0) return true;
                         const idea = ideas[ideaId];
                         if (!idea) return false;
-                        const dimId = String(dims.activeDimensionId || "");
-                        const dt = idea.dimension_types?.[dimId];
+                        const dimId = String(dims.activeLegendId || "");
+                        const dt = idea.legend_types?.[dimId];
                         if (globalTypeFilter.includes("unassigned") && !dt) return true;
                         if (dt && globalTypeFilter.includes(dt.legend_type_id)) return true;
                         return false;
@@ -1602,21 +1611,21 @@ export default function IdeaBin() {
                       .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: listFilter }))
                 }              </div>
 
-              {/* ── Dimensions panel (extracted) ── */}
-              <IdeaBinDimensionPanel
+              {/* ── Legends panel (extracted) ── */}
+              <IdeaBinLegendPanel
                 dims={dims}
-                dimPanelCollapsed={dimPanelCollapsed} setDimPanelCollapsed={setDimPanelCollapsed}
-                showCreateDimension={showCreateDimension} setShowCreateDimension={setShowCreateDimension}
-                newDimensionName={newDimensionName} setNewDimensionName={setNewDimensionName}
-                editingDimensionId={editingDimensionId} setEditingDimensionId={setEditingDimensionId}
-                editingDimensionNameLocal={editingDimensionNameLocal} setEditingDimensionNameLocal={setEditingDimensionNameLocal}
-                globalTypeFilter={globalTypeFilter} setGlobalTypeFilter={setGlobalTypeFilter}
-                handleLegendDrag={handleLegendDrag}
-                editingLegendId={editingLegendId} setEditingLegendId={setEditingLegendId}
-                editingLegendName={editingLegendName} setEditingLegendName={setEditingLegendName}
+                legendPanelCollapsed={legendPanelCollapsed} setLegendPanelCollapsed={setLegendPanelCollapsed}
                 showCreateLegend={showCreateLegend} setShowCreateLegend={setShowCreateLegend}
-                newLegendColor={newLegendColor} setNewLegendColor={setNewLegendColor}
                 newLegendName={newLegendName} setNewLegendName={setNewLegendName}
+                editingLegendId={editingLegendId} setEditingLegendId={setEditingLegendId}
+                editingLegendNameLocal={editingLegendNameLocal} setEditingLegendNameLocal={setEditingLegendNameLocal}
+                globalTypeFilter={globalTypeFilter} setGlobalTypeFilter={setGlobalTypeFilter}
+                handleTypeDrag={handleTypeDrag}
+                editingTypeId={editingTypeId} setEditingTypeId={setEditingTypeId}
+                editingTypeName={editingTypeName} setEditingTypeName={setEditingTypeName}
+                showCreateType={showCreateType} setShowCreateType={setShowCreateType}
+                newTypeColor={newTypeColor} setNewTypeColor={setNewTypeColor}
+                newTypeName={newTypeName} setNewTypeName={setNewTypeName}
               />
             </div>
 
@@ -1646,10 +1655,13 @@ export default function IdeaBin() {
                 categoryContainerRef={categoryContainerRef}
                 displayCategoryForm={displayCategoryForm} setDisplayCategoryForm={setDisplayCategoryForm}
                 newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName}
+                newCategoryPublic={newCategoryPublic} setNewCategoryPublic={setNewCategoryPublic}
                 create_category_api={create_category_api}
                 archivedCategories={archivedCategories}
                 showArchive={showArchive} setShowArchive={setShowArchive}
                 toggle_archive_category={toggle_archive_category}
+                toggle_public_category={toggle_public_category}
+                drop_adopted_category={drop_adopted_category}
                 delete_category={delete_category}
                 setConfirmModal={setConfirmModal}
                 activeCategories={activeCategories}
@@ -1693,7 +1705,7 @@ export default function IdeaBin() {
       )}
 
       {/* ── Drag ghosts (extracted) ── */}
-      <IdeaBinDragGhosts dragging={dragging} externalGhost={externalGhost} draggingLegend={draggingLegend} />
+      <IdeaBinDragGhosts dragging={dragging} externalGhost={externalGhost} draggingType={draggingType} />
     </>
   );
 }

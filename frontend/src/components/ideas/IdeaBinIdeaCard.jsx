@@ -1,4 +1,6 @@
-import { Copy, Locate, MoreVertical, Zap, X } from "lucide-react";
+import { useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
+import { Copy, Locate, MoreVertical, Zap, X, GitBranchPlus } from "lucide-react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import EditIcon from "@mui/icons-material/Edit";
 
@@ -8,10 +10,10 @@ import EditIcon from "@mui/icons-material/Edit";
  */
 export default function IdeaBinIdeaCard({
   ideaId, arrayIndex, source,
-  ideas, dims, draggingLegend,
+  ideas, dims, draggingType,
   dragSource, hoverIndex, prevIndex,
   editingIdeaId, setEditingIdeaId, setEditingIdeaTitle, setEditingIdeaHeadline,
-  hoverIdeaForLegend, sidebarHeadlineOnly, showSidebarMeta,
+  hoverIdeaForType, sidebarHeadlineOnly, showSidebarMeta,
   collapsedIdeas, setCollapsedIdeas,
   wigglingIdeaId, setWigglingIdeaId,
   handleIdeaDrag,
@@ -22,27 +24,38 @@ export default function IdeaBinIdeaCard({
   delete_meta_idea, delete_idea,
   ideaRefs,
   remove_all_idea_categories, remove_idea_from_category,
-  remove_all_idea_dimension_types, remove_idea_dimension_type,
+  remove_all_idea_legend_types, remove_idea_legend_type,
+  spinoff_idea, categories, currentUserId,
 }) {
+  const moreButtonRef = useRef(null);
+
   const idea = ideas[ideaId];
   if (!idea) return null;
 
   const isSource = dragSource &&
     dragSource.type === source.type &&
-    (source.type === "unassigned" || source.type === "all" || String(dragSource.id) === String(source.id));
+    (source.type === "unassigned" || source.type === "all" || source.type === "meta" || String(dragSource.id) === String(source.id));
   const isEditing = editingIdeaId === ideaId;
   const legendType = (() => {
-    const dimId = String(dims.activeDimensionId || "");
-    const dt = idea.dimension_types?.[dimId];
+    const legId = String(dims.activeLegendId || "");
+    const dt = idea.legend_types?.[legId];
     if (dt) return { id: dt.legend_type_id, color: dt.color, name: dt.name };
     return null;
   })();
-  const isHoveredForLegend = hoverIdeaForLegend === ideaId || hoverIdeaForLegend === `meta_${ideaId}`;
-  const collapseKey = source.type === "all" ? `meta_${ideaId}` : ideaId;
-  const isIdeaCollapsed = sidebarHeadlineOnly && source.type !== "all"
-    ? (collapsedIdeas[collapseKey] ?? true)
-    : (collapsedIdeas[collapseKey] ?? (source.type !== "all"));
-  const isWiggling = wigglingIdeaId && idea.idea_id === wigglingIdeaId && source.type !== "all";
+  const isHoveredForType = hoverIdeaForType === ideaId || hoverIdeaForType === `meta_${ideaId}` || hoverIdeaForType === `all_${ideaId}`;
+  const isMetaView = source.type === "meta";  // Idea List Overlay
+  const isAllView = source.type === "all";    // Overview "All Ideas" filter
+  const collapseKey = isMetaView ? `meta_${ideaId}` : isAllView ? `all_${ideaId}` : ideaId;
+  const isIdeaCollapsed = isMetaView
+    ? (collapsedIdeas[collapseKey] ?? false)   // overlay: expanded by default
+    : sidebarHeadlineOnly
+    ? (collapsedIdeas[collapseKey] ?? true)     // headline-only mode: collapsed by default
+    : (collapsedIdeas[collapseKey] ?? !isAllView); // normal: unassigned/category collapsed, "all" expanded
+  const isWiggling = wigglingIdeaId && idea.idea_id === wigglingIdeaId && !isAllView && !isMetaView;
+  const isInAdoptedCategory = source.type === "category" && categories?.[source.id]?.adopted;
+  const isOwnIdea = idea.owner === currentUserId;
+  // Foreign idea = in adopted category AND not owned by current user
+  const isForeignIdea = isInAdoptedCategory && !isOwnIdea;
 
   const getDisplayText = () => {
     if (idea.headline) return <span className="font-semibold text-xs">{idea.headline}</span>;
@@ -68,13 +81,12 @@ export default function IdeaBinIdeaCard({
       ) : (
         <div
           ref={el => {
-            const refKey = source.type === "all" ? `meta_${ideaId}` : ideaId;
-            ideaRefs.current[refKey] = el;
+            ideaRefs.current[collapseKey] = el;
           }}
           onMouseDown={(e) => { e.stopPropagation(); handleIdeaDrag(e, idea, arrayIndex, source); }}
           style={{
-            backgroundColor: isHoveredForLegend
-              ? (draggingLegend?.color || "#e0e7ff")
+            backgroundColor: isHoveredForType
+              ? (draggingType?.color || "#e0e7ff")
               : isSource && arrayIndex === prevIndex ? "#e5e7eb"
               : legendType ? `${legendType.color}20` : "#ffffff4b",
             borderLeftColor: legendType ? legendType.color : "#374151",
@@ -83,13 +95,13 @@ export default function IdeaBinIdeaCard({
               ? "translateY(4px)" : "translateY(0px)",
             transition: "transform 150ms ease, background-color 150ms ease",
           }}
-          className={`w-full rounded text-gray-800 px-1.5 py-1 flex justify-between ${isIdeaCollapsed ? "items-center" : "items-start"} text-[11px] mb-0.5 cursor-grab leading-tight shadow-sm border border-gray-200 hover:shadow-md ${isHoveredForLegend ? "ring-2 ring-offset-1" : ""} ${isWiggling ? "ideabin-wiggle" : ""}`}
+          className={`w-full rounded text-gray-800 px-1.5 py-1 flex justify-between ${isIdeaCollapsed ? "items-center" : "items-start"} text-[11px] mb-0.5 cursor-grab leading-tight shadow-sm border border-gray-200 hover:shadow-md ${isHoveredForType ? "ring-2 ring-offset-1" : ""} ${isWiggling ? "ideabin-wiggle" : ""}`}
         >
           <div className={`flex ${isIdeaCollapsed ? "items-center" : "items-start"} gap-1 flex-1 mr-1`}>
             <span
               onClick={(e) => {
                 e.stopPropagation();
-                const currentDefault = source.type !== "all";
+                const currentDefault = !(isAllView || isMetaView);
                 setCollapsedIdeas(prev => {
                   const current = prev[collapseKey] ?? currentDefault;
                   return { ...prev, [collapseKey]: !current };
@@ -109,16 +121,15 @@ export default function IdeaBinIdeaCard({
                 <>
                   {idea.headline && <div className="font-semibold text-xs mb-0.5">{idea.headline}</div>}
                   <span className="text-[10px] text-gray-600">{idea.title}</span>
-                  {/* Meta info: categories + dimensions */}
-                  {(source.type === "all" || showSidebarMeta) && (() => {
+                  {/* Meta info: categories + legends */}
+                  {(isMetaView || showSidebarMeta) && (() => {
                     const cats = idea.placement_categories || [];
-                    const dimEntries = Object.entries(idea.dimension_types || {}).map(([dimId, dt]) => {
-                      const dim = dims.dimensions.find(d => String(d.id) === String(dimId));
-                      return dim ? { dimId, dimName: dim.name, typeName: dt.name, color: dt.color } : null;
+                    const legendEntries = Object.entries(idea.legend_types || {}).map(([legId, dt]) => {
+                      const leg = dims.legends.find(d => String(d.id) === String(legId));
+                      return leg ? { legId, legName: leg.name, typeName: dt.name, color: dt.color } : null;
                     }).filter(Boolean);
-                    const hasMeta = cats.length > 0 || dimEntries.length > 0;
+                    const hasMeta = cats.length > 0 || legendEntries.length > 0;
                     if (!hasMeta) return null;
-                    const isMetaView = source.type === "all";
                     return (
                       <div className="mt-1 pl-1 border-l-2 border-gray-200 space-y-0.5">
                         {cats.length > 0 && (
@@ -160,38 +171,38 @@ export default function IdeaBinIdeaCard({
                             </div>
                           </div>
                         )}
-                        {dimEntries.length > 0 && (
+                        {legendEntries.length > 0 && (
                           <div className="text-[9px] text-gray-500">
                             <div className="flex items-center gap-1 mb-0.5">
-                              <span className="font-medium text-gray-600">Dimensions:</span>
-                              {isMetaView && dimEntries.length > 1 && (
+                              <span className="font-medium text-gray-600">Legends:</span>
+                              {isMetaView && legendEntries.length > 1 && (
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setConfirmModal({
-                                      message: <p className="text-sm">Remove <strong>{idea.headline || idea.title}</strong> from <strong>all {dimEntries.length} dimension types</strong>?</p>,
-                                      onConfirm: () => { remove_all_idea_dimension_types(idea.idea_id); setConfirmModal(null); },
+                                      message: <p className="text-sm">Remove <strong>{idea.headline || idea.title}</strong> from <strong>all {legendEntries.length} types</strong>?</p>,
+                                      onConfirm: () => { remove_all_idea_legend_types(idea.idea_id); setConfirmModal(null); },
                                       onCancel: () => setConfirmModal(null),
                                     });
                                   }}
                                   className="text-[8px] text-red-400 hover:text-red-600 transition-colors"
-                                  title="Remove all dimension types"
+                                  title="Remove all types"
                                 >✕ all</button>
                               )}
                             </div>
                             <div className="flex flex-wrap gap-0.5">
-                              {dimEntries.map((e, i) => (
+                              {legendEntries.map((e, i) => (
                                 <span key={i} className="inline-flex items-center gap-0.5 bg-gray-100 rounded px-1 py-0.5">
-                                  {e.dimName} = <span style={{ color: e.color }} className="font-medium">{e.typeName}</span>
+                                  {e.legName} = <span style={{ color: e.color }} className="font-medium">{e.typeName}</span>
                                   {isMetaView && (
                                     <X
                                       size={8}
                                       onClick={(ev) => {
                                         ev.stopPropagation();
-                                        remove_idea_dimension_type(idea.idea_id, parseInt(e.dimId));
+                                        remove_idea_legend_type(idea.idea_id, parseInt(e.legId));
                                       }}
                                       className="text-gray-400 hover:text-red-500 cursor-pointer flex-shrink-0"
-                                      title={`Remove ${e.dimName} type`}
+                                      title={`Remove ${e.legName} type`}
                                     />
                                   )}
                                 </span>
@@ -207,6 +218,17 @@ export default function IdeaBinIdeaCard({
             </div>
           </div>
           <div className={`flex-shrink-0 flex items-center gap-0.5 text-gray-400 ${isIdeaCollapsed ? "" : "mt-0.5"}`} onMouseDown={(e) => e.stopPropagation()}>
+            {isForeignIdea && (
+              <GitBranchPlus
+                size={12}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  spinoff_idea(idea.idea_id);
+                }}
+                className="cursor-pointer text-indigo-400 hover:text-indigo-600!"
+                title="Spinoff — create your own copy"
+              />
+            )}
             <Copy
               size={12}
               onClick={(e) => {
@@ -216,7 +238,7 @@ export default function IdeaBinIdeaCard({
               className={`cursor-pointer ${copiedIdeaId === idea.idea_id ? "text-indigo-500!" : "hover:text-indigo-500!"}`}
               title="Copy idea (Ctrl+C)"
             />
-            {source.type === "all" && showCategories && (
+            {(isAllView || isMetaView) && showCategories && (
               <Locate
                 size={12}
                 onClick={(e) => {
@@ -230,6 +252,7 @@ export default function IdeaBinIdeaCard({
             )}
             <div className="relative">
               <MoreVertical
+                ref={moreButtonRef}
                 size={13}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -238,10 +261,34 @@ export default function IdeaBinIdeaCard({
                 className="cursor-pointer hover:text-gray-600"
                 title="More actions"
               />
-              {ideaSettingsOpen === ideaId && (
+              {ideaSettingsOpen === ideaId && createPortal(
                 <>
-                  <div className="fixed inset-0 z-[60]" onClick={() => setIdeaSettingsOpen(null)} />
-                  <div className="absolute right-0 top-4 z-[61] bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[130px]">
+                  <div className="fixed inset-0 z-[9998]" onClick={() => setIdeaSettingsOpen(null)} onMouseDown={(e) => e.stopPropagation()} />
+                  <div
+                    className="fixed z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[130px]"
+                    style={(() => {
+                      const r = moreButtonRef.current?.getBoundingClientRect();
+                      if (!r) return { top: 0, left: 0 };
+                      return { top: r.bottom + 4, left: r.right - 130 };
+                    })()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    {isForeignIdea ? (
+                      /* Foreign idea in adopted category: only Spinoff option */
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIdeaSettingsOpen(null);
+                          spinoff_idea(idea.idea_id);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-indigo-700 hover:bg-indigo-50 transition-colors"
+                      >
+                        <GitBranchPlus size={13} className="text-indigo-500" />
+                        Spinoff
+                      </button>
+                    ) : (
+                      /* Own idea: full actions */
+                      <>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -270,20 +317,20 @@ export default function IdeaBinIdeaCard({
                       onClick={(e) => {
                         e.stopPropagation();
                         setIdeaSettingsOpen(null);
-                        const isMetaView = source.type === "all";
+                        const isMetaDel = isMetaView;
                         setConfirmModal({
                           message: (
                             <div>
-                              <p className="mb-1 text-sm">{isMetaView ? "Delete this idea and ALL its copies?" : "Delete this idea?"}</p>
+                              <p className="mb-1 text-sm">{isMetaDel ? "Delete this idea and ALL its copies?" : "Delete this idea?"}</p>
                               {idea.headline && <p className="font-semibold text-xs">{idea.headline}</p>}
                               <p className="text-xs text-gray-600 mt-0.5">{idea.title.length > 80 ? idea.title.slice(0, 80) + "..." : idea.title}</p>
-                              {isMetaView && idea.placement_count > 1 && (
+                              {isMetaDel && idea.placement_count > 1 && (
                                 <p className="text-[10px] text-red-500 mt-1">{idea.placement_count} copies will be removed</p>
                               )}
                             </div>
                           ),
                           onConfirm: () => {
-                            if (isMetaView) { delete_meta_idea(idea.idea_id); }
+                            if (isMetaDel) { delete_meta_idea(idea.idea_id); }
                             else { delete_idea(idea.id); }
                             setConfirmModal(null);
                           },
@@ -295,8 +342,11 @@ export default function IdeaBinIdeaCard({
                       <DeleteForeverIcon style={{ fontSize: 13 }} />
                       Delete
                     </button>
+                      </>
+                    )}
                   </div>
-                </>
+                </>,
+                document.body
               )}
             </div>
           </div>

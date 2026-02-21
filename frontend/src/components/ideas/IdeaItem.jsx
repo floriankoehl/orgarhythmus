@@ -18,8 +18,8 @@ export default function IdeaItem({
   handleIdeaDrag,
   // Legend
   legendTypes,
-  hoverIdeaForLegend,
-  draggingLegend,
+  hoverIdeaForType,
+  draggingType,
   // Collapse
   isIdeaCollapsed,
   onToggleCollapse,
@@ -37,7 +37,7 @@ export default function IdeaItem({
       String(dragSource.id) === String(source.id));
 
   const legendType = idea.legend_type_id ? legendTypes[idea.legend_type_id] : null;
-  const isHoveredForLegend = hoverIdeaForLegend === ideaId;
+  const isHoveredForType = hoverIdeaForType === ideaId;
 
   const getDisplayText = () => {
     if (idea.headline) {
@@ -78,8 +78,8 @@ export default function IdeaItem({
           }}
           style={{
             backgroundColor:
-              isHoveredForLegend
-                ? (draggingLegend?.color || "#e0e7ff")
+              isHoveredForType
+                ? (draggingType?.color || "#e0e7ff")
                 : isSource && arrayIndex === prevIndex
                 ? "#e5e7eb"
                 : legendType
@@ -96,7 +96,7 @@ export default function IdeaItem({
                 : "translateY(0px)",
             transition: "transform 200ms ease, background-color 200ms ease, border-color 200ms ease",
           }}
-          className={`w-full rounded text-gray-800 px-2 py-1.5 flex justify-between items-start text-xs mb-1 cursor-grab leading-snug shadow-sm border border-gray-200 hover:shadow-md hover:border-gray-300 ${isHoveredForLegend ? 'ring-2 ring-offset-1' : ''}`}
+          className={`w-full rounded text-gray-800 px-2 py-1.5 flex justify-between items-start text-xs mb-1 cursor-grab leading-snug shadow-sm border border-gray-200 hover:shadow-md hover:border-gray-300 ${isHoveredForType ? 'ring-2 ring-offset-1' : ''}`}
         >
           <div className="flex items-start gap-1.5 flex-1 mr-1">
             {/* Collapse toggle - colored triangle */}

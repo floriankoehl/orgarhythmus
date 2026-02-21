@@ -1,4 +1,4 @@
-// Left sidebar: form + unassigned idea list + dimensions panel
+// Left sidebar: form + unassigned idea list + legends panel
 import { useState } from "react";
 import TextField from "@mui/material/TextField";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
@@ -8,7 +8,7 @@ import IdeaItem from "./IdeaItem";
  * Left sidebar containing:
  * - Create / edit idea form (with resizable height)
  * - Unassigned idea list
- * - Dimensions panel (dimension selector, type dots, filters, create new)
+ * - Legends panel (legend selector, type dots, filters, create new)
  */
 export default function IdeasSidebar({
   // Layout
@@ -16,13 +16,12 @@ export default function IdeasSidebar({
   // Data
   ideas,
   unassignedOrder,
-  legendTypes,      // backward-compat
-  dimensionTypes,   // preferred: types from active dimension
-  // Dimension management
-  dimensions = [],
-  activeDimensionId,
-  setActiveDimensionId,
-  dimensionActions = {},
+  legendTypes,
+  // Legend management
+  legends = [],
+  activeLegendId,
+  setActiveLegendId,
+  legendActions = {},
   // Drag
   dragging,
   dragSource,
@@ -30,8 +29,8 @@ export default function IdeasSidebar({
   hoverIndex,
   hoverUnassigned,
   handleIdeaDrag,
-  // Legend interaction
-  legendInteraction,
+  // Type interaction
+  typeInteraction,
   // UI state
   uiState,
   // Data actions
@@ -40,14 +39,13 @@ export default function IdeasSidebar({
   IdeaListRef,
   ideaRefs,
 }) {
-  // Dimension UI state (local)
-  const [showCreateDimension, setShowCreateDimension] = useState(false);
-  const [newDimensionName, setNewDimensionName] = useState("");
-  const [editingDimensionId, setEditingDimensionId] = useState(null);
-  const [editingDimensionNameLocal, setEditingDimensionNameLocal] = useState("");
+  // Legend UI state (local)
+  const [showCreateLegend, setShowCreateLegend] = useState(false);
+  const [newLegendName, setNewLegendName] = useState("");
+  const [editingLegendId, setEditingLegendId] = useState(null);
+  const [editingLegendNameLocal, setEditingLegendNameLocal] = useState("");
 
-  // Use dimensionTypes if provided, fall back to legendTypes
-  const effectiveTypes = dimensionTypes ?? legendTypes ?? {};
+  const effectiveTypes = legendTypes ?? {};
   const {
     editingIdeaId,
     editingIdeaTitle,
@@ -77,28 +75,28 @@ export default function IdeasSidebar({
   } = dataActions;
 
   const {
-    draggingLegend,
-    hoverIdeaForLegend,
-    handleLegendDrag,
-    editingLegendId,
-    setEditingLegendId,
-    editingLegendName,
-    setEditingLegendName,
-    legendCollapsed,
-    setLegendCollapsed,
-    showCreateLegend,
-    setShowCreateLegend,
-    newLegendColor,
-    setNewLegendColor,
-    newLegendName,
-    setNewLegendName,
-  } = legendInteraction;
+    draggingType,
+    hoverIdeaForType,
+    handleTypeDrag,
+    editingTypeId,
+    setEditingTypeId,
+    editingTypeName,
+    setEditingTypeName,
+    legendPanelCollapsed,
+    setLegendPanelCollapsed,
+    showCreateType,
+    setShowCreateType,
+    newTypeColor,
+    setNewTypeColor,
+    newTypeName,
+    setNewTypeName,
+  } = typeInteraction;
 
   const {
-    create_dimension_type = dataActions.create_legend_type,
-    update_dimension_type = dataActions.update_legend_type,
-    delete_dimension_type = dataActions.delete_legend_type,
-  } = dimensionActions;
+    create_type = dataActions.create_legend_type,
+    update_type = dataActions.update_legend_type,
+    delete_type = dataActions.delete_legend_type,
+  } = legendActions;
 
   const handleSubmitIdea = () => {
     if (editingIdeaId) {
@@ -260,8 +258,8 @@ export default function IdeasSidebar({
                 hoverIndex={hoverIndex}
                 handleIdeaDrag={handleIdeaDrag}
                 legendTypes={effectiveTypes}
-                hoverIdeaForLegend={hoverIdeaForLegend}
-                draggingLegend={draggingLegend}
+                hoverIdeaForType={hoverIdeaForType}
+                draggingType={draggingType}
                 isIdeaCollapsed={collapsedIdeas[ideaId] ?? false}
                 onToggleCollapse={(id) =>
                   setCollapsedIdeas((prev) => ({ ...prev, [id]: !prev[id] }))
@@ -275,71 +273,71 @@ export default function IdeasSidebar({
           })}
       </div>
 
-      {/* ===== Dimensions Panel ===== */}
+      {/* ===== Legends Panel ===== */}
       <div className="bg-white border-t border-gray-300 p-3 flex-shrink-0">
         <div
           className="flex items-center justify-between cursor-pointer"
-          onClick={() => setLegendCollapsed(!legendCollapsed)}
+          onClick={() => setLegendPanelCollapsed(!legendPanelCollapsed)}
         >
           <h3 className="text-sm font-semibold text-gray-600">
-            Dimensions {globalTypeFilter.length > 0 && <span className="text-blue-500">(filtered)</span>}
+            Legends {globalTypeFilter.length > 0 && <span className="text-blue-500">(filtered)</span>}
           </h3>
-          <span className="text-gray-400 text-xs">{legendCollapsed ? '▲' : '▼'}</span>
+          <span className="text-gray-400 text-xs">{legendPanelCollapsed ? '▲' : '▼'}</span>
         </div>
 
-        {!legendCollapsed && (
+        {!legendPanelCollapsed && (
           <>
-            {/* Dimension selector */}
-            {dimensions.length > 0 && (
+            {/* Legend selector */}
+            {legends.length > 0 && (
               <div className="mt-2 mb-1">
-                {editingDimensionId ? (
+                {editingLegendId ? (
                   <div className="flex gap-1">
                     <input
                       autoFocus
-                      value={editingDimensionNameLocal}
-                      onChange={(e) => setEditingDimensionNameLocal(e.target.value)}
+                      value={editingLegendNameLocal}
+                      onChange={(e) => setEditingLegendNameLocal(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" && editingDimensionNameLocal.trim()) {
-                          dimensionActions.update_dimension?.(editingDimensionId, editingDimensionNameLocal.trim());
-                          setEditingDimensionId(null);
-                        } else if (e.key === "Escape") setEditingDimensionId(null);
+                        if (e.key === "Enter" && editingLegendNameLocal.trim()) {
+                          legendActions.update_legend?.(editingLegendId, editingLegendNameLocal.trim());
+                          setEditingLegendId(null);
+                        } else if (e.key === "Escape") setEditingLegendId(null);
                       }}
                       onBlur={() => {
-                        if (editingDimensionNameLocal.trim()) {
-                          dimensionActions.update_dimension?.(editingDimensionId, editingDimensionNameLocal.trim());
+                        if (editingLegendNameLocal.trim()) {
+                          legendActions.update_legend?.(editingLegendId, editingLegendNameLocal.trim());
                         }
-                        setEditingDimensionId(null);
+                        setEditingLegendId(null);
                       }}
                       className="flex-1 text-xs px-2 py-0.5 border border-blue-400 rounded outline-none"
                     />
-                    <button onClick={() => setEditingDimensionId(null)} className="text-xs px-1 text-gray-400 hover:text-gray-600">✕</button>
+                    <button onClick={() => setEditingLegendId(null)} className="text-xs px-1 text-gray-400 hover:text-gray-600">✕</button>
                   </div>
                 ) : (
                   <div className="flex items-center gap-1">
                     <select
-                      value={activeDimensionId || ""}
-                      onChange={(e) => setActiveDimensionId(e.target.value ? parseInt(e.target.value) : null)}
+                      value={activeLegendId || ""}
+                      onChange={(e) => setActiveLegendId(e.target.value ? parseInt(e.target.value) : null)}
                       className="flex-1 text-xs px-1 py-0.5 border border-gray-300 rounded outline-none focus:border-blue-400 bg-white"
                     >
-                      {dimensions.map(d => (
+                      {legends.map(d => (
                         <option key={d.id} value={d.id}>{d.name}</option>
                       ))}
                     </select>
                     <button
                       onClick={() => {
-                        const dim = dimensions.find(d => d.id === activeDimensionId);
-                        if (dim) { setEditingDimensionId(dim.id); setEditingDimensionNameLocal(dim.name); }
+                        const dim = legends.find(d => d.id === activeLegendId);
+                        if (dim) { setEditingLegendId(dim.id); setEditingLegendNameLocal(dim.name); }
                       }}
-                      title="Rename dimension"
+                      title="Rename legend"
                       className="text-gray-400 hover:text-blue-500 text-xs px-1 leading-none"
                     >✎</button>
                     <button
                       onClick={() => {
-                        if (activeDimensionId && window.confirm("Delete this dimension and all its types?")) {
-                          dimensionActions.delete_dimension?.(activeDimensionId);
+                        if (activeLegendId && window.confirm("Delete this legend and all its types?")) {
+                          legendActions.delete_legend?.(activeLegendId);
                         }
                       }}
-                      title="Delete dimension"
+                      title="Delete legend"
                       className="text-gray-400 hover:text-red-500 text-xs px-1 leading-none"
                     >✕</button>
                   </div>
@@ -347,41 +345,41 @@ export default function IdeasSidebar({
               </div>
             )}
 
-            {/* Create new dimension */}
-            {showCreateDimension ? (
+            {/* Create new legend */}
+            {showCreateLegend ? (
               <div className="flex gap-1 mb-2">
                 <input
                   autoFocus
-                  value={newDimensionName}
-                  onChange={(e) => setNewDimensionName(e.target.value)}
+                  value={newLegendName}
+                  onChange={(e) => setNewLegendName(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && newDimensionName.trim()) {
-                      dimensionActions.create_dimension?.(newDimensionName.trim());
-                      setNewDimensionName("");
-                      setShowCreateDimension(false);
-                    } else if (e.key === "Escape") setShowCreateDimension(false);
+                    if (e.key === "Enter" && newLegendName.trim()) {
+                      legendActions.create_legend?.(newLegendName.trim());
+                      setNewLegendName("");
+                      setShowCreateLegend(false);
+                    } else if (e.key === "Escape") setShowCreateLegend(false);
                   }}
-                  placeholder="Dimension name..."
+                  placeholder="Legend name..."
                   className="flex-1 text-xs px-2 py-0.5 border border-gray-300 rounded outline-none focus:border-blue-400"
                 />
                 <button
                   onClick={() => {
-                    if (newDimensionName.trim()) {
-                      dimensionActions.create_dimension?.(newDimensionName.trim());
-                      setNewDimensionName("");
-                      setShowCreateDimension(false);
+                    if (newLegendName.trim()) {
+                      legendActions.create_legend?.(newLegendName.trim());
+                      setNewLegendName("");
+                      setShowCreateLegend(false);
                     }
                   }}
                   className="text-xs px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600"
                 >+</button>
-                <button onClick={() => setShowCreateDimension(false)} className="text-xs px-1 text-gray-400 hover:text-gray-600">✕</button>
+                <button onClick={() => setShowCreateLegend(false)} className="text-xs px-1 text-gray-400 hover:text-gray-600">✕</button>
               </div>
             ) : (
               <button
-                onClick={() => setShowCreateDimension(true)}
+                onClick={() => setShowCreateLegend(true)}
                 className="w-full mb-2 text-xs px-2 py-1 border border-dashed border-gray-300 rounded text-gray-500 hover:border-gray-400 hover:bg-gray-50 transition-colors"
               >
-                + New Dimension
+                + New Legend
               </button>
             )}
 
@@ -407,7 +405,7 @@ export default function IdeasSidebar({
               }}
             >
               <div
-                onMouseDown={(e) => { e.stopPropagation(); handleLegendDrag(e, null); }}
+                onMouseDown={(e) => { e.stopPropagation(); handleTypeDrag(e, null); }}
                 className="w-6 h-6 rounded-full cursor-grab hover:scale-110 transition-transform shadow-sm border border-gray-200 bg-gray-700"
                 title="Drag to remove type"
               />
@@ -415,7 +413,7 @@ export default function IdeasSidebar({
               {globalTypeFilter.includes("unassigned") && <span className="text-blue-500 text-xs">✓</span>}
             </div>
 
-            {/* Dimension types */}
+            {/* Legend types */}
             {Object.values(effectiveTypes).map((lt) => (
               <div
                 key={lt.id}
@@ -429,27 +427,27 @@ export default function IdeasSidebar({
                 }}
               >
                 <div
-                  onMouseDown={(e) => { e.stopPropagation(); handleLegendDrag(e, lt.id); }}
+                  onMouseDown={(e) => { e.stopPropagation(); handleTypeDrag(e, lt.id); }}
                   className="w-6 h-6 rounded-full cursor-grab hover:scale-110 transition-transform shadow-sm border border-gray-200"
                   style={{ backgroundColor: lt.color }}
                   title={`Drag to assign: ${lt.name}`}
                 />
-                {editingLegendId === lt.id ? (
+                {editingTypeId === lt.id ? (
                   <input
                     autoFocus
-                    value={editingLegendName}
-                    onChange={(e) => setEditingLegendName(e.target.value)}
+                    value={editingTypeName}
+                    onChange={(e) => setEditingTypeName(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
-                        update_dimension_type(lt.id, { name: editingLegendName });
-                        setEditingLegendId(null);
+                        update_type(lt.id, { name: editingTypeName });
+                        setEditingTypeId(null);
                       } else if (e.key === "Escape") {
-                        setEditingLegendId(null);
+                        setEditingTypeId(null);
                       }
                     }}
                     onBlur={() => {
-                      update_dimension_type(lt.id, { name: editingLegendName });
-                      setEditingLegendId(null);
+                      update_type(lt.id, { name: editingTypeName });
+                      setEditingTypeId(null);
                     }}
                     onClick={(e) => e.stopPropagation()}
                     className="text-xs px-1 py-0.5 border border-blue-400 rounded outline-none flex-1 min-w-0"
@@ -458,8 +456,8 @@ export default function IdeasSidebar({
                   <span
                     onDoubleClick={(e) => {
                       e.stopPropagation();
-                      setEditingLegendId(lt.id);
-                      setEditingLegendName(lt.name);
+                      setEditingTypeId(lt.id);
+                      setEditingTypeName(lt.name);
                     }}
                     className="text-xs text-gray-700 cursor-text flex-1"
                   >
@@ -476,12 +474,12 @@ export default function IdeasSidebar({
                   <input
                     type="color"
                     value={lt.color}
-                    onChange={(e) => update_dimension_type(lt.id, { color: e.target.value })}
+                    onChange={(e) => update_type(lt.id, { color: e.target.value })}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   />
                 </label>
                 <DeleteForeverIcon
-                  onClick={(e) => { e.stopPropagation(); delete_dimension_type(lt.id); }}
+                  onClick={(e) => { e.stopPropagation(); delete_type(lt.id); }}
                   className="text-gray-300 hover:text-red-500! cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
                   style={{ fontSize: 16 }}
                 />
@@ -489,27 +487,27 @@ export default function IdeasSidebar({
             ))}
 
             {/* Create new type */}
-            {showCreateLegend ? (
+            {showCreateType ? (
               <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-200">
                 <div className="flex items-center gap-2 mb-2">
                   <input
                     type="color"
-                    value={newLegendColor}
-                    onChange={(e) => setNewLegendColor(e.target.value)}
+                    value={newTypeColor}
+                    onChange={(e) => setNewTypeColor(e.target.value)}
                     className="w-6 h-6 cursor-pointer rounded"
                   />
                   <input
                     autoFocus
-                    value={newLegendName}
-                    onChange={(e) => setNewLegendName(e.target.value)}
+                    value={newTypeName}
+                    onChange={(e) => setNewTypeName(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter" && newLegendName.trim()) {
-                        create_dimension_type(newLegendName, newLegendColor);
-                        setNewLegendName("");
-                        setNewLegendColor("#6366f1");
-                        setShowCreateLegend(false);
+                      if (e.key === "Enter" && newTypeName.trim()) {
+                        create_type(newTypeName, newTypeColor);
+                        setNewTypeName("");
+                        setNewTypeColor("#6366f1");
+                        setShowCreateType(false);
                       } else if (e.key === "Escape") {
-                        setShowCreateLegend(false);
+                        setShowCreateType(false);
                       }
                     }}
                     placeholder="Type name..."
@@ -519,11 +517,11 @@ export default function IdeasSidebar({
                 <div className="flex gap-1">
                   <button
                     onClick={() => {
-                      if (newLegendName.trim()) {
-                        create_dimension_type(newLegendName, newLegendColor);
-                        setNewLegendName("");
-                        setNewLegendColor("#6366f1");
-                        setShowCreateLegend(false);
+                      if (newTypeName.trim()) {
+                        create_type(newTypeName, newTypeColor);
+                        setNewTypeName("");
+                        setNewTypeColor("#6366f1");
+                        setShowCreateType(false);
                       }
                     }}
                     className="flex-1 text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
@@ -531,7 +529,7 @@ export default function IdeasSidebar({
                     Create
                   </button>
                   <button
-                    onClick={() => setShowCreateLegend(false)}
+                    onClick={() => setShowCreateType(false)}
                     className="text-xs px-2 py-1 bg-gray-200 text-gray-600 rounded hover:bg-gray-300"
                   >
                     Cancel
@@ -540,7 +538,7 @@ export default function IdeasSidebar({
               </div>
             ) : (
               <button
-                onClick={() => setShowCreateLegend(true)}
+                onClick={() => setShowCreateType(true)}
                 className="w-full mt-2 text-xs px-2 py-1.5 border border-dashed border-gray-300 rounded text-gray-500 hover:border-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors"
               >
                 + Add Type

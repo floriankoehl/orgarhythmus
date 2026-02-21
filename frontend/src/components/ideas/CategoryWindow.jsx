@@ -279,8 +279,8 @@ export default function CategoryWindow({
                 hoverIndex={hoverIndex}
                 handleIdeaDrag={handleIdeaDrag}
                 legendTypes={legendTypes}
-                hoverIdeaForLegend={null}
-                draggingLegend={null}
+                hoverIdeaForType={null}
+                draggingType={null}
                 isIdeaCollapsed={collapsedIdeas[ideaId] ?? false}
                 onToggleCollapse={(id) =>
                   setCollapsedIdeas((prev) => ({ ...prev, [id]: !prev[id] }))

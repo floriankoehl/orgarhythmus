@@ -1,8 +1,8 @@
 /**
  * Floating drag ghost overlays rendered outside the IdeaBin window.
- * Three types: internal idea ghost, legend type ghost, and external ghost.
+ * Three types: internal idea ghost, type drag ghost, and external ghost.
  */
-export default function IdeaBinDragGhosts({ dragging, externalGhost, draggingLegend }) {
+export default function IdeaBinDragGhosts({ dragging, externalGhost, draggingType }) {
   return (
     <>
       {/* Internal idea drag ghost */}
@@ -22,14 +22,14 @@ export default function IdeaBinDragGhosts({ dragging, externalGhost, draggingLeg
         </div>
       )}
 
-      {/* Legend type drag ghost */}
-      {draggingLegend && (
+      {/* Type drag ghost */}
+      {draggingType && (
         <div
           style={{
-            top: draggingLegend.y, left: draggingLegend.x,
+            top: draggingType.y, left: draggingType.x,
             transform: "translate(-50%, -50%)",
             pointerEvents: "none", zIndex: 99999,
-            backgroundColor: draggingLegend.color,
+            backgroundColor: draggingType.color,
           }}
           className="fixed w-6 h-6 rounded-full shadow-lg border-2 border-white"
         />

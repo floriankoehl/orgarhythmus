@@ -76,18 +76,20 @@ urlpatterns = [
     path("user/ideas/delete/", views.delete_idea),
     path("user/ideas/delete_meta/", views.delete_meta_idea),
     path("user/ideas/copy/", views.copy_idea_to_category),
+    path("user/ideas/spinoff/", views.spinoff_idea),
     path("user/ideas/safe_order/", views.safe_order),
     path("user/ideas/assign_to_category/", views.assign_idea_to_category),
     path("user/categories/rename/", views.rename_category),
     path("user/ideas/update_title/", views.update_idea_title),
     path("user/ideas/update_headline/", views.update_idea_headline),
     path("user/categories/toggle_archive/", views.toggle_archive_category),
+    path("user/categories/toggle_public/", views.toggle_public_category),
 
-    # Legend Types (user-scoped — dimension-based only)
+    # Legend Types (user-scoped)
     path("user/ideas/assign_legend_type/", views.assign_idea_legend_type),
     path("user/ideas/remove_from_category/", views.remove_idea_from_category),
     path("user/ideas/remove_all_categories/", views.remove_all_idea_categories),
-    path("user/ideas/remove_all_dimension_types/", views.remove_all_idea_dimension_types),
+    path("user/ideas/remove_all_legend_types/", views.remove_all_idea_legend_types),
 
 
     # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
@@ -157,20 +159,20 @@ urlpatterns = [
     path("user/shortcuts/", views.get_user_shortcuts, name="get_user_shortcuts"),
     path("user/shortcuts/save/", views.save_user_shortcuts, name="save_user_shortcuts"),
 
-    # Dimensions (user-scoped)
-    path("user/dimensions/", views.get_user_dimensions, name="get_user_dimensions"),
-    path("user/dimensions/create/", views.create_dimension, name="create_dimension"),
-    path("user/dimensions/public/", views.get_all_public_dimensions, name="get_all_public_dimensions"),
-    path("user/dimensions/<int:dimension_id>/", views.update_dimension, name="update_dimension"),
-    path("user/dimensions/<int:dimension_id>/delete/", views.delete_dimension, name="delete_dimension"),
-    path("user/dimensions/<int:dimension_id>/adopt/", views.adopt_dimension, name="adopt_dimension"),
-    path("user/dimensions/<int:dimension_id>/drop/", views.drop_dimension, name="drop_dimension"),
+    # Legends (user-scoped)
+    path("user/legends/", views.get_user_legends, name="get_user_legends"),
+    path("user/legends/create/", views.create_legend, name="create_legend"),
+    path("user/legends/public/", views.get_all_public_legends, name="get_all_public_legends"),
+    path("user/legends/<int:legend_id>/", views.update_legend, name="update_legend"),
+    path("user/legends/<int:legend_id>/delete/", views.delete_legend, name="delete_legend"),
+    path("user/legends/<int:legend_id>/adopt/", views.adopt_legend, name="adopt_legend"),
+    path("user/legends/<int:legend_id>/drop/", views.drop_legend, name="drop_legend"),
 
-    # Dimension types
-    path("user/dimensions/<int:dimension_id>/types/", views.get_dimension_types, name="get_dimension_types"),
-    path("user/dimensions/<int:dimension_id>/types/create/", views.create_dimension_type, name="create_dimension_type"),
-    path("user/dimensions/<int:dimension_id>/types/<int:type_id>/", views.update_dimension_type, name="update_dimension_type"),
-    path("user/dimensions/<int:dimension_id>/types/<int:type_id>/delete/", views.delete_dimension_type, name="delete_dimension_type"),
+    # Legend types
+    path("user/legends/<int:legend_id>/types/", views.get_legend_types, name="get_legend_types"),
+    path("user/legends/<int:legend_id>/types/create/", views.create_legend_type, name="create_legend_type"),
+    path("user/legends/<int:legend_id>/types/<int:type_id>/", views.update_legend_type, name="update_legend_type"),
+    path("user/legends/<int:legend_id>/types/<int:type_id>/delete/", views.delete_legend_type, name="delete_legend_type"),
 
     # Category adoption
     path("categories/public/", views.get_all_public_categories, name="get_all_public_categories"),
