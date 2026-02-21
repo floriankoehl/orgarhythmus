@@ -531,5 +531,11 @@ def drop_category(request, category_id):
 @permission_classes([IsAuthenticated])
 def get_user_ideas(request):
     """Get all ideas owned by the current user (across all projects)."""
-    ideas = Idea.objects.filter(owner=request.user)
-    return Response({"ideas": IdeaSerializer(ideas, many=True).data})
+    ideas = Idea.objects.filter(owner=request.user).select_related('category', 'project')
+    result = []
+    for idea in ideas:
+        d = IdeaSerializer(idea).data
+        d['category_name'] = idea.category.name if idea.category else None
+        d['project_name'] = idea.project.name if idea.project else None
+        result.append(d)
+    return Response({"ideas": result})

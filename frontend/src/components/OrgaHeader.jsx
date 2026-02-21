@@ -7,7 +7,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import { useAuth } from "../auth/AuthContext";
 import { useNotifications } from "../auth/NotificationContext";
 import ReplayIcon from '@mui/icons-material/Replay';
-import { Folder, Bell } from 'lucide-react';
+import { Folder, Bell, Lightbulb } from 'lucide-react';
 import NotificationsPanel from './NotificationsPanel';
 import DemoDateDisplay from './DemoDateDisplay';
 
@@ -111,6 +111,16 @@ export default function OrgaHeader() {
 
               {/* Demo Date Display */}
               <DemoDateDisplay />
+
+              {/* My Ideas Link */}
+              <NavLink
+                to="/my-ideas"
+                className={({ isActive }) => getLinkClasses(isActive)}
+                title="My Ideas"
+              >
+                <Lightbulb size={18} />
+                <span className="hidden lg:inline">My Ideas</span>
+              </NavLink>
 
               {/* Notifications Bell */}
               <button
@@ -249,6 +259,14 @@ export default function OrgaHeader() {
 
 
             <div className="flex justify-between gap-2">
+              <NavLink
+                to="/my-ideas"
+                onClick={() => setIsOpen(false)}
+                className={({ isActive }) => getLinkClasses(isActive)}
+              >
+                <Lightbulb size={16} />
+                <span>My Ideas</span>
+              </NavLink>
               <NavLink key={user.username}
                 to={"/profile"}
                 onClick={() => setIsOpen(false)}

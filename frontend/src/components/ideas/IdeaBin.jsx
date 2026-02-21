@@ -1754,7 +1754,13 @@ export default function IdeaBin() {
                           className="flex-1 text-[10px] px-1 py-0.5 border border-gray-300 rounded outline-none focus:border-blue-400"
                         />
                         <button
-                          onClick={() => { if (newDimensionName.trim()) { dims.create_dimension(newDimensionName.trim()); setNewDimensionName(""); setShowCreateDimension(false); } }}
+                          onClick={() => {
+                            if (newDimensionName.trim()) {
+                              dims.create_dimension(newDimensionName.trim());
+                              setNewDimensionName("");
+                              setShowCreateDimension(false);
+                            }
+                          }}
                           className="text-[10px] px-1.5 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600"
                         >+</button>
                         <button onClick={() => setShowCreateDimension(false)} className="text-[10px] text-gray-400 hover:text-gray-600 px-1">✕</button>
@@ -1889,7 +1895,10 @@ export default function IdeaBin() {
                   e.stopPropagation();
                   const startX = e.clientX;
                   const startW = sidebarWidth;
-                  const onMove = (ev) => setSidebarWidth(Math.min(MAX_SIDEBAR_W, Math.max(MIN_SIDEBAR_W, startW + (ev.clientX - startX))));
+                  const onMove = (ev) => {
+                    const newW = Math.min(MAX_SIDEBAR_W, Math.max(MIN_SIDEBAR_W, startW + (ev.clientX - startX)));
+                    setSidebarWidth(newW);
+                  };
                   const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
                   document.addEventListener("mousemove", onMove);
                   document.addEventListener("mouseup", onUp);
