@@ -111,8 +111,8 @@ def copy_idea_to_category(request, project_id):
     if category_id:
         category = get_object_or_404(Category, id=category_id, project=project)
 
-    # Prevent duplicate: one idea can only be in a category once
-    if category and IdeaPlacement.objects.filter(idea=idea, project=project, category=category).exists():
+    # Prevent duplicate: one idea can only be in a category once (including unassigned / null)
+    if IdeaPlacement.objects.filter(idea=idea, project=project, category=category).exists():
         return Response({"created": False, "error": "Idea already in this category"}, status=400)
 
     max_order = IdeaPlacement.objects.filter(project=project, category=category).aggregate(
@@ -486,6 +486,63 @@ def assign_idea_legend_type(request, project_id):
     else:
         IdeaDimensionType.objects.filter(idea=idea, dimension=dimension).delete()
     return Response({"updated": True})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def remove_idea_from_category(request, project_id):
+    """Remove a specific placement (idea from a specific category)."""
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    placement_id = request.data.get("placement_id")
+    placement = IdeaPlacement.objects.filter(id=placement_id, project=project).first()
+    if not placement:
+        return Response({"error": "Not found"}, status=404)
+
+    idea = placement.idea
+    placement.delete()
+
+    # If no more placements exist, create an unassigned one so the idea isn't lost
+    if not idea.placements.exists():
+        IdeaPlacement.objects.create(idea=idea, project=project, category=None, order_index=0)
+
+    return Response({"removed": True})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def remove_all_idea_categories(request, project_id):
+    """Remove idea from ALL categories, keeping one unassigned placement."""
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    idea_id = request.data.get("idea_id")
+    idea = get_object_or_404(Idea, id=idea_id)
+
+    # Delete all placements
+    IdeaPlacement.objects.filter(idea=idea, project=project).delete()
+    # Create one unassigned placement
+    IdeaPlacement.objects.create(idea=idea, project=project, category=None, order_index=0)
+
+    return Response({"removed": True})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def remove_all_idea_dimension_types(request, project_id):
+    """Remove idea from ALL dimension type assignments."""
+    project = get_object_or_404(Project, id=project_id)
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    idea_id = request.data.get("idea_id")
+    idea = get_object_or_404(Idea, id=idea_id)
+    IdeaDimensionType.objects.filter(idea=idea).delete()
+
+    return Response({"removed": True})
 
 # ---- DIMENSION ENDPOINTS ----
 

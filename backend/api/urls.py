@@ -89,6 +89,9 @@ urlpatterns = [
     path("projects/<int:project_id>/update_legend_type/", views.update_legend_type),
     path("projects/<int:project_id>/delete_legend_type/", views.delete_legend_type),
     path("projects/<int:project_id>/assign_idea_legend_type/", views.assign_idea_legend_type),
+    path("projects/<int:project_id>/remove_idea_from_category/", views.remove_idea_from_category),
+    path("projects/<int:project_id>/remove_all_idea_categories/", views.remove_all_idea_categories),
+    path("projects/<int:project_id>/remove_all_idea_dimension_types/", views.remove_all_idea_dimension_types),
 
 
     # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________

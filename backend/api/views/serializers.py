@@ -148,10 +148,14 @@ class IdeaSerializer(serializers.ModelSerializer):
         return obj.placements.count()
 
     def get_placement_categories(self, obj):
-        """Return list of category names where this idea is placed."""
+        """Return list of {id, name} dicts for categories where this idea is placed."""
         cats = []
         for p in obj.placements.select_related('category').all():
-            cats.append(p.category.name if p.category else "Unassigned")
+            cats.append({
+                "id": p.category.id if p.category else None,
+                "name": p.category.name if p.category else "Unassigned",
+                "placement_id": p.id,
+            })
         return cats
 
     def get_dimension_types(self, obj):

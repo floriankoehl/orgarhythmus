@@ -5,7 +5,7 @@ import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import EditIcon from "@mui/icons-material/Edit";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
-import { Lightbulb, Minus, Maximize2, Minimize2, Zap, Copy, List, Settings, MoreVertical } from "lucide-react";
+import { Lightbulb, Minus, Maximize2, Minimize2, Zap, Copy, List, Settings, MoreVertical, Locate, X } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
@@ -94,6 +94,9 @@ export default function IdeaBin() {
   const [minimizedCategories, setMinimizedCategories] = useState({});
   const [ideaSettingsOpen, setIdeaSettingsOpen] = useState(null); // ideaId or null
 
+  // ───── Wiggle state ─────
+  const [wigglingIdeaId, setWigglingIdeaId] = useState(null); // idea_id (meta) to wiggle
+
   // ───── Drag state ─────
   const [dragging, setDragging] = useState(null);
   const [dragSource, setDragSource] = useState(null);
@@ -128,6 +131,8 @@ export default function IdeaBin() {
   // ───── List view filter ─────
   const [listFilter, setListFilter] = useState("all"); // "all" | "unassigned" | category id
   const [showListFilterDropdown, setShowListFilterDropdown] = useState(false);
+  const [showSidebarMeta, setShowSidebarMeta] = useState(false);   // show meta info in sidebar
+  const [sidebarHeadlineOnly, setSidebarHeadlineOnly] = useState(false); // collapse all in sidebar
 
   // ───── Sidebar resize ─────
   const [sidebarWidth, setSidebarWidth] = useState(240);
@@ -474,6 +479,7 @@ export default function IdeaBin() {
         idea_name: ideaName.trim() || ideaHeadline.trim(),
         description: "",
         headline: ideaHeadline,
+        ...(selectedCategoryId ? { category_id: parseInt(selectedCategoryId) } : {}),
       }),
     });
     setIdeaName("");
@@ -548,15 +554,21 @@ export default function IdeaBin() {
     }
   };
 
+  const pasteGuard = useRef(false);
   const paste_idea = async (categoryId = null) => {
-    if (!copiedIdeaId) return;
-    await authFetch(`${API}/copy_idea/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idea_id: copiedIdeaId, category_id: categoryId }),
-    });
-    playSound('ideaCreate');
-    fetch_all_ideas();
+    if (!copiedIdeaId || pasteGuard.current) return;
+    pasteGuard.current = true;
+    try {
+      await authFetch(`${API}/copy_idea/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idea_id: copiedIdeaId, category_id: categoryId }),
+      });
+      playSound('ideaCreate');
+      await fetch_all_ideas();
+    } finally {
+      pasteGuard.current = false;
+    }
   };
 
   const delete_meta_idea = async (ideaId) => {
@@ -566,6 +578,42 @@ export default function IdeaBin() {
       body: JSON.stringify({ id: ideaId }),
     });
     playSound('ideaDelete');
+    fetch_all_ideas();
+  };
+
+  const remove_idea_from_category = async (placementId) => {
+    await authFetch(`${API}/remove_idea_from_category/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ placement_id: placementId }),
+    });
+    fetch_all_ideas();
+  };
+
+  const remove_all_idea_categories = async (ideaId) => {
+    await authFetch(`${API}/remove_all_idea_categories/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idea_id: ideaId }),
+    });
+    fetch_all_ideas();
+  };
+
+  const remove_all_idea_dimension_types = async (ideaId) => {
+    await authFetch(`${API}/remove_all_idea_dimension_types/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idea_id: ideaId }),
+    });
+    fetch_all_ideas();
+  };
+
+  const remove_idea_dimension_type = async (ideaId, dimensionId) => {
+    await authFetch(`${API}/assign_idea_legend_type/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idea_id: ideaId, dimension_id: dimensionId, legend_type_id: null }),
+    });
     fetch_all_ideas();
   };
 
@@ -996,11 +1044,11 @@ export default function IdeaBin() {
     const onMove = (ev) => {
       setDraggingLegend(prev => ({ ...prev, x: ev.clientX, y: ev.clientY }));
       let found = null;
-      for (const [ideaId, ref] of Object.entries(ideaRefs.current)) {
+      for (const [refKey, ref] of Object.entries(ideaRefs.current)) {
         if (ref) {
           const r = ref.getBoundingClientRect();
           if (ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) {
-            found = parseInt(ideaId); break;
+            found = refKey.startsWith("meta_") ? refKey : parseInt(refKey); break;
           }
         }
       }
@@ -1008,7 +1056,13 @@ export default function IdeaBin() {
       setHoverIdeaForLegend(found);
     };
     const onUp = () => {
-      if (currentHoverIdeaId) assign_idea_legend_type(currentHoverIdeaId, legendTypeId);
+      if (currentHoverIdeaId) {
+        // Resolve the actual placement ID from the ref key (strip "meta_" prefix)
+        const actualId = String(currentHoverIdeaId).startsWith("meta_")
+          ? parseInt(String(currentHoverIdeaId).replace("meta_", ""))
+          : currentHoverIdeaId;
+        assign_idea_legend_type(actualId, legendTypeId);
+      }
       setDraggingLegend(null);
       setHoverIdeaForLegend(null);
       document.removeEventListener("mousemove", onMove);
@@ -1264,8 +1318,12 @@ export default function IdeaBin() {
       if (dt) return { id: dt.legend_type_id, color: dt.color, name: dt.name };
       return null;
     })();
-    const isHoveredForLegend = hoverIdeaForLegend === ideaId;
-    const isIdeaCollapsed = collapsedIdeas[ideaId] ?? false;
+    const isHoveredForLegend = hoverIdeaForLegend === ideaId || hoverIdeaForLegend === `meta_${ideaId}`;
+    const collapseKey = source.type === "all" ? `meta_${ideaId}` : ideaId;
+    const isIdeaCollapsed = sidebarHeadlineOnly && source.type !== "all"
+      ? (collapsedIdeas[collapseKey] ?? true)
+      : (collapsedIdeas[collapseKey] ?? (source.type !== "all"));
+    const isWiggling = wigglingIdeaId && idea.idea_id === wigglingIdeaId && source.type !== "all";
 
     const getDisplayText = () => {
       if (idea.headline) return <span className="font-semibold text-xs">{idea.headline}</span>;
@@ -1290,7 +1348,10 @@ export default function IdeaBin() {
           </div>
         ) : (
           <div
-            ref={el => (ideaRefs.current[ideaId] = el)}
+            ref={el => {
+              const refKey = source.type === "all" ? `meta_${ideaId}` : ideaId;
+              ideaRefs.current[refKey] = el;
+            }}
             onMouseDown={(e) => { e.stopPropagation(); handleIdeaDrag(e, idea, arrayIndex, source); }}
             style={{
               backgroundColor: isHoveredForLegend
@@ -1303,17 +1364,22 @@ export default function IdeaBin() {
                 ? "translateY(4px)" : "translateY(0px)",
               transition: "transform 150ms ease, background-color 150ms ease",
             }}
-            className={`w-full rounded text-gray-800 px-1.5 py-1 flex justify-between items-start text-[11px] mb-0.5 cursor-grab leading-tight shadow-sm border border-gray-200 hover:shadow-md ${isHoveredForLegend ? "ring-2 ring-offset-1" : ""}`}
+            className={`w-full rounded text-gray-800 px-1.5 py-1 flex justify-between ${isIdeaCollapsed ? "items-center" : "items-start"} text-[11px] mb-0.5 cursor-grab leading-tight shadow-sm border border-gray-200 hover:shadow-md ${isHoveredForLegend ? "ring-2 ring-offset-1" : ""} ${isWiggling ? "ideabin-wiggle" : ""}`}
           >
-            <div className="flex items-start gap-1 flex-1 mr-1">
+            <div className={`flex ${isIdeaCollapsed ? "items-center" : "items-start"} gap-1 flex-1 mr-1`}>
               <span
                 onClick={(e) => {
                   e.stopPropagation();
-                  setCollapsedIdeas(prev => ({ ...prev, [ideaId]: !prev[ideaId] }));
+                  const currentDefault = source.type !== "all";
+                  setCollapsedIdeas(prev => {
+                    const current = prev[collapseKey] ?? currentDefault;
+                    return { ...prev, [collapseKey]: !current };
+                  });
                 }}
                 className="cursor-pointer flex-shrink-0"
                 style={{
-                  width: 0, height: 0, display: "inline-block", borderStyle: "solid", marginTop: "3px",
+                  width: 0, height: 0, display: "inline-block", borderStyle: "solid",
+                  ...(isIdeaCollapsed ? {} : { marginTop: "3px" }),
                   ...(isIdeaCollapsed
                     ? { borderWidth: "5px 0 5px 8px", borderColor: `transparent transparent transparent ${legendType?.color || "#374151"}` }
                     : { borderWidth: "8px 5px 0 5px", borderColor: `${legendType?.color || "#374151"} transparent transparent transparent` }),
@@ -1324,32 +1390,94 @@ export default function IdeaBin() {
                   <>
                     {idea.headline && <div className="font-semibold text-xs mb-0.5">{idea.headline}</div>}
                     <span className="text-[10px] text-gray-600">{idea.title}</span>
-                    {/* Meta info: categories + dimensions — always shown when expanded */}
-                    {(() => {
+                    {/* Meta info: categories + dimensions */}
+                    {(source.type === "all" || showSidebarMeta) && (() => {
                       const cats = idea.placement_categories || [];
                       const dimEntries = Object.entries(idea.dimension_types || {}).map(([dimId, dt]) => {
                         const dim = dims.dimensions.find(d => String(d.id) === String(dimId));
-                        return dim ? { dimName: dim.name, typeName: dt.name, color: dt.color } : null;
+                        return dim ? { dimId, dimName: dim.name, typeName: dt.name, color: dt.color } : null;
                       }).filter(Boolean);
                       const hasMeta = cats.length > 0 || dimEntries.length > 0;
                       if (!hasMeta) return null;
+                      const isMetaView = source.type === "all";
                       return (
                         <div className="mt-1 pl-1 border-l-2 border-gray-200 space-y-0.5">
                           {cats.length > 0 && (
                             <div className="text-[9px] text-gray-500">
-                              <span className="font-medium text-gray-600">Categories: </span>
-                              {cats.join(", ")}
+                              <div className="flex items-center gap-1 mb-0.5">
+                                <span className="font-medium text-gray-600">Categories:</span>
+                                {isMetaView && cats.length > 1 && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setConfirmModal({
+                                        message: <p className="text-sm">Remove <strong>{idea.headline || idea.title}</strong> from <strong>all {cats.length} categories</strong>?</p>,
+                                        onConfirm: () => { remove_all_idea_categories(idea.idea_id); setConfirmModal(null); },
+                                        onCancel: () => setConfirmModal(null),
+                                      });
+                                    }}
+                                    className="text-[8px] text-red-400 hover:text-red-600 transition-colors"
+                                    title="Remove from all categories"
+                                  >✕ all</button>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap gap-0.5">
+                                {cats.map((cat, i) => (
+                                  <span key={i} className="inline-flex items-center gap-0.5 bg-gray-100 rounded px-1 py-0.5">
+                                    {cat.name}
+                                    {isMetaView && cat.id && (
+                                      <X
+                                        size={8}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          remove_idea_from_category(cat.placement_id);
+                                        }}
+                                        className="text-gray-400 hover:text-red-500 cursor-pointer flex-shrink-0"
+                                        title={`Remove from ${cat.name}`}
+                                      />
+                                    )}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
                           )}
                           {dimEntries.length > 0 && (
                             <div className="text-[9px] text-gray-500">
-                              <span className="font-medium text-gray-600">Dimensions: </span>
-                              {dimEntries.map((e, i) => (
-                                <span key={i}>
-                                  {i > 0 && ", "}
-                                  {e.dimName} = <span style={{ color: e.color }} className="font-medium">{e.typeName}</span>
-                                </span>
-                              ))}
+                              <div className="flex items-center gap-1 mb-0.5">
+                                <span className="font-medium text-gray-600">Dimensions:</span>
+                                {isMetaView && dimEntries.length > 1 && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setConfirmModal({
+                                        message: <p className="text-sm">Remove <strong>{idea.headline || idea.title}</strong> from <strong>all {dimEntries.length} dimension types</strong>?</p>,
+                                        onConfirm: () => { remove_all_idea_dimension_types(idea.idea_id); setConfirmModal(null); },
+                                        onCancel: () => setConfirmModal(null),
+                                      });
+                                    }}
+                                    className="text-[8px] text-red-400 hover:text-red-600 transition-colors"
+                                    title="Remove all dimension types"
+                                  >✕ all</button>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap gap-0.5">
+                                {dimEntries.map((e, i) => (
+                                  <span key={i} className="inline-flex items-center gap-0.5 bg-gray-100 rounded px-1 py-0.5">
+                                    {e.dimName} = <span style={{ color: e.color }} className="font-medium">{e.typeName}</span>
+                                    {isMetaView && (
+                                      <X
+                                        size={8}
+                                        onClick={(ev) => {
+                                          ev.stopPropagation();
+                                          remove_idea_dimension_type(idea.idea_id, parseInt(e.dimId));
+                                        }}
+                                        className="text-gray-400 hover:text-red-500 cursor-pointer flex-shrink-0"
+                                        title={`Remove ${e.dimName} type`}
+                                      />
+                                    )}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1359,7 +1487,7 @@ export default function IdeaBin() {
                 )}
               </div>
             </div>
-            <div className="flex-shrink-0 mt-0.5 flex items-center gap-0.5 text-gray-400" onMouseDown={(e) => e.stopPropagation()}>
+            <div className={`flex-shrink-0 flex items-center gap-0.5 text-gray-400 ${isIdeaCollapsed ? "" : "mt-0.5"}`} onMouseDown={(e) => e.stopPropagation()}>
               <Copy
                 size={12}
                 onClick={(e) => {
@@ -1369,6 +1497,18 @@ export default function IdeaBin() {
                 className={`cursor-pointer ${copiedIdeaId === idea.idea_id ? "text-indigo-500!" : "hover:text-indigo-500!"}`}
                 title="Copy idea (Ctrl+C)"
               />
+              {source.type === "all" && showCategories && (
+                <Locate
+                  size={12}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setWigglingIdeaId(idea.idea_id);
+                    setTimeout(() => setWigglingIdeaId(null), 1500);
+                  }}
+                  className="cursor-pointer hover:text-emerald-500!"
+                  title="Locate in categories"
+                />
+              )}
               <div className="relative">
                 <MoreVertical
                   size={13}
@@ -1459,6 +1599,25 @@ export default function IdeaBin() {
 
   return (
     <>
+      {/* Wiggle animation */}
+      <style>{`
+        @keyframes ideabin-wiggle-anim {
+          0%, 100% { transform: translateX(0); }
+          10% { transform: translateX(-3px) rotate(-1deg); }
+          20% { transform: translateX(3px) rotate(1deg); }
+          30% { transform: translateX(-3px) rotate(-1deg); }
+          40% { transform: translateX(3px) rotate(1deg); }
+          50% { transform: translateX(-2px) rotate(-0.5deg); }
+          60% { transform: translateX(2px) rotate(0.5deg); }
+          70% { transform: translateX(-1px); }
+          80% { transform: translateX(1px); }
+          90% { transform: translateX(0); }
+        }
+        .ideabin-wiggle {
+          animation: ideabin-wiggle-anim 0.6s ease-in-out 2;
+          box-shadow: 0 0 8px 2px rgba(16, 185, 129, 0.4) !important;
+        }
+      `}</style>
       {/* ───── COLLAPSED: Floating icon ───── */}
       {!isOpen && (
         <div
@@ -1601,7 +1760,7 @@ export default function IdeaBin() {
                           {idea.placement_categories?.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-1">
                               {idea.placement_categories.map((cat, i) => (
-                                <span key={i} className="text-[8px] bg-gray-100 text-gray-500 px-1 rounded">{cat}</span>
+                                <span key={i} className="text-[8px] bg-gray-100 text-gray-500 px-1 rounded">{cat.name}</span>
                               ))}
                             </div>
                           )}
@@ -1832,6 +1991,19 @@ export default function IdeaBin() {
                 <h2 className="text-xs font-semibold text-gray-500 mb-1.5">
                   {editingIdeaId ? "Edit Idea" : "New Idea"}
                 </h2>
+                {!editingIdeaId && selectedCategoryId && categories[selectedCategoryId] && (
+                  <div className="flex items-center gap-1 mb-1.5 px-1.5 py-1 bg-indigo-50 border border-indigo-200 rounded text-[10px] text-indigo-700">
+                    <span className="font-medium">Auto-add to:</span>
+                    <span className="font-semibold truncate">{categories[selectedCategoryId].name}</span>
+                    <button
+                      onClick={() => setSelectedCategoryId(null)}
+                      className="ml-auto flex-shrink-0 text-indigo-400 hover:text-indigo-600 transition-colors"
+                      title="Remove category selection"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                )}
                 <TextField
                   inputRef={headlineInputRef}
                   value={editingIdeaId ? editingIdeaHeadline : ideaHeadline}
@@ -1878,10 +2050,14 @@ export default function IdeaBin() {
                   label={editingIdeaId ? "Edit your idea..." : "What's your idea?"}
                   variant="outlined"
                   multiline
-                  minRows={1}
-                  maxRows={3}
+                  minRows={2}
+                  maxRows={20}
                   fullWidth
-                  sx={{ backgroundColor: "white", borderRadius: 1, "& .MuiInputBase-input": { fontSize: 12, caretColor: "#1f2937", color: "#1f2937" } }}
+                  sx={{
+                    backgroundColor: "white", borderRadius: 1,
+                    "& .MuiInputBase-root": { resize: "vertical", overflow: "auto", maxHeight: 400 },
+                    "& .MuiInputBase-input": { fontSize: 12, caretColor: "#1f2937", color: "#1f2937" },
+                  }}
                 />
                 <div className="flex gap-1.5 mt-1.5">
                   {editingIdeaId ? (
@@ -1908,7 +2084,7 @@ export default function IdeaBin() {
                         onClick={create_idea}
                         className="px-2 py-0.5 bg-green-500 text-white rounded hover:bg-green-600 text-[11px]"
                       >
-                        Create
+                        Create{selectedCategoryId && categories[selectedCategoryId] ? ` → ${categories[selectedCategoryId].name}` : ""}
                       </button>
                     )
                   )}
@@ -1926,18 +2102,48 @@ export default function IdeaBin() {
               >
                 {/* List filter header */}
                 <div className="relative mb-1">
-                  <button
-                    onClick={() => setShowListFilterDropdown(p => !p)}
-                    className="flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors"
-                  >
-                    {listFilter === "all"
-                      ? `All Ideas (${metaIdeaList.length})`
-                      : listFilter === "unassigned"
-                      ? `Unassigned (${unassignedCount})`
-                      : `${categories[listFilter]?.name || "Category"} (${(categoryOrders[listFilter] || []).length})`
-                    }
-                    <span className="text-[9px]">▼</span>
-                  </button>
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => setShowListFilterDropdown(p => !p)}
+                      className="flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors"
+                    >
+                      {listFilter === "all"
+                        ? `All Ideas (${metaIdeaList.length})`
+                        : listFilter === "unassigned"
+                        ? `Unassigned (${unassignedCount})`
+                        : `${categories[listFilter]?.name || "Category"} (${(categoryOrders[listFilter] || []).length})`
+                      }
+                      <span className="text-[9px]">▼</span>
+                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => {
+                          const newVal = !sidebarHeadlineOnly;
+                          setSidebarHeadlineOnly(newVal);
+                          // reset individual collapse states for sidebar items
+                          setCollapsedIdeas(prev => {
+                            const next = { ...prev };
+                            // keep meta_ keys, reset others
+                            Object.keys(next).forEach(k => { if (!k.startsWith('meta_')) next[k] = newVal; });
+                            return next;
+                          });
+                        }}
+                        className="text-[9px] text-gray-400 hover:text-gray-600 transition-colors"
+                        title={sidebarHeadlineOnly ? "Show full ideas" : "Show headlines only"}
+                      >
+                        {sidebarHeadlineOnly ? "▶ Full" : "▼ Headlines"}
+                      </button>
+                      <label className="flex items-center gap-0.5 text-[9px] text-gray-400 hover:text-gray-600 cursor-pointer" title="Show meta info (categories, dimensions)">
+                        <input
+                          type="checkbox"
+                          checked={showSidebarMeta}
+                          onChange={(e) => setShowSidebarMeta(e.target.checked)}
+                          className="w-2.5 h-2.5 accent-indigo-500"
+                        />
+                        Meta
+                      </label>
+                    </div>
+                  </div>
                   {showListFilterDropdown && (
                     <>
                       <div className="fixed inset-0 z-[60]" onClick={() => setShowListFilterDropdown(false)} />
@@ -2014,15 +2220,24 @@ export default function IdeaBin() {
                   className="flex items-center justify-between cursor-pointer"
                   onClick={() => setDimPanelCollapsed(!dimPanelCollapsed)}
                 >
-                  <h3 className="text-[10px] font-semibold text-gray-500">
-                    Dimensions {globalTypeFilter.length > 0 && <span className="text-blue-500">(filtered)</span>}
-                  </h3>
+                  <div className="flex items-center gap-1">
+                    <h3 className="text-[10px] font-semibold text-gray-500">
+                      Dimensions {globalTypeFilter.length > 0 && <span className="text-blue-500">(filtered)</span>}
+                    </h3>
+                    {!dimPanelCollapsed && !showCreateDimension && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setShowCreateDimension(true); }}
+                        className="w-4 h-4 flex items-center justify-center rounded text-[11px] font-bold text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+                        title="New Dimension"
+                      >+</button>
+                    )}
+                  </div>
                   <span className="text-gray-400 text-[10px]">{dimPanelCollapsed ? "▲" : "▼"}</span>
                 </div>
                 {!dimPanelCollapsed && (
                   <div className="mt-1">
-                    {/* Dimension selector */}
-                    {dims.dimensions.length > 0 && (
+                    {/* Dimension selector — hidden while creating */}
+                    {dims.dimensions.length > 0 && !showCreateDimension && (
                       <div className="mb-1">
                         {editingDimensionId ? (
                           <div className="flex gap-1">
@@ -2104,14 +2319,7 @@ export default function IdeaBin() {
                         >+</button>
                         <button onClick={() => setShowCreateDimension(false)} className="text-[10px] text-gray-400 hover:text-gray-600 px-1">✕</button>
                       </div>
-                    ) : (
-                      <button
-                        onClick={() => setShowCreateDimension(true)}
-                        className="w-full mb-1 text-[10px] px-1.5 py-0.5 border border-dashed border-gray-300 rounded text-gray-500 hover:border-gray-400 hover:bg-gray-50"
-                      >
-                        + New Dimension
-                      </button>
-                    )}
+                    ) : null}
                     {globalTypeFilter.length > 0 && (
                       <button
                         onClick={() => setGlobalTypeFilter([])}
@@ -2295,43 +2503,47 @@ export default function IdeaBin() {
                     </button>
                   )}
                   {archivedCategories.length > 0 && (
-                    <button
-                      onClick={() => setShowArchive(!showArchive)}
-                      className="text-[10px] px-2 py-1 bg-gray-100 border border-gray-300 rounded hover:bg-gray-200 flex items-center gap-1"
-                    >
-                      <ArchiveIcon style={{ fontSize: 12 }} />
-                      {archivedCategories.length}
-                    </button>
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowArchive(!showArchive)}
+                        className="text-[10px] px-2 py-1 bg-gray-100 border border-gray-300 rounded hover:bg-gray-200 flex items-center gap-1"
+                      >
+                        <ArchiveIcon style={{ fontSize: 12 }} />
+                        {archivedCategories.length}
+                      </button>
+                      {/* Archive dropdown */}
+                      {showArchive && (
+                        <>
+                          <div className="fixed inset-0 z-[39]" onClick={() => setShowArchive(false)} />
+                          <div className="absolute left-0 top-full mt-1 z-40 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[180px] max-h-[200px] overflow-y-auto">
+                            <h3 className="text-[10px] font-semibold mb-1 text-gray-500">Archived</h3>
+                            {archivedCategories.map(cat => (
+                              <div key={cat.id} className="flex justify-between items-center p-1 rounded hover:bg-gray-50 mb-0.5 text-[10px]">
+                                <span className="font-medium truncate flex-1">{cat.name}</span>
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                  <UnarchiveIcon
+                                    onClick={() => toggle_archive_category(cat.id)}
+                                    className="hover:text-green-600! cursor-pointer"
+                                    style={{ fontSize: 14 }}
+                                  />
+                                  <DeleteForeverIcon
+                                    onClick={() => setConfirmModal({
+                                      message: `Delete "${cat.name}"?`,
+                                      onConfirm: () => { delete_category(cat.id); setConfirmModal(null); },
+                                      onCancel: () => setConfirmModal(null),
+                                    })}
+                                    className="hover:text-red-500! cursor-pointer"
+                                    style={{ fontSize: 14 }}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
-
-                {/* Archive dropdown */}
-                {showArchive && archivedCategories.length > 0 && (
-                  <div className="absolute top-10 right-2 z-40 bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[180px] max-h-[200px] overflow-y-auto">
-                    <h3 className="text-[10px] font-semibold mb-1 text-gray-500">Archived</h3>
-                    {archivedCategories.map(cat => (
-                      <div key={cat.id} className="flex justify-between items-center p-1 rounded hover:bg-gray-50 mb-0.5 text-[10px]">
-                        <span className="font-medium truncate flex-1">{cat.name}</span>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <UnarchiveIcon
-                            onClick={() => toggle_archive_category(cat.id)}
-                            className="hover:text-green-600! cursor-pointer"
-                            style={{ fontSize: 14 }}
-                          />
-                          <DeleteForeverIcon
-                            onClick={() => setConfirmModal({
-                              message: `Delete "${cat.name}"?`,
-                              onConfirm: () => { delete_category(cat.id); setConfirmModal(null); },
-                              onCancel: () => setConfirmModal(null),
-                            })}
-                            className="hover:text-red-500! cursor-pointer"
-                            style={{ fontSize: 14 }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
 
                 {/* Category cards */}
                 {activeCategories.map(([catKey, catData]) => {
@@ -2357,7 +2569,12 @@ export default function IdeaBin() {
                     >
                       {/* Category header */}
                       <div
-                        onMouseDown={(e) => { e.stopPropagation(); handleCategoryDrag(e, catKey); }}
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          bring_to_front_category(catKey);
+                          setSelectedCategoryId(prev => String(prev) === String(catKey) ? null : catKey);
+                          handleCategoryDrag(e, catKey);
+                        }}
                         onDoubleClick={(e) => {
                           e.stopPropagation();
                           setEditingCategoryId(catKey);
@@ -2417,9 +2634,9 @@ export default function IdeaBin() {
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      const allCollapsed = catIdeas.every(id => collapsedIdeas[id]);
+                                      const allCollapsed = catIdeas.every(id => collapsedIdeas[id] ?? true);
                                       const newState = {};
-                                      catIdeas.forEach(id => { newState[id] = !allCollapsed; });
+                                      catIdeas.forEach(id => { newState[id] = allCollapsed ? false : true; });
                                       setCollapsedIdeas(prev => ({ ...prev, ...newState }));
                                       setCategorySettingsOpen(null);
                                     }}
@@ -2427,11 +2644,11 @@ export default function IdeaBin() {
                                   >
                                     <span style={{
                                       display: "inline-block", width: 0, height: 0, borderStyle: "solid",
-                                      ...(catIdeas.every(id => collapsedIdeas[id])
+                                      ...(catIdeas.every(id => collapsedIdeas[id] ?? true)
                                         ? { borderWidth: "4px 3px 0 3px", borderColor: "currentColor transparent transparent transparent" }
                                         : { borderWidth: "0 3px 4px 3px", borderColor: "transparent transparent currentColor transparent" })
                                     }} />
-                                    {catIdeas.every(id => collapsedIdeas[id]) ? "Show full ideas" : "Show headlines only"}
+                                    {catIdeas.every(id => collapsedIdeas[id] ?? true) ? "Show full ideas" : "Show headlines only"}
                                   </button>
                                   {/* Minimize / Restore */}
                                   <button
