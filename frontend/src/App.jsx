@@ -20,7 +20,6 @@ import Tasks from './pages/overview/Tasks.jsx';
 import TeamDetail from './pages/detail/TeamDetail.jsx';
 import TaskDetail from './pages/detail/TaskDetail.jsx';
 import Calendar from './pages/general/Calender.jsx';
-import Ideas from './pages/general/Ideas.jsx';
 import Dependencies from './pages/dependency/Dependencies';
 import AssignmentSecond from './pages/member_assignment/Assignment_Second';
 import MyIdeas from './pages/user/MyIdeas';
@@ -44,7 +43,6 @@ const router = createBrowserRouter([
             element: <ProjectMain />,
             loader: project_loader,
           },
-          { path: 'ideas', element: <Ideas /> },
           { path: 'teams', element: <Teams /> },
           { path: 'teams/:teamId', element: <TeamDetail /> },
           { path: 'tasks', element: <Tasks /> },

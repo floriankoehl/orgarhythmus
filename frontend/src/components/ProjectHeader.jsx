@@ -13,7 +13,6 @@ import { PanelsTopLeft, Bell } from 'lucide-react';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import NotificationsPanel from './NotificationsPanel';
 import DemoDateDisplay from './DemoDateDisplay';
-import ModelTrainingIcon from '@mui/icons-material/ModelTraining';
 
 export default function ProjectHeader({}) {
   // Controls whether the mobile menu is open or closed
@@ -31,12 +30,6 @@ export default function ProjectHeader({}) {
       label: 'Project',
       icon: <PanelsTopLeft size={16} color="white" />,
       end: true,
-    },
-    {
-      key: 'project-ideas',
-      to: projectId ? `/projects/${projectId}/ideas` : '/projects',
-      label: 'Ideas',
-      icon: <ModelTrainingIcon className="!h-[17px] text-white" />,
     },
     {
       key: 'project-teams',
