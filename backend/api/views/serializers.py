@@ -18,6 +18,8 @@ from ..models import (
     DependencyView,
     ProtoPersona,
     Legend,
+    Context,
+    CategoryContextPlacement,
 )
 
 
@@ -131,6 +133,9 @@ class IdeaSerializer(serializers.ModelSerializer):
     placement_count = serializers.SerializerMethodField()
     placement_categories = serializers.SerializerMethodField()
     legend_types = serializers.SerializerMethodField()
+    upvote_count = serializers.SerializerMethodField()
+    comment_count = serializers.SerializerMethodField()
+    user_has_upvoted = serializers.SerializerMethodField()
 
     class Meta:
         model = Idea
@@ -139,6 +144,7 @@ class IdeaSerializer(serializers.ModelSerializer):
             "owner", "owner_username",
             "created_at", "placement_count", "placement_categories",
             "legend_types",
+            "upvote_count", "comment_count", "user_has_upvoted",
         ]
 
     def get_owner_username(self, obj):
@@ -168,6 +174,18 @@ class IdeaSerializer(serializers.ModelSerializer):
                 "color": dt.legend_type.color,
             }
         return result
+
+    def get_upvote_count(self, obj):
+        return obj.upvotes.count()
+
+    def get_comment_count(self, obj):
+        return obj.comments.count()
+
+    def get_user_has_upvoted(self, obj):
+        request = self.context.get('request')
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            return obj.upvotes.filter(user=request.user).exists()
+        return False
 
 
 class IdeaPlacementSerializer(serializers.ModelSerializer):
@@ -214,10 +232,20 @@ class LegendSerializer(serializers.ModelSerializer):
         return obj.owner.username if obj.owner else None
 
 
+# ContextSerializer
+class ContextSerializer(serializers.ModelSerializer):
+    owner_username = serializers.SerializerMethodField()
+    owner_id = serializers.SerializerMethodField()
 
+    class Meta:
+        model = Context
+        fields = ["id", "name", "x", "y", "width", "height", "z_index", "is_public", "owner_id", "owner_username"]
 
+    def get_owner_username(self, obj):
+        return obj.owner.username if obj.owner else None
 
-
+    def get_owner_id(self, obj):
+        return obj.owner_id
 
 
 # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________

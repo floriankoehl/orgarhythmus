@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 
-import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings } from "lucide-react";
+import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings, Layers } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
@@ -16,6 +16,7 @@ import IdeaBinLegendPanel from "./IdeaBinLegendPanel";
 import IdeaBinDragGhosts from "./IdeaBinDragGhosts";
 import IdeaBinIdeaCard from "./IdeaBinIdeaCard";
 import IdeaBinCategoryCanvas from "./IdeaBinCategoryCanvas";
+import IdeaBinContextView from "./IdeaBinContextView";
 import { useAuth } from "../../auth/AuthContext";
 
 // ───────────────────── Constants ─────────────────────
@@ -121,6 +122,9 @@ export default function IdeaBin() {
 
   // ───── Sidebar resize ─────
   const [sidebarWidth, setSidebarWidth] = useState(240);
+
+  // ───── View mode ─────
+  const [viewMode, setViewMode] = useState("ideas"); // "ideas" | "contexts"
 
   // ───── Selected category for paste ─────
   const [selectedCategoryId, setSelectedCategoryId] = useState(null);
@@ -688,8 +692,11 @@ export default function IdeaBin() {
       let foundCategory = null;
       if (!foundUnassigned && categoryContainerRef.current) {
         const cRect = categoryContainerRef.current.getBoundingClientRect();
-        for (const [catId, catData] of Object.entries(categories)) {
-          if (catData.archived) continue;
+        // Sort by z_index descending so the topmost window is checked first
+        const sortedCats = Object.entries(categories)
+          .filter(([, d]) => !d.archived)
+          .sort(([, a], [, b]) => (b.z_index || 0) - (a.z_index || 0));
+        for (const [catId, catData] of sortedCats) {
           const catRect = {
             left: cRect.left + catData.x, top: cRect.top + catData.y,
             right: cRect.left + catData.x + catData.width,
@@ -1288,22 +1295,50 @@ export default function IdeaBin() {
               <span className="text-sm font-semibold text-amber-900">
                 Ideas
               </span>
-              {unassignedCount > 0 && (
+              {unassignedCount > 0 && viewMode === "ideas" && (
                 <span className="text-[10px] bg-amber-600/20 text-amber-800 px-1.5 rounded-full font-medium">
                   {unassignedCount}
                 </span>
               )}
+              {/* ── View mode switcher ── */}
+              <div className="flex items-center bg-amber-600/15 rounded-full p-0.5 ml-1" onMouseDown={(e) => e.stopPropagation()}>
+                <button
+                  onClick={() => setViewMode("ideas")}
+                  className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors ${
+                    viewMode === "ideas"
+                      ? "bg-white text-amber-800 shadow-sm"
+                      : "text-amber-700 hover:text-amber-900"
+                  }`}
+                  title="Ideas & Categories"
+                >
+                  Ideas
+                </button>
+                <button
+                  onClick={() => setViewMode("contexts")}
+                  className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors flex items-center gap-0.5 ${
+                    viewMode === "contexts"
+                      ? "bg-white text-amber-800 shadow-sm"
+                      : "text-amber-700 hover:text-amber-900"
+                  }`}
+                  title="Categories & Contexts"
+                >
+                  <Layers size={10} />
+                  Contexts
+                </button>
+              </div>
             </div>
             <div className="flex items-center gap-1">
-              <button
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={() => setShowMetaList(v => !v)}
-                className={`p-1 rounded transition-colors ${showMetaList ? "bg-amber-600/30" : "hover:bg-amber-500/30"}`}
-                title="All Ideas (Meta View)"
-              >
-                <List size={13} className="text-amber-800" />
-              </button>
-              {copiedIdeaId && (
+              {viewMode === "ideas" && (
+                <button
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => setShowMetaList(v => !v)}
+                  className={`p-1 rounded transition-colors ${showMetaList ? "bg-amber-600/30" : "hover:bg-amber-500/30"}`}
+                  title="All Ideas (Meta View)"
+                >
+                  <List size={13} className="text-amber-800" />
+                </button>
+              )}
+              {viewMode === "ideas" && copiedIdeaId && (
                 <button
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={() => paste_idea(selectedCategoryId || null)}
@@ -1371,6 +1406,9 @@ export default function IdeaBin() {
               executeTransformToTask={executeTransformToTask} executeTransformToMilestone={executeTransformToMilestone}
             />
 
+            {/* ══════ IDEAS MODE ══════ */}
+            {viewMode === "ideas" && (
+            <>
             {/* ── LEFT: Sidebar (always visible) ── */}
             <div
               className="flex flex-col flex-shrink-0 bg-white"
@@ -1686,6 +1724,19 @@ export default function IdeaBin() {
                 ideas={ideas} dims={dims}
                 renderIdeaItem={renderIdeaItem}
                 handleCategoryResize={handleCategoryResize}
+              />
+            )}
+            </>
+            )}
+
+            {/* ══════ CONTEXTS MODE ══════ */}
+            {viewMode === "contexts" && (
+              <IdeaBinContextView
+                categories={categories}
+                legends={dims.legends}
+                showCanvas={showCategories}
+                sidebarWidth={sidebarWidth}
+                onCategoryCreated={fetch_categories}
               />
             )}
           </div>

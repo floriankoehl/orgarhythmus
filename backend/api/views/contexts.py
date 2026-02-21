@@ -1,0 +1,304 @@
+"""
+Views for Context CRUD and category-context placement management.
+Contexts classify categories, similar to how categories classify ideas.
+"""
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
+
+from ..models import Category, Context, CategoryContextPlacement, Legend, LegendContextPlacement, UserContextAdoption
+from .serializers import ContextSerializer
+
+
+# ─────────────────────────────────────────────
+#  CONTEXT CRUD
+# ─────────────────────────────────────────────
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_all_contexts(request):
+    """Return all contexts owned by or adopted by the current user, each with its placed category and legend IDs."""
+    owned = Context.objects.filter(owner=request.user).select_related('owner')
+    adopted_ids = list(UserContextAdoption.objects.filter(user=request.user).values_list('context_id', flat=True))
+    adopted = Context.objects.filter(id__in=adopted_ids).select_related('owner')
+
+    data = []
+    for ctx in owned:
+        d = ContextSerializer(ctx).data
+        d["adopted"] = False
+        cat_placements = CategoryContextPlacement.objects.filter(context=ctx).order_by("order_index")
+        d["category_ids"] = [p.category_id for p in cat_placements]
+        leg_placements = LegendContextPlacement.objects.filter(context=ctx).order_by("order_index")
+        d["legend_ids"] = [p.legend_id for p in leg_placements]
+        data.append(d)
+
+    for ctx in adopted:
+        d = ContextSerializer(ctx).data
+        d["adopted"] = True
+        cat_placements = CategoryContextPlacement.objects.filter(context=ctx).order_by("order_index")
+        d["category_ids"] = [p.category_id for p in cat_placements]
+        leg_placements = LegendContextPlacement.objects.filter(context=ctx).order_by("order_index")
+        d["legend_ids"] = [p.legend_id for p in leg_placements]
+        data.append(d)
+
+    return Response(data)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_context(request):
+    """Create a new context."""
+    name = request.data.get("name", "").strip()
+    if not name:
+        return Response({"error": "Name required"}, status=400)
+    ctx = Context.objects.create(
+        owner=request.user,
+        name=name,
+        x=request.data.get("x", 50),
+        y=request.data.get("y", 50),
+        width=request.data.get("width", 200),
+        height=request.data.get("height", 200),
+    )
+    d = ContextSerializer(ctx).data
+    d["category_ids"] = []
+    d["legend_ids"] = []
+    return Response(d, status=201)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def update_context(request, context_id):
+    """Update context name, position, or size."""
+    try:
+        ctx = Context.objects.get(pk=context_id, owner=request.user)
+    except Context.DoesNotExist:
+        return Response({"error": "Not found"}, status=404)
+
+    for field in ("name", "x", "y", "width", "height", "z_index"):
+        if field in request.data:
+            setattr(ctx, field, request.data[field])
+    ctx.save()
+    d = ContextSerializer(ctx).data
+    placements = CategoryContextPlacement.objects.filter(context=ctx).order_by("order_index")
+    d["category_ids"] = [p.category_id for p in placements]
+    leg_placements = LegendContextPlacement.objects.filter(context=ctx).order_by("order_index")
+    d["legend_ids"] = [p.legend_id for p in leg_placements]
+    return Response(d)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_context(request, context_id):
+    """Delete a context. Category placements are cascade-deleted."""
+    try:
+        ctx = Context.objects.get(pk=context_id, owner=request.user)
+    except Context.DoesNotExist:
+        return Response({"error": "Not found"}, status=404)
+    ctx.delete()
+    return Response({"status": "deleted"})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def set_context_position(request):
+    """Update x, y position of a context."""
+    ctx_id = request.data.get("context_id")
+    try:
+        ctx = Context.objects.get(pk=ctx_id, owner=request.user)
+    except Context.DoesNotExist:
+        return Response({"error": "Not found"}, status=404)
+    ctx.x = request.data.get("x", ctx.x)
+    ctx.y = request.data.get("y", ctx.y)
+    ctx.save()
+    return Response({"status": "ok"})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def set_context_area(request):
+    """Update width, height of a context."""
+    ctx_id = request.data.get("context_id")
+    try:
+        ctx = Context.objects.get(pk=ctx_id, owner=request.user)
+    except Context.DoesNotExist:
+        return Response({"error": "Not found"}, status=404)
+    ctx.width = request.data.get("width", ctx.width)
+    ctx.height = request.data.get("height", ctx.height)
+    ctx.save()
+    return Response({"status": "ok"})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def bring_to_front_context(request):
+    """Set z_index to max+1 among user's contexts."""
+    ctx_id = request.data.get("context_id")
+    try:
+        ctx = Context.objects.get(pk=ctx_id, owner=request.user)
+    except Context.DoesNotExist:
+        return Response({"error": "Not found"}, status=404)
+    max_z = Context.objects.filter(owner=request.user).order_by("-z_index").values_list("z_index", flat=True).first() or 0
+    ctx.z_index = max_z + 1
+    ctx.save()
+    return Response({"status": "ok", "z_index": ctx.z_index})
+
+
+# ─────────────────────────────────────────────
+#  CATEGORY ↔ CONTEXT PLACEMENT
+# ─────────────────────────────────────────────
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def assign_category_to_context(request):
+    """Place a category into a context. Creates a CategoryContextPlacement."""
+    category_id = request.data.get("category_id")
+    context_id = request.data.get("context_id")
+    try:
+        cat = Category.objects.get(pk=category_id, owner=request.user)
+        ctx = Context.objects.get(pk=context_id, owner=request.user)
+    except (Category.DoesNotExist, Context.DoesNotExist):
+        return Response({"error": "Not found"}, status=404)
+
+    placement, created = CategoryContextPlacement.objects.get_or_create(
+        category=cat, context=ctx,
+        defaults={"order_index": CategoryContextPlacement.objects.filter(context=ctx).count()},
+    )
+    return Response({"status": "assigned", "created": created})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def remove_category_from_context(request):
+    """Remove a category from a context."""
+    category_id = request.data.get("category_id")
+    context_id = request.data.get("context_id")
+    try:
+        placement = CategoryContextPlacement.objects.get(
+            category_id=category_id,
+            context_id=context_id,
+            context__owner=request.user,
+        )
+    except CategoryContextPlacement.DoesNotExist:
+        return Response({"error": "Not found"}, status=404)
+    placement.delete()
+    return Response({"status": "removed"})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def rename_context(request):
+    """Rename a context."""
+    ctx_id = request.data.get("context_id")
+    name = request.data.get("name", "").strip()
+    if not name:
+        return Response({"error": "Name required"}, status=400)
+    try:
+        ctx = Context.objects.get(pk=ctx_id, owner=request.user)
+    except Context.DoesNotExist:
+        return Response({"error": "Not found"}, status=404)
+    ctx.name = name
+    ctx.save()
+    return Response({"status": "ok"})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def safe_context_order(request):
+    """Save the order of categories within contexts."""
+    context_orders = request.data.get("context_orders", {})
+    for ctx_id, cat_ids in context_orders.items():
+        for idx, cat_id in enumerate(cat_ids):
+            CategoryContextPlacement.objects.filter(
+                context_id=ctx_id, category_id=cat_id, context__owner=request.user
+            ).update(order_index=idx)
+    return Response({"status": "ok"})
+
+
+# ─────────────────────────────────────────────
+#  LEGEND ↔ CONTEXT PLACEMENT
+# ─────────────────────────────────────────────
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def assign_legend_to_context(request):
+    """Place a legend into a context."""
+    legend_id = request.data.get("legend_id")
+    context_id = request.data.get("context_id")
+    try:
+        legend = Legend.objects.get(pk=legend_id, owner=request.user)
+        ctx = Context.objects.get(pk=context_id, owner=request.user)
+    except (Legend.DoesNotExist, Context.DoesNotExist):
+        return Response({"error": "Not found"}, status=404)
+
+    placement, created = LegendContextPlacement.objects.get_or_create(
+        legend=legend, context=ctx,
+        defaults={"order_index": LegendContextPlacement.objects.filter(context=ctx).count()},
+    )
+    return Response({"status": "assigned", "created": created})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def remove_legend_from_context(request):
+    """Remove a legend from a context."""
+    legend_id = request.data.get("legend_id")
+    context_id = request.data.get("context_id")
+    try:
+        placement = LegendContextPlacement.objects.get(
+            legend_id=legend_id,
+            context_id=context_id,
+            context__owner=request.user,
+        )
+    except LegendContextPlacement.DoesNotExist:
+        return Response({"error": "Not found"}, status=404)
+    placement.delete()
+    return Response({"status": "removed"})
+
+
+# ─────────────────────────────────────────────
+#  PUBLIC / ADOPTION
+# ─────────────────────────────────────────────
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def toggle_public_context(request):
+    """Toggle is_public flag on a context owned by the current user."""
+    context_id = request.data.get("id")
+    ctx = get_object_or_404(Context, id=context_id, owner=request.user)
+    ctx.is_public = not ctx.is_public
+    ctx.save()
+    return Response({"is_public": ctx.is_public})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_all_public_contexts(request):
+    """Get all public contexts from all users, with adoption status."""
+    ctxs = Context.objects.filter(is_public=True).select_related('owner')
+    adopted_ids = set(UserContextAdoption.objects.filter(user=request.user).values_list('context_id', flat=True))
+    data = ContextSerializer(ctxs, many=True).data
+    for c in data:
+        c['is_adopted'] = c['id'] in adopted_ids
+        c['is_own'] = c['owner_id'] == request.user.id
+    return Response({"contexts": data})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def adopt_context(request, context_id):
+    """Adopt a context from another user."""
+    ctx = get_object_or_404(Context, id=context_id)
+    if ctx.owner == request.user:
+        return Response({"error": "Cannot adopt your own context"}, status=400)
+    UserContextAdoption.objects.get_or_create(user=request.user, context=ctx)
+    return Response({"adopted": True})
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def drop_context(request, context_id):
+    """Drop (unadopt) a context."""
+    UserContextAdoption.objects.filter(user=request.user, context_id=context_id).delete()
+    return Response({"dropped": True})

@@ -181,6 +181,27 @@ urlpatterns = [
 
     # User-level ideas
     path("user/ideas/", views.get_user_ideas, name="get_user_ideas"),
+
+    # Contexts (user-scoped)
+    path("user/contexts/", views.get_all_contexts, name="get_all_contexts"),
+    path("user/contexts/create/", views.create_context, name="create_context"),
+    path("user/contexts/<int:context_id>/", views.update_context, name="update_context"),
+    path("user/contexts/<int:context_id>/delete/", views.delete_context, name="delete_context"),
+    path("user/contexts/set_position/", views.set_context_position, name="set_context_position"),
+    path("user/contexts/set_area/", views.set_context_area, name="set_context_area"),
+    path("user/contexts/bring_to_front/", views.bring_to_front_context, name="bring_to_front_context"),
+    path("user/contexts/rename/", views.rename_context, name="rename_context"),
+    path("user/contexts/assign_category/", views.assign_category_to_context, name="assign_category_to_context"),
+    path("user/contexts/remove_category/", views.remove_category_from_context, name="remove_category_from_context"),
+    path("user/contexts/safe_order/", views.safe_context_order, name="safe_context_order"),
+    path("user/contexts/assign_legend/", views.assign_legend_to_context, name="assign_legend_to_context"),
+    path("user/contexts/remove_legend/", views.remove_legend_from_context, name="remove_legend_from_context"),
+    path("user/contexts/toggle_public/", views.toggle_public_context, name="toggle_public_context"),
+
+    # Context adoption
+    path("contexts/public/", views.get_all_public_contexts, name="get_all_public_contexts"),
+    path("contexts/<int:context_id>/adopt/", views.adopt_context, name="adopt_context"),
+    path("contexts/<int:context_id>/drop/", views.drop_context, name="drop_context"),
 ]
 
 

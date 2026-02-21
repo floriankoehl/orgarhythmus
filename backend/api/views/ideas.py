@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..models import Category, Idea, IdeaPlacement, IdeaLegendType, LegendType, Legend, UserLegendAdoption, UserCategoryAdoption
+from ..models import Category, Idea, IdeaPlacement, IdeaLegendType, LegendType, Legend, UserLegendAdoption, UserCategoryAdoption, UserContextAdoption, CategoryContextPlacement
 from .serializers import IdeaSerializer, IdeaPlacementSerializer, CategorySerializer, LegendTypeSerializer, LegendSerializer
 
 
@@ -16,13 +16,18 @@ from .serializers import IdeaSerializer, IdeaPlacementSerializer, CategorySerial
 # ═══════════════════════════════════════════════════════
 
 def _get_accessible_category(user, category_id):
-    """Return a Category the user either owns OR has adopted, or None."""
+    """Return a Category the user either owns, has adopted, or has access to
+    via an adopted context.  Returns None when not accessible."""
     cat = Category.objects.filter(id=category_id).first()
     if cat is None:
         return None
     if cat.owner == user:
         return cat
     if UserCategoryAdoption.objects.filter(user=user, category=cat).exists():
+        return cat
+    # Check if category belongs to any context the user has adopted
+    adopted_ctx_ids = UserContextAdoption.objects.filter(user=user).values_list('context_id', flat=True)
+    if CategoryContextPlacement.objects.filter(category=cat, context_id__in=adopted_ctx_ids).exists():
         return cat
     return None
 
@@ -64,10 +69,11 @@ def create_idea(request):
         category=category,
         order_index=next_order,
     )
+    ctx = {'request': request}
     return Response({
         "created": True,
-        "idea": IdeaSerializer(idea).data,
-        "placement": IdeaPlacementSerializer(placement).data,
+        "idea": IdeaSerializer(idea, context=ctx).data,
+        "placement": IdeaPlacementSerializer(placement, context=ctx).data,
     })
 
 
@@ -130,7 +136,7 @@ def copy_idea_to_category(request):
     )
     return Response({
         "created": True,
-        "placement": IdeaPlacementSerializer(placement).data,
+        "placement": IdeaPlacementSerializer(placement, context={'request': request}).data,
     })
 
 
@@ -191,7 +197,8 @@ def get_all_ideas(request):
     Also includes placements from adopted categories (read-only)."""
     # Own placements
     placements = IdeaPlacement.objects.filter(idea__owner=request.user).select_related('idea', 'idea__owner', 'category').prefetch_related('idea__legend_types__legend_type', 'idea__legend_types__legend')
-    all_placements_serialized = IdeaPlacementSerializer(placements, many=True).data
+    ctx = {'request': request}
+    all_placements_serialized = IdeaPlacementSerializer(placements, many=True, context=ctx).data
 
     unassigned_order = list(
         IdeaPlacement.objects.filter(idea__owner=request.user, category__isnull=True)
@@ -210,7 +217,7 @@ def get_all_ideas(request):
     adopted_cat_ids = list(UserCategoryAdoption.objects.filter(user=request.user).values_list('category_id', flat=True))
     if adopted_cat_ids:
         adopted_placements = IdeaPlacement.objects.filter(category_id__in=adopted_cat_ids).select_related('idea', 'idea__owner', 'category').prefetch_related('idea__legend_types__legend_type', 'idea__legend_types__legend')
-        adopted_data = IdeaPlacementSerializer(adopted_placements, many=True).data
+        adopted_data = IdeaPlacementSerializer(adopted_placements, many=True, context=ctx).data
         all_placements_serialized += adopted_data
         for cat_id in adopted_cat_ids:
             category_orders[cat_id] = list(
@@ -218,6 +225,23 @@ def get_all_ideas(request):
                 .order_by('order_index')
                 .values_list('id', flat=True)
             )
+
+    # Categories from adopted contexts
+    adopted_ctx_ids = list(UserContextAdoption.objects.filter(user=request.user).values_list('context_id', flat=True))
+    if adopted_ctx_ids:
+        ctx_cat_ids = list(CategoryContextPlacement.objects.filter(context_id__in=adopted_ctx_ids).values_list('category_id', flat=True))
+        already_included = set(Category.objects.filter(owner=request.user).values_list('id', flat=True)) | set(adopted_cat_ids)
+        new_ctx_cat_ids = [cid for cid in ctx_cat_ids if cid not in already_included]
+        if new_ctx_cat_ids:
+            ctx_placements = IdeaPlacement.objects.filter(category_id__in=new_ctx_cat_ids).select_related('idea', 'idea__owner', 'category').prefetch_related('idea__legend_types__legend_type', 'idea__legend_types__legend')
+            ctx_data = IdeaPlacementSerializer(ctx_placements, many=True, context=ctx).data
+            all_placements_serialized += ctx_data
+            for cat_id in new_ctx_cat_ids:
+                category_orders[cat_id] = list(
+                    IdeaPlacement.objects.filter(category_id=cat_id)
+                    .order_by('order_index')
+                    .values_list('id', flat=True)
+                )
 
     return Response({
         "data": all_placements_serialized,
@@ -238,6 +262,14 @@ def get_all_categories(request):
     adopted_ids = list(UserCategoryAdoption.objects.filter(user=request.user).values_list('category_id', flat=True))
     adopted = Category.objects.filter(id__in=adopted_ids).select_related('owner')
 
+    # Categories accessible via adopted contexts
+    adopted_ctx_ids = list(UserContextAdoption.objects.filter(user=request.user).values_list('context_id', flat=True))
+    ctx_cat_ids = list(CategoryContextPlacement.objects.filter(context_id__in=adopted_ctx_ids).values_list('category_id', flat=True))
+    owned_id_set = set(owned.values_list('id', flat=True))
+    adopted_id_set = set(adopted_ids)
+    new_ctx_cat_ids = [cid for cid in ctx_cat_ids if cid not in owned_id_set and cid not in adopted_id_set]
+    context_cats = Category.objects.filter(id__in=new_ctx_cat_ids).select_related('owner')
+
     owned_data = CategorySerializer(owned, many=True).data
     for c in owned_data:
         c['adopted'] = False
@@ -246,7 +278,12 @@ def get_all_categories(request):
     for c in adopted_data:
         c['adopted'] = True
 
-    return Response({"categories": owned_data + adopted_data})
+    ctx_cat_data = CategorySerializer(context_cats, many=True).data
+    for c in ctx_cat_data:
+        c['adopted'] = True
+        c['from_adopted_context'] = True
+
+    return Response({"categories": owned_data + adopted_data + ctx_cat_data})
 
 
 @api_view(["POST"])
@@ -655,10 +692,11 @@ def spinoff_idea(request):
         order_index=next_order,
     )
 
+    ctx = {'request': request}
     return Response({
         "created": True,
-        "idea": IdeaSerializer(new_idea).data,
-        "placement": IdeaPlacementSerializer(placement).data,
+        "idea": IdeaSerializer(new_idea, context=ctx).data,
+        "placement": IdeaPlacementSerializer(placement, context=ctx).data,
     })
 
 
@@ -667,7 +705,7 @@ def spinoff_idea(request):
 def get_user_ideas(request):
     """Get all ideas owned by the current user — the meta view."""
     ideas = Idea.objects.filter(owner=request.user).prefetch_related('placements__category', 'legend_types__legend_type', 'legend_types__legend')
-    return Response({"ideas": IdeaSerializer(ideas, many=True).data})
+    return Response({"ideas": IdeaSerializer(ideas, many=True, context={'request': request}).data})
 
 
 @api_view(["GET"])
@@ -676,5 +714,5 @@ def get_meta_ideas(request):
     """Get all unique ideas for the current user (meta view — no placement duplicates)."""
     ideas = Idea.objects.filter(owner=request.user).select_related('owner').prefetch_related('placements__category', 'legend_types__legend_type', 'legend_types__legend')
     return Response({
-        "ideas": IdeaSerializer(ideas, many=True).data,
+        "ideas": IdeaSerializer(ideas, many=True, context={'request': request}).data,
     })

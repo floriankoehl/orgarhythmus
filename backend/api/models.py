@@ -395,6 +395,75 @@ class UserLegendAdoption(models.Model):
 
 
 # ═══════════════════════════════════════════════
+#  CONTEXT  (classification for categories)
+# ═══════════════════════════════════════════════
+
+class Context(models.Model):
+    """
+    A named container that groups categories.
+    Works like categories group ideas — contexts group categories.
+    """
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="owned_contexts")
+    name = models.CharField(max_length=200)
+    x = models.IntegerField(default=0)
+    y = models.IntegerField(default=0)
+    width = models.IntegerField(default=200)
+    height = models.IntegerField(default=200)
+    z_index = models.IntegerField(default=0)
+    is_public = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.owner.username})"
+
+
+class UserContextAdoption(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="adopted_contexts")
+    context = models.ForeignKey(Context, on_delete=models.CASCADE, related_name="adopters")
+    adopted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["user", "context"]
+
+
+class CategoryContextPlacement(models.Model):
+    """
+    Links a Category to a Context.
+    Each category can be placed in multiple contexts.
+    """
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name="context_placements")
+    context = models.ForeignKey(Context, on_delete=models.CASCADE, related_name="category_placements")
+    order_index = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ["order_index"]
+        unique_together = ["category", "context"]
+
+    def __str__(self):
+        return f"{self.category.name} → {self.context.name}"
+
+
+class LegendContextPlacement(models.Model):
+    """
+    Links a Legend to a Context.
+    Each legend can be placed in multiple contexts.
+    """
+    legend = models.ForeignKey(Legend, on_delete=models.CASCADE, related_name="context_placements")
+    context = models.ForeignKey(Context, on_delete=models.CASCADE, related_name="legend_placements")
+    order_index = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ["order_index"]
+        unique_together = ["legend", "context"]
+
+    def __str__(self):
+        return f"{self.legend.name} → {self.context.name}"
+
+
+# ═══════════════════════════════════════════════
 #  DEPENDENCY VIEW (saved frontend state)
 # ═══════════════════════════════════════════════
 
@@ -535,6 +604,39 @@ class IdeaLegendType(models.Model):
 
     def __str__(self):
         return f"{self.idea.title} → {self.legend.name}: {self.legend_type.name}"
+
+
+# ═══════════════════════════════════════════════
+#  IDEA UPVOTE  (one per user per idea)
+# ═══════════════════════════════════════════════
+
+class IdeaUpvote(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="idea_upvotes")
+    idea = models.ForeignKey(Idea, on_delete=models.CASCADE, related_name="upvotes")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["user", "idea"]
+
+    def __str__(self):
+        return f"{self.user.username} ▲ {self.idea.title}"
+
+
+# ═══════════════════════════════════════════════
+#  IDEA COMMENT
+# ═══════════════════════════════════════════════
+
+class IdeaComment(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="idea_comments")
+    idea = models.ForeignKey(Idea, on_delete=models.CASCADE, related_name="comments")
+    text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.user.username}: {self.text[:50]}"
 
 
 # ═══════════════════════════════════════════════
