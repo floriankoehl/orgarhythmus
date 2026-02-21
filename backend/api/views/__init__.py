@@ -13,6 +13,7 @@ from .serializers import (
     IdeaSerializer,
     CategorySerializer,
     LegendTypeSerializer,
+    LegendVariantSerializer,
     DaySerializer,
 )
 
@@ -131,6 +132,20 @@ from .ideas import (
     update_legend_type,
     delete_legend_type,
     assign_idea_legend_type,
+    # Legend Variants
+    get_all_legend_variants,
+    create_legend_variant,
+    update_legend_variant,
+    delete_legend_variant,
+    # Multi-assignment
+    assign_idea_legend_types,
+    assign_idea_categories,
+    add_idea_to_category,
+    remove_idea_from_category,
+    # Category visibility
+    set_category_visibility,
+    # Variant-scoped legend types
+    create_variant_legend_type,
 )
 
 from .notifications import (

@@ -11,6 +11,7 @@ from ..models import (
     Idea,
     Category,
     LegendType,
+    LegendVariant,
     Day,
     Phase,
     DependencyView,
@@ -130,17 +131,39 @@ class IdeaSerializer(serializers.ModelSerializer):
         allow_null=True,
         required=False
     )
+    legend_type_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=LegendType.objects.all(),
+        source='legend_types',
+        required=False
+    )
+    category_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Category.objects.all(),
+        source='categories',
+        required=False
+    )
+    primary_legend_type_id = serializers.PrimaryKeyRelatedField(
+        queryset=LegendType.objects.all(),
+        source='primary_legend_type',
+        allow_null=True,
+        required=False
+    )
 
     class Meta:
         model = Idea
-        fields = ["id", "title", "headline", "description", "category", "order_index", "legend_type_id"]
+        fields = [
+            "id", "title", "headline", "description", "category",
+            "order_index", "legend_type_id", "owner",
+            "legend_type_ids", "category_ids", "primary_legend_type_id",
+        ]
 
 
 # CategorySerializer
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ["id", "name", "x", "y", "width", "height", "z_index", "archived"]
+        fields = ["id", "name", "x", "y", "width", "height", "z_index", "archived", "visibility", "created_by"]
 
 
 # LegendTypeSerializer
@@ -148,6 +171,15 @@ class LegendTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = LegendType
         fields = "__all__"
+
+
+# LegendVariantSerializer
+class LegendVariantSerializer(serializers.ModelSerializer):
+    legend_types = LegendTypeSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = LegendVariant
+        fields = ["id", "name", "created_by", "created_at", "order_index", "legend_types"]
 
 
 

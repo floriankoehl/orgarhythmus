@@ -87,6 +87,22 @@ urlpatterns = [
     path("projects/<int:project_id>/delete_legend_type/", views.delete_legend_type),
     path("projects/<int:project_id>/assign_idea_legend_type/", views.assign_idea_legend_type),
 
+    # Legend Variants (perspective system)
+    path("projects/<int:project_id>/legend_variants/", views.get_all_legend_variants),
+    path("projects/<int:project_id>/legend_variants/create/", views.create_legend_variant),
+    path("projects/<int:project_id>/legend_variants/update/", views.update_legend_variant),
+    path("projects/<int:project_id>/legend_variants/delete/", views.delete_legend_variant),
+    path("projects/<int:project_id>/legend_variants/create_type/", views.create_variant_legend_type),
+
+    # Multi-assignment (ideas ↔ categories, ideas ↔ legend types)
+    path("projects/<int:project_id>/assign_idea_legend_types/", views.assign_idea_legend_types),
+    path("projects/<int:project_id>/assign_idea_categories/", views.assign_idea_categories),
+    path("projects/<int:project_id>/add_idea_to_category/", views.add_idea_to_category),
+    path("projects/<int:project_id>/remove_idea_from_category/", views.remove_idea_from_category),
+
+    # Category visibility
+    path("projects/<int:project_id>/set_category_visibility/", views.set_category_visibility),
+
 
     # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
     # Project
