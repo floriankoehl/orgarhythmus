@@ -23,6 +23,7 @@ import Calendar from './pages/general/Calender.jsx';
 import Ideas from './pages/general/Ideas.jsx';
 import Dependencies from './pages/dependency/Dependencies';
 import AssignmentSecond from './pages/member_assignment/Assignment_Second';
+import MyIdeas from './pages/user/MyIdeas';
 
 const router = createBrowserRouter([
   {
@@ -33,6 +34,7 @@ const router = createBrowserRouter([
       { path: '/login', element: <Login /> },
       { path: '/register', element: <RegisterPage /> },
       { path: '/profile', element: <Profile /> },
+      { path: '/my-ideas', element: <MyIdeas /> },
       {
         path: 'projects/:projectId/',
         element: <ProjectLayout />,

@@ -10,6 +10,7 @@ import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
 import { playSound } from "../../assets/sound_registry";
+import { useDimensions } from "../../pages/general/ideas/useDimensions";
 
 // ───────────────────── Constants ─────────────────────
 const MIN_W = 290;
@@ -17,6 +18,8 @@ const MIN_H = 220;
 const DEFAULT_W = 340;
 const DEFAULT_H = 460;
 const CATEGORY_THRESHOLD = 560; // show categories when wider than this
+const MIN_SIDEBAR_W = 180;
+const MAX_SIDEBAR_W = 400;
 
 function authFetch(url, options = {}) {
   const token = localStorage.getItem("access_token");
@@ -125,9 +128,16 @@ export default function IdeaBin() {
   const [listFilter, setListFilter] = useState("unassigned"); // "unassigned" | category id
   const [showListFilterDropdown, setShowListFilterDropdown] = useState(false);
 
-  // ───── Legend state ─────
-  const [legendTypes, setLegendTypes] = useState({});
-  const [legendCollapsed, setLegendCollapsed] = useState(true);
+  // ───── Sidebar resize ─────
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+
+  // ───── Dimensions (replaces per-project legend) ─────
+  const dims = useDimensions();
+  const [dimPanelCollapsed, setDimPanelCollapsed] = useState(true);
+  const [showCreateDimension, setShowCreateDimension] = useState(false);
+  const [newDimensionName, setNewDimensionName] = useState("");
+  const [editingDimensionId, setEditingDimensionId] = useState(null);
+  const [editingDimensionNameLocal, setEditingDimensionNameLocal] = useState("");
   const [showCreateLegend, setShowCreateLegend] = useState(false);
   const [newLegendColor, setNewLegendColor] = useState("#6366f1");
   const [newLegendName, setNewLegendName] = useState("");
@@ -483,56 +493,8 @@ export default function IdeaBin() {
   };
 
   // ═══════════════════════════════════════════════════════
-  // ═══════════  LEGEND API  ══════════════════════════════
+  // ═══════════  DRAG HANDLERS  ═══════════════════════════
   // ═══════════════════════════════════════════════════════
-
-  const fetch_legend_types = async () => {
-    if (!projectId) return;
-    try {
-      const res = await authFetch(`${API}/get_all_legend_types/`);
-      const data = await res.json();
-      const obj = {};
-      for (const lt of (data?.legend_types || [])) obj[lt.id] = lt;
-      setLegendTypes(obj);
-    } catch (err) { console.error("IdeaBin: fetch legend types failed", err); }
-  };
-
-  const create_legend_type = async (name, color) => {
-    const res = await authFetch(`${API}/create_legend_type/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, color }),
-    });
-    const data = await res.json();
-    if (data.legend_type) {
-      setLegendTypes(prev => ({ ...prev, [data.legend_type.id]: data.legend_type }));
-    }
-  };
-
-  const update_legend_type = async (id, updates) => {
-    await authFetch(`${API}/update_legend_type/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, ...updates }),
-    });
-    setLegendTypes(prev => ({ ...prev, [id]: { ...prev[id], ...updates } }));
-  };
-
-  const delete_legend_type = async (id) => {
-    await authFetch(`${API}/delete_legend_type/`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    setLegendTypes(prev => { const u = { ...prev }; delete u[id]; return u; });
-    setIdeas(prev => {
-      const u = { ...prev };
-      for (const [k, idea] of Object.entries(u)) {
-        if (idea.legend_type_id === id) u[k] = { ...idea, legend_type_id: null };
-      }
-      return u;
-    });
-  };
 
   const assign_idea_legend_type = async (ideaId, legendTypeId) => {
     await authFetch(`${API}/assign_idea_legend_type/`, {
@@ -542,10 +504,6 @@ export default function IdeaBin() {
     });
     setIdeas(prev => ({ ...prev, [ideaId]: { ...prev[ideaId], legend_type_id: legendTypeId } }));
   };
-
-  // ═══════════════════════════════════════════════════════
-  // ═══════════  DRAG HANDLERS  ═══════════════════════════
-  // ═══════════════════════════════════════════════════════
 
   // ── Category drag ──
   const handleCategoryDrag = (e, catKey) => {
@@ -903,7 +861,7 @@ export default function IdeaBin() {
     let currentHoverIdeaId = null;
     setDraggingLegend({
       id: legendTypeId, x: e.clientX, y: e.clientY,
-      color: legendTypeId ? legendTypes[legendTypeId]?.color : "#374151",
+      color: legendTypeId ? dims.dimensionTypes[legendTypeId]?.color : "#374151",
     });
     const onMove = (ev) => {
       setDraggingLegend(prev => ({ ...prev, x: ev.clientX, y: ev.clientY }));
@@ -938,7 +896,6 @@ export default function IdeaBin() {
     if (projectId && isOpen) {
       fetch_categories();
       fetch_all_ideas();
-      fetch_legend_types();
     }
   }, [projectId, isOpen]);
 
@@ -1154,7 +1111,7 @@ export default function IdeaBin() {
       dragSource.type === source.type &&
       (source.type === "unassigned" || String(dragSource.id) === String(source.id));
     const isEditing = editingIdeaId === ideaId;
-    const legendType = idea.legend_type_id ? legendTypes[idea.legend_type_id] : null;
+    const legendType = idea.legend_type_id ? dims.dimensionTypes[idea.legend_type_id] : null;
     const isHoveredForLegend = hoverIdeaForLegend === ideaId;
     const isIdeaCollapsed = collapsedIdeas[ideaId] ?? false;
 
@@ -1552,8 +1509,8 @@ export default function IdeaBin() {
 
             {/* ── LEFT: Sidebar (always visible) ── */}
             <div
-              className="flex flex-col flex-shrink-0 border-r border-gray-200 bg-white"
-              style={{ width: showCategories ? 260 : "100%" }}
+              className="flex flex-col flex-shrink-0 bg-white"
+              style={{ width: showCategories ? sidebarWidth : "100%" }}
             >
               {/* ── Input form ── */}
               <div className="p-2 bg-gray-50 border-b border-gray-200 flex-shrink-0">
@@ -1712,19 +1669,104 @@ export default function IdeaBin() {
                       .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: listFilter }))
                 }              </div>
 
-              {/* ── Legend panel ── */}
+              {/* ── Dimensions panel ── */}
               <div className="bg-white border-t border-gray-200 p-2 flex-shrink-0">
                 <div
                   className="flex items-center justify-between cursor-pointer"
-                  onClick={() => setLegendCollapsed(!legendCollapsed)}
+                  onClick={() => setDimPanelCollapsed(!dimPanelCollapsed)}
                 >
                   <h3 className="text-[10px] font-semibold text-gray-500">
-                    Legend {globalTypeFilter.length > 0 && <span className="text-blue-500">(filtered)</span>}
+                    Dimensions {globalTypeFilter.length > 0 && <span className="text-blue-500">(filtered)</span>}
                   </h3>
-                  <span className="text-gray-400 text-[10px]">{legendCollapsed ? "▲" : "▼"}</span>
+                  <span className="text-gray-400 text-[10px]">{dimPanelCollapsed ? "▲" : "▼"}</span>
                 </div>
-                {!legendCollapsed && (
+                {!dimPanelCollapsed && (
                   <div className="mt-1">
+                    {/* Dimension selector */}
+                    {dims.dimensions.length > 0 && (
+                      <div className="mb-1">
+                        {editingDimensionId ? (
+                          <div className="flex gap-1">
+                            <input
+                              autoFocus
+                              value={editingDimensionNameLocal}
+                              onChange={(e) => setEditingDimensionNameLocal(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && editingDimensionNameLocal.trim()) {
+                                  dims.update_dimension(editingDimensionId, editingDimensionNameLocal.trim());
+                                  setEditingDimensionId(null);
+                                } else if (e.key === "Escape") setEditingDimensionId(null);
+                              }}
+                              onBlur={() => {
+                                if (editingDimensionNameLocal.trim()) dims.update_dimension(editingDimensionId, editingDimensionNameLocal.trim());
+                                setEditingDimensionId(null);
+                              }}
+                              className="flex-1 text-[10px] px-1 py-0.5 border border-blue-400 rounded outline-none"
+                            />
+                            <button onClick={() => setEditingDimensionId(null)} className="text-[10px] text-gray-400 hover:text-gray-600 px-1">✕</button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <select
+                              value={dims.activeDimensionId || ""}
+                              onChange={(e) => dims.setActiveDimensionId(e.target.value ? parseInt(e.target.value) : null)}
+                              className="flex-1 text-[10px] px-1 py-0.5 border border-gray-300 rounded outline-none bg-white"
+                            >
+                              {dims.dimensions.map(d => (
+                                <option key={d.id} value={d.id}>{d.name}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => {
+                                const dim = dims.dimensions.find(d => d.id === dims.activeDimensionId);
+                                if (dim) { setEditingDimensionId(dim.id); setEditingDimensionNameLocal(dim.name); }
+                              }}
+                              title="Rename"
+                              className="text-[10px] text-gray-400 hover:text-blue-500 px-0.5"
+                            >✎</button>
+                            <button
+                              onClick={() => {
+                                if (dims.activeDimensionId && window.confirm("Delete this dimension?")) {
+                                  dims.delete_dimension(dims.activeDimensionId);
+                                }
+                              }}
+                              title="Delete"
+                              className="text-[10px] text-gray-400 hover:text-red-500 px-0.5"
+                            >✕</button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {/* Create dimension */}
+                    {showCreateDimension ? (
+                      <div className="flex gap-1 mb-1">
+                        <input
+                          autoFocus
+                          value={newDimensionName}
+                          onChange={(e) => setNewDimensionName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && newDimensionName.trim()) {
+                              dims.create_dimension(newDimensionName.trim());
+                              setNewDimensionName(""); setShowCreateDimension(false);
+                            } else if (e.key === "Escape") setShowCreateDimension(false);
+                          }}
+                          placeholder="Dimension name..."
+                          className="flex-1 text-[10px] px-1 py-0.5 border border-gray-300 rounded outline-none focus:border-blue-400"
+                        />
+                        <button
+                          onClick={() => { if (newDimensionName.trim()) { dims.create_dimension(newDimensionName.trim()); setNewDimensionName(""); setShowCreateDimension(false); } }}
+                          className="text-[10px] px-1.5 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600"
+                        >+</button>
+                        <button onClick={() => setShowCreateDimension(false)} className="text-[10px] text-gray-400 hover:text-gray-600 px-1">✕</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setShowCreateDimension(true)}
+                        className="w-full mb-1 text-[10px] px-1.5 py-0.5 border border-dashed border-gray-300 rounded text-gray-500 hover:border-gray-400 hover:bg-gray-50"
+                      >
+                        + New Dimension
+                      </button>
+                    )}
                     {globalTypeFilter.length > 0 && (
                       <button
                         onClick={() => setGlobalTypeFilter([])}
@@ -1745,8 +1787,8 @@ export default function IdeaBin() {
                       <span className="text-gray-500 italic flex-1">Unassigned</span>
                       {globalTypeFilter.includes("unassigned") && <span className="text-blue-500">✓</span>}
                     </div>
-                    {/* Custom types */}
-                    {Object.values(legendTypes).map(lt => (
+                    {/* Dimension types */}
+                    {Object.values(dims.dimensionTypes).map(lt => (
                       <div
                         key={lt.id}
                         className={`flex items-center gap-1.5 mb-1 group cursor-pointer rounded px-1 py-0.5 text-[10px] ${globalTypeFilter.includes(lt.id) ? "bg-gray-200" : "hover:bg-gray-100"}`}
@@ -1763,10 +1805,10 @@ export default function IdeaBin() {
                             value={editingLegendName}
                             onChange={e => setEditingLegendName(e.target.value)}
                             onKeyDown={e => {
-                              if (e.key === "Enter") { update_legend_type(lt.id, { name: editingLegendName }); setEditingLegendId(null); }
+                              if (e.key === "Enter") { dims.update_dimension_type(lt.id, { name: editingLegendName }); setEditingLegendId(null); }
                               else if (e.key === "Escape") setEditingLegendId(null);
                             }}
-                            onBlur={() => { update_legend_type(lt.id, { name: editingLegendName }); setEditingLegendId(null); }}
+                            onBlur={() => { dims.update_dimension_type(lt.id, { name: editingLegendName }); setEditingLegendId(null); }}
                             onClick={e => e.stopPropagation()}
                             className="text-[10px] px-1 py-0.5 border border-blue-400 rounded outline-none flex-1 min-w-0"
                           />
@@ -1781,18 +1823,18 @@ export default function IdeaBin() {
                         {globalTypeFilter.includes(lt.id) && <span className="text-blue-500">✓</span>}
                         <input
                           type="color" value={lt.color}
-                          onChange={e => update_legend_type(lt.id, { color: e.target.value })}
+                          onChange={e => dims.update_dimension_type(lt.id, { color: e.target.value })}
                           onClick={e => e.stopPropagation()}
                           className="w-3 h-3 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
                         />
                         <DeleteForeverIcon
-                          onClick={e => { e.stopPropagation(); delete_legend_type(lt.id); }}
+                          onClick={e => { e.stopPropagation(); dims.delete_dimension_type(lt.id); }}
                           className="text-gray-300 hover:text-red-500! cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
                           style={{ fontSize: 13 }}
                         />
                       </div>
                     ))}
-                    {/* Create legend */}
+                    {/* Create type */}
                     {showCreateLegend ? (
                       <div className="mt-1 p-1.5 bg-gray-50 rounded border border-gray-200">
                         <div className="flex items-center gap-1 mb-1">
@@ -1801,7 +1843,7 @@ export default function IdeaBin() {
                             autoFocus value={newLegendName} onChange={e => setNewLegendName(e.target.value)}
                             onKeyDown={e => {
                               if (e.key === "Enter" && newLegendName.trim()) {
-                                create_legend_type(newLegendName, newLegendColor);
+                                dims.create_dimension_type(newLegendName, newLegendColor);
                                 setNewLegendName(""); setNewLegendColor("#6366f1"); setShowCreateLegend(false);
                               } else if (e.key === "Escape") setShowCreateLegend(false);
                             }}
@@ -1813,7 +1855,7 @@ export default function IdeaBin() {
                           <button
                             onClick={() => {
                               if (newLegendName.trim()) {
-                                create_legend_type(newLegendName, newLegendColor);
+                                dims.create_dimension_type(newLegendName, newLegendColor);
                                 setNewLegendName(""); setNewLegendColor("#6366f1"); setShowCreateLegend(false);
                               }
                             }}
@@ -1838,6 +1880,23 @@ export default function IdeaBin() {
                 )}
               </div>
             </div>
+
+            {/* ── Sidebar resize handle ── */}
+            {showCategories && (
+              <div
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const startX = e.clientX;
+                  const startW = sidebarWidth;
+                  const onMove = (ev) => setSidebarWidth(Math.min(MAX_SIDEBAR_W, Math.max(MIN_SIDEBAR_W, startW + (ev.clientX - startX))));
+                  const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+                  document.addEventListener("mousemove", onMove);
+                  document.addEventListener("mouseup", onUp);
+                }}
+                className="w-1.5 flex-shrink-0 bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors duration-150"
+              />
+            )}
 
             {/* ── RIGHT: Category canvas (only when wide enough) ── */}
             {showCategories && (

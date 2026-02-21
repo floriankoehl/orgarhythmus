@@ -7,6 +7,7 @@ import { useIdeaUIState } from "./ideas/useIdeaUIState.jsx";
 import { useCategoryLayout } from "./ideas/useCategoryLayout";
 import { useIdeaDrag } from "./ideas/useIdeaDrag";
 import { useLegendInteraction } from "./ideas/useLegendInteraction";
+import { useDimensions } from "./ideas/useDimensions";
 
 // Components
 import IdeasModals from "../../components/ideas/IdeasModals";
@@ -26,6 +27,7 @@ export default function Ideas() {
 
   const data = useIdeasData(projectId);
   const uiState = useIdeaUIState();
+  const dims = useDimensions();
 
   const layout = useCategoryLayout({
     categories: data.categories,
@@ -49,7 +51,7 @@ export default function Ideas() {
   });
 
   const legendInteraction = useLegendInteraction({
-    legendTypes: data.legendTypes,
+    legendTypes: dims.dimensionTypes,
     assign_idea_legend_type: data.assign_idea_legend_type,
     ideaRefs,
   });
@@ -73,6 +75,15 @@ export default function Ideas() {
     delete_legend_type: data.delete_legend_type,
   };
 
+  const dimensionActions = {
+    create_dimension: dims.create_dimension,
+    update_dimension: dims.update_dimension,
+    delete_dimension: dims.delete_dimension,
+    create_dimension_type: dims.create_dimension_type,
+    update_dimension_type: dims.update_dimension_type,
+    delete_dimension_type: dims.delete_dimension_type,
+  };
+
   // ===== JSX =====
 
   return (
@@ -94,6 +105,11 @@ export default function Ideas() {
             ideas={data.ideas}
             unassignedOrder={data.unassignedOrder}
             legendTypes={data.legendTypes}
+            dimensionTypes={dims.dimensionTypes}
+            dimensions={dims.dimensions}
+            activeDimensionId={dims.activeDimensionId}
+            setActiveDimensionId={dims.setActiveDimensionId}
+            dimensionActions={dimensionActions}
             dragging={drag.dragging}
             dragSource={drag.dragSource}
             prevIndex={drag.prevIndex}
@@ -119,7 +135,7 @@ export default function Ideas() {
             categories={data.categories}
             ideas={data.ideas}
             categoryOrders={data.categoryOrders}
-            legendTypes={data.legendTypes}
+            legendTypes={dims.dimensionTypes}
             activeCategories={activeCategories}
             archivedCategories={archivedCategories}
             dragging={drag.dragging}
