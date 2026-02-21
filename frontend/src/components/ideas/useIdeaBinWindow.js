@@ -178,9 +178,9 @@ export default function useIdeaBinWindow(headlineInputRef) {
 
   return {
     isOpen, setIsOpen,
-    windowPos, windowSize,
+    windowPos, setWindowPos, windowSize, setWindowSize,
     iconPos,
-    isMaximized,
+    isMaximized, setIsMaximized,
     windowRef, iconRef,
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag, handleWindowResize, handleEdgeResize,

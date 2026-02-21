@@ -151,6 +151,9 @@ from .ideas import (
     drop_category,
     get_user_ideas,
     spinoff_idea,
+    toggle_upvote_idea,
+    idea_comments,
+    delete_idea_comment,
 )
 
 from .notifications import (
@@ -191,4 +194,12 @@ from .contexts import (
     get_all_public_contexts,
     adopt_context,
     drop_context,
+)
+
+from .formations import (
+    list_formations,
+    create_formation,
+    get_formation,
+    update_formation,
+    delete_formation,
 )

@@ -670,6 +670,76 @@ class ProtoPersona(models.Model):
         return f"{self.name} ({self.project.name})"
 
 
+# ═══════════════════════════════════════════════
+#  FORMATION  (saved IdeaBin visual state)
+# ═══════════════════════════════════════════════
+
+class Formation(models.Model):
+    """
+    Stores a complete snapshot of the IdeaBin visual layout for a user.
+    All layout data lives in the JSON `state` field so new settings can
+    be added without migrations.
+
+    Current state schema (v1):
+    {
+      "version": 1,
+
+      # window
+      "window_pos": {"x": 0, "y": 0},
+      "window_size": {"w": 1920, "h": 1080},
+      "is_maximized": true,
+
+      # view
+      "view_mode": "ideas" | "contexts",
+
+      # sidebar
+      "sidebar_width": 240,
+      "sidebar_headline_only": false,
+      "show_sidebar_meta": false,
+      "list_filter": "all" | "unassigned" | <category_id>,
+      "show_archive": false,
+
+      # legend
+      "active_legend_id": null | <id>,
+      "legend_panel_collapsed": true,
+      "global_type_filter": [],
+
+      # categories (canvas positions + collapse)
+      "minimized_categories": {"<catId>": true, ...},
+      "collapsed_ideas": {"<placementId>": true, ...},
+      "selected_category_id": null | <id>,
+      "show_meta_list": false,
+
+      # context view
+      "context_sidebar_mode": "categories" | "legends",
+      "minimized_contexts": {"<ctxId>": true, ...},
+
+      # category canvas positions (snapshot)
+      "category_positions": {
+        "<catId>": {"x": 0, "y": 0, "width": 200, "height": 300, "z_index": 0},
+        ...
+      },
+
+      # context canvas positions
+      "context_positions": {
+        "<ctxId>": {"x": 0, "y": 0, "width": 200, "height": 300, "z_index": 0},
+        ...
+      },
+    }
+    """
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="formations")
+    name = models.CharField(max_length=200)
+    state = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.owner.username} — {self.name}"
+
+
 
 
 

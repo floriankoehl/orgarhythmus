@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..models import Category, Idea, IdeaPlacement, IdeaLegendType, LegendType, Legend, UserLegendAdoption, UserCategoryAdoption, UserContextAdoption, CategoryContextPlacement
+from ..models import Category, Idea, IdeaPlacement, IdeaLegendType, IdeaUpvote, IdeaComment, LegendType, Legend, UserLegendAdoption, UserCategoryAdoption, UserContextAdoption, CategoryContextPlacement, LegendContextPlacement
 from .serializers import IdeaSerializer, IdeaPlacementSerializer, CategorySerializer, LegendTypeSerializer, LegendSerializer
 
 
@@ -495,11 +495,24 @@ def remove_all_idea_legend_types(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_user_legends(request):
-    """Get all legends owned by or adopted by the current user."""
+    """Get all legends owned by, adopted by, or accessible via adopted contexts for the current user."""
     owned = Legend.objects.filter(owner=request.user)
-    adopted_ids = UserLegendAdoption.objects.filter(user=request.user).values_list('legend_id', flat=True)
+    adopted_ids = set(UserLegendAdoption.objects.filter(user=request.user).values_list('legend_id', flat=True))
     adopted = Legend.objects.filter(id__in=adopted_ids).exclude(owner=request.user)
-    all_legends = list(owned) + list(adopted)
+
+    # Legends from adopted contexts
+    adopted_ctx_ids = list(UserContextAdoption.objects.filter(user=request.user).values_list('context_id', flat=True))
+    already_ids = set(owned.values_list('id', flat=True)) | adopted_ids
+    ctx_legend_ids = []
+    if adopted_ctx_ids:
+        ctx_legend_ids = list(
+            LegendContextPlacement.objects.filter(context_id__in=adopted_ctx_ids)
+            .values_list('legend_id', flat=True)
+        )
+        ctx_legend_ids = [lid for lid in ctx_legend_ids if lid not in already_ids]
+    ctx_legends = Legend.objects.filter(id__in=ctx_legend_ids) if ctx_legend_ids else []
+
+    all_legends = list(owned) + list(adopted) + list(ctx_legends)
     return Response({"legends": LegendSerializer(all_legends, many=True).data})
 
 
@@ -569,7 +582,15 @@ def get_legend_types(request, legend_id):
     leg = get_object_or_404(Legend, id=legend_id)
     is_owner = leg.owner == request.user
     is_adopter = UserLegendAdoption.objects.filter(user=request.user, legend=leg).exists()
+    # Also allow access if user adopted a context that contains this legend
+    is_ctx_adopter = False
     if not is_owner and not is_adopter:
+        adopted_ctx_ids = list(UserContextAdoption.objects.filter(user=request.user).values_list('context_id', flat=True))
+        if adopted_ctx_ids:
+            is_ctx_adopter = LegendContextPlacement.objects.filter(
+                context_id__in=adopted_ctx_ids, legend=leg
+            ).exists()
+    if not is_owner and not is_adopter and not is_ctx_adopter:
         return Response({"detail": "Forbidden"}, status=403)
     types = LegendType.objects.filter(legend=leg)
     return Response({"types": LegendTypeSerializer(types, many=True).data})
@@ -716,3 +737,68 @@ def get_meta_ideas(request):
     return Response({
         "ideas": IdeaSerializer(ideas, many=True, context={'request': request}).data,
     })
+
+
+# ═══════════════════════════════════════════════════════
+#  UPVOTES
+# ═══════════════════════════════════════════════════════
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def toggle_upvote_idea(request, idea_id):
+    """Toggle upvote on an idea. Returns the new upvote state and count."""
+    idea = get_object_or_404(Idea, pk=idea_id)
+    upvote, created = IdeaUpvote.objects.get_or_create(user=request.user, idea=idea)
+    if not created:
+        upvote.delete()
+    return Response({
+        "upvoted": created,
+        "upvote_count": idea.upvotes.count(),
+    })
+
+
+# ═══════════════════════════════════════════════════════
+#  COMMENTS
+# ═══════════════════════════════════════════════════════
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def idea_comments(request, idea_id):
+    """GET: list comments for an idea.  POST: add a new comment."""
+    idea = get_object_or_404(Idea, pk=idea_id)
+
+    if request.method == "GET":
+        comments = idea.comments.select_related('user').all()
+        data = [
+            {
+                "id": c.id,
+                "user": c.user.username,
+                "text": c.text,
+                "created_at": c.created_at.isoformat(),
+                "is_own": c.user == request.user,
+            }
+            for c in comments
+        ]
+        return Response({"comments": data})
+
+    # POST
+    text = request.data.get("text", "").strip()
+    if not text:
+        return Response({"error": "text is required"}, status=status.HTTP_400_BAD_REQUEST)
+    comment = IdeaComment.objects.create(user=request.user, idea=idea, text=text)
+    return Response({
+        "id": comment.id,
+        "user": comment.user.username,
+        "text": comment.text,
+        "created_at": comment.created_at.isoformat(),
+        "is_own": True,
+    }, status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_idea_comment(request, comment_id):
+    """Delete a comment (only by its author)."""
+    comment = get_object_or_404(IdeaComment, pk=comment_id, user=request.user)
+    comment.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)

@@ -182,6 +182,11 @@ urlpatterns = [
     # User-level ideas
     path("user/ideas/", views.get_user_ideas, name="get_user_ideas"),
 
+    # Idea upvotes & comments
+    path("user/ideas/<int:idea_id>/upvote/", views.toggle_upvote_idea, name="toggle_upvote_idea"),
+    path("user/ideas/<int:idea_id>/comments/", views.idea_comments, name="idea_comments"),
+    path("user/ideas/comments/<int:comment_id>/delete/", views.delete_idea_comment, name="delete_idea_comment"),
+
     # Contexts (user-scoped)
     path("user/contexts/", views.get_all_contexts, name="get_all_contexts"),
     path("user/contexts/create/", views.create_context, name="create_context"),
@@ -202,6 +207,13 @@ urlpatterns = [
     path("contexts/public/", views.get_all_public_contexts, name="get_all_public_contexts"),
     path("contexts/<int:context_id>/adopt/", views.adopt_context, name="adopt_context"),
     path("contexts/<int:context_id>/drop/", views.drop_context, name="drop_context"),
+
+    # Formations (saved IdeaBin layouts)
+    path("user/formations/", views.list_formations, name="list_formations"),
+    path("user/formations/create/", views.create_formation, name="create_formation"),
+    path("user/formations/<int:formation_id>/", views.get_formation, name="get_formation"),
+    path("user/formations/<int:formation_id>/update/", views.update_formation, name="update_formation"),
+    path("user/formations/<int:formation_id>/delete/", views.delete_formation, name="delete_formation"),
 ]
 
 

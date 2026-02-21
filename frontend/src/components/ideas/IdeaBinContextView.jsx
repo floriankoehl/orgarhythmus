@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { Settings, Globe, Plus, Layers, Tag, Lock, LinkIcon } from "lucide-react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import { BASE_URL } from "../../config/api";
@@ -23,13 +23,13 @@ function authFetch(url, options = {}) {
   });
 }
 
-export default function IdeaBinContextView({
+export default forwardRef(function IdeaBinContextView({
   categories,          // {[id]: {id, name, ...}} — all user categories (non-archived)
   legends,             // [{id, name, ...}] — all user legends
   showCanvas,          // bool — whether the right canvas is visible (width-based)
   sidebarWidth,        // number — left sidebar width in px
   onCategoryCreated,   // callback — refresh categories after creating one
-}) {
+}, ref) {
   // ── Context state ──
   const [contexts, setContexts] = useState({});          // {[id]: {id, name, x, y, width, height, z_index, category_ids, legend_ids}}
   const [contextCatOrders, setContextCatOrders] = useState({}); // {[ctxId]: [catId, ...]}
@@ -50,6 +50,23 @@ export default function IdeaBinContextView({
   const [editingContextName, setEditingContextName] = useState("");
   const [contextSettingsOpen, setContextSettingsOpen] = useState(null);
   const [minimizedContexts, setMinimizedContexts] = useState({});
+
+  // ── Expose formation-relevant state to parent via ref ──
+  useImperativeHandle(ref, () => ({
+    getFormationState: () => ({
+      sidebar_mode: sidebarMode,
+      minimized_contexts: minimizedContexts,
+      context_positions: Object.fromEntries(
+        Object.entries(contexts).map(([id, ctx]) => [id, { x: ctx.x, y: ctx.y, width: ctx.width, height: ctx.height, z_index: ctx.z_index }])
+      ),
+    }),
+    applyFormationState: (s) => {
+      if (s.sidebar_mode) setSidebarMode(s.sidebar_mode);
+      if (s.minimized_contexts) setMinimizedContexts(s.minimized_contexts);
+      // Context positions are restored via API (set_context_position / set_context_area)
+      // so they persist across reloads — handled by the parent calling the APIs
+    },
+  }), [sidebarMode, minimizedContexts, contexts]);
 
   // ── Drag state ──
   const [draggingItem, setDraggingItem] = useState(null); // {itemId, type: "category"|"legend", x, y}
@@ -919,4 +936,4 @@ export default function IdeaBinContextView({
       )}
     </>
   );
-}
+})

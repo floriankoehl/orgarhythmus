@@ -1,6 +1,6 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useState } from "react";
 import { createPortal } from "react-dom";
-import { Copy, Locate, MoreVertical, Zap, X, GitBranchPlus } from "lucide-react";
+import { Copy, Locate, MoreVertical, Zap, X, GitBranchPlus, ThumbsUp, MessageCircle, Send, Trash2 } from "lucide-react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import EditIcon from "@mui/icons-material/Edit";
 
@@ -26,8 +26,13 @@ export default function IdeaBinIdeaCard({
   remove_all_idea_categories, remove_idea_from_category,
   remove_all_idea_legend_types, remove_idea_legend_type,
   spinoff_idea, categories, currentUserId,
+  toggle_upvote, fetch_comments, add_comment, delete_comment,
 }) {
   const moreButtonRef = useRef(null);
+  const [showComments, setShowComments] = useState(false);
+  const [comments, setComments] = useState([]);
+  const [commentText, setCommentText] = useState("");
+  const [loadingComments, setLoadingComments] = useState(false);
 
   const idea = ideas[ideaId];
   if (!idea) return null;
@@ -56,6 +61,32 @@ export default function IdeaBinIdeaCard({
   const isOwnIdea = idea.owner === currentUserId;
   // Foreign idea = in adopted category AND not owned by current user
   const isForeignIdea = isInAdoptedCategory && !isOwnIdea;
+
+  const handleToggleComments = async (e) => {
+    e.stopPropagation();
+    if (showComments) { setShowComments(false); return; }
+    setLoadingComments(true);
+    const data = await fetch_comments(idea.idea_id);
+    setComments(data);
+    setShowComments(true);
+    setLoadingComments(false);
+  };
+
+  const handleAddComment = async (e) => {
+    e.stopPropagation();
+    if (!commentText.trim()) return;
+    const result = await add_comment(idea.idea_id, commentText.trim());
+    if (result) {
+      setComments(prev => [...prev, result]);
+      setCommentText("");
+    }
+  };
+
+  const handleDeleteComment = async (e, commentId) => {
+    e.stopPropagation();
+    await delete_comment(commentId, idea.idea_id);
+    setComments(prev => prev.filter(c => c.id !== commentId));
+  };
 
   const getDisplayText = () => {
     if (idea.headline) return <span className="font-semibold text-xs">{idea.headline}</span>;
@@ -218,6 +249,24 @@ export default function IdeaBinIdeaCard({
             </div>
           </div>
           <div className={`flex-shrink-0 flex items-center gap-0.5 text-gray-400 ${isIdeaCollapsed ? "" : "mt-0.5"}`} onMouseDown={(e) => e.stopPropagation()}>
+            {/* Upvote button */}
+            <div
+              onClick={(e) => { e.stopPropagation(); toggle_upvote(idea.idea_id); }}
+              className={`cursor-pointer flex items-center gap-0.5 transition-colors ${idea.user_has_upvoted ? "text-blue-500!" : "hover:text-blue-400!"}`}
+              title={idea.user_has_upvoted ? "Remove upvote" : "Upvote"}
+            >
+              <ThumbsUp size={11} className={idea.user_has_upvoted ? "fill-blue-500" : ""} />
+              {idea.upvote_count > 0 && <span className="text-[9px] font-medium">{idea.upvote_count}</span>}
+            </div>
+            {/* Comment count / toggle */}
+            <div
+              onClick={handleToggleComments}
+              className={`cursor-pointer flex items-center gap-0.5 transition-colors ${showComments ? "text-amber-500!" : "hover:text-amber-400!"}`}
+              title="Comments"
+            >
+              <MessageCircle size={11} className={showComments ? "fill-amber-200" : ""} />
+              {idea.comment_count > 0 && <span className="text-[9px] font-medium">{idea.comment_count}</span>}
+            </div>
             {isForeignIdea && (
               <GitBranchPlus
                 size={12}
@@ -350,6 +399,51 @@ export default function IdeaBinIdeaCard({
               )}
             </div>
           </div>
+        </div>
+      )}
+      {/* ── Inline comment section ── */}
+      {showComments && (
+        <div className="ml-2 mr-1 mb-1 bg-gray-50 rounded border border-gray-200 p-1.5" onMouseDown={(e) => e.stopPropagation()}>
+          {loadingComments ? (
+            <p className="text-[9px] text-gray-400 italic">Loading…</p>
+          ) : (
+            <>
+              {comments.length === 0 && <p className="text-[9px] text-gray-400 italic mb-1">No comments yet</p>}
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {comments.map(c => (
+                  <div key={c.id} className="flex items-start gap-1 text-[10px]">
+                    <span className="font-semibold text-gray-700 flex-shrink-0">{c.user}</span>
+                    <span className="text-gray-600 break-words flex-1">{c.text}</span>
+                    {c.is_own && (
+                      <Trash2
+                        size={10}
+                        onClick={(e) => handleDeleteComment(e, c.id)}
+                        className="flex-shrink-0 text-gray-300 hover:text-red-500! cursor-pointer mt-0.5"
+                        title="Delete comment"
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-1 mt-1">
+                <input
+                  type="text"
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleAddComment(e); }}
+                  placeholder="Write a comment…"
+                  className="flex-1 text-[10px] px-1.5 py-0.5 rounded border border-gray-200 bg-white focus:outline-none focus:border-blue-300"
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <Send
+                  size={12}
+                  onClick={handleAddComment}
+                  className={`cursor-pointer flex-shrink-0 ${commentText.trim() ? "text-blue-500 hover:text-blue-700!" : "text-gray-300"}`}
+                  title="Send"
+                />
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

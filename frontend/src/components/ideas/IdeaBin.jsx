@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 
-import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings, Layers } from "lucide-react";
+import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings, Layers, Save, FolderOpen, Trash2, Pencil, Check } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
@@ -52,9 +52,9 @@ export default function IdeaBin() {
   const headlineInputRef = useRef(null);
   const {
     isOpen, setIsOpen,
-    windowPos, windowSize,
+    windowPos, setWindowPos, windowSize, setWindowSize,
     iconPos,
-    isMaximized,
+    isMaximized, setIsMaximized,
     windowRef, iconRef,
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag, handleWindowResize, handleEdgeResize,
@@ -152,6 +152,7 @@ export default function IdeaBin() {
   const IdeaListRef = useRef(null);
   const categoryRefs = useRef({});
   const ideaRefs = useRef({});
+  const contextViewRef = useRef(null);
 
   const showCategories = windowSize.w >= CATEGORY_THRESHOLD;
 
@@ -307,6 +308,9 @@ export default function IdeaBin() {
           created_at: p.idea?.created_at,
           placement_count: p.idea?.placement_count || 1,
           placement_categories: p.idea?.placement_categories || [],
+          upvote_count: p.idea?.upvote_count || 0,
+          comment_count: p.idea?.comment_count || 0,
+          user_has_upvoted: p.idea?.user_has_upvoted || false,
           category: p.category,
           order_index: p.order_index,
         };
@@ -487,6 +491,71 @@ export default function IdeaBin() {
     fetch_all_ideas();
   };
 
+  // ── Upvote & Comments ──
+  const toggle_upvote = async (ideaId) => {
+    try {
+      const res = await authFetch(`${API}/user/ideas/${ideaId}/upvote/`, { method: "POST" });
+      const data = await res.json();
+      // Optimistic update across all placements sharing this idea
+      setIdeas(prev => {
+        const next = { ...prev };
+        for (const key of Object.keys(next)) {
+          if (next[key].idea_id === ideaId) {
+            next[key] = { ...next[key], upvote_count: data.upvote_count, user_has_upvoted: data.upvoted };
+          }
+        }
+        return next;
+      });
+    } catch (err) { console.error("Upvote failed:", err); }
+  };
+
+  const fetch_comments = async (ideaId) => {
+    try {
+      const res = await authFetch(`${API}/user/ideas/${ideaId}/comments/`);
+      const data = await res.json();
+      return data.comments || [];
+    } catch (err) { console.error("Fetch comments failed:", err); return []; }
+  };
+
+  const add_comment = async (ideaId, text) => {
+    try {
+      const res = await authFetch(`${API}/user/ideas/${ideaId}/comments/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      // Update comment count across all placements sharing this idea
+      setIdeas(prev => {
+        const next = { ...prev };
+        for (const key of Object.keys(next)) {
+          if (next[key].idea_id === ideaId) {
+            next[key] = { ...next[key], comment_count: (next[key].comment_count || 0) + 1 };
+          }
+        }
+        return next;
+      });
+      return data;
+    } catch (err) { console.error("Add comment failed:", err); return null; }
+  };
+
+  const delete_comment = async (commentId, ideaId) => {
+    try {
+      await authFetch(`${API}/user/ideas/comments/${commentId}/delete/`, { method: "DELETE" });
+      // Update comment count
+      setIdeas(prev => {
+        const next = { ...prev };
+        for (const key of Object.keys(next)) {
+          if (next[key].idea_id === ideaId) {
+            next[key] = { ...next[key], comment_count: Math.max(0, (next[key].comment_count || 1) - 1) };
+          }
+        }
+        return next;
+      });
+    } catch (err) { console.error("Delete comment failed:", err); }
+  };
+
   // ── Meta ideas list ──
   const [showMetaList, setShowMetaList] = useState(false);
   const [metaIdeas, setMetaIdeas] = useState([]);
@@ -497,6 +566,215 @@ export default function IdeaBin() {
       const data = await res.json();
       setMetaIdeas(data?.ideas || []);
     } catch (err) { console.error("IdeaBin: fetch meta ideas failed", err); }
+  };
+
+  // ═══════════════════════════════════════════════════════
+  // ═══════════  FORMATIONS  ══════════════════════════════
+  // ═══════════════════════════════════════════════════════
+
+  const [formations, setFormations] = useState([]);
+  const [showFormationPanel, setShowFormationPanel] = useState(false);
+  const [formationName, setFormationName] = useState("");
+  const [editingFormationId, setEditingFormationId] = useState(null);
+  const [editingFormationName, setEditingFormationName] = useState("");
+
+  const fetch_formations = async () => {
+    try {
+      const res = await authFetch(`${API}/user/formations/`);
+      const data = await res.json();
+      setFormations(data?.formations || []);
+    } catch (err) { console.error("Fetch formations failed", err); }
+  };
+
+  useEffect(() => { fetch_formations(); }, []);
+
+  /** Collect all saveable visual state into a single JSON-serialisable object. */
+  const collectFormationState = useCallback(() => {
+    const state = {
+      version: 1,
+
+      // window
+      window_pos: windowPos,
+      window_size: windowSize,
+      is_maximized: isMaximized,
+
+      // view
+      view_mode: viewMode,
+
+      // sidebar
+      sidebar_width: sidebarWidth,
+      sidebar_headline_only: sidebarHeadlineOnly,
+      show_sidebar_meta: showSidebarMeta,
+      list_filter: listFilter,
+      show_archive: showArchive,
+
+      // legend
+      active_legend_id: dims.activeLegendId,
+      legend_panel_collapsed: legendPanelCollapsed,
+      global_type_filter: globalTypeFilter,
+
+      // categories
+      minimized_categories: minimizedCategories,
+      collapsed_ideas: collapsedIdeas,
+      selected_category_id: selectedCategoryId,
+      show_meta_list: showMetaList,
+
+      // category canvas positions (snapshot current state)
+      category_positions: Object.fromEntries(
+        Object.entries(categories).map(([id, c]) => [id, { x: c.x, y: c.y, width: c.width, height: c.height, z_index: c.z_index }])
+      ),
+    };
+
+    // Context view state (if ref available)
+    if (contextViewRef.current?.getFormationState) {
+      const ctxState = contextViewRef.current.getFormationState();
+      state.context_sidebar_mode = ctxState.sidebar_mode;
+      state.minimized_contexts = ctxState.minimized_contexts;
+      state.context_positions = ctxState.context_positions;
+    }
+
+    return state;
+  }, [windowPos, windowSize, isMaximized, viewMode, sidebarWidth, sidebarHeadlineOnly,
+      showSidebarMeta, listFilter, showArchive, dims.activeLegendId, legendPanelCollapsed,
+      globalTypeFilter, minimizedCategories, collapsedIdeas, selectedCategoryId,
+      showMetaList, categories]);
+
+  /** Apply a formation state object — restores all visual settings. */
+  const applyFormationState = useCallback(async (state) => {
+    if (!state) return;
+
+    // window
+    if (state.window_pos) setWindowPos(state.window_pos);
+    if (state.window_size) setWindowSize(state.window_size);
+    if (state.is_maximized !== undefined) setIsMaximized(state.is_maximized);
+
+    // view
+    if (state.view_mode) setViewMode(state.view_mode);
+
+    // sidebar
+    if (state.sidebar_width) setSidebarWidth(state.sidebar_width);
+    if (state.sidebar_headline_only !== undefined) setSidebarHeadlineOnly(state.sidebar_headline_only);
+    if (state.show_sidebar_meta !== undefined) setShowSidebarMeta(state.show_sidebar_meta);
+    if (state.list_filter !== undefined) setListFilter(state.list_filter);
+    if (state.show_archive !== undefined) setShowArchive(state.show_archive);
+
+    // legend
+    if (state.active_legend_id !== undefined) dims.setActiveLegendId(state.active_legend_id);
+    if (state.legend_panel_collapsed !== undefined) setLegendPanelCollapsed(state.legend_panel_collapsed);
+    if (state.global_type_filter) setGlobalTypeFilter(state.global_type_filter);
+
+    // categories
+    if (state.minimized_categories) setMinimizedCategories(state.minimized_categories);
+    if (state.collapsed_ideas) setCollapsedIdeas(state.collapsed_ideas);
+    if (state.selected_category_id !== undefined) setSelectedCategoryId(state.selected_category_id);
+    if (state.show_meta_list !== undefined) setShowMetaList(state.show_meta_list);
+
+    // Restore category canvas positions via API (so they persist)
+    if (state.category_positions) {
+      for (const [catId, pos] of Object.entries(state.category_positions)) {
+        if (categories[catId]) {
+          authFetch(`${API}/user/categories/set_position/`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: parseInt(catId), x: pos.x, y: pos.y }),
+          });
+          authFetch(`${API}/user/categories/set_area/`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: parseInt(catId), width: pos.width, height: pos.height }),
+          });
+        }
+      }
+      // Update local state immediately
+      setCategories(prev => {
+        const next = { ...prev };
+        for (const [catId, pos] of Object.entries(state.category_positions)) {
+          if (next[catId]) {
+            next[catId] = { ...next[catId], ...pos };
+          }
+        }
+        return next;
+      });
+    }
+
+    // Restore context view state
+    if (contextViewRef.current?.applyFormationState) {
+      contextViewRef.current.applyFormationState({
+        sidebar_mode: state.context_sidebar_mode,
+        minimized_contexts: state.minimized_contexts,
+      });
+    }
+
+    // Restore context canvas positions via API
+    if (state.context_positions) {
+      for (const [ctxId, pos] of Object.entries(state.context_positions)) {
+        authFetch(`${API}/user/contexts/set_position/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: parseInt(ctxId), x: pos.x, y: pos.y }),
+        });
+        authFetch(`${API}/user/contexts/set_area/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: parseInt(ctxId), width: pos.width, height: pos.height }),
+        });
+      }
+    }
+
+    playSound('ideaOpen');
+  }, [categories, dims]);
+
+  const save_formation = async (name) => {
+    const state = collectFormationState();
+    try {
+      await authFetch(`${API}/user/formations/create/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, state }),
+      });
+      setFormationName("");
+      fetch_formations();
+      playSound('ideaCategoryCreate');
+    } catch (err) { console.error("Save formation failed", err); }
+  };
+
+  const update_formation_state = async (formationId) => {
+    const state = collectFormationState();
+    try {
+      await authFetch(`${API}/user/formations/${formationId}/update/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state }),
+      });
+      playSound('ideaCategoryCreate');
+    } catch (err) { console.error("Update formation failed", err); }
+  };
+
+  const rename_formation = async (formationId, name) => {
+    try {
+      await authFetch(`${API}/user/formations/${formationId}/update/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      fetch_formations();
+    } catch (err) { console.error("Rename formation failed", err); }
+  };
+
+  const load_formation = async (formationId) => {
+    try {
+      const res = await authFetch(`${API}/user/formations/${formationId}/`);
+      const data = await res.json();
+      await applyFormationState(data.state);
+    } catch (err) { console.error("Load formation failed", err); }
+  };
+
+  const delete_formation = async (formationId) => {
+    try {
+      await authFetch(`${API}/user/formations/${formationId}/delete/`, { method: "DELETE" });
+      fetch_formations();
+      playSound('ideaDelete');
+    } catch (err) { console.error("Delete formation failed", err); }
   };
 
   // ═══════════════════════════════════════════════════════
@@ -1204,6 +1482,10 @@ export default function IdeaBin() {
       spinoff_idea={spinoff_idea}
       categories={categories}
       currentUserId={currentUserId}
+      toggle_upvote={toggle_upvote}
+      fetch_comments={fetch_comments}
+      add_comment={add_comment}
+      delete_comment={delete_comment}
     />
   );
 
@@ -1348,6 +1630,106 @@ export default function IdeaBin() {
                   Paste{selectedCategoryId && categories[selectedCategoryId] ? ` → ${categories[selectedCategoryId].name}` : ""}
                 </button>
               )}
+              {/* ── Formations dropdown ── */}
+              <div className="relative">
+                <button
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={() => setShowFormationPanel(v => !v)}
+                  className={`p-1 rounded transition-colors ${showFormationPanel ? "bg-amber-600/30" : "hover:bg-amber-500/30"}`}
+                  title="Formations — save / load layout"
+                >
+                  <Save size={13} className="text-amber-800" />
+                </button>
+                {showFormationPanel && (
+                  <>
+                    <div className="fixed inset-0 z-[9998]" onClick={() => { setShowFormationPanel(false); setEditingFormationId(null); }} />
+                    <div
+                      className="absolute right-0 top-full mt-1 z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[220px] max-h-[340px] overflow-y-auto"
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
+                      <div className="px-3 pb-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Formations</div>
+                      {/* Save new */}
+                      <div className="px-2 pb-1.5 flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={formationName}
+                          onChange={(e) => setFormationName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && formationName.trim()) { save_formation(formationName.trim()); } }}
+                          placeholder="New formation name…"
+                          className="flex-1 text-[11px] px-2 py-1 rounded border border-gray-200 focus:outline-none focus:border-amber-400"
+                        />
+                        <button
+                          onClick={() => { if (formationName.trim()) save_formation(formationName.trim()); }}
+                          disabled={!formationName.trim()}
+                          className="p-1 rounded bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-40 transition-colors"
+                          title="Save current layout"
+                        >
+                          <Save size={12} />
+                        </button>
+                      </div>
+                      {formations.length === 0 && (
+                        <div className="px-3 py-2 text-[10px] text-gray-400 italic">No saved formations yet</div>
+                      )}
+                      {formations.map(f => (
+                        <div key={f.id} className="group flex items-center gap-1 px-2 py-1 hover:bg-gray-50 transition-colors">
+                          {editingFormationId === f.id ? (
+                            <div className="flex-1 flex items-center gap-1">
+                              <input
+                                type="text"
+                                autoFocus
+                                value={editingFormationName}
+                                onChange={(e) => setEditingFormationName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && editingFormationName.trim()) {
+                                    rename_formation(f.id, editingFormationName.trim());
+                                    setEditingFormationId(null);
+                                  }
+                                  if (e.key === "Escape") setEditingFormationId(null);
+                                }}
+                                className="flex-1 text-[11px] px-1.5 py-0.5 rounded border border-gray-200 focus:outline-none focus:border-amber-400"
+                              />
+                              <Check
+                                size={12}
+                                onClick={() => { if (editingFormationName.trim()) { rename_formation(f.id, editingFormationName.trim()); setEditingFormationId(null); } }}
+                                className="cursor-pointer text-green-500 hover:text-green-700 flex-shrink-0"
+                              />
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => { load_formation(f.id); setShowFormationPanel(false); }}
+                                className="flex-1 text-left text-[11px] text-gray-700 hover:text-amber-700 truncate"
+                                title={`Load "${f.name}"`}
+                              >
+                                <FolderOpen size={11} className="inline mr-1 text-amber-500" />
+                                {f.name}
+                              </button>
+                              <Save
+                                size={11}
+                                onClick={() => update_formation_state(f.id)}
+                                className="cursor-pointer text-gray-300 hover:text-amber-500! flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Overwrite with current layout"
+                              />
+                              <Pencil
+                                size={11}
+                                onClick={() => { setEditingFormationId(f.id); setEditingFormationName(f.name); }}
+                                className="cursor-pointer text-gray-300 hover:text-blue-500! flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Rename"
+                              />
+                              <Trash2
+                                size={11}
+                                onClick={() => delete_formation(f.id)}
+                                className="cursor-pointer text-gray-300 hover:text-red-500! flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Delete"
+                              />
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
               <button
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={toggleMaximize}
@@ -1732,6 +2114,7 @@ export default function IdeaBin() {
             {/* ══════ CONTEXTS MODE ══════ */}
             {viewMode === "contexts" && (
               <IdeaBinContextView
+                ref={contextViewRef}
                 categories={categories}
                 legends={dims.legends}
                 showCanvas={showCategories}
