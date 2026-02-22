@@ -211,7 +211,7 @@ export default function IdeaBinCategoryCanvas({
                     ? `color-mix(in srgb, ${contextColor} 22%, #ffffff)`
                     : isAdopted
                       ? (isHovered ? "#e8ecff" : isSelected ? "#eef1ff" : "#f4f6ff")
-                      : (isHovered ? "#fef7cd" : isSelected ? "#fffadb" : contextColor ? `color-mix(in srgb, ${contextColor} 12%, #ffffff)` : "#fffde8"),
+                      : (isHovered ? "#fff59d" : isSelected ? "#fff8b0" : contextColor ? `color-mix(in srgb, ${contextColor} 12%, #ffffff)` : "#fff9c4"),
               transition: "background-color 150ms ease",
             }}
             className={`absolute shadow-lg rounded p-1.5 flex flex-col ${isSelected ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${isAdopted ? "border border-indigo-300" : ""} ${isMergeTarget ? "ring-2 ring-orange-500 ring-offset-1" : ""}`}
@@ -245,10 +245,10 @@ export default function IdeaBinCategoryCanvas({
               style={{
                 backgroundColor: contextColor
                   ? `color-mix(in srgb, ${contextColor} 25%, #ffffff)`
-                  : isAdopted ? "rgba(165,180,252,0.35)" : "rgba(252,211,77,0.4)",
+                  : isAdopted ? "rgba(165,180,252,0.35)" : "rgba(253,216,53,0.55)",
                 borderColor: contextColor
                   ? `color-mix(in srgb, ${contextColor} 20%, transparent)`
-                  : isAdopted ? "rgba(165,180,252,0.3)" : "rgba(251,191,36,0.3)",
+                  : isAdopted ? "rgba(165,180,252,0.3)" : "rgba(253,216,53,0.4)",
               }}
             >
               {editingCategoryId === catKey && !isAdopted ? (

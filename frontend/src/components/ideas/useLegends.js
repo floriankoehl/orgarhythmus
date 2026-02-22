@@ -101,6 +101,22 @@ export function useLegends() {
     });
   };
 
+  // Fetch types for a legend without setting state (for filter modal)
+  const fetchTypesRaw = async (legendId) => {
+    if (!legendId) return {};
+    try {
+      const res = await authFetch(`/api/user/legends/${legendId}/types/`);
+      const data = await res.json();
+      const typeArr = data.types || [];
+      const typeObj = {};
+      for (const t of typeArr) typeObj[t.id] = t;
+      return typeObj;
+    } catch (err) {
+      console.error("Failed to fetch legend types:", err);
+      return {};
+    }
+  };
+
   useEffect(() => {
     fetch_legends();
   }, []);
@@ -120,6 +136,7 @@ export function useLegends() {
     legendTypes,
     fetch_legends,
     fetch_types,
+    fetchTypesRaw,
     create_legend,
     update_legend,
     delete_legend,

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
-import { Filter, X, Plus, FolderPlus, Save, Play, Pencil, Trash2 } from "lucide-react";
+import { Filter, X, Plus, FolderPlus, Save, Pencil, Trash2 } from "lucide-react";
 import { LEGEND_TYPE_ICONS, ICON_CATEGORIES, renderLegendTypeIcon } from "./legendTypeIcons";
 
 /**
@@ -48,10 +48,13 @@ export default function IdeaBinLegendPanel({
   const [newTypeIcon, setNewTypeIcon] = useState(null); // icon for create-type form
   const [createCatName, setCreateCatName] = useState(""); // name for "create category from filter"
   const [showCreateCatInput, setShowCreateCatInput] = useState(false);
+  const [showFilterModal, setShowFilterModal] = useState(false);
   const [showSavePreset, setShowSavePreset] = useState(false);
   const [presetName, setPresetName] = useState("");
   const [editingPresetIdx, setEditingPresetIdx] = useState(null);
   const [editingPresetName, setEditingPresetName] = useState("");
+  const [appliedPresetName, setAppliedPresetName] = useState("");
+  const [allLegendTypes, setAllLegendTypes] = useState({}); // {legendId: {typeId: typeObj}}
 
   // Count ideas matching filter (for display)
   const filteredIdeaCount = (() => {
@@ -157,6 +160,75 @@ export default function IdeaBinLegendPanel({
   const clearAllFilters = () => {
     setLegendFilters([]);
     setGlobalTypeFilter([]);
+    setAppliedPresetName("");
+  };
+
+  // Toggle a type in a filter for a specific legend (used in modal)
+  const toggleTypeForLegend = (legendId, typeId) => {
+    setAppliedPresetName("");
+    setLegendFilters(prev => {
+      const existingIdx = prev.findIndex(f => f.legendId === legendId);
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        const f = { ...updated[existingIdx] };
+        f.typeIds = f.typeIds.includes(typeId)
+          ? f.typeIds.filter(t => t !== typeId)
+          : [...f.typeIds, typeId];
+        if (f.typeIds.length === 0) {
+          updated.splice(existingIdx, 1);
+        } else {
+          updated[existingIdx] = f;
+        }
+        return updated;
+      } else {
+        return [...prev, { legendId, typeIds: [typeId], mode: "include" }];
+      }
+    });
+  };
+
+  // Toggle include/exclude for a legend's filter rule
+  const toggleModeForLegend = (legendId) => {
+    setLegendFilters(prev => {
+      const existingIdx = prev.findIndex(f => f.legendId === legendId);
+      if (existingIdx < 0) return prev;
+      const updated = [...prev];
+      updated[existingIdx] = {
+        ...updated[existingIdx],
+        mode: updated[existingIdx].mode === "include" ? "exclude" : "include",
+      };
+      return updated;
+    });
+  };
+
+  // Open filter modal and fetch types for all context legends
+  const openFilterModal = async () => {
+    setShowFilterModal(true);
+    const result = {};
+    for (const leg of displayLegends) {
+      if (leg.id === dims.activeLegendId) {
+        result[leg.id] = { ...dims.legendTypes };
+      } else if (dims.fetchTypesRaw) {
+        result[leg.id] = await dims.fetchTypesRaw(leg.id);
+      }
+    }
+    setAllLegendTypes(result);
+  };
+
+  // Build a filter description for the category name
+  const getFilterDisplayName = () => {
+    if (appliedPresetName) return appliedPresetName;
+    // Build from filter rules
+    const parts = legendFilters.map(f => {
+      const legend = displayLegends.find(l => l.id === f.legendId) || dims.legends.find(l => l.id === f.legendId);
+      const legendName = legend?.name || "Legend";
+      const types = allLegendTypes[f.legendId] || (f.legendId === dims.activeLegendId ? dims.legendTypes : {});
+      const typeNames = f.typeIds.map(tid => {
+        if (tid === "unassigned") return "Unassigned";
+        return types[tid]?.name || "Type";
+      });
+      return `${f.mode === "exclude" ? "excl" : "incl"} ${typeNames.join(", ")} (${legendName})`;
+    });
+    return parts.join(` ${filterCombineMode} `) || "filter";
   };
   return (
     <div className="bg-white border-t border-gray-200 p-2 flex-shrink-0">
@@ -510,19 +582,28 @@ export default function IdeaBinLegendPanel({
             <div className="flex items-center justify-between mb-1.5">
               <div className="flex items-center gap-1.5">
                 <Filter size={12} className="text-gray-500" />
-                <span className="text-[11px] font-bold text-gray-600">Active Filters</span>
+                <span className="text-[11px] font-bold text-gray-600">Filters</span>
                 {legendFilters.length > 0 && (
                   <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-semibold">{legendFilters.length}</span>
                 )}
               </div>
-              {hasAnyFilter && (
+              <div className="flex items-center gap-1.5">
+                {hasAnyFilter && (
+                  <button
+                    onClick={clearAllFilters}
+                    className="text-[10px] text-red-400 hover:text-red-600 transition-colors font-medium"
+                  >
+                    Clear
+                  </button>
+                )}
                 <button
-                  onClick={clearAllFilters}
-                  className="text-[10px] text-red-400 hover:text-red-600 transition-colors font-medium"
+                  onClick={openFilterModal}
+                  className="text-[10px] px-2 py-1 bg-blue-50 border border-blue-200 rounded text-blue-600 hover:bg-blue-100 transition-colors font-medium flex items-center gap-1"
                 >
-                  Clear all
+                  <Pencil size={9} />
+                  {hasAnyFilter ? "Edit" : "Define"}
                 </button>
-              )}
+              </div>
             </div>
 
             {/* ── Human-readable filter summary ── */}
@@ -560,10 +641,10 @@ export default function IdeaBinLegendPanel({
 
             {/* ═══ Filter Presets ═══ */}
             {activeContext && saveFilterPreset && (
-              <div className="mb-2">
+              <div className="mb-2 space-y-1">
                 {/* Save current filter as preset */}
                 {hasAnyFilter && (
-                  <div className="mb-1.5">
+                  <div className="mb-1">
                     {showSavePreset ? (
                       <div className="flex gap-1 items-center">
                         <input
@@ -599,62 +680,61 @@ export default function IdeaBinLegendPanel({
                         className="w-full text-[10px] px-2 py-1.5 bg-blue-50 border border-blue-200 rounded-md text-blue-600 hover:bg-blue-100 transition-colors flex items-center justify-center gap-1.5 font-medium"
                       >
                         <Save size={11} />
-                        Save filter as preset
+                        Save as preset
                       </button>
                     )}
                   </div>
                 )}
-
                 {/* Preset list */}
                 {filterPresets && filterPresets.length > 0 && (
                   <div className="space-y-1">
-                    <div className="text-[10px] font-semibold text-gray-500 mb-0.5">Saved presets</div>
-                    {filterPresets.map((preset, idx) => (
-                      <div key={idx} className="flex items-center gap-1 group p-1 bg-gray-50 rounded border border-gray-200 hover:border-blue-300 transition-colors">
-                        {editingPresetIdx === idx ? (
-                          <input
-                            autoFocus
-                            value={editingPresetName}
-                            onChange={e => setEditingPresetName(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === "Enter" && editingPresetName.trim()) {
-                                renameFilterPreset(idx, editingPresetName.trim());
-                                setEditingPresetIdx(null);
-                              } else if (e.key === "Escape") setEditingPresetIdx(null);
-                            }}
-                            onBlur={() => {
-                              if (editingPresetName.trim()) renameFilterPreset(idx, editingPresetName.trim());
+                    <div className="text-[10px] font-semibold text-gray-500 mb-0.5">Presets</div>
+                {filterPresets.map((preset, idx) => (
+                  <div key={idx}>
+                    {editingPresetIdx === idx ? (
+                      <div className="flex gap-1 items-center p-1 bg-gray-50 rounded border border-blue-300">
+                        <input
+                          autoFocus
+                          value={editingPresetName}
+                          onChange={e => setEditingPresetName(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter" && editingPresetName.trim()) {
+                              renameFilterPreset(idx, editingPresetName.trim());
                               setEditingPresetIdx(null);
-                            }}
-                            className="flex-1 text-[10px] px-1 py-0.5 border border-blue-300 rounded outline-none min-w-0"
-                          />
-                        ) : (
-                          <span className="flex-1 text-[10px] font-medium text-gray-700 truncate">{preset.name}</span>
-                        )}
+                            } else if (e.key === "Escape") setEditingPresetIdx(null);
+                          }}
+                          onBlur={() => {
+                            if (editingPresetName.trim()) renameFilterPreset(idx, editingPresetName.trim());
+                            setEditingPresetIdx(null);
+                          }}
+                          className="flex-1 text-[10px] px-1 py-0.5 border border-blue-300 rounded outline-none min-w-0"
+                        />
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() => { applyFilterPreset(preset); setAppliedPresetName(preset.name); }}
+                        className="flex items-center gap-1 group p-1.5 bg-gray-50 rounded border border-gray-200 hover:border-blue-300 hover:bg-blue-50 cursor-pointer transition-colors"
+                      >
+                        <span className="flex-1 text-[10px] font-medium text-gray-700 truncate">{preset.name}</span>
                         <span className="text-[9px] text-gray-400 flex-shrink-0">{preset.legend_filters?.length || 0}r</span>
                         <button
-                          onClick={() => applyFilterPreset(preset)}
-                          className="text-blue-500 hover:text-blue-700 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="Apply this preset"
-                        >
-                          <Play size={10} />
-                        </button>
-                        <button
-                          onClick={() => { setEditingPresetIdx(idx); setEditingPresetName(preset.name); }}
+                          onClick={(e) => { e.stopPropagation(); setEditingPresetIdx(idx); setEditingPresetName(preset.name); }}
                           className="text-gray-400 hover:text-gray-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                           title="Rename"
                         >
                           <Pencil size={10} />
                         </button>
                         <button
-                          onClick={() => deleteFilterPreset(idx)}
+                          onClick={(e) => { e.stopPropagation(); deleteFilterPreset(idx); }}
                           className="text-gray-400 hover:text-red-500 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="Delete preset"
+                          title="Delete"
                         >
                           <Trash2 size={10} />
                         </button>
                       </div>
-                    ))}
+                    )}
+                  </div>
+                ))}
                   </div>
                 )}
               </div>
@@ -697,7 +777,7 @@ export default function IdeaBinLegendPanel({
                     onClick={() => {
                       const now = new Date();
                       const ts = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-                      setCreateCatName(`filter applied ${ts}`);
+                      setCreateCatName(`${getFilterDisplayName()} ${ts}`);
                       setShowCreateCatInput(true);
                     }}
                     className="w-full text-[10px] px-2 py-1.5 bg-green-50 border border-green-300 rounded-md text-green-700 hover:bg-green-100 transition-colors flex items-center justify-center gap-1.5 font-medium"
@@ -709,158 +789,183 @@ export default function IdeaBinLegendPanel({
               </div>
             )}
 
-            {/* AND/OR toggle — only shown when 2+ filter rules */}
-            {legendFilters.length >= 2 && (
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-[11px] text-gray-500 font-medium">Combine rules:</span>
-                <button
-                  onClick={() => setFilterCombineMode("and")}
-                  className={`text-[11px] px-2.5 py-1 rounded-md font-bold transition-colors ${
-                    filterCombineMode === "and"
-                      ? "bg-blue-500 text-white shadow-sm"
-                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                  }`}
-                >
-                  AND
-                </button>
-                <button
-                  onClick={() => setFilterCombineMode("or")}
-                  className={`text-[11px] px-2.5 py-1 rounded-md font-bold transition-colors ${
-                    filterCombineMode === "or"
-                      ? "bg-blue-500 text-white shadow-sm"
-                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                  }`}
-                >
-                  OR
-                </button>
-              </div>
-            )}
+          </div>
 
-            {/* Active filter rules */}
-            {legendFilters.map((f, idx) => {
-              const legend = displayLegends.find(l => l.id === f.legendId) || dims.legends.find(l => l.id === f.legendId);
-              const legendName = legend?.name || `Legend #${f.legendId}`;
-              const isActiveLegend = dims.activeLegendId === f.legendId;
-              const types = isActiveLegend ? dims.legendTypes : {};
-
-              return (
-                <div key={`${f.legendId}-${idx}`} className="mb-2 p-2 bg-gray-50 rounded-lg border border-gray-200">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-1.5">
-                      <span
-                        className="text-[11px] font-bold text-blue-600 truncate max-w-[90px] cursor-pointer hover:underline"
-                        onClick={() => dims.setActiveLegendId(f.legendId)}
-                        title="Click to switch to this legend"
-                      >
-                        {legendName}
-                      </span>
+          {/* ═══ Filter Rules Modal ═══ */}
+          {showFilterModal && (
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+              <div className="fixed inset-0 bg-black/30" onClick={() => setShowFilterModal(false)} />
+              <div className="relative bg-white rounded-xl shadow-2xl border border-gray-200 w-[420px] max-h-[80vh] flex flex-col">
+                {/* Modal header */}
+                <div className="flex items-center justify-between p-4 pb-2 border-b border-gray-100 flex-shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Filter size={14} className="text-blue-500" />
+                    <span className="text-sm font-bold text-gray-700">Define Filters</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {hasAnyFilter && (
                       <button
-                        onClick={() => toggleFilterMode(idx)}
-                        className={`text-[10px] px-2 py-0.5 rounded-md font-bold transition-colors ${
-                          f.mode === "exclude"
-                            ? "bg-red-100 text-red-600 hover:bg-red-200 border border-red-200"
-                            : "bg-green-100 text-green-600 hover:bg-green-200 border border-green-200"
-                        }`}
-                        title={f.mode === "include" ? "Click to switch to EXCLUDE" : "Click to switch to INCLUDE"}
-                      >
-                        {f.mode === "exclude" ? "EXCLUDE" : "INCLUDE"}
-                      </button>
-                    </div>
-                    <button
-                      onClick={() => removeFilter(idx)}
-                      className="text-gray-400 hover:text-red-500 transition-colors p-0.5"
-                    >
-                      <X size={12} />
+                        onClick={clearAllFilters}
+                        className="text-[10px] text-red-400 hover:text-red-600 transition-colors font-medium"
+                      >Clear all</button>
+                    )}
+                    <button onClick={() => setShowFilterModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                      <X size={16} />
                     </button>
                   </div>
-                  {/* Selected type chips */}
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {f.typeIds.map(tid => {
-                      const typeName = tid === "unassigned"
-                        ? "Unassigned"
-                        : types[tid]?.name || `Type ${tid}`;
-                      const typeColor = tid === "unassigned"
-                        ? "#374151"
-                        : types[tid]?.color || "#94a3b8";
+                </div>
+
+                {/* Modal body */}
+                <div className="p-4 overflow-y-auto flex-1" style={{ scrollbarWidth: "thin" }}>
+                  {/* AND/OR toggle */}
+                  {legendFilters.length >= 2 && (
+                    <div className="flex items-center gap-2 mb-3 pb-3 border-b border-gray-100">
+                      <span className="text-[11px] text-gray-500 font-medium">Combine rules:</span>
+                      <button
+                        onClick={() => setFilterCombineMode("and")}
+                        className={`text-[11px] px-2.5 py-1 rounded-md font-bold transition-colors ${
+                          filterCombineMode === "and" ? "bg-blue-500 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                        }`}
+                      >AND</button>
+                      <button
+                        onClick={() => setFilterCombineMode("or")}
+                        className={`text-[11px] px-2.5 py-1 rounded-md font-bold transition-colors ${
+                          filterCombineMode === "or" ? "bg-blue-500 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                        }`}
+                      >OR</button>
+                    </div>
+                  )}
+
+                  {/* All legends with their types */}
+                  <div className="space-y-3">
+                    {displayLegends.map(legend => {
+                      const legendTypes = allLegendTypes[legend.id] || (legend.id === dims.activeLegendId ? dims.legendTypes : {});
+                      const filterRule = legendFilters.find(f => f.legendId === legend.id);
+                      const selectedTypeIds = filterRule?.typeIds || [];
+                      const filterMode = filterRule?.mode || "include";
+                      const hasSelection = selectedTypeIds.length > 0;
+
                       return (
-                        <span
-                          key={tid}
-                          onClick={() => toggleTypeInFilter(idx, tid)}
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium cursor-pointer hover:opacity-70 transition-opacity"
-                          style={{ backgroundColor: typeColor + "25", color: typeColor, border: `1px solid ${typeColor}40` }}
-                        >
-                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: typeColor }} />
-                          {typeName}
-                          <X size={8} className="ml-0.5" />
-                        </span>
+                        <div key={legend.id} className={`p-3 rounded-lg border transition-colors ${hasSelection ? "bg-blue-50/50 border-blue-200" : "bg-gray-50 border-gray-200"}`}>
+                          {/* Legend name + mode toggle */}
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-[11px] font-bold text-gray-700 flex-1 truncate">{legend.name}</span>
+                            {hasSelection && (
+                              <button
+                                onClick={() => toggleModeForLegend(legend.id)}
+                                className={`text-[10px] px-2 py-0.5 rounded-full font-bold transition-colors ${
+                                  filterMode === "exclude"
+                                    ? "bg-red-100 text-red-600 hover:bg-red-200 border border-red-200"
+                                    : "bg-green-100 text-green-600 hover:bg-green-200 border border-green-200"
+                                }`}
+                              >
+                                {filterMode === "exclude" ? "EXCLUDE" : "INCLUDE"}
+                              </button>
+                            )}
+                            {!hasSelection && (
+                              <span className="text-[9px] text-gray-400 italic">no filter</span>
+                            )}
+                          </div>
+
+                          {/* Type circles – horizontal, wrap */}
+                          <div className="flex flex-wrap gap-1.5">
+                            {/* Unassigned circle */}
+                            {(() => {
+                              const isSelected = selectedTypeIds.includes("unassigned");
+                              return (
+                                <button
+                                  onClick={() => toggleTypeForLegend(legend.id, "unassigned")}
+                                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium transition-all cursor-pointer border ${
+                                    isSelected
+                                      ? "bg-gray-700 text-white border-gray-700 shadow-sm"
+                                      : "bg-white text-gray-400 border-gray-300 hover:border-gray-500 hover:text-gray-600"
+                                  }`}
+                                >
+                                  <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${isSelected ? "bg-white/50" : "bg-gray-500"}`} />
+                                  Unassigned
+                                </button>
+                              );
+                            })()}
+                            {/* Legend types */}
+                            {Object.values(legendTypes).map(lt => {
+                              const isSelected = selectedTypeIds.includes(lt.id);
+                              return (
+                                <button
+                                  key={lt.id}
+                                  onClick={() => toggleTypeForLegend(legend.id, lt.id)}
+                                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium transition-all cursor-pointer border ${
+                                    isSelected
+                                      ? "shadow-sm"
+                                      : "bg-white hover:opacity-80"
+                                  }`}
+                                  style={isSelected
+                                    ? { backgroundColor: lt.color + "30", color: lt.color, borderColor: lt.color }
+                                    : { color: "#9ca3af", borderColor: "#d1d5db" }
+                                  }
+                                >
+                                  <span
+                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                    style={{ backgroundColor: isSelected ? lt.color : lt.color + "60" }}
+                                  />
+                                  {lt.icon && renderLegendTypeIcon(lt.icon, { style: { fontSize: 11, color: isSelected ? lt.color : "#9ca3af" } })}
+                                  {lt.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       );
                     })}
                   </div>
-                  {/* If this legend is active, show addable types */}
-                  {isActiveLegend && (
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {!f.typeIds.includes("unassigned") && (
+
+                  {/* Save as preset */}
+                  {activeContext && saveFilterPreset && hasAnyFilter && (
+                    <div className="mt-4 pt-3 border-t border-gray-200">
+                      {showSavePreset ? (
+                        <div className="flex gap-1 items-center">
+                          <input
+                            autoFocus
+                            value={presetName}
+                            onChange={e => setPresetName(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter" && presetName.trim()) {
+                                saveFilterPreset(presetName.trim());
+                                setPresetName(""); setShowSavePreset(false);
+                              } else if (e.key === "Escape") { setShowSavePreset(false); setPresetName(""); }
+                            }}
+                            placeholder="Preset name..."
+                            className="flex-1 text-[10px] px-1.5 py-1 border border-blue-300 rounded outline-none focus:border-blue-500 min-w-0"
+                          />
+                          <button
+                            onClick={() => {
+                              if (presetName.trim()) {
+                                saveFilterPreset(presetName.trim());
+                                setPresetName(""); setShowSavePreset(false);
+                              }
+                            }}
+                            className="text-[10px] px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 flex-shrink-0"
+                          >Save</button>
+                          <button
+                            onClick={() => { setShowSavePreset(false); setPresetName(""); }}
+                            className="text-[10px] text-gray-400 hover:text-gray-600 flex-shrink-0"
+                          >✕</button>
+                        </div>
+                      ) : (
                         <button
-                          onClick={() => toggleTypeInFilter(idx, "unassigned")}
-                          className="text-[10px] px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors"
+                          onClick={() => setShowSavePreset(true)}
+                          className="w-full text-[10px] px-2 py-1.5 bg-blue-50 border border-blue-200 rounded-md text-blue-600 hover:bg-blue-100 transition-colors flex items-center justify-center gap-1.5 font-medium"
                         >
-                          + Unassigned
+                          <Save size={11} />
+                          Save as preset
                         </button>
                       )}
-                      {Object.values(types).filter(t => !f.typeIds.includes(t.id)).map(t => (
-                        <button
-                          key={t.id}
-                          onClick={() => toggleTypeInFilter(idx, t.id)}
-                          className="text-[10px] px-1.5 py-0.5 rounded-md hover:opacity-80 transition-opacity"
-                          style={{ backgroundColor: t.color + "15", color: t.color, border: `1px solid ${t.color}30` }}
-                        >
-                          + {t.name}
-                        </button>
-                      ))}
                     </div>
                   )}
                 </div>
-              );
-            })}
-
-            {/* Add filter rule for another legend */}
-            {showAddFilter ? (
-              <div className="p-2 bg-blue-50 rounded-lg border border-blue-200 mb-1.5">
-                <div className="text-[11px] font-bold text-blue-600 mb-1">Choose legend to filter:</div>
-                {displayLegends
-                  .filter(l => !legendFilters.some(f => f.legendId === l.id))
-                  .map(l => (
-                    <button
-                      key={l.id}
-                      onClick={() => addFilterForLegend(l.id)}
-                      className="w-full text-left px-2 py-1.5 text-[11px] text-gray-700 hover:bg-blue-100 rounded-md transition-colors font-medium"
-                    >
-                      {l.name}
-                    </button>
-                  ))
-                }
-                {displayLegends.filter(l => !legendFilters.some(f => f.legendId === l.id)).length === 0 && (
-                  <div className="text-[10px] text-gray-400 italic px-1">All legends have filters</div>
-                )}
-                <button
-                  onClick={() => setShowAddFilter(false)}
-                  className="mt-1 text-[10px] text-gray-400 hover:text-gray-600 font-medium"
-                >
-                  Cancel
-                </button>
               </div>
-            ) : (
-              displayLegends.length > 0 && (
-                <button
-                  onClick={() => setShowAddFilter(true)}
-                  className="w-full text-[10px] px-2 py-1.5 border border-dashed border-blue-300 rounded-md text-blue-500 hover:border-blue-400 hover:bg-blue-50 transition-colors flex items-center justify-center gap-1 font-medium"
-                >
-                  <Plus size={10} />
-                  Add filter rule
-                </button>
-              )
-            )}
-          </div>        </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
