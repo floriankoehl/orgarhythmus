@@ -1,6 +1,6 @@
 import { useState } from "react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
-import { Filter, X, Plus, FolderPlus } from "lucide-react";
+import { Filter, X, Plus, FolderPlus, Save, Play, Pencil, Trash2 } from "lucide-react";
 import { LEGEND_TYPE_ICONS, ICON_CATEGORIES, renderLegendTypeIcon } from "./legendTypeIcons";
 
 /**
@@ -36,6 +36,11 @@ export default function IdeaBinLegendPanel({
   activeContext,
   ideas,
   passesAllFilters,
+  filterPresets,
+  saveFilterPreset,
+  applyFilterPreset,
+  deleteFilterPreset,
+  renameFilterPreset,
 }) {
   const displayLegends = legendsList || dims.legends;
   const [showAddFilter, setShowAddFilter] = useState(false);
@@ -43,6 +48,10 @@ export default function IdeaBinLegendPanel({
   const [newTypeIcon, setNewTypeIcon] = useState(null); // icon for create-type form
   const [createCatName, setCreateCatName] = useState(""); // name for "create category from filter"
   const [showCreateCatInput, setShowCreateCatInput] = useState(false);
+  const [showSavePreset, setShowSavePreset] = useState(false);
+  const [presetName, setPresetName] = useState("");
+  const [editingPresetIdx, setEditingPresetIdx] = useState(null);
+  const [editingPresetName, setEditingPresetName] = useState("");
 
   // Count ideas matching filter (for display)
   const filteredIdeaCount = (() => {
@@ -549,6 +558,108 @@ export default function IdeaBinLegendPanel({
               </div>
             )}
 
+            {/* ═══ Filter Presets ═══ */}
+            {activeContext && saveFilterPreset && (
+              <div className="mb-2">
+                {/* Save current filter as preset */}
+                {hasAnyFilter && (
+                  <div className="mb-1.5">
+                    {showSavePreset ? (
+                      <div className="flex gap-1 items-center">
+                        <input
+                          autoFocus
+                          value={presetName}
+                          onChange={e => setPresetName(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter" && presetName.trim()) {
+                              saveFilterPreset(presetName.trim());
+                              setPresetName(""); setShowSavePreset(false);
+                            } else if (e.key === "Escape") { setShowSavePreset(false); setPresetName(""); }
+                          }}
+                          placeholder="Preset name..."
+                          className="flex-1 text-[10px] px-1.5 py-1 border border-blue-300 rounded outline-none focus:border-blue-500 min-w-0"
+                        />
+                        <button
+                          onClick={() => {
+                            if (presetName.trim()) {
+                              saveFilterPreset(presetName.trim());
+                              setPresetName(""); setShowSavePreset(false);
+                            }
+                          }}
+                          className="text-[10px] px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 flex-shrink-0"
+                        >Save</button>
+                        <button
+                          onClick={() => { setShowSavePreset(false); setPresetName(""); }}
+                          className="text-[10px] text-gray-400 hover:text-gray-600 flex-shrink-0"
+                        >✕</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setShowSavePreset(true)}
+                        className="w-full text-[10px] px-2 py-1.5 bg-blue-50 border border-blue-200 rounded-md text-blue-600 hover:bg-blue-100 transition-colors flex items-center justify-center gap-1.5 font-medium"
+                      >
+                        <Save size={11} />
+                        Save filter as preset
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Preset list */}
+                {filterPresets && filterPresets.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-[10px] font-semibold text-gray-500 mb-0.5">Saved presets</div>
+                    {filterPresets.map((preset, idx) => (
+                      <div key={idx} className="flex items-center gap-1 group p-1 bg-gray-50 rounded border border-gray-200 hover:border-blue-300 transition-colors">
+                        {editingPresetIdx === idx ? (
+                          <input
+                            autoFocus
+                            value={editingPresetName}
+                            onChange={e => setEditingPresetName(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter" && editingPresetName.trim()) {
+                                renameFilterPreset(idx, editingPresetName.trim());
+                                setEditingPresetIdx(null);
+                              } else if (e.key === "Escape") setEditingPresetIdx(null);
+                            }}
+                            onBlur={() => {
+                              if (editingPresetName.trim()) renameFilterPreset(idx, editingPresetName.trim());
+                              setEditingPresetIdx(null);
+                            }}
+                            className="flex-1 text-[10px] px-1 py-0.5 border border-blue-300 rounded outline-none min-w-0"
+                          />
+                        ) : (
+                          <span className="flex-1 text-[10px] font-medium text-gray-700 truncate">{preset.name}</span>
+                        )}
+                        <span className="text-[9px] text-gray-400 flex-shrink-0">{preset.legend_filters?.length || 0}r</span>
+                        <button
+                          onClick={() => applyFilterPreset(preset)}
+                          className="text-blue-500 hover:text-blue-700 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Apply this preset"
+                        >
+                          <Play size={10} />
+                        </button>
+                        <button
+                          onClick={() => { setEditingPresetIdx(idx); setEditingPresetName(preset.name); }}
+                          className="text-gray-400 hover:text-gray-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Rename"
+                        >
+                          <Pencil size={10} />
+                        </button>
+                        <button
+                          onClick={() => deleteFilterPreset(idx)}
+                          className="text-gray-400 hover:text-red-500 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Delete preset"
+                        >
+                          <Trash2 size={10} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Create category from current filter */}
             {hasAnyFilter && createCategoryFromFilter && filteredIdeaCount > 0 && (
               <div className="mb-2">
@@ -583,7 +694,12 @@ export default function IdeaBinLegendPanel({
                   </div>
                 ) : (
                   <button
-                    onClick={() => setShowCreateCatInput(true)}
+                    onClick={() => {
+                      const now = new Date();
+                      const ts = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+                      setCreateCatName(`filter applied ${ts}`);
+                      setShowCreateCatInput(true);
+                    }}
                     className="w-full text-[10px] px-2 py-1.5 bg-green-50 border border-green-300 rounded-md text-green-700 hover:bg-green-100 transition-colors flex items-center justify-center gap-1.5 font-medium"
                   >
                     <FolderPlus size={12} />

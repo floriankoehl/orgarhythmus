@@ -161,6 +161,7 @@ export default function IdeaBin() {
   // Array of {legendId, typeIds: [...], mode: "include"|"exclude"}
   const [legendFilters, setLegendFilters] = useState([]);
   const [filterCombineMode, setFilterCombineMode] = useState("and"); // "and" | "or"
+  const [filterPresets, setFilterPresets] = useState([]); // [{name, legend_filters, filter_combine_mode}, ...]
   const [draggingType, setDraggingType] = useState(null);
   const [hoverIdeaForType, setHoverIdeaForType] = useState(null);
 
@@ -303,14 +304,18 @@ export default function IdeaBin() {
   };
 
   // ── Enter / exit context mode ──
-  const saveContextFilterState = async (contextId, filters, combineMode) => {
+  const saveContextFilterState = async (contextId, filters, combineMode, presets) => {
     try {
       await authFetch(`${API}/user/contexts/set_filter_state/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           context_id: contextId,
-          filter_state: { legend_filters: filters, filter_combine_mode: combineMode },
+          filter_state: {
+            legend_filters: filters,
+            filter_combine_mode: combineMode,
+            filter_presets: presets || [],
+          },
         }),
       });
     } catch (e) { console.error("Failed to save context filter state", e); }
@@ -319,7 +324,7 @@ export default function IdeaBin() {
     // ctx = {id, name, color, category_ids, legend_ids, filter_state}
     // Save current context's filter state before switching
     if (activeContext) {
-      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode);
+      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode, filterPresets);
     }
     setActiveContext(ctx);
     setViewMode("ideas");
@@ -327,21 +332,24 @@ export default function IdeaBin() {
     if (ctx.filter_state) {
       setLegendFilters(ctx.filter_state.legend_filters || []);
       setFilterCombineMode(ctx.filter_state.filter_combine_mode || "and");
+      setFilterPresets(ctx.filter_state.filter_presets || []);
       setGlobalTypeFilter([]);
     } else {
       setLegendFilters([]);
       setFilterCombineMode("and");
+      setFilterPresets([]);
       setGlobalTypeFilter([]);
     }
   };
   const exitContext = () => {
     // Save current context's filter state before exiting
     if (activeContext) {
-      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode);
+      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode, filterPresets);
     }
     setActiveContext(null);
     setLegendFilters([]);
     setFilterCombineMode("and");
+    setFilterPresets([]);
     setGlobalTypeFilter([]);
   };
   const updateActiveContextColor = async (color) => {
@@ -1504,10 +1512,31 @@ export default function IdeaBin() {
   useEffect(() => {
     if (!activeContext) return;
     const timer = setTimeout(() => {
-      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode);
+      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode, filterPresets);
     }, 600);
     return () => clearTimeout(timer);
-  }, [legendFilters, filterCombineMode]);
+  }, [legendFilters, filterCombineMode, filterPresets]);
+
+  // ── Filter preset management ──
+  const saveFilterPreset = (name) => {
+    if (!activeContext) return;
+    const preset = {
+      name: name || `Filter ${new Date().toLocaleString()}`,
+      legend_filters: JSON.parse(JSON.stringify(legendFilters)),
+      filter_combine_mode: filterCombineMode,
+    };
+    setFilterPresets(prev => [...prev, preset]);
+  };
+  const applyFilterPreset = (preset) => {
+    setLegendFilters(JSON.parse(JSON.stringify(preset.legend_filters)));
+    setFilterCombineMode(preset.filter_combine_mode || "and");
+  };
+  const deleteFilterPreset = (index) => {
+    setFilterPresets(prev => prev.filter((_, i) => i !== index));
+  };
+  const renameFilterPreset = (index, newName) => {
+    setFilterPresets(prev => prev.map((p, i) => i === index ? { ...p, name: newName } : p));
+  };
 
   // Fetch teams & tasks when transform modal opens
   useEffect(() => {
@@ -1929,10 +1958,15 @@ export default function IdeaBin() {
           className="flex flex-col bg-white rounded-lg shadow-2xl border border-gray-300 overflow-hidden select-none"
         >
           {/* ── Resize edges ── */}
-          <div onMouseDown={(e) => handleEdgeResize(e, "top")} className="absolute top-0 left-2 right-2 h-1.5 cursor-ns-resize z-10" />
-          <div onMouseDown={(e) => handleEdgeResize(e, "bottom")} className="absolute bottom-0 left-2 right-2 h-1.5 cursor-ns-resize z-10" />
-          <div onMouseDown={(e) => handleEdgeResize(e, "left")} className="absolute left-0 top-2 bottom-2 w-1.5 cursor-ew-resize z-10" />
-          <div onMouseDown={(e) => handleEdgeResize(e, "right")} className="absolute right-0 top-2 bottom-2 w-1.5 cursor-ew-resize z-10" />
+          <div onMouseDown={(e) => handleEdgeResize(e, "top")} className="absolute top-0 left-3 right-3 h-1.5 cursor-ns-resize z-10" />
+          <div onMouseDown={(e) => handleEdgeResize(e, "bottom")} className="absolute bottom-0 left-3 right-3 h-1.5 cursor-ns-resize z-10" />
+          <div onMouseDown={(e) => handleEdgeResize(e, "left")} className="absolute left-0 top-3 bottom-3 w-1.5 cursor-ew-resize z-10" />
+          <div onMouseDown={(e) => handleEdgeResize(e, "right")} className="absolute right-0 top-3 bottom-3 w-1.5 cursor-ew-resize z-10" />
+          {/* ── Resize corners ── */}
+          <div onMouseDown={(e) => handleEdgeResize(e, "top-left")} className="absolute top-0 left-0 w-3 h-3 cursor-nwse-resize z-20" />
+          <div onMouseDown={(e) => handleEdgeResize(e, "top-right")} className="absolute top-0 right-0 w-3 h-3 cursor-nesw-resize z-20" />
+          <div onMouseDown={(e) => handleEdgeResize(e, "bottom-left")} className="absolute bottom-0 left-0 w-3 h-3 cursor-nesw-resize z-20" />
+          <div onMouseDown={(e) => handleEdgeResize(e, "bottom-right")} className="absolute bottom-0 right-0 w-3 h-3 cursor-nwse-resize z-20" />
 
           {/* ── Title bar ── */}
           <div
@@ -2515,6 +2549,11 @@ export default function IdeaBin() {
                 activeContext={activeContext}
                 ideas={ideas}
                 passesAllFilters={passesAllFilters}
+                filterPresets={filterPresets}
+                saveFilterPreset={saveFilterPreset}
+                applyFilterPreset={applyFilterPreset}
+                deleteFilterPreset={deleteFilterPreset}
+                renameFilterPreset={renameFilterPreset}
                 onLegendCreated={activeContext ? async () => {
                   // After legend creation, assign the newest legend to the active context
                   const latest = dims.legends[dims.legends.length - 1];

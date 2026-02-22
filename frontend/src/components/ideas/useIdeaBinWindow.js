@@ -167,15 +167,24 @@ export default function useIdeaBinWindow(headlineInputRef) {
     const onMove = (ev) => {
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
-      if (edge === "right") {
+
+      const resizeRight = edge.includes("right");
+      const resizeLeft = edge.includes("left");
+      const resizeBottom = edge.includes("bottom");
+      const resizeTop = edge.includes("top");
+
+      if (resizeRight) {
         setWindowSize(s => ({ ...s, w: Math.max(MIN_W, startW + dx) }));
-      } else if (edge === "bottom") {
-        setWindowSize(s => ({ ...s, h: Math.max(MIN_H, startH + dy) }));
-      } else if (edge === "left") {
+      }
+      if (resizeLeft) {
         const newW = Math.max(MIN_W, startW - dx);
         setWindowSize(s => ({ ...s, w: newW }));
         setWindowPos(p => ({ ...p, x: startPosX + startW - newW }));
-      } else if (edge === "top") {
+      }
+      if (resizeBottom) {
+        setWindowSize(s => ({ ...s, h: Math.max(MIN_H, startH + dy) }));
+      }
+      if (resizeTop) {
         const newH = Math.max(MIN_H, startH - dy);
         setWindowSize(s => ({ ...s, h: newH }));
         setWindowPos(p => ({ ...p, y: startPosY + startH - newH }));
