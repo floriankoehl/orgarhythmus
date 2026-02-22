@@ -68,7 +68,8 @@ export default function IdeaBinCategoryCanvas({
                   else if (e.key === "Escape") { setDisplayCategoryForm(false); setNewCategoryName(""); setNewCategoryPublic(false); }
                 }}
                 placeholder="Category name..."
-                className="text-xs px-2 py-1 border border-gray-300 rounded outline-none flex-1 focus:border-amber-400"
+                className="text-xs px-2 py-1 border border-gray-300 rounded outline-none flex-1"
+                style={{ borderColor: contextColor ? `color-mix(in srgb, ${contextColor} 30%, #ccc)` : undefined }}
               />
               <button
                 onClick={() => setNewCategoryPublic(p => !p)}
@@ -82,7 +83,14 @@ export default function IdeaBinCategoryCanvas({
                 {newCategoryPublic ? <Globe size={10} /> : <Lock size={10} />}
                 {newCategoryPublic ? "Public" : "Private"}
               </button>
-              <button onClick={create_category_api} className="text-[10px] px-2 py-1 bg-amber-400 rounded hover:bg-amber-500 font-medium">
+              <button
+                onClick={create_category_api}
+                className="text-[10px] px-2 py-1 rounded font-medium"
+                style={{
+                  backgroundColor: contextColor ? `color-mix(in srgb, ${contextColor} 35%, #fff)` : "#fbbf24",
+                  color: contextColor ? `color-mix(in srgb, ${contextColor} 70%, #333)` : undefined,
+                }}
+              >
                 Create
               </button>
               <button onClick={() => { setDisplayCategoryForm(false); setNewCategoryName(""); setNewCategoryPublic(false); }} className="text-[10px] px-2 py-1 bg-gray-200 rounded hover:bg-gray-300">
@@ -92,7 +100,12 @@ export default function IdeaBinCategoryCanvas({
           ) : (
             <button
               onClick={() => setDisplayCategoryForm(true)}
-              className="text-[10px] px-2 py-1 bg-amber-100 text-amber-800 border border-amber-300 rounded hover:bg-amber-200 font-medium flex-shrink-0"
+              className="text-[10px] px-2 py-1 rounded font-medium flex-shrink-0 border"
+              style={{
+                backgroundColor: contextColor ? `color-mix(in srgb, ${contextColor} 15%, #fff)` : "#fef3c7",
+                color: contextColor ? `color-mix(in srgb, ${contextColor} 70%, #333)` : "#92400e",
+                borderColor: contextColor ? `color-mix(in srgb, ${contextColor} 25%, #ddd)` : "#fcd34d",
+              }}
             >
               + Category
             </button>
@@ -190,16 +203,15 @@ export default function IdeaBinCategoryCanvas({
               left: catData.x, top: catData.y + 36,
               width: catData.width, height: catData.height,
               zIndex: catData.z_index || 0,
-              backgroundColor: "#ffffff",
-              backgroundImage: isMergeTarget
-                ? "linear-gradient(135deg, #fed7aa, #fed7aa)"
+              backgroundColor: isMergeTarget
+                ? "#fef3e2"
                 : contextColor && isSelected
-                  ? `linear-gradient(135deg, ${contextColor}, ${contextColor}cc)`
+                  ? `color-mix(in srgb, ${contextColor} 18%, #ffffff)`
                   : contextColor && isHovered
-                    ? `linear-gradient(135deg, ${contextColor}cc, ${contextColor}aa)`
+                    ? `color-mix(in srgb, ${contextColor} 22%, #ffffff)`
                     : isAdopted
-                      ? (isHovered ? "linear-gradient(135deg, #c7d2fe, #c7d2fe)" : isSelected ? "linear-gradient(135deg, #e0e7ff, #e0e7ff)" : "linear-gradient(135deg, #eef2ff, #eef2ff)")
-                      : (isHovered ? "linear-gradient(135deg, #fde68a, #fde68a)" : isSelected ? "linear-gradient(135deg, #fef9c3, #fef9c3)" : contextColor ? `linear-gradient(135deg, ${contextColor}, ${contextColor}cc)` : "linear-gradient(135deg, #fef08a, #fef08a)"),
+                      ? (isHovered ? "#e8ecff" : isSelected ? "#eef1ff" : "#f4f6ff")
+                      : (isHovered ? "#fef7cd" : isSelected ? "#fffadb" : contextColor ? `color-mix(in srgb, ${contextColor} 12%, #ffffff)` : "#fffde8"),
               transition: "background-color 150ms ease",
             }}
             className={`absolute shadow-lg rounded p-1.5 flex flex-col ${isSelected ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${isAdopted ? "border border-indigo-300" : ""} ${isMergeTarget ? "ring-2 ring-orange-500 ring-offset-1" : ""}`}
@@ -229,9 +241,15 @@ export default function IdeaBinCategoryCanvas({
                 // Double-click → dock to header (most recent = leftmost)
                 setDockedCategories(prev => [String(catKey), ...prev.filter(id => id !== String(catKey))]);
               }}
-              className={`flex justify-between items-center mb-0.5 flex-shrink-0 rounded-t px-1 py-0.5 cursor-grab active:cursor-grabbing border-b ${
-                isAdopted ? "bg-indigo-200/50 border-indigo-300/40" : "bg-amber-300/50 border-amber-400/40"
-              }`}
+              className="flex justify-between items-center mb-0.5 flex-shrink-0 rounded-t px-1 py-0.5 cursor-grab active:cursor-grabbing border-b"
+              style={{
+                backgroundColor: contextColor
+                  ? `color-mix(in srgb, ${contextColor} 25%, #ffffff)`
+                  : isAdopted ? "rgba(165,180,252,0.35)" : "rgba(252,211,77,0.4)",
+                borderColor: contextColor
+                  ? `color-mix(in srgb, ${contextColor} 20%, transparent)`
+                  : isAdopted ? "rgba(165,180,252,0.3)" : "rgba(251,191,36,0.3)",
+              }}
             >
               {editingCategoryId === catKey && !isAdopted ? (
                 <input
@@ -281,7 +299,8 @@ export default function IdeaBinCategoryCanvas({
                         e.stopPropagation();
                         setCategorySettingsOpen(prev => prev === catKey ? null : catKey);
                       }}
-                      className="text-indigo-500 hover:text-indigo-700 cursor-pointer"
+                      className="cursor-pointer"
+                    style={{ color: contextColor ? `color-mix(in srgb, ${contextColor} 55%, #666)` : "#6366f1" }}
                     />
                     {categorySettingsOpen === catKey && (
                       <>
@@ -344,7 +363,7 @@ export default function IdeaBinCategoryCanvas({
                 {/* Archive */}
                 <ArchiveIcon
                   onClick={(e) => { e.stopPropagation(); toggle_archive_category(catKey); }}
-                  className="hover:text-amber-700! cursor-pointer" style={{ fontSize: 13 }}
+                  className="cursor-pointer" style={{ fontSize: 13, color: contextColor ? `color-mix(in srgb, ${contextColor} 50%, #666)` : undefined }}
                 />
                 {/* Settings dropdown */}
                 <div className="relative">
@@ -354,7 +373,8 @@ export default function IdeaBinCategoryCanvas({
                       e.stopPropagation();
                       setCategorySettingsOpen(prev => prev === catKey ? null : catKey);
                     }}
-                    className="text-amber-700 hover:text-amber-900 cursor-pointer"
+                    className="cursor-pointer"
+                    style={{ color: contextColor ? `color-mix(in srgb, ${contextColor} 55%, #666)` : "#b45309" }}
                   />
                   {categorySettingsOpen === catKey && (
                     <>
@@ -490,7 +510,7 @@ export default function IdeaBinCategoryCanvas({
             <div onMouseDown={(e) => handleCategoryResize(e, catKey, "ne")} className="absolute top-0 right-0 w-3 h-3 cursor-ne-resize" />
             <div onMouseDown={(e) => handleCategoryResize(e, catKey, "sw")} className="absolute bottom-0 left-0 w-3 h-3 cursor-sw-resize" />
             <div onMouseDown={(e) => handleCategoryResize(e, catKey, "se")} className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize">
-              <span className={`absolute bottom-0 right-0 text-[8px] leading-none select-none ${isAdopted ? "text-indigo-400/60" : "text-amber-600/60"}`}>◢</span>
+              <span className="absolute bottom-0 right-0 text-[8px] leading-none select-none" style={{ color: contextColor ? `color-mix(in srgb, ${contextColor} 40%, transparent)` : isAdopted ? "rgba(129,140,248,0.5)" : "rgba(217,119,6,0.5)" }}>◢</span>
             </div>
           </div>
         );

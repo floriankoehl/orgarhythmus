@@ -16,8 +16,8 @@ export default function useIdeaBinWindow(headlineInputRef) {
   const [windowPos, setWindowPos] = useState({ x: 0, y: 0 });
   const [windowSize, setWindowSize] = useState({ w: window.innerWidth, h: window.innerHeight });
   const [iconPos, setIconPos] = useState(() => ({
-    x: Math.max(0, window.innerWidth - 68),
-    y: Math.max(0, window.innerHeight - 68),
+    x: 8,
+    y: 8,
   }));
   const [isMaximized, setIsMaximized] = useState(true);  // DEV: default maximized
   const [preMaxState, setPreMaxState] = useState(null);
@@ -35,9 +35,10 @@ export default function useIdeaBinWindow(headlineInputRef) {
   }, [iconPos, windowSize, headlineInputRef]);
 
   const minimizeWindow = useCallback(() => {
+    // Collapse to top-left corner (over header)
     setIconPos({
-      x: Math.min(window.innerWidth - 56, Math.max(0, windowPos.x + windowSize.w - 48)),
-      y: Math.min(window.innerHeight - 56, Math.max(0, windowPos.y + windowSize.h - 48)),
+      x: 8,
+      y: 8,
     });
     setIsOpen(false);
     setIsMaximized(false);
@@ -96,8 +97,12 @@ export default function useIdeaBinWindow(headlineInputRef) {
 
   // ── Window title bar drag ──
   const handleWindowDrag = useCallback((e) => {
-    if (isMaximized) return;
     e.preventDefault();
+    // Auto-unmaximize when dragging
+    if (isMaximized) {
+      setIsMaximized(false);
+      setPreMaxState(null);
+    }
     const startX = e.clientX - windowPos.x;
     const startY = e.clientY - windowPos.y;
 
@@ -119,7 +124,11 @@ export default function useIdeaBinWindow(headlineInputRef) {
   const handleWindowResize = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isMaximized) return;
+    // Auto-unmaximize when resizing
+    if (isMaximized) {
+      setIsMaximized(false);
+      setPreMaxState(null);
+    }
     const startX = e.clientX;
     const startY = e.clientY;
     const startW = windowSize.w;
@@ -143,7 +152,11 @@ export default function useIdeaBinWindow(headlineInputRef) {
   const handleEdgeResize = useCallback((e, edge) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isMaximized) return;
+    // Auto-unmaximize when resizing
+    if (isMaximized) {
+      setIsMaximized(false);
+      setPreMaxState(null);
+    }
     const startX = e.clientX;
     const startY = e.clientY;
     const startW = windowSize.w;

@@ -608,6 +608,69 @@ export default function IdeaBin() {
     fetch_all_ideas();
   };
 
+  // ── Create category from filtered ideas ──
+  const createCategoryFromFilter = async (name) => {
+    // Collect all unique idea_ids visible in current context that pass the current filter
+    const seen = new Set();
+    const matchedIdeaIds = [];
+    for (const p of Object.values(ideas)) {
+      if (!p.idea_id || seen.has(p.idea_id)) continue;
+      seen.add(p.idea_id);
+      if (passesAllFilters(p)) {
+        matchedIdeaIds.push(p.idea_id);
+      }
+    }
+    if (matchedIdeaIds.length === 0) return;
+    try {
+      await authFetch(`${API}/user/categories/create_with_ideas/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name || "Filtered Ideas",
+          idea_ids: matchedIdeaIds,
+          context_id: activeContext?.id || null,
+        }),
+      });
+      playSound('ideaCategoryCreate');
+      await fetch_categories();
+      await fetch_all_ideas();
+      // Auto-assign to context
+      if (activeContext) {
+        const res2 = await authFetch(`${API}/user/categories/`);
+        const data2 = await res2.json();
+        const latest = (data2.categories || []).sort((a, b) => b.id - a.id)[0];
+        if (latest) {
+          setActiveContext(prev => prev ? { ...prev, category_ids: [...(prev.category_ids || []), latest.id] } : prev);
+        }
+      }
+    } catch (err) { console.error("Create category from filter failed:", err); }
+  };
+
+  // ── Batch remove legend type from context ideas ──
+  const batchRemoveLegendType = async (legendId, typeId = null) => {
+    // Collect idea_ids in current context that have this legend type assigned
+    const seen = new Set();
+    const ideaIds = [];
+    for (const p of Object.values(ideas)) {
+      if (!p.idea_id || seen.has(p.idea_id)) continue;
+      seen.add(p.idea_id);
+      const dt = p.legend_types?.[String(legendId)];
+      if (!dt) continue;
+      // If typeId specified, only remove if that specific type matches
+      if (typeId !== null && dt.legend_type_id !== typeId) continue;
+      ideaIds.push(p.idea_id);
+    }
+    if (ideaIds.length === 0) return;
+    try {
+      await authFetch(`${API}/user/ideas/batch_remove_legend_type/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idea_ids: ideaIds, legend_id: legendId }),
+      });
+      await fetch_all_ideas();
+    } catch (err) { console.error("Batch remove legend type failed:", err); }
+  };
+
   // ── Upvote & Comments ──
   const toggle_upvote = async (ideaId) => {
     try {
@@ -1824,11 +1887,21 @@ export default function IdeaBin() {
             left: iconPos.x,
             top: iconPos.y,
             zIndex: 9980,
+            background: activeContext?.color
+              ? `linear-gradient(135deg, ${activeContext.color}, color-mix(in srgb, ${activeContext.color} 70%, #333))`
+              : undefined,
+            borderColor: activeContext?.color
+              ? `color-mix(in srgb, ${activeContext.color} 60%, #fff)`
+              : undefined,
           }}
-          className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-400 to-yellow-500 shadow-lg
+          className={`w-12 h-12 rounded-full shadow-lg
             flex items-center justify-center cursor-pointer select-none
             hover:scale-110 hover:shadow-xl active:scale-95 transition-shadow duration-150
-            border-2 border-amber-300"
+            border-2 ${
+              activeContext?.color
+                ? ""
+                : "bg-gradient-to-br from-amber-400 to-yellow-500 border-amber-300"
+            }`}
           title="Open Idea Bin"
         >
           <Lightbulb size={22} className="text-white drop-shadow" />
@@ -1972,7 +2045,13 @@ export default function IdeaBin() {
               )}
 
               {unassignedCount > 0 && viewMode === "ideas" && (
-                <span className="text-[10px] bg-amber-600/20 text-amber-800 px-1.5 rounded-full font-medium">
+                <span
+                  className="text-[10px] px-1.5 rounded-full font-medium"
+                  style={{
+                    backgroundColor: activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 20%, transparent)` : "rgba(217,119,6,0.2)",
+                    color: activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 70%, #333)` : "#92400e",
+                  }}
+                >
                   {unassignedCount}
                 </span>
               )}
@@ -1982,14 +2061,19 @@ export default function IdeaBin() {
                 </span>
               )}
               {/* ── View mode switcher ── */}
-              <div className="flex items-center bg-amber-600/15 rounded-full p-0.5 ml-1" onMouseDown={(e) => e.stopPropagation()}>
+              <div
+                className="flex items-center rounded-full p-0.5 ml-1"
+                style={{ backgroundColor: activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 15%, transparent)` : "rgba(217,119,6,0.15)" }}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
                 <button
                   onClick={() => setViewMode("ideas")}
                   className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors ${
                     viewMode === "ideas"
-                      ? "bg-white text-amber-800 shadow-sm"
-                      : "text-amber-700 hover:text-amber-900"
+                      ? "bg-white shadow-sm"
+                      : ""
                   }`}
+                  style={{ color: activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 70%, #333)` : "#92400e" }}
                   title="Ideas & Categories"
                 >
                   Ideas
@@ -1998,9 +2082,10 @@ export default function IdeaBin() {
                   onClick={() => setViewMode("contexts")}
                   className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors flex items-center gap-0.5 ${
                     viewMode === "contexts"
-                      ? "bg-white text-amber-800 shadow-sm"
-                      : "text-amber-700 hover:text-amber-900"
+                      ? "bg-white shadow-sm"
+                      : ""
                   }`}
+                  style={{ color: activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 70%, #333)` : "#92400e" }}
                   title="Categories & Contexts"
                 >
                   <Layers size={10} />
@@ -2013,10 +2098,10 @@ export default function IdeaBin() {
                 <button
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={() => setShowMetaList(v => !v)}
-                  className={`p-1 rounded transition-colors ${showMetaList ? "bg-amber-600/30" : "hover:bg-amber-500/30"}`}
+                  className={`p-1 rounded transition-colors ${showMetaList ? "bg-black/10" : "hover:bg-black/10"}`}
                   title="All Ideas (Meta View)"
                 >
-                  <List size={13} className="text-amber-800" />
+                  <List size={13} style={{ color: activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 65%, #333)` : "#92400e" }} />
                 </button>
               )}
               {viewMode === "ideas" && copiedIdeaId && (
@@ -2034,10 +2119,10 @@ export default function IdeaBin() {
                 <button
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={() => setShowFormationPanel(v => !v)}
-                  className={`p-1 rounded transition-colors ${showFormationPanel ? "bg-amber-600/30" : "hover:bg-amber-500/30"}`}
+                  className={`p-1 rounded transition-colors ${showFormationPanel ? "bg-black/10" : "hover:bg-black/10"}`}
                   title="Formations — save / load layout"
                 >
-                  <Save size={13} className="text-amber-800" />
+                  <Save size={13} style={{ color: activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 65%, #333)` : "#92400e" }} />
                 </button>
                 {showFormationPanel && (
                   <>
@@ -2132,18 +2217,21 @@ export default function IdeaBin() {
               <button
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={toggleMaximize}
-                className="p-1 rounded hover:bg-amber-500/30 transition-colors"
+                className="p-1 rounded hover:bg-black/10 transition-colors"
                 title={isMaximized ? "Restore" : "Maximize"}
               >
-                {isMaximized ? <Minimize2 size={13} className="text-amber-800" /> : <Maximize2 size={13} className="text-amber-800" />}
+                {isMaximized
+                  ? <Minimize2 size={13} style={{ color: activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 65%, #333)` : "#92400e" }} />
+                  : <Maximize2 size={13} style={{ color: activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 65%, #333)` : "#92400e" }} />
+                }
               </button>
               <button
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={minimizeWindow}
-                className="p-1 rounded hover:bg-amber-500/30 transition-colors"
+                className="p-1 rounded hover:bg-black/10 transition-colors"
                 title="Minimize to icon"
               >
-                <Minus size={13} className="text-amber-800" />
+                <Minus size={13} style={{ color: activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 65%, #333)` : "#92400e" }} />
               </button>
             </div>
           </div>
@@ -2422,6 +2510,11 @@ export default function IdeaBin() {
                 newTypeColor={newTypeColor} setNewTypeColor={setNewTypeColor}
                 newTypeName={newTypeName} setNewTypeName={setNewTypeName}
                 legendsList={activeContext ? filteredLegends : undefined}
+                createCategoryFromFilter={createCategoryFromFilter}
+                batchRemoveLegendType={batchRemoveLegendType}
+                activeContext={activeContext}
+                ideas={ideas}
+                passesAllFilters={passesAllFilters}
                 onLegendCreated={activeContext ? async () => {
                   // After legend creation, assign the newest legend to the active context
                   const latest = dims.legends[dims.legends.length - 1];

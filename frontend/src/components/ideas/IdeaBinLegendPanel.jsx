@@ -1,6 +1,6 @@
 import { useState } from "react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
-import { Filter, X, Plus } from "lucide-react";
+import { Filter, X, Plus, FolderPlus } from "lucide-react";
 import { LEGEND_TYPE_ICONS, ICON_CATEGORIES, renderLegendTypeIcon } from "./legendTypeIcons";
 
 /**
@@ -31,11 +31,50 @@ export default function IdeaBinLegendPanel({
   newTypeName, setNewTypeName,
   onLegendCreated,
   legendsList,
+  createCategoryFromFilter,
+  batchRemoveLegendType,
+  activeContext,
+  ideas,
+  passesAllFilters,
 }) {
   const displayLegends = legendsList || dims.legends;
   const [showAddFilter, setShowAddFilter] = useState(false);
   const [iconPickerTypeId, setIconPickerTypeId] = useState(null); // type id with open icon picker
   const [newTypeIcon, setNewTypeIcon] = useState(null); // icon for create-type form
+  const [createCatName, setCreateCatName] = useState(""); // name for "create category from filter"
+  const [showCreateCatInput, setShowCreateCatInput] = useState(false);
+
+  // Count ideas matching filter (for display)
+  const filteredIdeaCount = (() => {
+    if (!ideas || !passesAllFilters) return 0;
+    const seen = new Set();
+    let count = 0;
+    for (const p of Object.values(ideas)) {
+      if (!p.idea_id || seen.has(p.idea_id)) continue;
+      seen.add(p.idea_id);
+      if (passesAllFilters(p)) count++;
+    }
+    return count;
+  })();
+
+  // Count ideas with a specific legend type assigned (in current context's ideas only)
+  const countIdeasWithType = (legendId, typeId) => {
+    if (!ideas) return 0;
+    const seen = new Set();
+    let count = 0;
+    for (const p of Object.values(ideas)) {
+      if (!p.idea_id || seen.has(p.idea_id)) continue;
+      seen.add(p.idea_id);
+      const dt = p.legend_types?.[String(legendId)];
+      if (typeId === null) {
+        // Count all ideas with any type assigned for this legend
+        if (dt) count++;
+      } else {
+        if (dt && dt.legend_type_id === typeId) count++;
+      }
+    }
+    return count;
+  };
 
   const handleCreateLegend = async (name) => {
     await dims.create_legend(name);
@@ -174,6 +213,20 @@ export default function IdeaBinLegendPanel({
                     title="Rename"
                     className="text-[10px] text-gray-400 hover:text-blue-500 px-0.5"
                   >✎</button>
+                  {/* Unselect all ideas from this legend */}
+                  {batchRemoveLegendType && dims.activeLegendId && countIdeasWithType(dims.activeLegendId, null) > 0 && (
+                    <button
+                      onClick={() => {
+                        const count = countIdeasWithType(dims.activeLegendId, null);
+                        const legName = displayLegends.find(l => l.id === dims.activeLegendId)?.name || "this legend";
+                        if (window.confirm(`Remove all "${legName}" type assignments from ${count} idea${count !== 1 ? "s" : ""}${activeContext ? ` in "${activeContext.name}"` : ""}?`)) {
+                          batchRemoveLegendType(dims.activeLegendId);
+                        }
+                      }}
+                      title={`Unassign all types from ideas${activeContext ? ` in "${activeContext.name}"` : ""}`}
+                      className="text-[8px] text-orange-400 hover:text-orange-600 px-0.5"
+                    >✕all</button>
+                  )}
                   <button
                     onClick={() => {
                       if (dims.activeLegendId && window.confirm("Delete this legend?")) {
@@ -295,6 +348,22 @@ export default function IdeaBinLegendPanel({
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   />
                 </label>
+                {/* Unselect all ideas from this type */}
+                {batchRemoveLegendType && countIdeasWithType(dims.activeLegendId, lt.id) > 0 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const count = countIdeasWithType(dims.activeLegendId, lt.id);
+                      if (window.confirm(`Remove "${lt.name}" from ${count} idea${count !== 1 ? "s" : ""}${activeContext ? ` in "${activeContext.name}"` : ""}?`)) {
+                        batchRemoveLegendType(dims.activeLegendId, lt.id);
+                      }
+                    }}
+                    className="text-[8px] text-orange-400 hover:text-orange-600 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                    title={`Unassign "${lt.name}" from all ideas${activeContext ? ` in "${activeContext.name}"` : ""}`}
+                  >
+                    ✕all
+                  </button>
+                )}
                 <DeleteForeverIcon
                   onClick={e => { e.stopPropagation(); dims.delete_type(lt.id); }}
                   className="text-gray-300 hover:text-red-500! cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
@@ -477,6 +546,50 @@ export default function IdeaBinLegendPanel({
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Create category from current filter */}
+            {hasAnyFilter && createCategoryFromFilter && filteredIdeaCount > 0 && (
+              <div className="mb-2">
+                {showCreateCatInput ? (
+                  <div className="flex gap-1 items-center">
+                    <input
+                      autoFocus
+                      value={createCatName}
+                      onChange={e => setCreateCatName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && createCatName.trim()) {
+                          createCategoryFromFilter(createCatName.trim());
+                          setCreateCatName(""); setShowCreateCatInput(false);
+                        } else if (e.key === "Escape") { setShowCreateCatInput(false); setCreateCatName(""); }
+                      }}
+                      placeholder="Category name..."
+                      className="flex-1 text-[10px] px-1.5 py-1 border border-green-300 rounded outline-none focus:border-green-500 min-w-0"
+                    />
+                    <button
+                      onClick={() => {
+                        if (createCatName.trim()) {
+                          createCategoryFromFilter(createCatName.trim());
+                          setCreateCatName(""); setShowCreateCatInput(false);
+                        }
+                      }}
+                      className="text-[10px] px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600 flex-shrink-0"
+                    >Create</button>
+                    <button
+                      onClick={() => { setShowCreateCatInput(false); setCreateCatName(""); }}
+                      className="text-[10px] text-gray-400 hover:text-gray-600 flex-shrink-0"
+                    >✕</button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowCreateCatInput(true)}
+                    className="w-full text-[10px] px-2 py-1.5 bg-green-50 border border-green-300 rounded-md text-green-700 hover:bg-green-100 transition-colors flex items-center justify-center gap-1.5 font-medium"
+                  >
+                    <FolderPlus size={12} />
+                    Create category from filter ({filteredIdeaCount} ideas)
+                  </button>
+                )}
               </div>
             )}
 

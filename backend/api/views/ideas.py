@@ -844,3 +844,72 @@ def delete_idea_comment(request, comment_id):
     comment = get_object_or_404(IdeaComment, pk=comment_id, user=request.user)
     comment.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ---- BATCH OPERATIONS ----
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_category_with_ideas(request):
+    """Create a new category and copy given ideas into it."""
+    name = request.data.get("name", "Filtered Ideas").strip()
+    idea_ids = request.data.get("idea_ids", [])  # list of idea primary ids
+    context_id = request.data.get("context_id")   # optional: auto-assign to context
+
+    max_z = Category.objects.filter(owner=request.user).aggregate(db_models.Max('z_index'))['z_index__max']
+    next_z = (max_z + 1) if max_z is not None else 0
+
+    category = Category.objects.create(
+        owner=request.user,
+        name=name,
+        x=50,
+        y=50,
+        width=max(250, len(name) * 9 + 80),
+        height=200,
+        z_index=next_z,
+    )
+
+    # Copy ideas into the new category
+    placed = 0
+    for idx, idea_id in enumerate(idea_ids):
+        idea = Idea.objects.filter(id=idea_id, owner=request.user).first()
+        if not idea:
+            continue
+        if IdeaPlacement.objects.filter(idea=idea, category=category).exists():
+            continue
+        IdeaPlacement.objects.create(idea=idea, category=category, order_index=idx)
+        placed += 1
+
+    # Auto-assign to context if provided
+    if context_id:
+        from ..models import Context
+        ctx = Context.objects.filter(id=context_id, owner=request.user).first()
+        if ctx:
+            CategoryContextPlacement.objects.get_or_create(category=category, context=ctx)
+
+    return Response({
+        "created": True,
+        "category": CategorySerializer(category).data,
+        "placed_count": placed,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def batch_remove_legend_type(request):
+    """Remove legend type assignment for a specific legend from multiple ideas at once."""
+    idea_ids = request.data.get("idea_ids", [])   # list of idea primary ids
+    legend_id = request.data.get("legend_id")
+
+    if not legend_id:
+        return Response({"error": "legend_id required"}, status=400)
+
+    legend = get_object_or_404(Legend, id=legend_id)
+    removed = IdeaLegendType.objects.filter(
+        idea__id__in=idea_ids,
+        idea__owner=request.user,
+        legend=legend,
+    ).delete()[0]
+
+    return Response({"removed": removed})
+

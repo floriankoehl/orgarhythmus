@@ -155,6 +155,8 @@ from .ideas import (
     toggle_upvote_idea,
     idea_comments,
     delete_idea_comment,
+    create_category_with_ideas,
+    batch_remove_legend_type,
 )
 
 from .notifications import (

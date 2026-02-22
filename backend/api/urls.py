@@ -91,6 +91,8 @@ urlpatterns = [
     path("user/ideas/remove_from_category/", views.remove_idea_from_category),
     path("user/ideas/remove_all_categories/", views.remove_all_idea_categories),
     path("user/ideas/remove_all_legend_types/", views.remove_all_idea_legend_types),
+    path("user/categories/create_with_ideas/", views.create_category_with_ideas),
+    path("user/ideas/batch_remove_legend_type/", views.batch_remove_legend_type),
 
 
     # _____________________________ ADDED THIS NOW WITH THE DEPENDENCY VIEW ______________________________
