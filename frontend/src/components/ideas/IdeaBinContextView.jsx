@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
-import { Settings, Globe, Plus, Layers, Tag, Lock, LinkIcon } from "lucide-react";
+import { Settings, Globe, Plus, Layers, Tag, Lock, LinkIcon, LogIn } from "lucide-react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import { BASE_URL } from "../../config/api";
 
@@ -29,6 +29,7 @@ export default forwardRef(function IdeaBinContextView({
   showCanvas,          // bool — whether the right canvas is visible (width-based)
   sidebarWidth,        // number — left sidebar width in px
   onCategoryCreated,   // callback — refresh categories after creating one
+  onEnterContext,      // callback — enter a context (switch to ideas view filtered by context)
 }, ref) {
   // ── Context state ──
   const [contexts, setContexts] = useState({});          // {[id]: {id, name, x, y, width, height, z_index, category_ids, legend_ids}}
@@ -759,6 +760,26 @@ export default forwardRef(function IdeaBinContextView({
                                 <span className="text-[10px]">{minimizedContexts[ctxKey] ? "◻" : "—"}</span>
                                 {minimizedContexts[ctxKey] ? "Restore size" : "Collapse card"}
                               </button>
+                              {/* Enter context */}
+                              {onEnterContext && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setContextSettingsOpen(null);
+                                    onEnterContext({
+                                      id: parseInt(ctxKey),
+                                      name: ctxData.name,
+                                      color: ctxData.color || null,
+                                      category_ids: contextCatOrders[ctxKey] || [],
+                                      legend_ids: contextLegOrders[ctxKey] || [],
+                                    });
+                                  }}
+                                  className="w-full text-left px-3 py-1.5 text-[11px] text-teal-700 hover:bg-teal-50 flex items-center gap-2 font-medium"
+                                >
+                                  <LogIn size={11} />
+                                  Enter context
+                                </button>
+                              )}
                               {/* Toggle public — only for owned contexts */}
                               {!ctxData.adopted && (
                                 <button

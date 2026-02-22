@@ -411,6 +411,7 @@ class Context(models.Model):
     height = models.IntegerField(default=200)
     z_index = models.IntegerField(default=0)
     is_public = models.BooleanField(default=False)
+    color = models.CharField(max_length=20, null=True, blank=True)  # e.g. "#f59e0b"
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

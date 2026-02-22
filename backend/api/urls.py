@@ -196,6 +196,7 @@ urlpatterns = [
     path("user/contexts/set_position/", views.set_context_position, name="set_context_position"),
     path("user/contexts/set_area/", views.set_context_area, name="set_context_area"),
     path("user/contexts/bring_to_front/", views.bring_to_front_context, name="bring_to_front_context"),
+    path("user/contexts/set_color/", views.set_context_color, name="set_context_color"),
     path("user/contexts/rename/", views.rename_context, name="rename_context"),
     path("user/contexts/assign_category/", views.assign_category_to_context, name="assign_category_to_context"),
     path("user/contexts/remove_category/", views.remove_category_from_context, name="remove_category_from_context"),

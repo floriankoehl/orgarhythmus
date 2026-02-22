@@ -76,7 +76,7 @@ def update_context(request, context_id):
     except Context.DoesNotExist:
         return Response({"error": "Not found"}, status=404)
 
-    for field in ("name", "x", "y", "width", "height", "z_index"):
+    for field in ("name", "x", "y", "width", "height", "z_index", "color"):
         if field in request.data:
             setattr(ctx, field, request.data[field])
     ctx.save()
@@ -143,6 +143,21 @@ def bring_to_front_context(request):
     ctx.z_index = max_z + 1
     ctx.save()
     return Response({"status": "ok", "z_index": ctx.z_index})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def set_context_color(request):
+    """Set the color of a context."""
+    ctx_id = request.data.get("context_id")
+    color = request.data.get("color")  # hex string or null
+    try:
+        ctx = Context.objects.get(pk=ctx_id, owner=request.user)
+    except Context.DoesNotExist:
+        return Response({"error": "Not found"}, status=404)
+    ctx.color = color if color else None
+    ctx.save()
+    return Response({"status": "ok", "color": ctx.color})
 
 
 # ─────────────────────────────────────────────

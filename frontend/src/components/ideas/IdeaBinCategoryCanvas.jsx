@@ -46,6 +46,7 @@ export default function IdeaBinCategoryCanvas({
   handleCategoryResize,
   refactorMode,
   mergeCategoryTarget,
+  contextColor,
 }) {
   return (
     <div
@@ -190,9 +191,13 @@ export default function IdeaBinCategoryCanvas({
               zIndex: catData.z_index || 0,
               backgroundColor: isMergeTarget
                 ? "#fed7aa"
-                : isAdopted
-                  ? (isHovered ? "#c7d2fe" : isSelected ? "#e0e7ff" : "#eef2ff")
-                  : (isHovered ? "#fde68a" : isSelected ? "#fef9c3" : "#fef08a"),
+                : contextColor && isSelected
+                  ? `${contextColor}30`
+                  : contextColor && isHovered
+                    ? `${contextColor}40`
+                    : isAdopted
+                      ? (isHovered ? "#c7d2fe" : isSelected ? "#e0e7ff" : "#eef2ff")
+                      : (isHovered ? "#fde68a" : isSelected ? "#fef9c3" : contextColor ? `${contextColor}18` : "#fef08a"),
               transition: "background-color 150ms ease",
             }}
             className={`absolute shadow-lg rounded p-1.5 flex flex-col ${isSelected ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${isAdopted ? "border border-indigo-300" : ""} ${isMergeTarget ? "ring-2 ring-orange-500 ring-offset-1" : ""}`}

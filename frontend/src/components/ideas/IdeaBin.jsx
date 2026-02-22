@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 
-import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings, Layers, Save, FolderOpen, Trash2, Pencil, Check } from "lucide-react";
+import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings, Layers, Save, FolderOpen, Trash2, Pencil, Check, ArrowLeft, Palette } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
@@ -132,6 +132,10 @@ export default function IdeaBin() {
   // ───── View mode ─────
   const [viewMode, setViewMode] = useState("ideas"); // "ideas" | "contexts"
 
+  // ───── Active context (entered context mode) ─────
+  const [activeContext, setActiveContext] = useState(null); // null or {id, name, color, category_ids, legend_ids}
+  const [showContextColorPicker, setShowContextColorPicker] = useState(false);
+
   // ───── Selected category for paste ─────
   const [selectedCategoryId, setSelectedCategoryId] = useState(null);
 
@@ -189,16 +193,28 @@ export default function IdeaBin() {
 
   const create_category_api = async () => {
     if (!newCategoryName.trim()) return;
-    await authFetch(`${API}/user/categories/create/`, {
+    const res = await authFetch(`${API}/user/categories/create/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: newCategoryName, is_public: newCategoryPublic }),
     });
+    const data = await res.json();
     setNewCategoryName("");
     setNewCategoryPublic(false);
     setDisplayCategoryForm(false);
     playSound('ideaCategoryCreate');
-    fetch_categories();
+    await fetch_categories();
+    // Auto-assign to active context if inside one
+    if (activeContext && data.category?.id) {
+      try {
+        await authFetch(`${API}/user/contexts/assign_category/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ category_id: data.category.id, context_id: activeContext.id }),
+        });
+        setActiveContext(prev => prev ? { ...prev, category_ids: [...(prev.category_ids || []), data.category.id] } : prev);
+      } catch (err) { console.error("Auto-assign category to context failed", err); }
+    }
   };
 
   const set_position_category = async (id, pos) => {
@@ -261,6 +277,27 @@ export default function IdeaBin() {
         fetch_categories();
       }
     } catch (err) { console.error("IdeaBin: merge categories failed", err); }
+  };
+
+  // ── Enter / exit context mode ──
+  const enterContext = (ctx) => {
+    // ctx = {id, name, color, category_ids, legend_ids}
+    setActiveContext(ctx);
+    setViewMode("ideas");
+  };
+  const exitContext = () => {
+    setActiveContext(null);
+  };
+  const updateActiveContextColor = async (color) => {
+    if (!activeContext) return;
+    setActiveContext(prev => ({ ...prev, color }));
+    try {
+      await authFetch(`${API}/user/contexts/set_color/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ context_id: activeContext.id, color }),
+      });
+    } catch (err) { console.error("IdeaBin: set context color failed", err); }
   };
 
   const rename_category_api = async (id, newName) => {
@@ -1618,8 +1655,20 @@ export default function IdeaBin() {
   );
 
   const archivedCategories = Object.values(categories).filter(c => c.archived);
-  const activeCategories = Object.entries(categories).filter(([k, c]) => !c.archived && !dockedCategories.includes(String(k)));
+  const activeCategories = Object.entries(categories).filter(([k, c]) => {
+    if (c.archived || dockedCategories.includes(String(k))) return false;
+    // When inside a context, only show categories belonging to that context
+    if (activeContext) {
+      return (activeContext.category_ids || []).includes(Number(k));
+    }
+    return true;
+  });
   const unassignedCount = unassignedOrder.length;
+
+  // Filtered legends for legend panel when inside a context
+  const filteredLegends = activeContext
+    ? dims.legends.filter(l => (activeContext.legend_ids || []).includes(l.id))
+    : dims.legends;
 
   // ═══════════════════════════════════════════════════════
   // ═══════════  JSX  ═════════════════════════════════════
@@ -1697,14 +1746,76 @@ export default function IdeaBin() {
           <div
             onMouseDown={handleWindowDrag}
             onDoubleClick={toggleMaximize}
-            className="flex items-center justify-between px-3 py-1.5 bg-gradient-to-r from-amber-400 to-yellow-400
-              cursor-grab active:cursor-grabbing flex-shrink-0 border-b border-amber-500/30"
+            className={`flex items-center justify-between px-3 py-1.5 cursor-grab active:cursor-grabbing flex-shrink-0 border-b ${
+              activeContext?.color
+                ? "border-gray-300/50"
+                : "bg-gradient-to-r from-amber-400 to-yellow-400 border-amber-500/30"
+            }`}
+            style={activeContext?.color ? {
+              background: `linear-gradient(to right, ${activeContext.color}88, ${activeContext.color}55)`,
+            } : undefined}
           >
             <div className="flex items-center gap-2">
-              <Lightbulb size={16} className="text-amber-800" />
-              <span className="text-sm font-semibold text-amber-900">
-                Ideas
-              </span>
+              {activeContext ? (
+                <>
+                  {/* Exit context button */}
+                  <button
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={exitContext}
+                    className="p-0.5 rounded hover:bg-white/30 transition-colors"
+                    title="Exit context"
+                  >
+                    <ArrowLeft size={14} className="text-gray-800" />
+                  </button>
+                  <Layers size={14} className="text-gray-800" />
+                  <span className="text-sm font-semibold text-gray-900 truncate max-w-[140px]">
+                    {activeContext.name}
+                  </span>
+                  {/* Color picker */}
+                  <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => setShowContextColorPicker(p => !p)}
+                      className="p-0.5 rounded hover:bg-white/30 transition-colors"
+                      title="Context color"
+                    >
+                      <Palette size={12} style={{ color: activeContext.color || "#6b7280" }} />
+                    </button>
+                    {showContextColorPicker && (
+                      <>
+                        <div className="fixed inset-0 z-[9998]" onClick={() => setShowContextColorPicker(false)} />
+                        <div className="absolute left-0 top-full mt-1 z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[140px]">
+                          <div className="text-[10px] font-semibold text-gray-500 mb-1.5">Context Color</div>
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                            {["#f59e0b", "#ef4444", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16", "#f97316", "#6366f1"].map(c => (
+                              <button
+                                key={c}
+                                onClick={() => { updateActiveContextColor(c); setShowContextColorPicker(false); }}
+                                className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${activeContext.color === c ? "border-gray-800 scale-110" : "border-gray-200"}`}
+                                style={{ backgroundColor: c }}
+                              />
+                            ))}
+                          </div>
+                          {activeContext.color && (
+                            <button
+                              onClick={() => { updateActiveContextColor(null); setShowContextColorPicker(false); }}
+                              className="text-[10px] text-gray-500 hover:text-gray-700 transition-colors"
+                            >
+                              Remove color
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Lightbulb size={16} className="text-amber-800" />
+                  <span className="text-sm font-semibold text-amber-900">
+                    Ideas
+                  </span>
+                </>
+              )}
               {unassignedCount > 0 && viewMode === "ideas" && (
                 <span className="text-[10px] bg-amber-600/20 text-amber-800 px-1.5 rounded-full font-medium">
                   {unassignedCount}
@@ -1715,7 +1826,8 @@ export default function IdeaBin() {
                   REFACTOR
                 </span>
               )}
-              {/* ── View mode switcher ── */}
+              {/* ── View mode switcher (hidden when inside a context) ── */}
+              {!activeContext && (
               <div className="flex items-center bg-amber-600/15 rounded-full p-0.5 ml-1" onMouseDown={(e) => e.stopPropagation()}>
                 <button
                   onClick={() => setViewMode("ideas")}
@@ -1741,6 +1853,7 @@ export default function IdeaBin() {
                   Contexts
                 </button>
               </div>
+              )}
             </div>
             <div className="flex items-center gap-1">
               {viewMode === "ideas" && (
@@ -2179,6 +2292,21 @@ export default function IdeaBin() {
                 showCreateType={showCreateType} setShowCreateType={setShowCreateType}
                 newTypeColor={newTypeColor} setNewTypeColor={setNewTypeColor}
                 newTypeName={newTypeName} setNewTypeName={setNewTypeName}
+                legendsList={activeContext ? filteredLegends : undefined}
+                onLegendCreated={activeContext ? async () => {
+                  // After legend creation, assign the newest legend to the active context
+                  const latest = dims.legends[dims.legends.length - 1];
+                  if (latest) {
+                    try {
+                      await authFetch(`${API}/user/contexts/assign_legend/`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ legend_id: latest.id, context_id: activeContext.id }),
+                      });
+                      setActiveContext(prev => prev ? { ...prev, legend_ids: [...(prev.legend_ids || []), latest.id] } : prev);
+                    } catch (err) { console.error("Auto-assign legend to context failed", err); }
+                  }
+                } : undefined}
               />
             </div>
 
@@ -2242,6 +2370,7 @@ export default function IdeaBin() {
                 handleCategoryResize={handleCategoryResize}
                 refactorMode={refactorMode}
                 mergeCategoryTarget={mergeCategoryTarget}
+                contextColor={activeContext?.color || null}
               />
             )}
             </>
@@ -2256,6 +2385,7 @@ export default function IdeaBin() {
                 showCanvas={showCategories}
                 sidebarWidth={sidebarWidth}
                 onCategoryCreated={fetch_categories}
+                onEnterContext={enterContext}
               />
             )}
           </div>

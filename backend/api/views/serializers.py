@@ -239,7 +239,7 @@ class ContextSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Context
-        fields = ["id", "name", "x", "y", "width", "height", "z_index", "is_public", "owner_id", "owner_username"]
+        fields = ["id", "name", "x", "y", "width", "height", "z_index", "is_public", "color", "owner_id", "owner_username"]
 
     def get_owner_username(self, obj):
         return obj.owner.username if obj.owner else None

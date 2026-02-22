@@ -18,7 +18,16 @@ export default function IdeaBinLegendPanel({
   showCreateType, setShowCreateType,
   newTypeColor, setNewTypeColor,
   newTypeName, setNewTypeName,
+  onLegendCreated,  // optional callback(legendId) after a legend is created
+  legendsList,      // optional filtered legends array (defaults to dims.legends)
 }) {
+  const displayLegends = legendsList || dims.legends;
+  const handleCreateLegend = async (name) => {
+    await dims.create_legend(name);
+    // After creation, the latest legend will be at the end of dims.legends (if state updated)
+    // We fire the callback with no ID — parent will check dims.legends for the newest
+    if (onLegendCreated) onLegendCreated();
+  };
   return (
     <div className="bg-white border-t border-gray-200 p-2 flex-shrink-0">
       <div
@@ -42,7 +51,7 @@ export default function IdeaBinLegendPanel({
       {!legendPanelCollapsed && (
         <div className="mt-1">
           {/* Legend selector — hidden while creating */}
-          {dims.legends.length > 0 && !showCreateLegend && (
+          {displayLegends.length > 0 && !showCreateLegend && (
             <div className="mb-1">
               {editingLegendId ? (
                 <div className="flex gap-1">
@@ -71,13 +80,13 @@ export default function IdeaBinLegendPanel({
                     onChange={(e) => dims.setActiveLegendId(e.target.value ? parseInt(e.target.value) : null)}
                     className="flex-1 text-[10px] px-1 py-0.5 border border-gray-300 rounded outline-none bg-white"
                   >
-                    {dims.legends.map(d => (
+                    {displayLegends.map(d => (
                       <option key={d.id} value={d.id}>{d.name}</option>
                     ))}
                   </select>
                   <button
                     onClick={() => {
-                      const leg = dims.legends.find(d => d.id === dims.activeLegendId);
+                      const leg = displayLegends.find(d => d.id === dims.activeLegendId);
                       if (leg) { setEditingLegendId(leg.id); setEditingLegendNameLocal(leg.name); }
                     }}
                     title="Rename"
@@ -105,7 +114,7 @@ export default function IdeaBinLegendPanel({
                 onChange={(e) => setNewLegendName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && newLegendName.trim()) {
-                    dims.create_legend(newLegendName.trim());
+                    handleCreateLegend(newLegendName.trim());
                     setNewLegendName(""); setShowCreateLegend(false);
                   } else if (e.key === "Escape") setShowCreateLegend(false);
                 }}
@@ -115,7 +124,7 @@ export default function IdeaBinLegendPanel({
               <button
                 onClick={() => {
                   if (newLegendName.trim()) {
-                    dims.create_legend(newLegendName.trim());
+                    handleCreateLegend(newLegendName.trim());
                     setNewLegendName("");
                     setShowCreateLegend(false);
                   }
