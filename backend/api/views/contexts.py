@@ -160,6 +160,21 @@ def set_context_color(request):
     return Response({"status": "ok", "color": ctx.color})
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def set_context_filter_state(request):
+    """Save filter settings (legendFilters + filterCombineMode) on a context."""
+    ctx_id = request.data.get("context_id")
+    filter_state = request.data.get("filter_state")  # dict or null
+    try:
+        ctx = Context.objects.get(pk=ctx_id, owner=request.user)
+    except Context.DoesNotExist:
+        return Response({"error": "Not found"}, status=404)
+    ctx.filter_state = filter_state
+    ctx.save()
+    return Response({"status": "ok", "filter_state": ctx.filter_state})
+
+
 # ─────────────────────────────────────────────
 #  CATEGORY ↔ CONTEXT PLACEMENT
 # ─────────────────────────────────────────────

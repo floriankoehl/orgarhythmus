@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Copy, Locate, MoreVertical, Zap, X, GitBranchPlus, ThumbsUp, MessageCircle, Send, Trash2 } from "lucide-react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import EditIcon from "@mui/icons-material/Edit";
+import { renderLegendTypeIcon } from "./legendTypeIcons";
 
 /**
  * Single idea card rendered in sidebar lists & category cards.
@@ -44,7 +45,7 @@ export default function IdeaBinIdeaCard({
   const legendType = (() => {
     const legId = String(dims.activeLegendId || "");
     const dt = idea.legend_types?.[legId];
-    if (dt) return { id: dt.legend_type_id, color: dt.color, name: dt.name };
+    if (dt) return { id: dt.legend_type_id, color: dt.color, name: dt.name, icon: dt.icon };
     return null;
   })();
   const isHoveredForType = hoverIdeaForType === ideaId || hoverIdeaForType === `meta_${ideaId}` || hoverIdeaForType === `all_${ideaId}`;
@@ -157,7 +158,7 @@ export default function IdeaBinIdeaCard({
                     const cats = idea.placement_categories || [];
                     const legendEntries = Object.entries(idea.legend_types || {}).map(([legId, dt]) => {
                       const leg = dims.legends.find(d => String(d.id) === String(legId));
-                      return leg ? { legId, legName: leg.name, typeName: dt.name, color: dt.color } : null;
+                      return leg ? { legId, legName: leg.name, typeName: dt.name, color: dt.color, icon: dt.icon } : null;
                     }).filter(Boolean);
                     const hasMeta = cats.length > 0 || legendEntries.length > 0;
                     if (!hasMeta) return null;
@@ -224,7 +225,7 @@ export default function IdeaBinIdeaCard({
                             <div className="flex flex-wrap gap-0.5">
                               {legendEntries.map((e, i) => (
                                 <span key={i} className="inline-flex items-center gap-0.5 bg-gray-100 rounded px-1 py-0.5">
-                                  {e.legName} = <span style={{ color: e.color }} className="font-medium">{e.typeName}</span>
+                                  {e.legName} = {e.icon && renderLegendTypeIcon(e.icon, { style: { fontSize: 10, color: e.color }, className: "flex-shrink-0" })}<span style={{ color: e.color }} className="font-medium">{e.typeName}</span>
                                   {isMetaView && (
                                     <X
                                       size={8}

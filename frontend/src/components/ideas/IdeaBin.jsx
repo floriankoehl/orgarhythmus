@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 
-import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings, Layers, Save, FolderOpen, Trash2, Pencil, Check, ArrowLeft, Palette } from "lucide-react";
+import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings, Layers, Save, FolderOpen, Trash2, Pencil, Check, Palette, ChevronDown } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
@@ -135,6 +135,8 @@ export default function IdeaBin() {
   // ───── Active context (entered context mode) ─────
   const [activeContext, setActiveContext] = useState(null); // null or {id, name, color, category_ids, legend_ids}
   const [showContextColorPicker, setShowContextColorPicker] = useState(false);
+  const [contextsList, setContextsList] = useState([]); // [{id, name, color, category_ids, legend_ids}, ...]
+  const [showContextSelector, setShowContextSelector] = useState(false);
 
   // ───── Selected category for paste ─────
   const [selectedCategoryId, setSelectedCategoryId] = useState(null);
@@ -155,6 +157,10 @@ export default function IdeaBin() {
   const [editingTypeId, setEditingTypeId] = useState(null);
   const [editingTypeName, setEditingTypeName] = useState("");
   const [globalTypeFilter, setGlobalTypeFilter] = useState([]);
+  // ───── Advanced legend filters (multi-legend, stackable, AND/OR, include/exclude) ─────
+  // Array of {legendId, typeIds: [...], mode: "include"|"exclude"}
+  const [legendFilters, setLegendFilters] = useState([]);
+  const [filterCombineMode, setFilterCombineMode] = useState("and"); // "and" | "or"
   const [draggingType, setDraggingType] = useState(null);
   const [hoverIdeaForType, setHoverIdeaForType] = useState(null);
 
@@ -279,14 +285,64 @@ export default function IdeaBin() {
     } catch (err) { console.error("IdeaBin: merge categories failed", err); }
   };
 
+  // ── Fetch contexts list for selector dropdown ──
+  const fetch_contexts_for_selector = async () => {
+    try {
+      const res = await authFetch(`${API}/user/contexts/`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setContextsList(data.map(ctx => ({
+        id: ctx.id,
+        name: ctx.name,
+        color: ctx.color || null,
+        category_ids: ctx.category_ids || [],
+        legend_ids: ctx.legend_ids || [],
+        filter_state: ctx.filter_state || null,
+      })));
+    } catch (e) { console.error("Failed to fetch contexts list", e); }
+  };
+
   // ── Enter / exit context mode ──
+  const saveContextFilterState = async (contextId, filters, combineMode) => {
+    try {
+      await authFetch(`${API}/user/contexts/set_filter_state/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          context_id: contextId,
+          filter_state: { legend_filters: filters, filter_combine_mode: combineMode },
+        }),
+      });
+    } catch (e) { console.error("Failed to save context filter state", e); }
+  };
   const enterContext = (ctx) => {
-    // ctx = {id, name, color, category_ids, legend_ids}
+    // ctx = {id, name, color, category_ids, legend_ids, filter_state}
+    // Save current context's filter state before switching
+    if (activeContext) {
+      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode);
+    }
     setActiveContext(ctx);
     setViewMode("ideas");
+    // Restore filter state from the entered context
+    if (ctx.filter_state) {
+      setLegendFilters(ctx.filter_state.legend_filters || []);
+      setFilterCombineMode(ctx.filter_state.filter_combine_mode || "and");
+      setGlobalTypeFilter([]);
+    } else {
+      setLegendFilters([]);
+      setFilterCombineMode("and");
+      setGlobalTypeFilter([]);
+    }
   };
   const exitContext = () => {
+    // Save current context's filter state before exiting
+    if (activeContext) {
+      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode);
+    }
     setActiveContext(null);
+    setLegendFilters([]);
+    setFilterCombineMode("and");
+    setGlobalTypeFilter([]);
   };
   const updateActiveContextColor = async (color) => {
     if (!activeContext) return;
@@ -673,6 +729,11 @@ export default function IdeaBin() {
       active_legend_id: dims.activeLegendId,
       legend_panel_collapsed: legendPanelCollapsed,
       global_type_filter: globalTypeFilter,
+      legend_filters: legendFilters,
+      filter_combine_mode: filterCombineMode,
+
+      // active context
+      active_context: activeContext,
 
       // categories
       minimized_categories: minimizedCategories,
@@ -698,7 +759,8 @@ export default function IdeaBin() {
     return state;
   }, [windowPos, windowSize, isMaximized, viewMode, sidebarWidth, sidebarHeadlineOnly,
       showSidebarMeta, listFilter, showArchive, dims.activeLegendId, legendPanelCollapsed,
-      globalTypeFilter, minimizedCategories, collapsedIdeas, selectedCategoryId,
+      globalTypeFilter, legendFilters, filterCombineMode, activeContext,
+      minimizedCategories, collapsedIdeas, selectedCategoryId,
       showMetaList, dockedCategories, categories]);
 
   /** Apply a formation state object — restores all visual settings. */
@@ -724,6 +786,11 @@ export default function IdeaBin() {
     if (state.active_legend_id !== undefined) dims.setActiveLegendId(state.active_legend_id);
     if (state.legend_panel_collapsed !== undefined) setLegendPanelCollapsed(state.legend_panel_collapsed);
     if (state.global_type_filter) setGlobalTypeFilter(state.global_type_filter);
+    if (state.legend_filters) setLegendFilters(state.legend_filters);
+    if (state.filter_combine_mode) setFilterCombineMode(state.filter_combine_mode);
+
+    // active context
+    if (state.active_context !== undefined) setActiveContext(state.active_context);
 
     // categories
     if (state.minimized_categories) setMinimizedCategories(state.minimized_categories);
@@ -862,7 +929,7 @@ export default function IdeaBin() {
           const newDt = { ...p.legend_types };
           if (legendTypeId) {
             const lt = dims.legendTypes[legendTypeId];
-            newDt[String(legendId)] = { legend_type_id: legendTypeId, name: lt?.name || "", color: lt?.color || "#ccc" };
+            newDt[String(legendId)] = { legend_type_id: legendTypeId, name: lt?.name || "", color: lt?.color || "#ccc", icon: lt?.icon || null };
           } else {
             delete newDt[String(legendId)];
           }
@@ -1366,8 +1433,18 @@ export default function IdeaBin() {
     if (isOpen) {
       fetch_categories();
       fetch_all_ideas();
+      fetch_contexts_for_selector();
     }
   }, [isOpen]);
+
+  // ── Auto-save filter state when filters change while inside a context ──
+  useEffect(() => {
+    if (!activeContext) return;
+    const timer = setTimeout(() => {
+      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [legendFilters, filterCombineMode]);
 
   // Fetch teams & tasks when transform modal opens
   useEffect(() => {
@@ -1670,6 +1747,48 @@ export default function IdeaBin() {
     ? dims.legends.filter(l => (activeContext.legend_ids || []).includes(l.id))
     : dims.legends;
 
+  // ── Advanced idea filter (multi-legend, stackable, AND/OR, include/exclude) ──
+  const hasLegendFilters = legendFilters.length > 0;
+  const passesLegendFilters = useCallback((idea) => {
+    if (!idea) return false;
+    if (legendFilters.length === 0) return true;
+
+    const results = legendFilters.map(f => {
+      const legId = String(f.legendId);
+      const dt = idea.legend_types?.[legId];
+      const typeId = dt?.legend_type_id;
+      const hasType = !!dt;
+      // Does the idea's type for this legend match any of the selected typeIds?
+      const matchesSelected = f.typeIds.includes("unassigned")
+        ? (!hasType || f.typeIds.includes(typeId))
+        : (hasType && f.typeIds.includes(typeId));
+
+      return f.mode === "exclude" ? !matchesSelected : matchesSelected;
+    });
+
+    // Combine results with AND/OR
+    return filterCombineMode === "and"
+      ? results.every(Boolean)
+      : results.some(Boolean);
+  }, [legendFilters, filterCombineMode]);
+
+  // Also keep the old globalTypeFilter working as fallback (single active legend filter)
+  const passesGlobalTypeFilter = useCallback((idea) => {
+    if (globalTypeFilter.length === 0) return true;
+    if (!idea) return false;
+    const dimId = String(dims.activeLegendId || "");
+    const dt = idea.legend_types?.[dimId];
+    if (globalTypeFilter.includes("unassigned") && !dt) return true;
+    if (dt && globalTypeFilter.includes(dt.legend_type_id)) return true;
+    return false;
+  }, [globalTypeFilter, dims.activeLegendId]);
+
+  // Combined filter: use advanced if active, else fall back to simple
+  const passesAllFilters = useCallback((idea) => {
+    if (hasLegendFilters) return passesLegendFilters(idea);
+    return passesGlobalTypeFilter(idea);
+  }, [hasLegendFilters, passesLegendFilters, passesGlobalTypeFilter]);
+
   // ═══════════════════════════════════════════════════════
   // ═══════════  JSX  ═════════════════════════════════════
   // ═══════════════════════════════════════════════════════
@@ -1756,66 +1875,102 @@ export default function IdeaBin() {
             } : undefined}
           >
             <div className="flex items-center gap-2">
-              {activeContext ? (
-                <>
-                  {/* Exit context button */}
+              <Lightbulb size={16} className={activeContext?.color ? "text-gray-800" : "text-amber-800"} />
+              <span className={`text-sm font-semibold ${activeContext?.color ? "text-gray-900" : "text-amber-900"}`}>
+                Ideas
+              </span>
+
+              {/* ── Context selector dropdown ── */}
+              <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
+                <button
+                  onClick={() => { setShowContextSelector(p => !p); if (!showContextSelector) fetch_contexts_for_selector(); }}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    activeContext
+                      ? "bg-white/30 text-gray-800 hover:bg-white/50"
+                      : "bg-amber-600/15 text-amber-800 hover:bg-amber-600/25"
+                  }`}
+                  title="Select context"
+                >
+                  <Layers size={10} />
+                  {activeContext ? activeContext.name : "All"}
+                  <ChevronDown size={10} />
+                </button>
+                {showContextSelector && (
+                  <>
+                    <div className="fixed inset-0 z-[9998]" onClick={() => setShowContextSelector(false)} />
+                    <div className="absolute left-0 top-full mt-1 z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[150px] max-h-[240px] overflow-y-auto">
+                      {/* "All" option (no context) */}
+                      <button
+                        onClick={() => { exitContext(); setShowContextSelector(false); }}
+                        className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors flex items-center gap-2 ${
+                          !activeContext ? "bg-amber-100 text-amber-800 font-medium" : "text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full bg-gray-300 flex-shrink-0" />
+                        All (no context)
+                      </button>
+                      {contextsList.map(ctx => (
+                        <button
+                          key={ctx.id}
+                          onClick={() => { enterContext(ctx); setShowContextSelector(false); }}
+                          className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors flex items-center gap-2 ${
+                            activeContext?.id === ctx.id ? "bg-amber-100 text-amber-800 font-medium" : "text-gray-700 hover:bg-gray-50"
+                          }`}
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-gray-200"
+                            style={{ backgroundColor: ctx.color || "#94a3b8" }}
+                          />
+                          <span className="truncate">{ctx.name}</span>
+                        </button>
+                      ))}
+                      {contextsList.length === 0 && (
+                        <div className="px-3 py-1.5 text-[10px] text-gray-400 italic">No contexts yet</div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Color picker — only when inside a context */}
+              {activeContext && (
+                <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
                   <button
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={exitContext}
+                    onClick={() => setShowContextColorPicker(p => !p)}
                     className="p-0.5 rounded hover:bg-white/30 transition-colors"
-                    title="Exit context"
+                    title="Context color"
                   >
-                    <ArrowLeft size={14} className="text-gray-800" />
+                    <Palette size={12} style={{ color: activeContext.color || "#6b7280" }} />
                   </button>
-                  <Layers size={14} className="text-gray-800" />
-                  <span className="text-sm font-semibold text-gray-900 truncate max-w-[140px]">
-                    {activeContext.name}
-                  </span>
-                  {/* Color picker */}
-                  <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => setShowContextColorPicker(p => !p)}
-                      className="p-0.5 rounded hover:bg-white/30 transition-colors"
-                      title="Context color"
-                    >
-                      <Palette size={12} style={{ color: activeContext.color || "#6b7280" }} />
-                    </button>
-                    {showContextColorPicker && (
-                      <>
-                        <div className="fixed inset-0 z-[9998]" onClick={() => setShowContextColorPicker(false)} />
-                        <div className="absolute left-0 top-full mt-1 z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[140px]">
-                          <div className="text-[10px] font-semibold text-gray-500 mb-1.5">Context Color</div>
-                          <div className="flex flex-wrap gap-1.5 mb-2">
-                            {["#f59e0b", "#ef4444", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16", "#f97316", "#6366f1"].map(c => (
-                              <button
-                                key={c}
-                                onClick={() => { updateActiveContextColor(c); setShowContextColorPicker(false); }}
-                                className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${activeContext.color === c ? "border-gray-800 scale-110" : "border-gray-200"}`}
-                                style={{ backgroundColor: c }}
-                              />
-                            ))}
-                          </div>
-                          {activeContext.color && (
+                  {showContextColorPicker && (
+                    <>
+                      <div className="fixed inset-0 z-[9998]" onClick={() => setShowContextColorPicker(false)} />
+                      <div className="absolute left-0 top-full mt-1 z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 p-2 min-w-[140px]">
+                        <div className="text-[10px] font-semibold text-gray-500 mb-1.5">Context Color</div>
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {["#f59e0b", "#ef4444", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16", "#f97316", "#6366f1"].map(c => (
                             <button
-                              onClick={() => { updateActiveContextColor(null); setShowContextColorPicker(false); }}
-                              className="text-[10px] text-gray-500 hover:text-gray-700 transition-colors"
-                            >
-                              Remove color
-                            </button>
-                          )}
+                              key={c}
+                              onClick={() => { updateActiveContextColor(c); setShowContextColorPicker(false); }}
+                              className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${activeContext.color === c ? "border-gray-800 scale-110" : "border-gray-200"}`}
+                              style={{ backgroundColor: c }}
+                            />
+                          ))}
                         </div>
-                      </>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <Lightbulb size={16} className="text-amber-800" />
-                  <span className="text-sm font-semibold text-amber-900">
-                    Ideas
-                  </span>
-                </>
+                        {activeContext.color && (
+                          <button
+                            onClick={() => { updateActiveContextColor(null); setShowContextColorPicker(false); }}
+                            className="text-[10px] text-gray-500 hover:text-gray-700 transition-colors"
+                          >
+                            Remove color
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
+
               {unassignedCount > 0 && viewMode === "ideas" && (
                 <span className="text-[10px] bg-amber-600/20 text-amber-800 px-1.5 rounded-full font-medium">
                   {unassignedCount}
@@ -1826,8 +1981,7 @@ export default function IdeaBin() {
                   REFACTOR
                 </span>
               )}
-              {/* ── View mode switcher (hidden when inside a context) ── */}
-              {!activeContext && (
+              {/* ── View mode switcher ── */}
               <div className="flex items-center bg-amber-600/15 rounded-full p-0.5 ml-1" onMouseDown={(e) => e.stopPropagation()}>
                 <button
                   onClick={() => setViewMode("ideas")}
@@ -1853,7 +2007,6 @@ export default function IdeaBin() {
                   Contexts
                 </button>
               </div>
-              )}
             </div>
             <div className="flex items-center gap-1">
               {viewMode === "ideas" && (
@@ -2240,40 +2393,14 @@ export default function IdeaBin() {
                 {/* Idea items for current filter */}
                 {listFilter === "all"
                   ? metaIdeaList
-                      .filter(idea => {
-                        if (globalTypeFilter.length === 0) return true;
-                        if (!idea) return false;
-                        const dimId = String(dims.activeLegendId || "");
-                        const dt = idea.legend_types?.[dimId];
-                        if (globalTypeFilter.includes("unassigned") && !dt) return true;
-                        if (dt && globalTypeFilter.includes(dt.legend_type_id)) return true;
-                        return false;
-                      })
+                      .filter(idea => passesAllFilters(idea))
                       .map((idea, idx) => renderIdeaItem(idea.id, idx, { type: "all" }))
                   : listFilter === "unassigned"
                   ? unassignedOrder
-                      .filter(ideaId => {
-                        if (globalTypeFilter.length === 0) return true;
-                        const idea = ideas[ideaId];
-                        if (!idea) return false;
-                        const dimId = String(dims.activeLegendId || "");
-                        const dt = idea.legend_types?.[dimId];
-                        if (globalTypeFilter.includes("unassigned") && !dt) return true;
-                        if (dt && globalTypeFilter.includes(dt.legend_type_id)) return true;
-                        return false;
-                      })
+                      .filter(ideaId => passesAllFilters(ideas[ideaId]))
                       .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "unassigned" }))
                   : (categoryOrders[listFilter] || [])
-                      .filter(ideaId => {
-                        if (globalTypeFilter.length === 0) return true;
-                        const idea = ideas[ideaId];
-                        if (!idea) return false;
-                        const dimId = String(dims.activeLegendId || "");
-                        const dt = idea.legend_types?.[dimId];
-                        if (globalTypeFilter.includes("unassigned") && !dt) return true;
-                        if (dt && globalTypeFilter.includes(dt.legend_type_id)) return true;
-                        return false;
-                      })
+                      .filter(ideaId => passesAllFilters(ideas[ideaId]))
                       .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: listFilter }))
                 }              </div>
 
@@ -2286,6 +2413,8 @@ export default function IdeaBin() {
                 editingLegendId={editingLegendId} setEditingLegendId={setEditingLegendId}
                 editingLegendNameLocal={editingLegendNameLocal} setEditingLegendNameLocal={setEditingLegendNameLocal}
                 globalTypeFilter={globalTypeFilter} setGlobalTypeFilter={setGlobalTypeFilter}
+                legendFilters={legendFilters} setLegendFilters={setLegendFilters}
+                filterCombineMode={filterCombineMode} setFilterCombineMode={setFilterCombineMode}
                 handleTypeDrag={handleTypeDrag}
                 editingTypeId={editingTypeId} setEditingTypeId={setEditingTypeId}
                 editingTypeName={editingTypeName} setEditingTypeName={setEditingTypeName}
@@ -2365,6 +2494,7 @@ export default function IdeaBin() {
                 set_area_category={set_area_category}
                 categoryRefs={categoryRefs}
                 globalTypeFilter={globalTypeFilter}
+                passesAllFilters={passesAllFilters}
                 ideas={ideas} dims={dims}
                 renderIdeaItem={renderIdeaItem}
                 handleCategoryResize={handleCategoryResize}

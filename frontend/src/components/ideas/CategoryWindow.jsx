@@ -2,6 +2,7 @@
 import ArchiveIcon from "@mui/icons-material/Archive";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import IdeaItem from "./IdeaItem";
+import { renderLegendTypeIcon } from "./legendTypeIcons";
 
 /**
  * Renders one category window positioned absolutely inside the canvas.
@@ -242,7 +243,7 @@ export default function CategoryWindow({
                 });
               }}
             >
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: lt.color }} />
+              {lt.icon ? renderLegendTypeIcon(lt.icon, { style: { fontSize: 14, color: lt.color } }) : <div className="w-3 h-3 rounded-full" style={{ backgroundColor: lt.color }} />}
               <span className="flex-1">{lt.name}</span>
               {categoryTypeFilters[category_key]?.includes(lt.id) && <span className="text-blue-500">✓</span>}
             </div>

@@ -642,9 +642,10 @@ def create_legend_type(request, legend_id):
     leg = get_object_or_404(Legend, id=legend_id, owner=request.user)
     name = request.data.get("name", "New Type").strip()
     color = request.data.get("color", "#cccccc")
+    icon = request.data.get("icon", None)
     max_order = LegendType.objects.filter(legend=leg).aggregate(db_models.Max('order_index'))['order_index__max']
     next_order = (max_order + 1) if max_order is not None else 0
-    lt = LegendType.objects.create(legend=leg, name=name, color=color, order_index=next_order)
+    lt = LegendType.objects.create(legend=leg, name=name, color=color, icon=icon, order_index=next_order)
     return Response({"created": True, "type": LegendTypeSerializer(lt).data})
 
 
@@ -658,6 +659,8 @@ def update_legend_type(request, legend_id, type_id):
         lt.name = request.data.get("name", "").strip()
     if "color" in request.data:
         lt.color = request.data.get("color")
+    if "icon" in request.data:
+        lt.icon = request.data.get("icon") or None
     lt.save()
     return Response({"updated": True, "type": LegendTypeSerializer(lt).data})
 

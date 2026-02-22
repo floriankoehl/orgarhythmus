@@ -165,13 +165,14 @@ class IdeaSerializer(serializers.ModelSerializer):
         return cats
 
     def get_legend_types(self, obj):
-        """Return {legend_id: {legend_type_id, name, color}} for every assigned legend."""
+        """Return {legend_id: {legend_type_id, name, color, icon}} for every assigned legend."""
         result = {}
         for dt in obj.legend_types.select_related('legend', 'legend_type').all():
             result[str(dt.legend_id)] = {
                 "legend_type_id": dt.legend_type_id,
                 "name": dt.legend_type.name,
                 "color": dt.legend_type.color,
+                "icon": dt.legend_type.icon,
             }
         return result
 
@@ -239,7 +240,7 @@ class ContextSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Context
-        fields = ["id", "name", "x", "y", "width", "height", "z_index", "is_public", "color", "owner_id", "owner_username"]
+        fields = ["id", "name", "x", "y", "width", "height", "z_index", "is_public", "color", "filter_state", "owner_id", "owner_username"]
 
     def get_owner_username(self, obj):
         return obj.owner.username if obj.owner else None

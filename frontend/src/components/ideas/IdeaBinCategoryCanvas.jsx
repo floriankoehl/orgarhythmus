@@ -40,6 +40,7 @@ export default function IdeaBinCategoryCanvas({
   set_area_category,
   categoryRefs,
   globalTypeFilter,
+  passesAllFilters,
   ideas,
   dims,
   renderIdeaItem,
@@ -189,15 +190,16 @@ export default function IdeaBinCategoryCanvas({
               left: catData.x, top: catData.y + 36,
               width: catData.width, height: catData.height,
               zIndex: catData.z_index || 0,
-              backgroundColor: isMergeTarget
-                ? "#fed7aa"
+              backgroundColor: "#ffffff",
+              backgroundImage: isMergeTarget
+                ? "linear-gradient(135deg, #fed7aa, #fed7aa)"
                 : contextColor && isSelected
-                  ? `${contextColor}30`
+                  ? `linear-gradient(135deg, ${contextColor}, ${contextColor}cc)`
                   : contextColor && isHovered
-                    ? `${contextColor}40`
+                    ? `linear-gradient(135deg, ${contextColor}cc, ${contextColor}aa)`
                     : isAdopted
-                      ? (isHovered ? "#c7d2fe" : isSelected ? "#e0e7ff" : "#eef2ff")
-                      : (isHovered ? "#fde68a" : isSelected ? "#fef9c3" : contextColor ? `${contextColor}18` : "#fef08a"),
+                      ? (isHovered ? "linear-gradient(135deg, #c7d2fe, #c7d2fe)" : isSelected ? "linear-gradient(135deg, #e0e7ff, #e0e7ff)" : "linear-gradient(135deg, #eef2ff, #eef2ff)")
+                      : (isHovered ? "linear-gradient(135deg, #fde68a, #fde68a)" : isSelected ? "linear-gradient(135deg, #fef9c3, #fef9c3)" : contextColor ? `linear-gradient(135deg, ${contextColor}, ${contextColor}cc)` : "linear-gradient(135deg, #fef08a, #fef08a)"),
               transition: "background-color 150ms ease",
             }}
             className={`absolute shadow-lg rounded p-1.5 flex flex-col ${isSelected ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${isAdopted ? "border border-indigo-300" : ""} ${isMergeTarget ? "ring-2 ring-orange-500 ring-offset-1" : ""}`}
@@ -472,16 +474,7 @@ export default function IdeaBinCategoryCanvas({
               }}
             >
               {catIdeas
-                .filter(ideaId => {
-                  if (globalTypeFilter.length === 0) return true;
-                  const idea = ideas[ideaId];
-                  if (!idea) return false;
-                  const legId = String(dims.activeLegendId || "");
-                  const dt = idea.legend_types?.[legId];
-                  if (globalTypeFilter.includes("unassigned") && !dt) return true;
-                  if (dt && globalTypeFilter.includes(dt.legend_type_id)) return true;
-                  return false;
-                })
+                .filter(ideaId => passesAllFilters(ideas[ideaId]))
                 .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: catKey }))
               }
             </div>

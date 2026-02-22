@@ -366,6 +366,7 @@ class LegendType(models.Model):
     legend = models.ForeignKey('Legend', on_delete=models.CASCADE, related_name="types", null=True, blank=True)
     name = models.CharField(max_length=100)
     color = models.CharField(max_length=20, default="#ffffff")
+    icon = models.CharField(max_length=50, null=True, blank=True)  # MUI icon name e.g. "Star", "Lightbulb"
     order_index = models.IntegerField(default=0)
 
     class Meta:
@@ -412,6 +413,7 @@ class Context(models.Model):
     z_index = models.IntegerField(default=0)
     is_public = models.BooleanField(default=False)
     color = models.CharField(max_length=20, null=True, blank=True)  # e.g. "#f59e0b"
+    filter_state = models.JSONField(null=True, blank=True, default=None)  # {legend_filters: [...], filter_combine_mode: "and"|"or"}
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

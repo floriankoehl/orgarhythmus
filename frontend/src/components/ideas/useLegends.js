@@ -65,12 +65,12 @@ export function useLegends() {
     });
   };
 
-  const create_type = async (name, color) => {
+  const create_type = async (name, color, icon = null) => {
     if (!activeLegendId) return;
     const res = await authFetch(`/api/user/legends/${activeLegendId}/types/create/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, color }),
+      body: JSON.stringify({ name, color, icon }),
     });
     const data = await res.json();
     if (data.type) {

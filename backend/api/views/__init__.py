@@ -186,6 +186,7 @@ from .contexts import (
     set_context_area,
     bring_to_front_context,
     set_context_color,
+    set_context_filter_state,
     assign_category_to_context,
     remove_category_from_context,
     rename_context,
