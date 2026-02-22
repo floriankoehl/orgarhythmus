@@ -67,6 +67,7 @@ urlpatterns = [
     path("user/categories/create/", views.create_category),
     path("user/categories/bring_to_front/", views.bring_to_front_category),
     path("user/categories/delete/", views.delete_category),
+    path("user/categories/merge/", views.merge_categories),
     path("user/categories/set_position/", views.set_position_category),
     path("user/categories/set_area/", views.set_area_category),
 

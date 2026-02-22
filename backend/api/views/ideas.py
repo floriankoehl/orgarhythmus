@@ -341,6 +341,45 @@ def delete_category(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+def merge_categories(request):
+    """Merge source_id into target_id: move all placements, then delete source."""
+    source_id = request.data.get("source_id")
+    target_id = request.data.get("target_id")
+    if not source_id or not target_id or str(source_id) == str(target_id):
+        return Response({"error": "Invalid source/target"}, status=400)
+
+    source = _get_accessible_category(request.user, source_id)
+    target = _get_accessible_category(request.user, target_id)
+    if not source or not target:
+        return Response({"error": "Category not found"}, status=404)
+
+    # Max order in target to append after existing ideas
+    max_order = IdeaPlacement.objects.filter(
+        idea__owner=request.user, category=target
+    ).aggregate(db_models.Max('order_index'))['order_index__max']
+    next_order = (max_order + 1) if max_order is not None else 0
+
+    # Move all placements from source → target
+    source_placements = IdeaPlacement.objects.filter(
+        category=source, idea__owner=request.user
+    )
+    for p in source_placements:
+        # If idea already has a placement in target, delete duplicate
+        if IdeaPlacement.objects.filter(idea=p.idea, category=target).exists():
+            p.delete()
+        else:
+            p.category = target
+            p.order_index = next_order
+            p.save()
+            next_order += 1
+
+    # Delete source category (only if user owns it)
+    Category.objects.filter(id=source_id, owner=request.user).delete()
+    return Response({"merged": True})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def bring_to_front_category(request):
     category_id = request.data.get("id")
     max_z = Category.objects.filter(owner=request.user).aggregate(db_models.Max('z_index'))['z_index__max'] or 0

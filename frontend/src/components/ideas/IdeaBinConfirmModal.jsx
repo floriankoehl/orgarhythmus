@@ -10,9 +10,9 @@ export default function IdeaBinConfirmModal({ message, onConfirm, onCancel, conf
 
   return (
     <>
-      <div className="absolute inset-0 bg-black/30 z-[50] rounded-b-lg" onClick={onCancel} />
+      <div className="absolute inset-0 bg-black/30 z-[9998] rounded-b-lg" onClick={onCancel} />
       <div
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-2xl p-5 z-[51] min-w-[240px] max-w-[90%]"
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-2xl p-5 z-[9999] min-w-[240px] max-w-[90%]"
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onConfirm(); } }}
       >
         <div className="text-sm mb-4">{message}</div>

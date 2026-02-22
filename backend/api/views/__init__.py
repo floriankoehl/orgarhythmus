@@ -125,6 +125,7 @@ from .ideas import (
     set_position_category,
     set_area_category,
     delete_category,
+    merge_categories,
     bring_to_front_category,
     rename_category,
     update_idea_title,

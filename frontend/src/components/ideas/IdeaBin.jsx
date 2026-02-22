@@ -77,10 +77,16 @@ export default function IdeaBin() {
   // ───── Collapse state ─────
   const [collapsedIdeas, setCollapsedIdeas] = useState({});
   const [minimizedCategories, setMinimizedCategories] = useState({});
+  const [dockedCategories, setDockedCategories] = useState([]);  // ordered cat IDs docked to header
   const [ideaSettingsOpen, setIdeaSettingsOpen] = useState(null); // ideaId or null
 
   // ───── Wiggle state ─────
   const [wigglingIdeaId, setWigglingIdeaId] = useState(null); // idea_id (meta) to wiggle
+
+  // ───── Focus & refactor mode ─────
+  const [isFocused, setIsFocused] = useState(false);
+  const [refactorMode, setRefactorMode] = useState(false);
+  const [mergeCategoryTarget, setMergeCategoryTarget] = useState(null); // catKey being hovered during category drag in refactor mode
 
   // ───── Drag state ─────
   const [dragging, setDragging] = useState(null);
@@ -237,6 +243,24 @@ export default function IdeaBin() {
         await fetch_all_ideas();
       }
     } catch (err) { console.error("IdeaBin: delete category failed", err); }
+  };
+
+  const merge_categories_api = async (sourceId, targetId) => {
+    try {
+      const res = await authFetch(`${API}/user/categories/merge/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_id: parseInt(sourceId), target_id: parseInt(targetId) }),
+      });
+      if (res.ok) {
+        setCategories(prev => { const u = { ...prev }; delete u[sourceId]; return u; });
+        setCategoryOrders(prev => { const u = { ...prev }; delete u[sourceId]; return u; });
+        setDockedCategories(prev => prev.filter(id => id !== String(sourceId)));
+        playSound('ideaDragDrop');
+        await fetch_all_ideas();
+        fetch_categories();
+      }
+    } catch (err) { console.error("IdeaBin: merge categories failed", err); }
   };
 
   const rename_category_api = async (id, newName) => {
@@ -618,6 +642,7 @@ export default function IdeaBin() {
       collapsed_ideas: collapsedIdeas,
       selected_category_id: selectedCategoryId,
       show_meta_list: showMetaList,
+      docked_categories: dockedCategories,
 
       // category canvas positions (snapshot current state)
       category_positions: Object.fromEntries(
@@ -637,7 +662,7 @@ export default function IdeaBin() {
   }, [windowPos, windowSize, isMaximized, viewMode, sidebarWidth, sidebarHeadlineOnly,
       showSidebarMeta, listFilter, showArchive, dims.activeLegendId, legendPanelCollapsed,
       globalTypeFilter, minimizedCategories, collapsedIdeas, selectedCategoryId,
-      showMetaList, categories]);
+      showMetaList, dockedCategories, categories]);
 
   /** Apply a formation state object — restores all visual settings. */
   const applyFormationState = useCallback(async (state) => {
@@ -668,6 +693,7 @@ export default function IdeaBin() {
     if (state.collapsed_ideas) setCollapsedIdeas(state.collapsed_ideas);
     if (state.selected_category_id !== undefined) setSelectedCategoryId(state.selected_category_id);
     if (state.show_meta_list !== undefined) setShowMetaList(state.show_meta_list);
+    if (state.docked_categories) setDockedCategories(state.docked_categories);
 
     // Restore category canvas positions via API (so they persist)
     if (state.category_positions) {
@@ -810,7 +836,7 @@ export default function IdeaBin() {
     });
   };
 
-  // ── Category drag ──
+  // ── Category drag (with merge support in refactor mode) ──
   const handleCategoryDrag = (e, catKey) => {
     e.stopPropagation();
     const cat = categories[catKey];
@@ -821,14 +847,56 @@ export default function IdeaBin() {
     const startX = e.clientX - cat.x;
     const startY = e.clientY - cat.y;
     let nx = cat.x, ny = cat.y;
+    let currentMergeTarget = null;
 
     const onMove = (ev) => {
       nx = Math.max(0, Math.min(ev.clientX - startX, rect.width - cat.width));
       ny = Math.max(0, Math.min(ev.clientY - startY, rect.height - cat.height));
       setCategories(prev => ({ ...prev, [catKey]: { ...prev[catKey], x: nx, y: ny } }));
+
+      // In refactor mode, detect overlap with other categories
+      if (refactorMode) {
+        const dragCenterX = nx + cat.width / 2;
+        const dragCenterY = ny + cat.height / 2;
+        let found = null;
+        for (const [ck, cd] of Object.entries(categories)) {
+          if (ck === catKey || cd.archived || dockedCategories.includes(String(ck))) continue;
+          if (dragCenterX >= cd.x && dragCenterX <= cd.x + cd.width &&
+              dragCenterY >= cd.y && dragCenterY <= cd.y + cd.height) {
+            found = ck;
+            break;
+          }
+        }
+        currentMergeTarget = found;
+        setMergeCategoryTarget(found);
+      }
     };
     const onUp = () => {
-      set_position_category(catKey, { x: nx, y: ny });
+      if (refactorMode && currentMergeTarget && currentMergeTarget !== catKey) {
+        const targetCat = categories[currentMergeTarget];
+        setConfirmModal({
+          message: (
+            <div>
+              <p className="mb-1 text-sm font-medium">Merge categories?</p>
+              <p className="text-xs text-gray-600">
+                Move all ideas from <span className="font-semibold">"{cat.name}"</span> into{" "}
+                <span className="font-semibold">"{targetCat?.name}"</span>.{" "}
+                <span className="text-red-600 font-semibold">"{cat.name}" will be deleted.</span>
+              </p>
+            </div>
+          ),
+          confirmLabel: "Merge",
+          confirmColor: "bg-orange-500 hover:bg-orange-600",
+          onConfirm: () => {
+            merge_categories_api(catKey, currentMergeTarget);
+            setConfirmModal(null);
+          },
+          onCancel: () => setConfirmModal(null),
+        });
+      } else {
+        set_position_category(catKey, { x: nx, y: ny });
+      }
+      setMergeCategoryTarget(null);
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
@@ -837,26 +905,55 @@ export default function IdeaBin() {
   };
 
   // ── Category resize ──
-  const handleCategoryResize = (e, catKey) => {
+  // edge: "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw"
+  const handleCategoryResize = (e, catKey, edge = "se") => {
     e.preventDefault();
     e.stopPropagation();
+    bring_to_front_category(catKey);
     const cat = categories[catKey];
     if (!categoryContainerRef.current) return;
-    const rect = categoryContainerRef.current.getBoundingClientRect();
     const startX = e.clientX;
     const startY = e.clientY;
     const startW = cat.width;
     const startH = cat.height;
-    let fw = startW, fh = startH;
+    const startLeft = cat.x;
+    const startTop = cat.y;
+    const minW = Math.max(80, cat.name.length * 9 + 60);
+    const minH = 50;
+    let fw = startW, fh = startH, fx = startLeft, fy = startTop;
+
+    const resizeW = edge.includes("w");
+    const resizeE = edge.includes("e");
+    const resizeN = edge.includes("n");
+    const resizeS = edge.includes("s") || edge === "s";
 
     const onMove = (ev) => {
-      const minW = Math.max(80, cat.name.length * 9 + 60);
-      fw = Math.max(minW, Math.min(startW + (ev.clientX - startX), rect.width - cat.x));
-      fh = Math.max(50, Math.min(startH + (ev.clientY - startY), rect.height - cat.y));
-      setCategories(prev => ({ ...prev, [catKey]: { ...prev[catKey], width: fw, height: fh } }));
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+
+      if (resizeE) {
+        fw = Math.max(minW, startW + dx);
+      } else if (resizeW) {
+        const newW = Math.max(minW, startW - dx);
+        fx = startLeft + (startW - newW);
+        fw = newW;
+      }
+
+      if (resizeS) {
+        fh = Math.max(minH, startH + dy);
+      } else if (resizeN) {
+        const newH = Math.max(minH, startH - dy);
+        fy = startTop + (startH - newH);
+        fh = newH;
+      }
+
+      setCategories(prev => ({ ...prev, [catKey]: { ...prev[catKey], width: fw, height: fh, x: fx, y: fy } }));
     };
     const onUp = () => {
       set_area_category(catKey, fw, fh);
+      if (fx !== startLeft || fy !== startTop) {
+        set_position_category(catKey, { x: fx, y: fy });
+      }
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
@@ -1268,6 +1365,37 @@ export default function IdeaBin() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, copiedIdeaId, selectedCategoryId]);
 
+  // ── Focus tracking: mousedown inside = focused, mousedown outside = unfocused ──
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleGlobalMouseDown = (e) => {
+      const win = windowRef.current;
+      if (win && win.contains(e.target)) {
+        setIsFocused(true);
+      } else {
+        setIsFocused(false);
+        setRefactorMode(false); // leave refactor mode when losing focus
+      }
+    };
+    document.addEventListener("mousedown", handleGlobalMouseDown, true);
+    return () => document.removeEventListener("mousedown", handleGlobalMouseDown, true);
+  }, [isOpen]);
+
+  // ── "R" key toggles refactor mode when focused ──
+  useEffect(() => {
+    if (!isOpen || !isFocused) return;
+    const handleRefactorKey = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        setRefactorMode(prev => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleRefactorKey);
+    return () => window.removeEventListener("keydown", handleRefactorKey);
+  }, [isOpen, isFocused]);
+
   // ── Listen for dep-refactor-drop events (Dependencies → IdeaBin reverse transform) ──
   useEffect(() => {
     const handleRefactorDrop = (e) => {
@@ -1490,7 +1618,7 @@ export default function IdeaBin() {
   );
 
   const archivedCategories = Object.values(categories).filter(c => c.archived);
-  const activeCategories = Object.entries(categories).filter(([, c]) => !c.archived);
+  const activeCategories = Object.entries(categories).filter(([k, c]) => !c.archived && !dockedCategories.includes(String(k)));
   const unassignedCount = unassignedOrder.length;
 
   // ═══════════════════════════════════════════════════════
@@ -1580,6 +1708,11 @@ export default function IdeaBin() {
               {unassignedCount > 0 && viewMode === "ideas" && (
                 <span className="text-[10px] bg-amber-600/20 text-amber-800 px-1.5 rounded-full font-medium">
                   {unassignedCount}
+                </span>
+              )}
+              {refactorMode && (
+                <span className="text-[9px] bg-orange-600 text-white px-1.5 py-0.5 rounded font-bold tracking-wide animate-pulse" onMouseDown={e => e.stopPropagation()}>
+                  REFACTOR
                 </span>
               )}
               {/* ── View mode switcher ── */}
@@ -2078,6 +2211,7 @@ export default function IdeaBin() {
                 newCategoryPublic={newCategoryPublic} setNewCategoryPublic={setNewCategoryPublic}
                 create_category_api={create_category_api}
                 archivedCategories={archivedCategories}
+                dockedCategories={dockedCategories} setDockedCategories={setDockedCategories}
                 showArchive={showArchive} setShowArchive={setShowArchive}
                 toggle_archive_category={toggle_archive_category}
                 toggle_public_category={toggle_public_category}
@@ -2106,6 +2240,8 @@ export default function IdeaBin() {
                 ideas={ideas} dims={dims}
                 renderIdeaItem={renderIdeaItem}
                 handleCategoryResize={handleCategoryResize}
+                refactorMode={refactorMode}
+                mergeCategoryTarget={mergeCategoryTarget}
               />
             )}
             </>
