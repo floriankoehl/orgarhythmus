@@ -199,6 +199,14 @@ export async function toggleArchiveIdeaApi(ideaIds) {
   });
 }
 
+export async function batchSetArchiveApi(ideaIds, archived) {
+  await authFetch(`${API}/user/ideas/batch_set_archive/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ idea_ids: ideaIds, archived }),
+  });
+}
+
 export async function fetchArchivedIdeasApi() {
   const res = await authFetch(`${API}/user/ideas/archived/`);
   const data = await res.json();

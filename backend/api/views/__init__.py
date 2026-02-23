@@ -160,6 +160,7 @@ from .ideas import (
     batch_assign_legend_type,
     sync_category_ideas,
     toggle_archive_idea,
+    batch_set_archive,
     get_archived_ideas,
     update_category_filter_config,
 )

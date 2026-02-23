@@ -188,6 +188,9 @@ export default function IdeaBin() {
     delete_comment,
     fetch_meta_ideas,
     toggle_archive_idea,
+    undo,
+    redo,
+    historyCount,
   } = useIdeaBinIdeas({ selectedCategoryIds });
 
   // ── Categories hook ──
@@ -256,6 +259,7 @@ export default function IdeaBin() {
     listFilter, viewMode, dockedCategories, activeContext,
     legendFilters, filterCombineMode, globalTypeFilter, dims,
     sidebarFocused,
+    undo, redo,
   });
 
   // ── Formations hook ──

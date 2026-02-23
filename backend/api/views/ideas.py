@@ -798,6 +798,18 @@ def toggle_archive_idea(request):
     return Response({"toggled": True, "count": ideas.count()})
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def batch_set_archive(request):
+    """Explicitly set the archived flag on one or more ideas (for undo/redo)."""
+    idea_ids = request.data.get("idea_ids", [])
+    archived = request.data.get("archived", True)
+    if not idea_ids:
+        return Response({"error": "No idea_ids provided"}, status=400)
+    updated = Idea.objects.filter(id__in=idea_ids, owner=request.user).update(archived=archived)
+    return Response({"updated": updated, "archived": archived})
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_archived_ideas(request):

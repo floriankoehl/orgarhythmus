@@ -22,6 +22,7 @@ export default function useIdeaBinKeyboard(deps) {
     listFilter, viewMode, dockedCategories, activeContext,
     legendFilters, filterCombineMode, globalTypeFilter, dims,
     sidebarFocused,
+    undo, redo,
   } = deps;
 
   const [isFocused, setIsFocused] = useState(false);
@@ -157,6 +158,25 @@ export default function useIdeaBinKeyboard(deps) {
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
   }, [isOpen, paintType, setPaintType]);
+
+  // ── Ctrl+Z = undo, Ctrl+Y = redo ──
+  useEffect(() => {
+    if (!isOpen || !isFocused) return;
+    const handleUndoRedo = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key === "z" || e.key === "Z") {
+        e.preventDefault();
+        undo();
+      } else if (e.key === "y" || e.key === "Y") {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", handleUndoRedo);
+    return () => window.removeEventListener("keydown", handleUndoRedo);
+  }, [isOpen, isFocused, undo, redo]);
 
   // ── Helper: compute passesAllFilters inside this hook ──
   const passesAllFilters = useCallback((idea) => {

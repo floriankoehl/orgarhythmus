@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { RefreshCw, Radio, Filter, X, Trash2, Save } from "lucide-react";
+import { RefreshCw, Radio, Filter, X, Trash2, Save, ChevronDown, ChevronRight } from "lucide-react";
 import { renderLegendTypeIcon } from "./legendTypeIcons";
 
 /**
@@ -37,6 +37,7 @@ export default function FeedFilterPanel({
     return fc?.legend_filters ? JSON.parse(JSON.stringify(fc.legend_filters)) : [];
   });
   const [draftCombine, setDraftCombine] = useState(() => fc?.filter_combine_mode || "and");
+  const [showCustomBuilder, setShowCustomBuilder] = useState(false);
 
   /* Has the user changed anything from the stored config? */
   const isDirty = useMemo(() => {
@@ -140,121 +141,35 @@ export default function FeedFilterPanel({
       {/* ── Filter builder (owner only) ── */}
       {isOwner && (
         <>
-          {/* AND/OR toggle */}
-          {draftRules.filter(r => r.typeIds?.length > 0).length >= 2 && (
-            <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-100">
-              <span className="text-[10px] text-gray-500 font-medium">Combine:</span>
-              <button
-                onClick={() => setDraftCombine("and")}
-                className={`text-[10px] px-2 py-0.5 rounded-md font-bold transition-colors ${
-                  draftCombine === "and" ? "bg-blue-500 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                }`}
-              >AND</button>
-              <button
-                onClick={() => setDraftCombine("or")}
-                className={`text-[10px] px-2 py-0.5 rounded-md font-bold transition-colors ${
-                  draftCombine === "or" ? "bg-blue-500 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                }`}
-              >OR</button>
+          {/* ── Current filter summary (always visible) ── */}
+          {fc && fc.legend_filters?.length > 0 && (
+            <div className="mb-2 p-2 bg-blue-50 rounded-lg border border-blue-200 text-[10px] text-gray-700 leading-relaxed">
+              <div className="font-semibold text-blue-700 mb-0.5">Current filter:</div>
+              {fc.legend_filters.map((rule, i) => {
+                const legend = allLegends.find(l => l.id === rule.legendId);
+                const types = feedFilterTypes[rule.legendId] || (rule.legendId === dims.activeLegendId ? dims.legendTypes : {});
+                const typeNames = (rule.typeIds || []).map(tid =>
+                  tid === "unassigned" ? "Unassigned" : (types[tid]?.name || `#${tid}`)
+                );
+                return (
+                  <div key={i} className="flex items-start gap-1">
+                    {i > 0 && <span className="font-bold text-blue-600 mr-0.5">{(fc.filter_combine_mode || "and").toUpperCase()}</span>}
+                    <span className={`font-bold ${rule.mode === "exclude" ? "text-red-600" : "text-green-600"}`}>
+                      {rule.mode === "exclude" ? "EXCLUDE" : "INCLUDE"}
+                    </span>
+                    <span className="text-gray-500">{typeNames.join(", ")}</span>
+                    <span className="text-gray-400 italic">from {legend?.name || "Legend"}</span>
+                  </div>
+                );
+              })}
             </div>
           )}
+          {!fc && !hasDraftFilter && (
+            <div className="mb-2 text-[10px] text-gray-400 italic">No filter defined</div>
+          )}
 
-          {/* Per-legend type selectors */}
-          <div className="space-y-2 mb-2">
-            {allLegends.map(legend => {
-              const types = feedFilterTypes[legend.id] || (legend.id === dims.activeLegendId ? dims.legendTypes : {});
-              const rule = draftRules.find(r => r.legendId === legend.id);
-              const selectedIds = rule?.typeIds || [];
-              const mode = rule?.mode || "include";
-              const hasSelection = selectedIds.length > 0;
-
-              return (
-                <div key={legend.id} className={`p-2 rounded-lg border transition-colors ${hasSelection ? "bg-blue-50/50 border-blue-200" : "bg-gray-50 border-gray-200"}`}>
-                  {/* Legend name + mode toggle */}
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <span className="text-[10px] font-bold text-gray-700 flex-1 truncate">{legend.name}</span>
-                    {hasSelection && (
-                      <button
-                        onClick={() => toggleMode(legend.id)}
-                        className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold transition-colors ${
-                          mode === "exclude"
-                            ? "bg-red-100 text-red-600 hover:bg-red-200 border border-red-200"
-                            : "bg-green-100 text-green-600 hover:bg-green-200 border border-green-200"
-                        }`}
-                      >
-                        {mode === "exclude" ? "EXCLUDE" : "INCLUDE"}
-                      </button>
-                    )}
-                    {!hasSelection && (
-                      <span className="text-[8px] text-gray-400 italic">no filter</span>
-                    )}
-                  </div>
-
-                  {/* Type chips */}
-                  <div className="flex flex-wrap gap-1">
-                    {/* Unassigned */}
-                    {(() => {
-                      const isSel = selectedIds.includes("unassigned");
-                      return (
-                        <button
-                          onClick={() => toggleType(legend.id, "unassigned")}
-                          className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium transition-all cursor-pointer border ${
-                            isSel
-                              ? "bg-gray-700 text-white border-gray-700 shadow-sm"
-                              : "bg-white text-gray-400 border-gray-300 hover:border-gray-500 hover:text-gray-600"
-                          }`}
-                        >
-                          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isSel ? "bg-white/50" : "bg-gray-500"}`} />
-                          Unassigned
-                        </button>
-                      );
-                    })()}
-                    {/* Legend types */}
-                    {Object.values(types).map(lt => {
-                      const isSel = selectedIds.includes(lt.id);
-                      return (
-                        <button
-                          key={lt.id}
-                          onClick={() => toggleType(legend.id, lt.id)}
-                          className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium transition-all cursor-pointer border ${
-                            isSel ? "shadow-sm" : "bg-white hover:opacity-80"
-                          }`}
-                          style={isSel
-                            ? { backgroundColor: lt.color + "30", color: lt.color, borderColor: lt.color }
-                            : { color: "#9ca3af", borderColor: "#d1d5db" }
-                          }
-                        >
-                          <span
-                            className="w-2 h-2 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: isSel ? lt.color : lt.color + "60" }}
-                          />
-                          {lt.icon && renderLegendTypeIcon(lt.icon, { style: { fontSize: 9, color: isSel ? lt.color : "#9ca3af" } })}
-                          {lt.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-            {allLegends.length === 0 && (
-              <span className="text-[10px] text-gray-400 italic">No legends created yet</span>
-            )}
-          </div>
-
-          {/* ── Action buttons ── */}
-          <div className="border-t border-gray-100 pt-2 space-y-1">
-            {/* Save draft filter */}
-            {hasDraftFilter && isDirty && (
-              <button
-                onClick={saveDraft}
-                className="w-full text-left px-2 py-1.5 text-[11px] text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded flex items-center gap-2 transition-colors font-semibold"
-              >
-                <Save size={11} />
-                Save filter
-              </button>
-            )}
-
+          {/* ── Quick actions (always visible) ── */}
+          <div className="space-y-1 mb-2">
             {/* Assign global filter (from toolbar) */}
             {hasGlobalFilter && (
               <button
@@ -301,6 +216,134 @@ export default function FeedFilterPanel({
                 <Trash2 size={11} />
                 Clear filter
               </button>
+            )}
+          </div>
+
+          {/* ── Expandable custom filter builder ── */}
+          <div className="border-t border-gray-100 pt-2">
+            <button
+              onClick={() => setShowCustomBuilder(!showCustomBuilder)}
+              className="flex items-center gap-1 w-full text-left text-[10px] font-semibold text-gray-500 hover:text-gray-700 transition-colors mb-1"
+            >
+              {showCustomBuilder ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+              Filter yourself
+            </button>
+
+            {showCustomBuilder && (
+              <div className="mt-1">
+                {/* AND/OR toggle */}
+                {draftRules.filter(r => r.typeIds?.length > 0).length >= 2 && (
+                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-100">
+                    <span className="text-[10px] text-gray-500 font-medium">Combine:</span>
+                    <button
+                      onClick={() => setDraftCombine("and")}
+                      className={`text-[10px] px-2 py-0.5 rounded-md font-bold transition-colors ${
+                        draftCombine === "and" ? "bg-blue-500 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                      }`}
+                    >AND</button>
+                    <button
+                      onClick={() => setDraftCombine("or")}
+                      className={`text-[10px] px-2 py-0.5 rounded-md font-bold transition-colors ${
+                        draftCombine === "or" ? "bg-blue-500 text-white shadow-sm" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                      }`}
+                    >OR</button>
+                  </div>
+                )}
+
+                {/* Per-legend type selectors */}
+                <div className="space-y-2 mb-2">
+                  {allLegends.map(legend => {
+                    const types = feedFilterTypes[legend.id] || (legend.id === dims.activeLegendId ? dims.legendTypes : {});
+                    const rule = draftRules.find(r => r.legendId === legend.id);
+                    const selectedIds = rule?.typeIds || [];
+                    const mode = rule?.mode || "include";
+                    const hasSelection = selectedIds.length > 0;
+
+                    return (
+                      <div key={legend.id} className={`p-2 rounded-lg border transition-colors ${hasSelection ? "bg-blue-50/50 border-blue-200" : "bg-gray-50 border-gray-200"}`}>
+                        {/* Legend name + mode toggle */}
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className="text-[10px] font-bold text-gray-700 flex-1 truncate">{legend.name}</span>
+                          {hasSelection && (
+                            <button
+                              onClick={() => toggleMode(legend.id)}
+                              className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold transition-colors ${
+                                mode === "exclude"
+                                  ? "bg-red-100 text-red-600 hover:bg-red-200 border border-red-200"
+                                  : "bg-green-100 text-green-600 hover:bg-green-200 border border-green-200"
+                              }`}
+                            >
+                              {mode === "exclude" ? "EXCLUDE" : "INCLUDE"}
+                            </button>
+                          )}
+                          {!hasSelection && (
+                            <span className="text-[8px] text-gray-400 italic">no filter</span>
+                          )}
+                        </div>
+
+                        {/* Type chips */}
+                        <div className="flex flex-wrap gap-1">
+                          {/* Unassigned */}
+                          {(() => {
+                            const isSel = selectedIds.includes("unassigned");
+                            return (
+                              <button
+                                onClick={() => toggleType(legend.id, "unassigned")}
+                                className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium transition-all cursor-pointer border ${
+                                  isSel
+                                    ? "bg-gray-700 text-white border-gray-700 shadow-sm"
+                                    : "bg-white text-gray-400 border-gray-300 hover:border-gray-500 hover:text-gray-600"
+                                }`}
+                              >
+                                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isSel ? "bg-white/50" : "bg-gray-500"}`} />
+                                Unassigned
+                              </button>
+                            );
+                          })()}
+                          {/* Legend types */}
+                          {Object.values(types).map(lt => {
+                            const isSel = selectedIds.includes(lt.id);
+                            return (
+                              <button
+                                key={lt.id}
+                                onClick={() => toggleType(legend.id, lt.id)}
+                                className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium transition-all cursor-pointer border ${
+                                  isSel ? "shadow-sm" : "bg-white hover:opacity-80"
+                                }`}
+                                style={isSel
+                                  ? { backgroundColor: lt.color + "30", color: lt.color, borderColor: lt.color }
+                                  : { color: "#9ca3af", borderColor: "#d1d5db" }
+                                }
+                              >
+                                <span
+                                  className="w-2 h-2 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: isSel ? lt.color : lt.color + "60" }}
+                                />
+                                {lt.icon && renderLegendTypeIcon(lt.icon, { style: { fontSize: 9, color: isSel ? lt.color : "#9ca3af" } })}
+                                {lt.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {allLegends.length === 0 && (
+                    <span className="text-[10px] text-gray-400 italic">No legends created yet</span>
+                  )}
+                </div>
+
+                {/* Save draft filter */}
+                {hasDraftFilter && isDirty && (
+                  <button
+                    onClick={saveDraft}
+                    className="w-full text-left px-2 py-1.5 text-[11px] text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded flex items-center gap-2 transition-colors font-semibold"
+                  >
+                    <Save size={11} />
+                    Save filter
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </>

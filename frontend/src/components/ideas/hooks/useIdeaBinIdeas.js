@@ -17,6 +17,7 @@ import {
   assignIdeaLegendTypeApi,
   batchRemoveLegendTypeApi,
   batchAssignLegendTypeApi,
+  batchSetArchiveApi,
   toggleUpvoteApi,
   fetchCommentsApi,
   addCommentApi,
@@ -52,6 +53,17 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
   const [showMetaList, setShowMetaList] = useState(false);
   const [metaIdeas, setMetaIdeas] = useState([]);
 
+  // ── Undo / Redo history (max 10 moves) ──
+  const historyRef = useRef({ undo: [], redo: [] });
+  const [historyCount, setHistoryCount] = useState({ undo: 0, redo: 0 });
+
+  const pushMove = useCallback((move) => {
+    const h = historyRef.current;
+    h.undo = [...h.undo.slice(-9), move]; // keep last 10
+    h.redo = [];
+    setHistoryCount({ undo: h.undo.length, redo: 0 });
+  }, []);
+
   // ── Computed: unique meta ideas from placements (exclude archived) ──
   const metaIdeaList = (() => {
     const seen = new Set();
@@ -72,6 +84,57 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
       setUnassignedOrder(order);
       setCategoryOrders(catOrders);
     } catch (err) { console.error("IdeaBin: fetch ideas failed", err); }
+  }, []);
+
+  // ── Execute a move in the given direction ──
+  const executeMoveRef = useRef(null);
+  executeMoveRef.current = async (move, direction) => {
+    switch (move.type) {
+      case 'batch_assign_legend_type': {
+        if (direction === 'undo') {
+          // Group ideas by previous type to minimise API calls
+          const byType = {};
+          for (const [ideaId, prevTypeId] of Object.entries(move.previousStates)) {
+            const key = String(prevTypeId ?? 'null');
+            if (!byType[key]) byType[key] = [];
+            byType[key].push(Number(ideaId));
+          }
+          for (const [typeKey, ids] of Object.entries(byType)) {
+            await batchAssignLegendTypeApi(ids, move.legendId, typeKey === 'null' ? null : Number(typeKey));
+          }
+        } else {
+          await batchAssignLegendTypeApi(move.ideaIds, move.legendId, move.newTypeId);
+        }
+        await fetch_all_ideas();
+        break;
+      }
+      case 'archive_ideas': {
+        // undo = unarchive, redo = archive
+        await batchSetArchiveApi(move.ideaIds, direction === 'redo');
+        await fetch_all_ideas();
+        break;
+      }
+    }
+  };
+
+  const undo = useCallback(async () => {
+    const h = historyRef.current;
+    if (h.undo.length === 0) return;
+    const move = h.undo[h.undo.length - 1];
+    h.undo = h.undo.slice(0, -1);
+    h.redo = [...h.redo, move];
+    setHistoryCount({ undo: h.undo.length, redo: h.redo.length });
+    await executeMoveRef.current(move, 'undo');
+  }, []);
+
+  const redo = useCallback(async () => {
+    const h = historyRef.current;
+    if (h.redo.length === 0) return;
+    const move = h.redo[h.redo.length - 1];
+    h.redo = h.redo.slice(0, -1);
+    h.undo = [...h.undo, move];
+    setHistoryCount({ undo: h.undo.length, redo: h.redo.length });
+    await executeMoveRef.current(move, 'redo');
   }, []);
 
   const create_idea = useCallback(async () => {
@@ -183,6 +246,15 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
     const ideaId = idea?.idea_id || placementId;
     const legendId = dims.activeLegendId;
     if (!legendId) return;
+    // Record move for undo
+    const prevDt = idea?.legend_types?.[String(legendId)];
+    pushMove({
+      type: 'batch_assign_legend_type',
+      legendId,
+      previousStates: { [ideaId]: prevDt?.legend_type_id ?? null },
+      newTypeId: legendTypeId,
+      ideaIds: [ideaId],
+    });
     await assignIdeaLegendTypeApi(ideaId, legendId, legendTypeId);
     setIdeas(prev => {
       const updated = { ...prev };
@@ -200,7 +272,7 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
       }
       return updated;
     });
-  }, [ideas]);
+  }, [ideas, pushMove]);
 
   const batchRemoveLegendType = useCallback(async (legendId, typeId = null) => {
     const seen = new Set();
@@ -223,15 +295,29 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
   const batch_assign_idea_legend_type = useCallback(async (placementIds, legendTypeId, dims) => {
     const legendId = dims.activeLegendId;
     if (!legendId) return;
-    // Collect unique idea IDs from placement IDs
+    // Collect unique idea IDs and capture previous states
     const seen = new Set();
     const ideaIds = [];
+    const previousStates = {};
     for (const pid of placementIds) {
       const idea = ideas[pid];
       const ideaId = idea?.idea_id || pid;
-      if (!seen.has(ideaId)) { seen.add(ideaId); ideaIds.push(ideaId); }
+      if (!seen.has(ideaId)) {
+        seen.add(ideaId);
+        ideaIds.push(ideaId);
+        const prevDt = idea?.legend_types?.[String(legendId)];
+        previousStates[ideaId] = prevDt?.legend_type_id ?? null;
+      }
     }
     if (ideaIds.length === 0) return;
+    // Record move for undo
+    pushMove({
+      type: 'batch_assign_legend_type',
+      legendId,
+      previousStates,
+      newTypeId: legendTypeId,
+      ideaIds,
+    });
     // Optimistic UI update
     setIdeas(prev => {
       const updated = { ...prev };
@@ -251,7 +337,7 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
     });
     // Single API call
     await batchAssignLegendTypeApi(ideaIds, legendId, legendTypeId);
-  }, [ideas]);
+  }, [ideas, pushMove]);
 
   // ── Upvote & Comments ──
   const toggle_upvote = useCallback(async (ideaId) => {
@@ -316,6 +402,11 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
 
   const toggle_archive_idea = useCallback(async (ideaIds) => {
     const ids = Array.isArray(ideaIds) ? ideaIds : [ideaIds];
+    // Record move for undo
+    pushMove({
+      type: 'archive_ideas',
+      ideaIds: ids,
+    });
     // Optimistically remove archived ideas from local state
     setIdeas(prev => {
       const next = { ...prev };
@@ -326,7 +417,7 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
     });
     await toggleArchiveIdeaApi(ids);
     fetch_all_ideas();
-  }, [fetch_all_ideas]);
+  }, [fetch_all_ideas, pushMove]);
 
   return {
     ideas, setIdeas,
@@ -372,5 +463,8 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
     delete_comment,
     fetch_meta_ideas,
     toggle_archive_idea,
+    undo,
+    redo,
+    historyCount,
   };
 }

@@ -61,7 +61,7 @@ export default function IdeaBinLegendPanel({
   const [editingPresetName, setEditingPresetName] = useState("");
   const [appliedPresetName, setAppliedPresetName] = useState("");
   const [allLegendTypes, setAllLegendTypes] = useState({}); // {legendId: {typeId: typeObj}}
-  const [filterPanelCollapsed, setFilterPanelCollapsed] = useState(true);
+  const [filterPanelCollapsed, setFilterPanelCollapsed] = useState(false);
 
   // Count ideas matching filter (for display)
   const filteredIdeaCount = (() => {
