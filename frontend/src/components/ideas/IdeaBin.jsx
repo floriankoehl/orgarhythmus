@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 
-import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings, Layers, Save, FolderOpen, Trash2, Pencil, Check, Palette, ChevronDown } from "lucide-react";
+import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings, Layers, Save, FolderOpen, Trash2, Pencil, Check, Palette, ChevronDown, Star } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
@@ -83,6 +83,10 @@ export default function IdeaBin() {
   // ───── Wiggle state ─────
   const [wigglingIdeaId, setWigglingIdeaId] = useState(null); // idea_id (meta) to wiggle
 
+  // ───── Selected idea(s) ─────
+  const [selectedIdeaIds, setSelectedIdeaIds] = useState(new Set());
+  const lastSelectedIdeaRef = useRef(null); // for shift-click range selection
+
   // ───── Focus & refactor mode ─────
   const [isFocused, setIsFocused] = useState(false);
   const [refactorMode, setRefactorMode] = useState(false);
@@ -138,14 +142,15 @@ export default function IdeaBin() {
   const [contextsList, setContextsList] = useState([]); // [{id, name, color, category_ids, legend_ids}, ...]
   const [showContextSelector, setShowContextSelector] = useState(false);
 
-  // ───── Selected category for paste ─────
-  const [selectedCategoryId, setSelectedCategoryId] = useState(null);
+  // ───── Selected category/ies for paste ─────
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState(new Set());
 
   // ───── Category settings dropdown ─────
   const [categorySettingsOpen, setCategorySettingsOpen] = useState(null); // catKey or null
 
   // ───── Headline mode ─────
   const [headlineModeCategoryId, setHeadlineModeCategoryId] = useState(null); // catKey or null
+  const [headlineModeIdeaId, setHeadlineModeIdeaId] = useState(null); // placement id or null
 
   // ───── Legends ─────
   const dims = useLegends();
@@ -470,7 +475,7 @@ export default function IdeaBin() {
         idea_name: ideaName.trim() || ideaHeadline.trim(),
         description: "",
         headline: ideaHeadline,
-        ...(selectedCategoryId ? { category_id: parseInt(selectedCategoryId) } : {}),
+        ...(selectedCategoryIds.size === 1 ? { category_id: parseInt([...selectedCategoryIds][0]) } : {}),
       }),
     });
     setIdeaName("");
@@ -812,7 +817,7 @@ export default function IdeaBin() {
       // categories
       minimized_categories: minimizedCategories,
       collapsed_ideas: collapsedIdeas,
-      selected_category_id: selectedCategoryId,
+      selected_category_ids: [...selectedCategoryIds],
       show_meta_list: showMetaList,
       docked_categories: dockedCategories,
 
@@ -834,7 +839,7 @@ export default function IdeaBin() {
   }, [windowPos, windowSize, isMaximized, viewMode, sidebarWidth, sidebarHeadlineOnly,
       showSidebarMeta, listFilter, showArchive, dims.activeLegendId, legendPanelCollapsed,
       globalTypeFilter, legendFilters, filterCombineMode, activeContext,
-      minimizedCategories, collapsedIdeas, selectedCategoryId,
+      minimizedCategories, collapsedIdeas, selectedCategoryIds,
       showMetaList, dockedCategories, categories]);
 
   /** Apply a formation state object — restores all visual settings. */
@@ -869,7 +874,8 @@ export default function IdeaBin() {
     // categories
     if (state.minimized_categories) setMinimizedCategories(state.minimized_categories);
     if (state.collapsed_ideas) setCollapsedIdeas(state.collapsed_ideas);
-    if (state.selected_category_id !== undefined) setSelectedCategoryId(state.selected_category_id);
+    if (state.selected_category_id !== undefined) setSelectedCategoryIds(new Set(state.selected_category_id ? [state.selected_category_id] : []));
+    if (state.selected_category_ids) setSelectedCategoryIds(new Set(state.selected_category_ids));
     if (state.show_meta_list !== undefined) setShowMetaList(state.show_meta_list);
     if (state.docked_categories) setDockedCategories(state.docked_categories);
 
@@ -980,6 +986,33 @@ export default function IdeaBin() {
       playSound('ideaDelete');
     } catch (err) { console.error("Delete formation failed", err); }
   };
+
+  const toggle_default_formation = async (formationId) => {
+    try {
+      const res = await authFetch(`${API}/user/formations/${formationId}/set-default/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      setFormations(prev => prev.map(f => ({ ...f, is_default: f.id === formationId ? data.is_default : false })));
+    } catch (err) { console.error("Toggle default formation failed", err); }
+  };
+
+  // Auto-load default formation on first mount
+  const defaultFormationLoaded = useRef(false);
+  useEffect(() => {
+    if (defaultFormationLoaded.current) return;
+    defaultFormationLoaded.current = true;
+    (async () => {
+      try {
+        const res = await authFetch(`${API}/user/formations/default/`);
+        const data = await res.json();
+        if (data?.formation?.state) {
+          await applyFormationState(data.formation.state);
+        }
+      } catch (err) { console.error("Load default formation failed", err); }
+    })();
+  }, []);
 
   // ═══════════════════════════════════════════════════════
   // ═══════════  DRAG HANDLERS  ═══════════════════════════
@@ -1397,22 +1430,38 @@ export default function IdeaBin() {
         }
       } else {
         // Internal drop logic (within IdeaBin)
+        // Determine if this is a multi-select drag (dragged idea is part of selection)
+        const isMultiDrag = selectedIdeaIds.size > 1 && selectedIdeaIds.has(idea.placement_id);
+        // Collect all selected placement ids in their current order within the source
+        const getSelectedInOrder = (orderArr) => {
+          if (!isMultiDrag) return [idea.placement_id];
+          return orderArr.filter(id => selectedIdeaIds.has(id));
+        };
+
         const sameSrc = dropTarget && (
           (dropTarget.type === source.type && dropTarget.type === "unassigned") ||
           (dropTarget.type === "category" && source.type === "category" && String(dropTarget.id) === String(source.id))
         );
         if (sameSrc) {
           if (source.type === "unassigned") {
-            const newOrd = [...unassignedOrder];
-            const [moved] = newOrd.splice(fromIdx, 1);
-            newOrd.splice(toIdx, 0, moved);
+            const movingIds = getSelectedInOrder(unassignedOrder);
+            const newOrd = unassignedOrder.filter(id => !movingIds.includes(id));
+            // Insert position: adjust for removed items before toIdx
+            let insertAt = toIdx;
+            const removedBefore = unassignedOrder.slice(0, toIdx).filter(id => movingIds.includes(id)).length;
+            insertAt -= removedBefore;
+            newOrd.splice(insertAt, 0, ...movingIds);
             setUnassignedOrder(newOrd);
             safe_order(newOrd, null);
             playSound('ideaDragDrop');
           } else if (source.type === "category") {
-            const newOrd = [...(categoryOrders[source.id] || [])];
-            const [moved] = newOrd.splice(fromIdx, 1);
-            newOrd.splice(toIdx, 0, moved);
+            const srcOrder = categoryOrders[source.id] || [];
+            const movingIds = getSelectedInOrder(srcOrder);
+            const newOrd = srcOrder.filter(id => !movingIds.includes(id));
+            let insertAt = toIdx;
+            const removedBefore = srcOrder.slice(0, toIdx).filter(id => movingIds.includes(id)).length;
+            insertAt -= removedBefore;
+            newOrd.splice(insertAt, 0, ...movingIds);
             setCategoryOrders(prev => ({ ...prev, [source.id]: newOrd }));
             safe_order(newOrd, source.id);
             playSound('ideaDragDrop');
@@ -1421,23 +1470,31 @@ export default function IdeaBin() {
           const targetCatId = dropTarget.type === "category" ? parseInt(dropTarget.id) : null;
           if (targetCatId !== null || dropTarget.type === "unassigned") {
             if (source.type === "all") {
-              // Drag from "All Ideas" → category = ADD reference (copy)
-              authFetch(`${API}/user/ideas/copy/`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ idea_id: idea.idea_id, category_id: targetCatId }),
-              })
+              // Drag from "All Ideas" → category = ADD reference (copy) — for all selected
+              const idsToMove = isMultiDrag
+                ? [...selectedIdeaIds].map(pid => ideas[pid]).filter(Boolean).map(i => i.idea_id)
+                : [idea.idea_id];
+              Promise.all(idsToMove.map(ideaId =>
+                authFetch(`${API}/user/ideas/copy/`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ idea_id: ideaId, category_id: targetCatId }),
+                })
+              ))
                 .then(() => { playSound('ideaCreate'); fetch_all_ideas(); })
-                .catch(err => console.error("Copy on drag failed:", err));
+                .catch(err => console.error("Multi-copy on drag failed:", err));
             } else {
-              // Drag from category/unassigned → another category = MOVE placement
-              authFetch(`${API}/user/ideas/assign_to_category/`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ placement_id: idea.placement_id, category_id: targetCatId }),
-              })
+              // Drag from category/unassigned → another category = MOVE all selected placements
+              const placementIds = isMultiDrag ? [...selectedIdeaIds] : [idea.placement_id];
+              Promise.all(placementIds.map(pid =>
+                authFetch(`${API}/user/ideas/assign_to_category/`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ placement_id: pid, category_id: targetCatId }),
+                })
+              ))
                 .then(() => { playSound('ideaDragDrop'); fetch_all_ideas(); })
-                .catch(err => console.error("Move on drag failed:", err));
+                .catch(err => console.error("Multi-move on drag failed:", err));
             }
           }
         }
@@ -1567,12 +1624,12 @@ export default function IdeaBin() {
 
       if (e.ctrlKey && e.key === "v" && copiedIdeaId) {
         e.preventDefault();
-        paste_idea(selectedCategoryId || null);
+        paste_idea([...selectedCategoryIds][0] || null);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, copiedIdeaId, selectedCategoryId]);
+  }, [isOpen, copiedIdeaId, selectedCategoryIds]);
 
   // ── Focus tracking: mousedown inside = focused, mousedown outside = unfocused ──
   useEffect(() => {
@@ -1605,24 +1662,39 @@ export default function IdeaBin() {
     return () => window.removeEventListener("keydown", handleRefactorKey);
   }, [isOpen, isFocused]);
 
-  // ── "H" key toggles headline mode for selected category ──
+  // ── "H" key toggles headline mode for selected category (or single idea if idea selected) ──
   useEffect(() => {
     if (!isOpen || !isFocused) return;
     const handleHeadlineKey = (e) => {
       const tag = document.activeElement?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (e.key === "h" || e.key === "H") {
-        if (!selectedCategoryId) return;
-        e.preventDefault();
-        setHeadlineModeCategoryId(prev => {
-          if (prev === String(selectedCategoryId)) return null;
-          return String(selectedCategoryId);
-        });
+        // If exactly one idea is selected → single-idea headline mode
+        if (selectedIdeaIds.size === 1) {
+          const theId = [...selectedIdeaIds][0];
+          e.preventDefault();
+          const idea = ideas[theId];
+          const catId = idea?.category ? String(idea.category) : null;
+          setHeadlineModeIdeaId(prev => prev === theId ? null : theId);
+          if (catId) setHeadlineModeCategoryId(catId);
+          else setHeadlineModeCategoryId(null);
+          return;
+        }
+        // If exactly one category is selected → whole-category headline mode
+        if (selectedCategoryIds.size === 1) {
+          const theCatId = [...selectedCategoryIds][0];
+          e.preventDefault();
+          setHeadlineModeIdeaId(null);
+          setHeadlineModeCategoryId(prev => {
+            if (prev === String(theCatId)) return null;
+            return String(theCatId);
+          });
+        }
       }
     };
     window.addEventListener("keydown", handleHeadlineKey);
     return () => window.removeEventListener("keydown", handleHeadlineKey);
-  }, [isOpen, isFocused, selectedCategoryId]);
+  }, [isOpen, isFocused, selectedCategoryIds, selectedIdeaIds, ideas]);
 
   // ── Listen for dep-refactor-drop events (Dependencies → IdeaBin reverse transform) ──
   useEffect(() => {
@@ -1842,6 +1914,9 @@ export default function IdeaBin() {
       fetch_comments={fetch_comments}
       add_comment={add_comment}
       delete_comment={delete_comment}
+      selectedIdeaIds={selectedIdeaIds}
+      setSelectedIdeaIds={setSelectedIdeaIds}
+      lastSelectedIdeaRef={lastSelectedIdeaRef}
     />
   );
 
@@ -2111,11 +2186,43 @@ export default function IdeaBin() {
                   {unassignedCount}
                 </span>
               )}
-              {refactorMode && (
-                <span className="text-[9px] bg-orange-600 text-white px-1.5 py-0.5 rounded font-bold tracking-wide animate-pulse" onMouseDown={e => e.stopPropagation()}>
-                  REFACTOR
-                </span>
-              )}
+              {/* ── Always-visible mode indicators ── */}
+              <span
+                className={`text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wide cursor-pointer transition-all ${
+                  refactorMode
+                    ? "bg-orange-600 text-white animate-pulse"
+                    : "bg-gray-200 text-gray-400"
+                }`}
+                onMouseDown={e => e.stopPropagation()}
+                onClick={() => setRefactorMode(prev => !prev)}
+                title={refactorMode ? "Refactor mode ON (R to toggle)" : "Refactor mode OFF (R to toggle)"}
+              >
+                REFACTOR
+              </span>
+              <span
+                className={`text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wide cursor-pointer transition-all ${
+                  (headlineModeCategoryId || headlineModeIdeaId)
+                    ? "bg-purple-600 text-white animate-pulse"
+                    : "bg-gray-200 text-gray-400"
+                }`}
+                onMouseDown={e => e.stopPropagation()}
+                onClick={() => {
+                  if (headlineModeCategoryId || headlineModeIdeaId) {
+                    setHeadlineModeCategoryId(null);
+                    setHeadlineModeIdeaId(null);
+                  }
+                }}
+                title={headlineModeIdeaId
+                  ? `Headline mode for "${(ideas[headlineModeIdeaId]?.headline || ideas[headlineModeIdeaId]?.title || '...').slice(0, 30)}" (H to toggle)`
+                  : headlineModeCategoryId
+                  ? `Headline mode for "${categories[headlineModeCategoryId]?.name || '...'}" (H to toggle)`
+                  : "Headline mode OFF (H to toggle)"
+                }
+              >
+                HEADLINE{headlineModeIdeaId
+                  ? ` · ${(ideas[headlineModeIdeaId]?.headline || ideas[headlineModeIdeaId]?.title || '').slice(0, 20)}${(ideas[headlineModeIdeaId]?.headline || ideas[headlineModeIdeaId]?.title || '').length > 20 ? '…' : ''}`
+                  : headlineModeCategoryId && categories[headlineModeCategoryId] ? ` · ${categories[headlineModeCategoryId].name}` : ''}
+              </span>
               {/* ── View mode switcher ── */}
               <div
                 className="flex items-center rounded-full p-0.5 ml-1"
@@ -2163,11 +2270,11 @@ export default function IdeaBin() {
               {viewMode === "ideas" && copiedIdeaId && (
                 <button
                   onMouseDown={(e) => e.stopPropagation()}
-                  onClick={() => paste_idea(selectedCategoryId || null)}
+                  onClick={() => paste_idea([...selectedCategoryIds][0] || null)}
                   className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[9px] font-semibold hover:bg-indigo-200 transition-colors"
-                  title={`Paste copied idea${selectedCategoryId && categories[selectedCategoryId] ? ` into "${categories[selectedCategoryId].name}"` : " (unassigned)"} (Ctrl+V)`}
+                  title={`Paste copied idea${selectedCategoryIds.size === 1 && categories[[...selectedCategoryIds][0]] ? ` into "${categories[[...selectedCategoryIds][0]].name}"` : " (unassigned)"} (Ctrl+V)`}
                 >
-                  Paste{selectedCategoryId && categories[selectedCategoryId] ? ` → ${categories[selectedCategoryId].name}` : ""}
+                  Paste{selectedCategoryIds.size === 1 && categories[[...selectedCategoryIds][0]] ? ` → ${categories[[...selectedCategoryIds][0]].name}` : ""}
                 </button>
               )}
               {/* ── Formations dropdown ── */}
@@ -2244,6 +2351,12 @@ export default function IdeaBin() {
                                 <FolderOpen size={11} className="inline mr-1 text-amber-500" />
                                 {f.name}
                               </button>
+                              <Star
+                                size={11}
+                                onClick={() => toggle_default_formation(f.id)}
+                                className={`cursor-pointer flex-shrink-0 transition-opacity ${f.is_default ? "text-amber-400 fill-amber-400 opacity-100" : "text-gray-300 hover:text-amber-400! opacity-0 group-hover:opacity-100"}`}
+                                title={f.is_default ? "Remove as default" : "Set as default (auto-load on open)"}
+                              />
                               <Save
                                 size={11}
                                 onClick={() => update_formation_state(f.id)}
@@ -2344,12 +2457,12 @@ export default function IdeaBin() {
                 <h2 className="text-xs font-semibold text-gray-500 mb-1.5">
                   {editingIdeaId ? "Edit Idea" : "New Idea"}
                 </h2>
-                {!editingIdeaId && selectedCategoryId && categories[selectedCategoryId] && (
+                {!editingIdeaId && selectedCategoryIds.size === 1 && categories[[...selectedCategoryIds][0]] && (
                   <div className="flex items-center gap-1 mb-1.5 px-1.5 py-1 bg-indigo-50 border border-indigo-200 rounded text-[10px] text-indigo-700">
                     <span className="font-medium">Auto-add to:</span>
-                    <span className="font-semibold truncate">{categories[selectedCategoryId].name}</span>
+                    <span className="font-semibold truncate">{categories[[...selectedCategoryIds][0]].name}</span>
                     <button
-                      onClick={() => setSelectedCategoryId(null)}
+                      onClick={() => setSelectedCategoryIds(new Set())}
                       className="ml-auto flex-shrink-0 text-indigo-400 hover:text-indigo-600 transition-colors"
                       title="Remove category selection"
                     >
@@ -2437,7 +2550,7 @@ export default function IdeaBin() {
                         onClick={create_idea}
                         className="px-2 py-0.5 bg-green-500 text-white rounded hover:bg-green-600 text-[11px]"
                       >
-                        Create{selectedCategoryId && categories[selectedCategoryId] ? ` → ${categories[selectedCategoryId].name}` : ""}
+                        Create{selectedCategoryIds.size === 1 && categories[[...selectedCategoryIds][0]] ? ` → ${categories[[...selectedCategoryIds][0]].name}` : ""}
                       </button>
                     )
                   )}
@@ -2447,6 +2560,7 @@ export default function IdeaBin() {
               {/* ── Ideas list (switchable) ── */}
               <div
                 ref={IdeaListRef}
+                data-idea-list
                 style={{
                   backgroundColor: dragging && hoverUnassigned ? "#f3f4f6" : "#ffffff",
                   transition: "background-color 150ms ease",
@@ -2633,7 +2747,7 @@ export default function IdeaBin() {
                 categoryOrders={categoryOrders}
                 dragging={dragging}
                 hoverCategory={hoverCategory}
-                selectedCategoryId={selectedCategoryId} setSelectedCategoryId={setSelectedCategoryId}
+                selectedCategoryIds={selectedCategoryIds} setSelectedCategoryIds={setSelectedCategoryIds}
                 bring_to_front_category={bring_to_front_category}
                 handleCategoryDrag={handleCategoryDrag}
                 editingCategoryId={editingCategoryId} setEditingCategoryId={setEditingCategoryId}
@@ -2657,7 +2771,11 @@ export default function IdeaBin() {
                 contextColor={activeContext?.color || null}
                 headlineModeCategoryId={headlineModeCategoryId}
                 setHeadlineModeCategoryId={setHeadlineModeCategoryId}
+                headlineModeIdeaId={headlineModeIdeaId}
+                setHeadlineModeIdeaId={setHeadlineModeIdeaId}
                 update_idea_title_api={update_idea_title_api}
+                selectedIdeaIds={selectedIdeaIds}
+                setSelectedIdeaIds={setSelectedIdeaIds}
               />
             )}
             </>
@@ -2692,7 +2810,7 @@ export default function IdeaBin() {
       )}
 
       {/* ── Drag ghosts (extracted) ── */}
-      <IdeaBinDragGhosts dragging={dragging} externalGhost={externalGhost} draggingType={draggingType} />
+      <IdeaBinDragGhosts dragging={dragging} externalGhost={externalGhost} draggingType={draggingType} selectedIdeaIds={selectedIdeaIds} />
     </>
   );
 }

@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
-import { Copy, Settings, Globe, Lock, UserRound, LinkIcon, PanelTopDashed, Pencil, Type, X, RotateCcw } from "lucide-react";
+import { Copy, Settings, Globe, Lock, UserRound, LinkIcon, PanelTopDashed, Pencil, Type, X, RotateCcw, ArrowDownUp, BookOpenText } from "lucide-react";
 
 /**
  * RIGHT panel – category toolbar + draggable/resizable category cards.
@@ -26,7 +26,7 @@ export default function IdeaBinCategoryCanvas({
   categoryOrders,
   dragging,
   hoverCategory,
-  selectedCategoryId, setSelectedCategoryId,
+  selectedCategoryIds, setSelectedCategoryIds,
   bring_to_front_category,
   handleCategoryDrag,
   editingCategoryId, setEditingCategoryId,
@@ -51,15 +51,131 @@ export default function IdeaBinCategoryCanvas({
   contextColor,
   headlineModeCategoryId,
   setHeadlineModeCategoryId,
+  headlineModeIdeaId,
+  setHeadlineModeIdeaId,
   update_idea_title_api,
+  selectedIdeaIds,
+  setSelectedIdeaIds,
 }) {
   // Local state for headline-mode draft headlines (keyed by ideaId)
   const [draftHeadlines, setDraftHeadlines] = useState({});
+  const saveTimerRef = useRef({});
+
+  // "define" = manual order with drag-to-reorder, "description" = auto-sorted by position in description
+  const [headlineOrderMode, setHeadlineOrderMode] = useState("define");
+
+  // Drag-to-reorder state
+  const dragItemRef = useRef(null);   // { ideaId, index }
+  const dragOverRef = useRef(null);   // { ideaId, index }
+
+  // Auto-save headline with small debounce to batch rapid clicks
+  const updateDraftAndSave = useCallback((ideaId, newHeadline, idea) => {
+    setDraftHeadlines(prev => ({ ...prev, [ideaId]: newHeadline }));
+    // Debounce the API call
+    if (saveTimerRef.current[ideaId]) clearTimeout(saveTimerRef.current[ideaId]);
+    saveTimerRef.current[ideaId] = setTimeout(() => {
+      update_idea_title_api(ideaId, idea.title, newHeadline);
+    }, 400);
+  }, [update_idea_title_api]);
+
+  // ── Marquee selection state ──
+  const [marquee, setMarquee] = useState(null); // { startX, startY, currentX, currentY } or null
+  const marqueeRef = useRef(null);
+
+  const handleMarqueeStart = useCallback((e) => {
+    // Only start marquee on direct canvas background click (not on cards)
+    if (e.target.closest('[data-category-card]') || e.target.closest('[data-headline-builder]')) return;
+    if (e.button !== 0) return; // left click only
+    const rect = categoryContainerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const scrollLeft = categoryContainerRef.current.scrollLeft;
+    const scrollTop = categoryContainerRef.current.scrollTop;
+    const startX = e.clientX - rect.left + scrollLeft;
+    const startY = e.clientY - rect.top + scrollTop;
+    setMarquee({ startX, startY, currentX: startX, currentY: startY });
+    marqueeRef.current = { startX, startY, ctrlKey: e.ctrlKey || e.metaKey };
+
+    const handleMouseMove = (moveE) => {
+      const cx = moveE.clientX - rect.left + categoryContainerRef.current.scrollLeft;
+      const cy = moveE.clientY - rect.top + categoryContainerRef.current.scrollTop;
+      setMarquee(prev => prev ? { ...prev, currentX: cx, currentY: cy } : null);
+    };
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      setMarquee(prev => {
+        if (!prev) return null;
+        // Calculate which categories are inside the marquee
+        const mx1 = Math.min(prev.startX, prev.currentX);
+        const my1 = Math.min(prev.startY, prev.currentY);
+        const mx2 = Math.max(prev.startX, prev.currentX);
+        const my2 = Math.max(prev.startY, prev.currentY);
+        const area = (mx2 - mx1) * (my2 - my1);
+        if (area < 100) return null; // too small = just a click
+        const hit = [];
+        activeCategories.forEach(([catKey, catData]) => {
+          const cx = catData.x;
+          const cy = catData.y + 36;
+          const cw = catData.width;
+          const ch = catData.height;
+          // Check if category rect overlaps marquee rect
+          if (cx + cw > mx1 && cx < mx2 && cy + ch > my1 && cy < my2) {
+            hit.push(catKey);
+          }
+        });
+        if (hit.length > 0) {
+          if (marqueeRef.current?.ctrlKey) {
+            setSelectedCategoryIds(old => {
+              const next = new Set(old);
+              hit.forEach(id => next.add(id));
+              return next;
+            });
+          } else {
+            setSelectedCategoryIds(new Set(hit));
+          }
+        }
+        return null;
+      });
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [activeCategories, categoryContainerRef, setSelectedCategoryIds]);
+
+  // Click anywhere on the canvas background → deselect everything & exit headline mode
+  const handleCanvasClick = useCallback((e) => {
+    if (e.target.closest('[data-headline-builder]')) return;
+    if (e.target.closest('[data-category-card]')) return;
+    // Clear all selections
+    setSelectedCategoryIds(new Set());
+    setSelectedIdeaIds(new Set());
+    // Exit headline mode
+    if (headlineModeCategoryId || headlineModeIdeaId) {
+      setHeadlineModeCategoryId(null);
+      setHeadlineModeIdeaId(null);
+      setDraftHeadlines({});
+    }
+  }, [headlineModeCategoryId, headlineModeIdeaId, setHeadlineModeCategoryId, setHeadlineModeIdeaId, setSelectedCategoryIds, setSelectedIdeaIds]);
+
   return (
     <div
       ref={categoryContainerRef}
       className="flex-1 relative overflow-auto bg-gray-50"
+      onClick={handleCanvasClick}
+      onMouseDown={handleMarqueeStart}
     >
+      {/* Marquee overlay */}
+      {marquee && (() => {
+        const x = Math.min(marquee.startX, marquee.currentX);
+        const y = Math.min(marquee.startY, marquee.currentY);
+        const w = Math.abs(marquee.currentX - marquee.startX);
+        const h = Math.abs(marquee.currentY - marquee.startY);
+        return w * h > 100 ? (
+          <div
+            style={{ left: x, top: y, width: w, height: h }}
+            className="absolute border-2 border-indigo-400 bg-indigo-100/20 rounded pointer-events-none z-[9999]"
+          />
+        ) : null;
+      })()}
       {/* Toolbar */}
       <div className="sticky top-0 z-30 bg-gray-50/90 backdrop-blur-sm border-b border-gray-200">
         <div className="flex items-center gap-2 p-2">
@@ -198,7 +314,7 @@ export default function IdeaBinCategoryCanvas({
       {activeCategories.map(([catKey, catData]) => {
         const catIdeas = categoryOrders[catKey] || [];
         const isHovered = dragging && String(hoverCategory) === String(catKey);
-        const isSelected = String(selectedCategoryId) === String(catKey);
+        const isSelected = selectedCategoryIds.has(catKey) || selectedCategoryIds.has(String(catKey));
         const isAdopted = catData.adopted;
         const isMergeTarget = refactorMode && mergeCategoryTarget === catKey;
 
@@ -221,9 +337,20 @@ export default function IdeaBinCategoryCanvas({
               transition: "background-color 150ms ease",
             }}
             className={`absolute shadow-lg rounded p-1.5 flex flex-col ${isSelected ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${isAdopted ? "border border-indigo-300" : ""} ${isMergeTarget ? "ring-2 ring-orange-500 ring-offset-1" : ""}`}
-            onMouseDown={() => {
+            data-category-card
+            onMouseDown={(e) => {
               bring_to_front_category(catKey);
-              setSelectedCategoryId(prev => String(prev) === String(catKey) ? null : catKey);
+              if (e.ctrlKey || e.metaKey) {
+                setSelectedCategoryIds(prev => {
+                  const next = new Set(prev);
+                  if (next.has(catKey)) next.delete(catKey);
+                  else next.add(catKey);
+                  return next;
+                });
+              } else {
+                setSelectedCategoryIds(new Set([catKey]));
+              }
+              setSelectedIdeaIds(new Set());
             }}
           >
             {/* Merge overlay when this category is a merge target */}
@@ -239,7 +366,10 @@ export default function IdeaBinCategoryCanvas({
               onMouseDown={(e) => {
                 e.stopPropagation();
                 bring_to_front_category(catKey);
-                setSelectedCategoryId(prev => String(prev) === String(catKey) ? null : catKey);
+                setSelectedCategoryIds(prev => {
+                  if (prev.has(catKey)) return prev;
+                  return new Set([catKey]);
+                });
                 handleCategoryDrag(e, catKey);
               }}
               onDoubleClick={(e) => {
@@ -552,42 +682,120 @@ export default function IdeaBinCategoryCanvas({
             <div
               ref={el => (categoryRefs.current[catKey] = el)}
               className="flex-1 overflow-y-auto overflow-x-hidden"
+              data-idea-list
               onMouseDown={(e) => {
                 e.stopPropagation();
                 bring_to_front_category(catKey);
               }}
             >
               {headlineModeCategoryId === catKey ? (
-                /* ── HEADLINE MODE ── */
-                <div className="p-1 space-y-2">
+                /* ── HEADLINE MODE (full category or single idea) ── */
+                <div className="p-1 space-y-1">
                   {catIdeas
                     .filter(ideaId => passesAllFilters(ideas[ideaId]))
-                    .map(ideaId => {
+                    .map((ideaId, idx) => {
                       const idea = ideas[ideaId];
                       if (!idea) return null;
+                      // Single-idea mode: only show headline builder for the selected idea
+                      const showHeadlineBuilder = headlineModeIdeaId ? headlineModeIdeaId === ideaId : true;
+                      if (!showHeadlineBuilder) {
+                        return renderIdeaItem(ideaId, idx, { type: "category", id: catKey });
+                      }
                       const draft = draftHeadlines[ideaId] ?? idea.headline ?? "";
-                      const words = idea.title.split(/\s+/).filter(w => w.length > 0);
-                      // Track which words are already used in the draft
+                      const descWords = idea.title.split(/\s+/).filter(w => w.length > 0);
                       const draftWords = draft.split(/\s+/).filter(w => w.length > 0);
+
+                      // Sort helper: reorder words by their position in the description
+                      const sortByDescription = (wordsArr) => {
+                        const lowerDesc = descWords.map(w => w.toLowerCase());
+                        return [...wordsArr].sort((a, b) => {
+                          const idxA = lowerDesc.indexOf(a.toLowerCase());
+                          const idxB = lowerDesc.indexOf(b.toLowerCase());
+                          return (idxA === -1 ? 9999 : idxA) - (idxB === -1 ? 9999 : idxB);
+                        });
+                      };
+
+                      // Drag handlers for reordering headline words
+                      const handleDragStart = (e, wordIdx) => {
+                        dragItemRef.current = { ideaId, index: wordIdx };
+                        e.dataTransfer.effectAllowed = "move";
+                        e.target.style.opacity = "0.4";
+                      };
+                      const handleDragEnd = (e) => {
+                        e.target.style.opacity = "1";
+                        dragItemRef.current = null;
+                        dragOverRef.current = null;
+                      };
+                      const handleDragOver = (e, wordIdx) => {
+                        e.preventDefault();
+                        dragOverRef.current = { ideaId, index: wordIdx };
+                      };
+                      const handleDrop = (e) => {
+                        e.preventDefault();
+                        if (!dragItemRef.current || !dragOverRef.current) return;
+                        if (dragItemRef.current.ideaId !== ideaId) return;
+                        const fromIdx = dragItemRef.current.index;
+                        const toIdx = dragOverRef.current.index;
+                        if (fromIdx === toIdx) return;
+                        const reordered = [...draftWords];
+                        const [moved] = reordered.splice(fromIdx, 1);
+                        reordered.splice(toIdx, 0, moved);
+                        updateDraftAndSave(ideaId, reordered.join(" "), idea);
+                        dragItemRef.current = null;
+                        dragOverRef.current = null;
+                      };
+
                       return (
-                        <div key={ideaId} className="bg-white rounded border border-purple-200 shadow-sm p-1.5">
+                        <div key={ideaId} className="bg-white rounded border border-purple-200 shadow-sm p-1.5" data-headline-builder onClick={(e) => e.stopPropagation()}>
+                          {/* Order toggle */}
+                          <div className="flex items-center gap-1 mb-1">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newMode = headlineOrderMode === "define" ? "description" : "define";
+                                setHeadlineOrderMode(newMode);
+                                // If switching to description mode, re-sort existing words
+                                if (newMode === "description" && draftWords.length > 1) {
+                                  const sorted = sortByDescription(draftWords);
+                                  updateDraftAndSave(ideaId, sorted.join(" "), idea);
+                                }
+                              }}
+                              className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                                headlineOrderMode === "define"
+                                  ? "bg-purple-50 text-purple-700 border-purple-300 hover:bg-purple-100"
+                                  : "bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
+                              }`}
+                              title={headlineOrderMode === "define" ? "Switch to auto-order by description position" : "Switch to manual drag-to-reorder"}
+                            >
+                              {headlineOrderMode === "define" ? <ArrowDownUp size={10} /> : <BookOpenText size={10} />}
+                              {headlineOrderMode === "define" ? "Define Order" : "Order from Description"}
+                            </button>
+                          </div>
                           {/* Current headline */}
                           <div className="flex items-center gap-1 mb-1">
                             <div
                               className="flex-1 min-h-[22px] px-1.5 py-0.5 rounded border text-[11px] font-semibold bg-purple-50 border-purple-300 text-purple-900 flex items-center flex-wrap gap-0.5"
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={handleDrop}
                             >
                               {draftWords.length > 0 ? draftWords.map((w, i) => (
                                 <span
                                   key={i}
+                                  draggable={headlineOrderMode === "define"}
+                                  onDragStart={(e) => handleDragStart(e, i)}
+                                  onDragEnd={handleDragEnd}
+                                  onDragOver={(e) => handleDragOver(e, i)}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    // Remove this word from the headline
                                     const newWords = [...draftWords];
                                     newWords.splice(i, 1);
-                                    setDraftHeadlines(prev => ({ ...prev, [ideaId]: newWords.join(" ") }));
+                                    const newHeadline = newWords.join(" ");
+                                    updateDraftAndSave(ideaId, newHeadline, idea);
                                   }}
-                                  className="inline-flex items-center bg-purple-200 text-purple-800 rounded px-1 py-0.5 cursor-pointer hover:bg-red-200 hover:text-red-700 transition-colors text-[10px]"
-                                  title="Click to remove"
+                                  className={`inline-flex items-center bg-purple-200 text-purple-800 rounded px-1 py-0.5 cursor-pointer hover:bg-red-200 hover:text-red-700 transition-colors text-[10px] ${
+                                    headlineOrderMode === "define" ? "cursor-grab active:cursor-grabbing" : ""
+                                  }`}
+                                  title={headlineOrderMode === "define" ? "Drag to reorder · Click to remove" : "Click to remove"}
                                 >
                                   {w}
                                   <X size={8} className="ml-0.5 opacity-60" />
@@ -600,35 +808,32 @@ export default function IdeaBinCategoryCanvas({
                               size={12}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setDraftHeadlines(prev => ({ ...prev, [ideaId]: "" }));
+                                updateDraftAndSave(ideaId, "", idea);
                               }}
                               className="text-gray-400 hover:text-red-500 cursor-pointer flex-shrink-0"
                               title="Clear headline"
                             />
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                update_idea_title_api(ideaId, idea.title, draft);
-                                setDraftHeadlines(prev => ({ ...prev, [ideaId]: draft }));
-                              }}
-                              className="text-[9px] px-1.5 py-0.5 bg-purple-600 text-white rounded hover:bg-purple-700 flex-shrink-0 font-medium"
-                            >
-                              Save
-                            </button>
                           </div>
                           {/* Word chips from description */}
                           <div className="flex flex-wrap gap-[3px]">
-                            {words.map((word, i) => {
-                              const isUsed = draftWords.includes(word);
+                            {descWords.map((word, i) => {
+                              const isUsed = draftWords.some(dw => dw.toLowerCase() === word.toLowerCase());
                               return (
                                 <span
                                   key={i}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setDraftHeadlines(prev => {
-                                      const current = prev[ideaId] ?? idea.headline ?? "";
-                                      return { ...prev, [ideaId]: current ? `${current} ${word}` : word };
-                                    });
+                                    const current = draftHeadlines[ideaId] ?? idea.headline ?? "";
+                                    let newHeadline;
+                                    if (headlineOrderMode === "description") {
+                                      // Insert word and re-sort by description position
+                                      const currentWords = current ? current.split(/\s+/).filter(w => w.length > 0) : [];
+                                      currentWords.push(word);
+                                      newHeadline = sortByDescription(currentWords).join(" ");
+                                    } else {
+                                      newHeadline = current ? `${current} ${word}` : word;
+                                    }
+                                    updateDraftAndSave(ideaId, newHeadline, idea);
                                   }}
                                   className={`inline-block rounded px-1.5 py-0.5 text-[10px] cursor-pointer transition-all select-none ${
                                     isUsed

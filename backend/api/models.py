@@ -733,6 +733,7 @@ class Formation(models.Model):
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="formations")
     name = models.CharField(max_length=200)
     state = models.JSONField(default=dict)
+    is_default = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -28,6 +28,7 @@ export default function IdeaBinIdeaCard({
   remove_all_idea_legend_types, remove_idea_legend_type,
   spinoff_idea, categories, currentUserId,
   toggle_upvote, fetch_comments, add_comment, delete_comment,
+  selectedIdeaIds, setSelectedIdeaIds, lastSelectedIdeaRef,
 }) {
   const moreButtonRef = useRef(null);
   const [showComments, setShowComments] = useState(false);
@@ -62,6 +63,7 @@ export default function IdeaBinIdeaCard({
   const isOwnIdea = idea.owner === currentUserId;
   // Foreign idea = in adopted category AND not owned by current user
   const isForeignIdea = isInAdoptedCategory && !isOwnIdea;
+  const isSelected = selectedIdeaIds.has(ideaId);
 
   const handleToggleComments = async (e) => {
     e.stopPropagation();
@@ -98,7 +100,7 @@ export default function IdeaBinIdeaCard({
   };
 
   return (
-    <div key={`idea_${ideaId}`} data-idea-item="true">
+    <div key={`idea_${ideaId}`} data-idea-item="true" data-idea-id={ideaId}>
       <div
         style={{
           opacity: isSource && arrayIndex === hoverIndex ? 1 : 0,
@@ -116,6 +118,42 @@ export default function IdeaBinIdeaCard({
             ideaRefs.current[collapseKey] = el;
           }}
           onMouseDown={(e) => { e.stopPropagation(); handleIdeaDrag(e, idea, arrayIndex, source); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (e.ctrlKey || e.metaKey) {
+              // Toggle this idea in the selection
+              setSelectedIdeaIds(prev => {
+                const next = new Set(prev);
+                if (next.has(ideaId)) next.delete(ideaId);
+                else next.add(ideaId);
+                return next;
+              });
+              lastSelectedIdeaRef.current = ideaId;
+            } else if (e.shiftKey && lastSelectedIdeaRef.current != null) {
+              // Range select: find all sibling [data-idea-item] elements between last and current
+              const container = e.currentTarget.closest('[data-idea-list]') || e.currentTarget.parentElement?.parentElement;
+              if (container) {
+                const allItems = [...container.querySelectorAll('[data-idea-id]')];
+                const ids = allItems.map(el => el.getAttribute('data-idea-id'));
+                const fromIdx = ids.indexOf(String(lastSelectedIdeaRef.current));
+                const toIdx = ids.indexOf(String(ideaId));
+                if (fromIdx !== -1 && toIdx !== -1) {
+                  const start = Math.min(fromIdx, toIdx);
+                  const end = Math.max(fromIdx, toIdx);
+                  const rangeIds = ids.slice(start, end + 1);
+                  setSelectedIdeaIds(prev => {
+                    const next = new Set(prev);
+                    rangeIds.forEach(id => next.add(Number(id) || id));
+                    return next;
+                  });
+                }
+              }
+            } else {
+              // Plain click: select only this one
+              setSelectedIdeaIds(new Set([ideaId]));
+              lastSelectedIdeaRef.current = ideaId;
+            }
+          }}
           onDoubleClick={(e) => {
             e.stopPropagation();
             if (isForeignIdea) return;
@@ -134,7 +172,7 @@ export default function IdeaBinIdeaCard({
               ? "translateY(4px)" : "translateY(0px)",
             transition: "transform 150ms ease, background-color 150ms ease",
           }}
-          className={`w-full rounded text-gray-800 px-1.5 py-1 flex justify-between ${isIdeaCollapsed ? "items-center" : "items-start"} text-[11px] mb-0.5 cursor-grab leading-tight shadow-sm border border-gray-200 hover:shadow-md ${isHoveredForType ? "ring-2 ring-offset-1" : ""} ${isWiggling ? "ideabin-wiggle" : ""}`}
+          className={`w-full rounded text-gray-800 px-1.5 py-1 flex justify-between ${isIdeaCollapsed ? "items-center" : "items-start"} text-[11px] mb-0.5 cursor-grab leading-tight shadow-sm border hover:shadow-md ${isSelected ? "border-indigo-400 ring-1 ring-indigo-300" : "border-gray-200"} ${isHoveredForType ? "ring-2 ring-offset-1" : ""} ${isWiggling ? "ideabin-wiggle" : ""}`}
         >
           <div className={`flex ${isIdeaCollapsed ? "items-center" : "items-start"} gap-1 flex-1 mr-1`}>
             <span

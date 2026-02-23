@@ -2,7 +2,12 @@
  * Floating drag ghost overlays rendered outside the IdeaBin window.
  * Three types: internal idea ghost, type drag ghost, and external ghost.
  */
-export default function IdeaBinDragGhosts({ dragging, externalGhost, draggingType }) {
+export default function IdeaBinDragGhosts({ dragging, externalGhost, draggingType, selectedIdeaIds }) {
+  // Multi-drag: show count badge when dragging one of several selected ideas
+  const multiDragCount = dragging && selectedIdeaIds && selectedIdeaIds.size > 1
+    && (selectedIdeaIds.has(dragging.idea.placement_id) || selectedIdeaIds.has(dragging.idea.id))
+    ? selectedIdeaIds.size : 0;
+
   return (
     <>
       {/* Internal idea drag ghost */}
@@ -19,6 +24,11 @@ export default function IdeaBinDragGhosts({ dragging, externalGhost, draggingTyp
             {dragging.idea.headline && <span className="font-semibold">{dragging.idea.headline}: </span>}
             {dragging.idea.title}
           </span>
+          {multiDragCount > 1 && (
+            <span className="absolute -top-2 -right-2 bg-indigo-500 text-white text-[9px] font-bold rounded-full w-5 h-5 flex items-center justify-center shadow">
+              {multiDragCount}
+            </span>
+          )}
         </div>
       )}
 
@@ -48,6 +58,11 @@ export default function IdeaBinDragGhosts({ dragging, externalGhost, draggingTyp
             maxWidth: 220,
           }}
         >
+          {multiDragCount > 1 && (
+            <span className="absolute -top-2 -right-2 bg-indigo-500 text-white text-[9px] font-bold rounded-full w-5 h-5 flex items-center justify-center shadow z-10">
+              {multiDragCount}
+            </span>
+          )}
           <div
             className="rounded-lg shadow-xl border-2 px-2.5 py-1.5 text-xs font-medium"
             style={{

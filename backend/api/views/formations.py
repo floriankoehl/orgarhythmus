@@ -20,6 +20,7 @@ def list_formations(request):
         {
             "id": f.id,
             "name": f.name,
+            "is_default": f.is_default,
             "updated_at": f.updated_at.isoformat(),
             "created_at": f.created_at.isoformat(),
         }
@@ -38,6 +39,7 @@ def create_formation(request):
     return Response({
         "id": f.id,
         "name": f.name,
+        "is_default": f.is_default,
         "state": f.state,
         "updated_at": f.updated_at.isoformat(),
         "created_at": f.created_at.isoformat(),
@@ -52,6 +54,7 @@ def get_formation(request, formation_id):
     return Response({
         "id": f.id,
         "name": f.name,
+        "is_default": f.is_default,
         "state": f.state,
         "updated_at": f.updated_at.isoformat(),
         "created_at": f.created_at.isoformat(),
@@ -73,6 +76,7 @@ def update_formation(request, formation_id):
     return Response({
         "id": f.id,
         "name": f.name,
+        "is_default": f.is_default,
         "state": f.state,
         "updated_at": f.updated_at.isoformat(),
     })
@@ -85,3 +89,41 @@ def delete_formation(request, formation_id):
     f = get_object_or_404(Formation, id=formation_id, owner=request.user)
     f.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def set_default_formation(request, formation_id):
+    """Toggle a formation as the default. Only one can be default at a time."""
+    f = get_object_or_404(Formation, id=formation_id, owner=request.user)
+    if f.is_default:
+        # Un-default it
+        f.is_default = False
+        f.save()
+    else:
+        # Clear any existing default, then set this one
+        Formation.objects.filter(owner=request.user, is_default=True).update(is_default=False)
+        f.is_default = True
+        f.save()
+    return Response({
+        "id": f.id,
+        "name": f.name,
+        "is_default": f.is_default,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_default_formation(request):
+    """Get the default formation (if any) with full state."""
+    f = Formation.objects.filter(owner=request.user, is_default=True).first()
+    if not f:
+        return Response({"formation": None})
+    return Response({
+        "formation": {
+            "id": f.id,
+            "name": f.name,
+            "is_default": f.is_default,
+            "state": f.state,
+        }
+    })
