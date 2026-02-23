@@ -144,6 +144,9 @@ export default function IdeaBin() {
   // ───── Category settings dropdown ─────
   const [categorySettingsOpen, setCategorySettingsOpen] = useState(null); // catKey or null
 
+  // ───── Headline mode ─────
+  const [headlineModeCategoryId, setHeadlineModeCategoryId] = useState(null); // catKey or null
+
   // ───── Legends ─────
   const dims = useLegends();
   const [legendPanelCollapsed, setLegendPanelCollapsed] = useState(true);
@@ -1602,6 +1605,25 @@ export default function IdeaBin() {
     return () => window.removeEventListener("keydown", handleRefactorKey);
   }, [isOpen, isFocused]);
 
+  // ── "H" key toggles headline mode for selected category ──
+  useEffect(() => {
+    if (!isOpen || !isFocused) return;
+    const handleHeadlineKey = (e) => {
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.key === "h" || e.key === "H") {
+        if (!selectedCategoryId) return;
+        e.preventDefault();
+        setHeadlineModeCategoryId(prev => {
+          if (prev === String(selectedCategoryId)) return null;
+          return String(selectedCategoryId);
+        });
+      }
+    };
+    window.addEventListener("keydown", handleHeadlineKey);
+    return () => window.removeEventListener("keydown", handleHeadlineKey);
+  }, [isOpen, isFocused, selectedCategoryId]);
+
   // ── Listen for dep-refactor-drop events (Dependencies → IdeaBin reverse transform) ──
   useEffect(() => {
     const handleRefactorDrop = (e) => {
@@ -2633,6 +2655,9 @@ export default function IdeaBin() {
                 refactorMode={refactorMode}
                 mergeCategoryTarget={mergeCategoryTarget}
                 contextColor={activeContext?.color || null}
+                headlineModeCategoryId={headlineModeCategoryId}
+                setHeadlineModeCategoryId={setHeadlineModeCategoryId}
+                update_idea_title_api={update_idea_title_api}
               />
             )}
             </>

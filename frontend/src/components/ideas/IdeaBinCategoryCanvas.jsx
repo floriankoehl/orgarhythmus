@@ -1,7 +1,8 @@
+import { useState } from "react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
-import { Copy, Settings, Globe, Lock, UserRound, LinkIcon, PanelTopDashed, Pencil } from "lucide-react";
+import { Copy, Settings, Globe, Lock, UserRound, LinkIcon, PanelTopDashed, Pencil, Type, X, RotateCcw } from "lucide-react";
 
 /**
  * RIGHT panel – category toolbar + draggable/resizable category cards.
@@ -48,7 +49,12 @@ export default function IdeaBinCategoryCanvas({
   refactorMode,
   mergeCategoryTarget,
   contextColor,
+  headlineModeCategoryId,
+  setHeadlineModeCategoryId,
+  update_idea_title_api,
 }) {
+  // Local state for headline-mode draft headlines (keyed by ideaId)
+  const [draftHeadlines, setDraftHeadlines] = useState({});
   return (
     <div
       ref={categoryContainerRef}
@@ -267,6 +273,9 @@ export default function IdeaBinCategoryCanvas({
               ) : (
                 <span className="font-semibold text-[11px] truncate flex items-center gap-1">
                   {catData.name}
+                  {headlineModeCategoryId === catKey && (
+                    <span className="text-[8px] font-medium text-purple-600 bg-purple-100 rounded px-1 py-0.5 flex-shrink-0">HEADLINE</span>
+                  )}
                   {isAdopted && (
                     <span className="text-[9px] font-normal text-indigo-500 flex items-center gap-0.5" title={`By ${catData.owner_username}`}>
                       <UserRound size={8} />{catData.owner_username}
@@ -341,6 +350,33 @@ export default function IdeaBinCategoryCanvas({
                           >
                             <LinkIcon size={11} />
                             Unadopt category
+                          </button>
+                          {/* Headline Mode */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCategorySettingsOpen(null);
+                              if (headlineModeCategoryId === catKey) {
+                                setHeadlineModeCategoryId(null);
+                                setDraftHeadlines({});
+                              } else {
+                                const drafts = {};
+                                catIdeas.forEach(id => {
+                                  const idea = ideas[id];
+                                  if (idea) drafts[id] = idea.headline || "";
+                                });
+                                setDraftHeadlines(drafts);
+                                setHeadlineModeCategoryId(catKey);
+                              }
+                            }}
+                            className={`w-full text-left px-3 py-1.5 text-[11px] flex items-center gap-2 ${
+                              headlineModeCategoryId === catKey
+                                ? "text-purple-700 bg-purple-50 hover:bg-purple-100"
+                                : "text-gray-700 hover:bg-gray-50"
+                            }`}
+                          >
+                            <Type size={11} />
+                            {headlineModeCategoryId === catKey ? "Exit Headline Mode" : "Headline Mode"}
                           </button>
                           {/* Dock to header */}
                           <button
@@ -463,6 +499,34 @@ export default function IdeaBinCategoryCanvas({
                           <Pencil size={11} />
                           Rename
                         </button>
+                        {/* Headline Mode */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCategorySettingsOpen(null);
+                            if (headlineModeCategoryId === catKey) {
+                              setHeadlineModeCategoryId(null);
+                              setDraftHeadlines({});
+                            } else {
+                              // Initialize draft headlines from current ideas
+                              const drafts = {};
+                              catIdeas.forEach(id => {
+                                const idea = ideas[id];
+                                if (idea) drafts[id] = idea.headline || "";
+                              });
+                              setDraftHeadlines(drafts);
+                              setHeadlineModeCategoryId(catKey);
+                            }
+                          }}
+                          className={`w-full text-left px-3 py-1.5 text-[11px] flex items-center gap-2 ${
+                            headlineModeCategoryId === catKey
+                              ? "text-purple-700 bg-purple-50 hover:bg-purple-100"
+                              : "text-gray-700 hover:bg-gray-50"
+                          }`}
+                        >
+                          <Type size={11} />
+                          {headlineModeCategoryId === catKey ? "Exit Headline Mode" : "Headline Mode"}
+                        </button>
                         {/* Dock to header */}
                         <button
                           onClick={(e) => {
@@ -493,10 +557,101 @@ export default function IdeaBinCategoryCanvas({
                 bring_to_front_category(catKey);
               }}
             >
-              {catIdeas
-                .filter(ideaId => passesAllFilters(ideas[ideaId]))
-                .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: catKey }))
-              }
+              {headlineModeCategoryId === catKey ? (
+                /* ── HEADLINE MODE ── */
+                <div className="p-1 space-y-2">
+                  {catIdeas
+                    .filter(ideaId => passesAllFilters(ideas[ideaId]))
+                    .map(ideaId => {
+                      const idea = ideas[ideaId];
+                      if (!idea) return null;
+                      const draft = draftHeadlines[ideaId] ?? idea.headline ?? "";
+                      const words = idea.title.split(/\s+/).filter(w => w.length > 0);
+                      // Track which words are already used in the draft
+                      const draftWords = draft.split(/\s+/).filter(w => w.length > 0);
+                      return (
+                        <div key={ideaId} className="bg-white rounded border border-purple-200 shadow-sm p-1.5">
+                          {/* Current headline */}
+                          <div className="flex items-center gap-1 mb-1">
+                            <div
+                              className="flex-1 min-h-[22px] px-1.5 py-0.5 rounded border text-[11px] font-semibold bg-purple-50 border-purple-300 text-purple-900 flex items-center flex-wrap gap-0.5"
+                            >
+                              {draftWords.length > 0 ? draftWords.map((w, i) => (
+                                <span
+                                  key={i}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    // Remove this word from the headline
+                                    const newWords = [...draftWords];
+                                    newWords.splice(i, 1);
+                                    setDraftHeadlines(prev => ({ ...prev, [ideaId]: newWords.join(" ") }));
+                                  }}
+                                  className="inline-flex items-center bg-purple-200 text-purple-800 rounded px-1 py-0.5 cursor-pointer hover:bg-red-200 hover:text-red-700 transition-colors text-[10px]"
+                                  title="Click to remove"
+                                >
+                                  {w}
+                                  <X size={8} className="ml-0.5 opacity-60" />
+                                </span>
+                              )) : (
+                                <span className="text-purple-400 italic text-[10px]">Click words below to build headline…</span>
+                              )}
+                            </div>
+                            <RotateCcw
+                              size={12}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDraftHeadlines(prev => ({ ...prev, [ideaId]: "" }));
+                              }}
+                              className="text-gray-400 hover:text-red-500 cursor-pointer flex-shrink-0"
+                              title="Clear headline"
+                            />
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                update_idea_title_api(ideaId, idea.title, draft);
+                                setDraftHeadlines(prev => ({ ...prev, [ideaId]: draft }));
+                              }}
+                              className="text-[9px] px-1.5 py-0.5 bg-purple-600 text-white rounded hover:bg-purple-700 flex-shrink-0 font-medium"
+                            >
+                              Save
+                            </button>
+                          </div>
+                          {/* Word chips from description */}
+                          <div className="flex flex-wrap gap-[3px]">
+                            {words.map((word, i) => {
+                              const isUsed = draftWords.includes(word);
+                              return (
+                                <span
+                                  key={i}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDraftHeadlines(prev => {
+                                      const current = prev[ideaId] ?? idea.headline ?? "";
+                                      return { ...prev, [ideaId]: current ? `${current} ${word}` : word };
+                                    });
+                                  }}
+                                  className={`inline-block rounded px-1.5 py-0.5 text-[10px] cursor-pointer transition-all select-none ${
+                                    isUsed
+                                      ? "bg-purple-100 text-purple-400 border border-purple-200"
+                                      : "bg-gray-100 text-gray-700 border border-gray-200 hover:bg-purple-100 hover:text-purple-700 hover:border-purple-300"
+                                  }`}
+                                  title={`Add "${word}" to headline`}
+                                >
+                                  {word}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })
+                  }
+                </div>
+              ) : (
+                catIdeas
+                  .filter(ideaId => passesAllFilters(ideas[ideaId]))
+                  .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: catKey }))
+              )}
             </div>
 
             {/* Resize handles – all edges and corners */}

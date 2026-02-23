@@ -116,6 +116,13 @@ export default function IdeaBinIdeaCard({
             ideaRefs.current[collapseKey] = el;
           }}
           onMouseDown={(e) => { e.stopPropagation(); handleIdeaDrag(e, idea, arrayIndex, source); }}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            if (isForeignIdea) return;
+            setEditingIdeaId(ideaId);
+            setEditingIdeaTitle(idea.title);
+            setEditingIdeaHeadline(idea.headline || "");
+          }}
           style={{
             backgroundColor: isHoveredForType
               ? (draggingType?.color || "#e0e7ff")
