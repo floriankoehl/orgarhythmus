@@ -356,6 +356,7 @@ class Category(models.Model):
     z_index = models.IntegerField(default=0)
     archived = models.BooleanField(default=False)
     is_public = models.BooleanField(default=False)
+    filter_config = models.JSONField(null=True, blank=True, default=None)
 
 
 # ═══════════════════════════════════════════════

@@ -81,6 +81,11 @@ export default function IdeaBinCategoryCanvas({
   // ── Marquee selection state ──
   const [marquee, setMarquee] = useState(null); // { startX, startY, currentX, currentY } or null
   const marqueeRef = useRef(null);
+  const marqueeJustFinishedRef = useRef(false);
+
+  // ── Idea marquee inside categories ──
+  const [ideaMarquee, setIdeaMarquee] = useState(null); // { x1, y1, x2, y2 } in client coords
+  const ideaMarqueeRef = useRef(null);
 
   const handleMarqueeStart = useCallback((e) => {
     // Only start marquee on direct canvas background click (not on cards)
@@ -124,6 +129,8 @@ export default function IdeaBinCategoryCanvas({
           }
         });
         if (hit.length > 0) {
+          marqueeJustFinishedRef.current = true;
+          setTimeout(() => { marqueeJustFinishedRef.current = false; }, 0);
           if (marqueeRef.current?.ctrlKey) {
             setSelectedCategoryIds(old => {
               const next = new Set(old);
@@ -141,8 +148,61 @@ export default function IdeaBinCategoryCanvas({
     window.addEventListener('mouseup', handleMouseUp);
   }, [activeCategories, categoryContainerRef, setSelectedCategoryIds]);
 
+  // ── Idea marquee start handler ──
+  const handleIdeaMarqueeStart = useCallback((e, catKey) => {
+    if (e.target.closest('[data-idea-item]') || e.target.closest('[data-headline-builder]')) return;
+    if (e.button !== 0) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    setIdeaMarquee({ x1: startX, y1: startY, x2: startX, y2: startY });
+    ideaMarqueeRef.current = { catKey, ctrlKey: e.ctrlKey || e.metaKey };
+
+    const handleMouseMove = (moveE) => {
+      setIdeaMarquee(prev => prev ? { ...prev, x2: moveE.clientX, y2: moveE.clientY } : null);
+    };
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      setIdeaMarquee(prev => {
+        if (!prev) return null;
+        const container = categoryRefs.current[ideaMarqueeRef.current?.catKey];
+        if (!container) return null;
+        const mx1 = Math.min(prev.x1, prev.x2);
+        const my1 = Math.min(prev.y1, prev.y2);
+        const mx2 = Math.max(prev.x1, prev.x2);
+        const my2 = Math.max(prev.y1, prev.y2);
+        const area = (mx2 - mx1) * (my2 - my1);
+        if (area < 100) return null;
+        const ideaElements = container.querySelectorAll('[data-idea-id]');
+        const hitIds = [];
+        ideaElements.forEach(el => {
+          const rect = el.getBoundingClientRect();
+          if (rect.right > mx1 && rect.left < mx2 && rect.bottom > my1 && rect.top < my2) {
+            const id = el.getAttribute('data-idea-id');
+            hitIds.push(Number(id) || id);
+          }
+        });
+        if (hitIds.length > 0) {
+          if (ideaMarqueeRef.current?.ctrlKey) {
+            setSelectedIdeaIds(old => {
+              const next = new Set(old);
+              hitIds.forEach(id => next.add(id));
+              return next;
+            });
+          } else {
+            setSelectedIdeaIds(new Set(hitIds));
+          }
+        }
+        return null;
+      });
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [categoryRefs, setSelectedIdeaIds]);
+
   // Click anywhere on the canvas background → deselect everything & exit headline mode
   const handleCanvasClick = useCallback((e) => {
+    if (marqueeJustFinishedRef.current) return;
     if (e.target.closest('[data-headline-builder]')) return;
     if (e.target.closest('[data-category-card]')) return;
     // Clear all selections
@@ -163,7 +223,7 @@ export default function IdeaBinCategoryCanvas({
       onClick={handleCanvasClick}
       onMouseDown={handleMarqueeStart}
     >
-      {/* Marquee overlay */}
+      {/* Category marquee overlay */}
       {marquee && (() => {
         const x = Math.min(marquee.startX, marquee.currentX);
         const y = Math.min(marquee.startY, marquee.currentY);
@@ -173,6 +233,19 @@ export default function IdeaBinCategoryCanvas({
           <div
             style={{ left: x, top: y, width: w, height: h }}
             className="absolute border-2 border-indigo-400 bg-indigo-100/20 rounded pointer-events-none z-[9999]"
+          />
+        ) : null;
+      })()}
+      {/* Idea marquee overlay (fixed position, rendered above everything) */}
+      {ideaMarquee && (() => {
+        const x = Math.min(ideaMarquee.x1, ideaMarquee.x2);
+        const y = Math.min(ideaMarquee.y1, ideaMarquee.y2);
+        const w = Math.abs(ideaMarquee.x2 - ideaMarquee.x1);
+        const h = Math.abs(ideaMarquee.y2 - ideaMarquee.y1);
+        return w * h > 100 ? (
+          <div
+            style={{ position: 'fixed', left: x, top: y, width: w, height: h }}
+            className="border-2 border-blue-400 bg-blue-100/20 rounded pointer-events-none z-[9999]"
           />
         ) : null;
       })()}
@@ -343,12 +416,19 @@ export default function IdeaBinCategoryCanvas({
               if (e.ctrlKey || e.metaKey) {
                 setSelectedCategoryIds(prev => {
                   const next = new Set(prev);
-                  if (next.has(catKey)) next.delete(catKey);
-                  else next.add(catKey);
+                  if (next.has(catKey) || next.has(String(catKey))) {
+                    next.delete(catKey); next.delete(String(catKey));
+                  } else {
+                    next.add(catKey);
+                  }
                   return next;
                 });
               } else {
-                setSelectedCategoryIds(new Set([catKey]));
+                // Don't reset multi-selection if this category is already part of it
+                const alreadySelected = selectedCategoryIds.has(catKey) || selectedCategoryIds.has(String(catKey));
+                if (!alreadySelected) {
+                  setSelectedCategoryIds(new Set([catKey]));
+                }
               }
               setSelectedIdeaIds(new Set());
             }}
@@ -366,10 +446,24 @@ export default function IdeaBinCategoryCanvas({
               onMouseDown={(e) => {
                 e.stopPropagation();
                 bring_to_front_category(catKey);
-                setSelectedCategoryIds(prev => {
-                  if (prev.has(catKey)) return prev;
-                  return new Set([catKey]);
-                });
+                // Preserve multi-selection if this category is already selected;
+                // otherwise select just this one (unless Ctrl/Meta held)
+                if (e.ctrlKey || e.metaKey) {
+                  setSelectedCategoryIds(prev => {
+                    const next = new Set(prev);
+                    if (next.has(catKey) || next.has(String(catKey))) {
+                      next.delete(catKey); next.delete(String(catKey));
+                    } else {
+                      next.add(catKey);
+                    }
+                    return next;
+                  });
+                  return; // don't start drag on ctrl-click
+                }
+                const alreadySelected = selectedCategoryIds.has(catKey) || selectedCategoryIds.has(String(catKey));
+                if (!alreadySelected) {
+                  setSelectedCategoryIds(new Set([catKey]));
+                }
                 handleCategoryDrag(e, catKey);
               }}
               onDoubleClick={(e) => {
@@ -686,6 +780,7 @@ export default function IdeaBinCategoryCanvas({
               onMouseDown={(e) => {
                 e.stopPropagation();
                 bring_to_front_category(catKey);
+                handleIdeaMarqueeStart(e, catKey);
               }}
             >
               {headlineModeCategoryId === catKey ? (

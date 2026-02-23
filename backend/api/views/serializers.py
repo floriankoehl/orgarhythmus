@@ -205,7 +205,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ["id", "name", "x", "y", "width", "height", "z_index", "archived", "is_public", "owner_username", "owner_id"]
+        fields = ["id", "name", "x", "y", "width", "height", "z_index", "archived", "is_public", "owner_username", "owner_id", "filter_config"]
 
     def get_owner_username(self, obj):
         return obj.owner.username if obj.owner else None

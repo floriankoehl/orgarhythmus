@@ -855,6 +855,7 @@ def create_category_with_ideas(request):
     name = request.data.get("name", "Filtered Ideas").strip()
     idea_ids = request.data.get("idea_ids", [])  # list of idea primary ids
     context_id = request.data.get("context_id")   # optional: auto-assign to context
+    filter_config = request.data.get("filter_config")  # optional: store filter for refetch/live
 
     max_z = Category.objects.filter(owner=request.user).aggregate(db_models.Max('z_index'))['z_index__max']
     next_z = (max_z + 1) if max_z is not None else 0
@@ -867,6 +868,7 @@ def create_category_with_ideas(request):
         width=max(250, len(name) * 9 + 80),
         height=200,
         z_index=next_z,
+        filter_config=filter_config if filter_config else None,
     )
 
     # Copy ideas into the new category

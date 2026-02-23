@@ -17,27 +17,24 @@ import IdeaBinDragGhosts from "./IdeaBinDragGhosts";
 import IdeaBinIdeaCard from "./IdeaBinIdeaCard";
 import IdeaBinCategoryCanvas from "./IdeaBinCategoryCanvas";
 import IdeaBinContextView from "./IdeaBinContextView";
+import IdeaBinToolbar from "./IdeaBinToolbar";
 import { useAuth } from "../../auth/AuthContext";
 
+// Extracted hooks
+import useIdeaBinCategories from "./hooks/useIdeaBinCategories";
+import useIdeaBinIdeas from "./hooks/useIdeaBinIdeas";
+import useIdeaBinFormations from "./hooks/useIdeaBinFormations";
+import useIdeaBinDrag from "./hooks/useIdeaBinDrag";
+import useIdeaBinKeyboard from "./hooks/useIdeaBinKeyboard";
+
+// Extracted API helpers
+import { authFetch, API } from "./api/authFetch";
+import { fetchContextsApi, saveContextFilterStateApi, setContextColorApi, assignLegendToContextApi } from "./api/contextApi";
+
 // ───────────────────── Constants ─────────────────────
-const MIN_W = 290;
-const MIN_H = 220;
-const DEFAULT_W = 340;
-const DEFAULT_H = 460;
 const CATEGORY_THRESHOLD = 560; // show categories when wider than this
 const MIN_SIDEBAR_W = 180;
 const MAX_SIDEBAR_W = 400;
-
-function authFetch(url, options = {}) {
-  const token = localStorage.getItem("access_token");
-  return fetch(url, {
-    ...options,
-    headers: {
-      ...options.headers,
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-}
 
 // ═══════════════════════════════════════════════════════════
 // ═══════════════════  IDEA BIN COMPONENT  ═════════════════
@@ -46,7 +43,6 @@ export default function IdeaBin() {
   const { projectId } = useParams();   // optional — only present inside a project
   const { user } = useAuth();
   const currentUserId = user?.id;
-  const API = `${BASE_URL}/api`;
 
   // ───── Window state (extracted) ─────
   const headlineInputRef = useRef(null);
@@ -60,97 +56,15 @@ export default function IdeaBin() {
     handleIconDrag, handleWindowDrag, handleWindowResize, handleEdgeResize,
   } = useIdeaBinWindow(headlineInputRef);
 
-  // ───── Category state ─────
-  const [categories, setCategories] = useState({});
-  const [displayCategoryForm, setDisplayCategoryForm] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [newCategoryPublic, setNewCategoryPublic] = useState(false);
-  const categoryContainerRef = useRef(null);
-
-  // ───── Idea state ─────
-  const [ideas, setIdeas] = useState({});
-  const [unassignedOrder, setUnassignedOrder] = useState([]);
-  const [categoryOrders, setCategoryOrders] = useState({});
-  const [ideaName, setIdeaName] = useState("");
-  const [ideaHeadline, setIdeaHeadline] = useState("");
-
-  // ───── Collapse state ─────
-  const [collapsedIdeas, setCollapsedIdeas] = useState({});
-  const [minimizedCategories, setMinimizedCategories] = useState({});
-  const [dockedCategories, setDockedCategories] = useState([]);  // ordered cat IDs docked to header
-  const [ideaSettingsOpen, setIdeaSettingsOpen] = useState(null); // ideaId or null
-
-  // ───── Wiggle state ─────
-  const [wigglingIdeaId, setWigglingIdeaId] = useState(null); // idea_id (meta) to wiggle
-
   // ───── Selected idea(s) ─────
   const [selectedIdeaIds, setSelectedIdeaIds] = useState(new Set());
   const lastSelectedIdeaRef = useRef(null); // for shift-click range selection
 
-  // ───── Focus & refactor mode ─────
-  const [isFocused, setIsFocused] = useState(false);
-  const [refactorMode, setRefactorMode] = useState(false);
-  const [mergeCategoryTarget, setMergeCategoryTarget] = useState(null); // catKey being hovered during category drag in refactor mode
-
-  // ───── Drag state ─────
-  const [dragging, setDragging] = useState(null);
-  const [dragSource, setDragSource] = useState(null);
-  const [prevIndex, setPrevIndex] = useState(null);
-  const [hoverIndex, setHoverIndex] = useState(null);
-  const [hoverCategory, setHoverCategory] = useState(null);
-  const [hoverUnassigned, setHoverUnassigned] = useState(false);
-
-  // ───── Edit state ─────
-  const [editingCategoryId, setEditingCategoryId] = useState(null);
-  const [editingCategoryName, setEditingCategoryName] = useState("");
-  const [editingIdeaId, setEditingIdeaId] = useState(null);
-  const [editingIdeaTitle, setEditingIdeaTitle] = useState("");
-  const [editingIdeaHeadline, setEditingIdeaHeadline] = useState("");
-
-  // ───── Confirm modal ─────
-  const [confirmModal, setConfirmModal] = useState(null);
-
-  // ───── Transform modal ─────
-  const [transformModal, setTransformModal] = useState(null); // { idea, step: 'choose' | 'task' | 'milestone' }
-  const [transformName, setTransformName] = useState("");
-  const [transformTeamId, setTransformTeamId] = useState(null);
-  const [transformTaskId, setTransformTaskId] = useState(null);
-  const [transformTaskSearch, setTransformTaskSearch] = useState("");
-  const [projectTeams, setProjectTeams] = useState([]);
-  const [projectTasks, setProjectTasks] = useState([]);
-  const [transformLoading, setTransformLoading] = useState(false);
-
-  // ───── Archive ─────
-  const [showArchive, setShowArchive] = useState(false);
-
-  // ───── List view filter ─────
-  const [listFilter, setListFilter] = useState("all"); // "all" | "unassigned" | category id
-  const [showListFilterDropdown, setShowListFilterDropdown] = useState(false);
-  const [showSidebarMeta, setShowSidebarMeta] = useState(false);   // show meta info in sidebar
-  const [sidebarHeadlineOnly, setSidebarHeadlineOnly] = useState(false); // collapse all in sidebar
-  const [showListSettings, setShowListSettings] = useState(false); // settings dropdown
-
-  // ───── Sidebar resize ─────
-  const [sidebarWidth, setSidebarWidth] = useState(240);
-
-  // ───── View mode ─────
-  const [viewMode, setViewMode] = useState("ideas"); // "ideas" | "contexts"
-
-  // ───── Active context (entered context mode) ─────
-  const [activeContext, setActiveContext] = useState(null); // null or {id, name, color, category_ids, legend_ids}
-  const [showContextColorPicker, setShowContextColorPicker] = useState(false);
-  const [contextsList, setContextsList] = useState([]); // [{id, name, color, category_ids, legend_ids}, ...]
-  const [showContextSelector, setShowContextSelector] = useState(false);
-
   // ───── Selected category/ies for paste ─────
   const [selectedCategoryIds, setSelectedCategoryIds] = useState(new Set());
 
-  // ───── Category settings dropdown ─────
-  const [categorySettingsOpen, setCategorySettingsOpen] = useState(null); // catKey or null
-
-  // ───── Headline mode ─────
-  const [headlineModeCategoryId, setHeadlineModeCategoryId] = useState(null); // catKey or null
-  const [headlineModeIdeaId, setHeadlineModeIdeaId] = useState(null); // placement id or null
+  // ───── Confirm modal ─────
+  const [confirmModal, setConfirmModal] = useState(null);
 
   // ───── Legends ─────
   const dims = useLegends();
@@ -170,8 +84,42 @@ export default function IdeaBin() {
   const [legendFilters, setLegendFilters] = useState([]);
   const [filterCombineMode, setFilterCombineMode] = useState("and"); // "and" | "or"
   const [filterPresets, setFilterPresets] = useState([]); // [{name, legend_filters, filter_combine_mode}, ...]
-  const [draggingType, setDraggingType] = useState(null);
-  const [hoverIdeaForType, setHoverIdeaForType] = useState(null);
+
+  // ───── View mode ─────
+  const [viewMode, setViewMode] = useState("ideas"); // "ideas" | "contexts"
+
+  // ───── Active context (entered context mode) ─────
+  const [activeContext, setActiveContext] = useState(null); // null or {id, name, color, category_ids, legend_ids}
+  const [showContextColorPicker, setShowContextColorPicker] = useState(false);
+  const [contextsList, setContextsList] = useState([]); // [{id, name, color, category_ids, legend_ids}, ...]
+  const [showContextSelector, setShowContextSelector] = useState(false);
+
+  // ───── Headline mode ─────
+  const [headlineModeCategoryId, setHeadlineModeCategoryId] = useState(null); // catKey or null
+  const [headlineModeIdeaId, setHeadlineModeIdeaId] = useState(null); // placement id or null
+
+  // ───── List view filter ─────
+  const [listFilter, setListFilter] = useState("all"); // "all" | "unassigned" | category id
+  const [showListFilterDropdown, setShowListFilterDropdown] = useState(false);
+  const [showSidebarMeta, setShowSidebarMeta] = useState(false);   // show meta info in sidebar
+  const [sidebarHeadlineOnly, setSidebarHeadlineOnly] = useState(false); // collapse all in sidebar
+  const [showListSettings, setShowListSettings] = useState(false); // settings dropdown
+
+  // ───── Sidebar resize ─────
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+
+  // ───── Archive ─────
+  const [showArchive, setShowArchive] = useState(false);
+
+  // ───── Transform modal ─────
+  const [transformModal, setTransformModal] = useState(null); // { idea, step: 'choose' | 'task' | 'milestone' }
+  const [transformName, setTransformName] = useState("");
+  const [transformTeamId, setTransformTeamId] = useState(null);
+  const [transformTaskId, setTransformTaskId] = useState(null);
+  const [transformTaskSearch, setTransformTaskSearch] = useState("");
+  const [projectTeams, setProjectTeams] = useState([]);
+  const [projectTasks, setProjectTasks] = useState([]);
+  const [transformLoading, setTransformLoading] = useState(false);
 
   // Refs
   const IdeaListRef = useRef(null);
@@ -182,158 +130,185 @@ export default function IdeaBin() {
   const showCategories = windowSize.w >= CATEGORY_THRESHOLD;
 
   // ═══════════════════════════════════════════════════════
-  // ═══════════  CATEGORY API  ════════════════════════════
+  // ═══════════  HOOKS  ═══════════════════════════════════
   // ═══════════════════════════════════════════════════════
 
-  const fetch_categories = async () => {
-    try {
-      const res = await authFetch(`${API}/user/categories/`);
-      const data = await res.json();
-      const all = data.categories || [];
-      const serialized = {};
-      for (const c of all) {
-        const minW = Math.max(80, c.name.length * 9 + 60);
-        serialized[c.id] = {
-          id: c.id, name: c.name, x: c.x, y: c.y,
-          width: Math.max(c.width, minW), height: c.height,
-          z_index: c.z_index || 0, archived: c.archived || false,
-          is_public: c.is_public || false,
-          adopted: c.adopted || false,
-          owner_username: c.owner_username || null,
-        };
-      }
-      setCategories(serialized);
-    } catch (err) { console.error("IdeaBin: fetch categories failed", err); }
-  };
+  // ── Ideas hook ──
+  const {
+    ideas, setIdeas,
+    unassignedOrder, setUnassignedOrder,
+    categoryOrders, setCategoryOrders,
+    ideaName, setIdeaName,
+    ideaHeadline, setIdeaHeadline,
+    editingIdeaId, setEditingIdeaId,
+    editingIdeaTitle, setEditingIdeaTitle,
+    editingIdeaHeadline, setEditingIdeaHeadline,
+    collapsedIdeas, setCollapsedIdeas,
+    ideaSettingsOpen, setIdeaSettingsOpen,
+    wigglingIdeaId, setWigglingIdeaId,
+    copiedIdeaId, setCopiedIdeaId,
+    showMetaList, setShowMetaList,
+    metaIdeas,
+    metaIdeaList,
+    fetch_all_ideas,
+    create_idea,
+    delete_idea,
+    update_idea_title_api,
+    safe_order,
+    assign_idea_to_category,
+    copy_idea,
+    paste_idea,
+    spinoff_idea,
+    delete_meta_idea,
+    remove_idea_from_category,
+    remove_all_idea_categories,
+    remove_all_idea_legend_types,
+    remove_idea_legend_type,
+    assign_idea_legend_type,
+    batchRemoveLegendType,
+    toggle_upvote,
+    fetch_comments,
+    add_comment,
+    delete_comment,
+    fetch_meta_ideas,
+  } = useIdeaBinIdeas({ selectedCategoryIds });
 
-  const create_category_api = async () => {
-    if (!newCategoryName.trim()) return;
-    const res = await authFetch(`${API}/user/categories/create/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newCategoryName, is_public: newCategoryPublic }),
-    });
-    const data = await res.json();
-    setNewCategoryName("");
-    setNewCategoryPublic(false);
-    setDisplayCategoryForm(false);
-    playSound('ideaCategoryCreate');
-    await fetch_categories();
-    // Auto-assign to active context if inside one
-    if (activeContext && data.category?.id) {
-      try {
-        await authFetch(`${API}/user/contexts/assign_category/`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ category_id: data.category.id, context_id: activeContext.id }),
-        });
-        setActiveContext(prev => prev ? { ...prev, category_ids: [...(prev.category_ids || []), data.category.id] } : prev);
-      } catch (err) { console.error("Auto-assign category to context failed", err); }
-    }
-  };
+  // ── Categories hook ──
+  const {
+    categories, setCategories,
+    displayCategoryForm, setDisplayCategoryForm,
+    newCategoryName, setNewCategoryName,
+    newCategoryPublic, setNewCategoryPublic,
+    categoryContainerRef,
+    editingCategoryId, setEditingCategoryId,
+    editingCategoryName, setEditingCategoryName,
+    categorySettingsOpen, setCategorySettingsOpen,
+    dockedCategories, setDockedCategories,
+    minimizedCategories, setMinimizedCategories,
+    mergeCategoryTarget, setMergeCategoryTarget,
+    fetch_categories,
+    create_category_api,
+    set_position_category,
+    set_area_category,
+    bring_to_front_category,
+    delete_category,
+    merge_categories_api,
+    rename_category_api,
+    toggle_archive_category,
+    toggle_public_category,
+    drop_adopted_category,
+    createCategoryFromFilter: createCategoryFromFilterRaw,
+    handleCategoryDrag: handleCategoryDragRaw,
+    handleCategoryResize,
+  } = useIdeaBinCategories({ activeContext, setActiveContext, fetchAllIdeas: fetch_all_ideas, selectedCategoryIds });
 
-  const set_position_category = async (id, pos) => {
-    await authFetch(`${API}/user/categories/set_position/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, position: pos }),
-    });
-  };
+  // ── Drag hook ──
+  const {
+    dragging, hoverUnassigned,
+    dragSource, prevIndex, hoverIndex,
+    hoverCategory,
+    externalGhost, draggingType, hoverIdeaForType,
+    handleIdeaDrag, handleTypeDrag,
+  } = useIdeaBinDrag({
+    ideas, unassignedOrder, setUnassignedOrder, categoryOrders, setCategoryOrders,
+    safe_order, fetch_all_ideas, delete_idea,
+    categories, categoryContainerRef,
+    windowRef, IdeaListRef, categoryRefs, ideaRefs,
+    dims,
+    selectedIdeaIds,
+    assign_idea_legend_type,
+    projectId, setConfirmModal,
+  });
 
-  const set_area_category = async (id, width, height) => {
-    await authFetch(`${API}/user/categories/set_area/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, width, height }),
-    });
-  };
+  // ── Keyboard hook ──
+  const { isFocused, refactorMode, setRefactorMode } = useIdeaBinKeyboard({
+    isOpen, windowRef,
+    copiedIdeaId, selectedCategoryIds, paste_idea,
+    selectedIdeaIds, ideas, categories,
+    headlineModeCategoryId, setHeadlineModeCategoryId,
+    headlineModeIdeaId, setHeadlineModeIdeaId,
+  });
 
-  const bring_to_front_category = async (id) => {
-    await authFetch(`${API}/user/categories/bring_to_front/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    setCategories(prev => {
-      const maxZ = Math.max(0, ...Object.values(prev).map(c => c.z_index || 0));
-      return { ...prev, [id]: { ...prev[id], z_index: maxZ + 1 } };
-    });
-  };
+  // ── Formations hook ──
+  const {
+    formations,
+    showFormationPanel, setShowFormationPanel,
+    formationName, setFormationName,
+    editingFormationId, setEditingFormationId,
+    editingFormationName, setEditingFormationName,
+    fetch_formations,
+    save_formation,
+    update_formation_state,
+    rename_formation,
+    load_formation,
+    delete_formation,
+    toggle_default_formation,
+  } = useIdeaBinFormations({
+    windowPos, windowSize, isMaximized, viewMode, sidebarWidth,
+    sidebarHeadlineOnly, showSidebarMeta, listFilter, showArchive,
+    dims, legendPanelCollapsed, globalTypeFilter, legendFilters,
+    filterCombineMode, activeContext, minimizedCategories,
+    collapsedIdeas, selectedCategoryIds, showMetaList, dockedCategories,
+    categories, contextViewRef,
+    setWindowPos, setWindowSize, setIsMaximized, setViewMode,
+    setSidebarWidth, setSidebarHeadlineOnly, setShowSidebarMeta,
+    setListFilter, setShowArchive, setLegendPanelCollapsed,
+    setGlobalTypeFilter, setLegendFilters, setFilterCombineMode,
+    setActiveContext, setMinimizedCategories, setCollapsedIdeas,
+    setSelectedCategoryIds, setShowMetaList, setDockedCategories,
+    setCategories,
+  });
 
-  const delete_category = async (id) => {
-    try {
-      const res = await authFetch(`${API}/user/categories/delete/`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id }),
-      });
-      if (res.ok) {
-        setCategories(prev => { const u = { ...prev }; delete u[id]; return u; });
-        setCategoryOrders(prev => { const u = { ...prev }; delete u[id]; return u; });
-        playSound('ideaCategoryDelete');
-        await fetch_all_ideas();
-      }
-    } catch (err) { console.error("IdeaBin: delete category failed", err); }
-  };
+  // ═══════════════════════════════════════════════════════
+  // ═══════════  WRAPPER CALLBACKS  ═══════════════════════
+  // ═══════════════════════════════════════════════════════
 
-  const merge_categories_api = async (sourceId, targetId) => {
-    try {
-      const res = await authFetch(`${API}/user/categories/merge/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source_id: parseInt(sourceId), target_id: parseInt(targetId) }),
-      });
-      if (res.ok) {
-        setCategories(prev => { const u = { ...prev }; delete u[sourceId]; return u; });
-        setCategoryOrders(prev => { const u = { ...prev }; delete u[sourceId]; return u; });
-        setDockedCategories(prev => prev.filter(id => id !== String(sourceId)));
-        playSound('ideaDragDrop');
-        await fetch_all_ideas();
-        fetch_categories();
-      }
-    } catch (err) { console.error("IdeaBin: merge categories failed", err); }
-  };
+  // Wrap createCategoryFromFilter to inject runtime deps
+  const createCategoryFromFilter = useCallback((name) => {
+    return createCategoryFromFilterRaw(name, passesAllFilters, ideas);
+  }, [createCategoryFromFilterRaw, ideas]);
+
+  // Wrap handleCategoryDrag to inject runtime deps
+  const handleCategoryDrag = useCallback((e, catKey) => {
+    return handleCategoryDragRaw(e, catKey, { refactorMode, setConfirmModal });
+  }, [handleCategoryDragRaw, refactorMode, setConfirmModal]);
+
+  // ═══════════════════════════════════════════════════════
+  // ═══════════  CONTEXT LOGIC  ═══════════════════════════
+  // ═══════════════════════════════════════════════════════
 
   // ── Fetch contexts list for selector dropdown ──
   const fetch_contexts_for_selector = async () => {
     try {
-      const res = await authFetch(`${API}/user/contexts/`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setContextsList(data.map(ctx => ({
-        id: ctx.id,
-        name: ctx.name,
-        color: ctx.color || null,
-        category_ids: ctx.category_ids || [],
-        legend_ids: ctx.legend_ids || [],
-        filter_state: ctx.filter_state || null,
-      })));
+      const list = await fetchContextsApi();
+      setContextsList(list);
     } catch (e) { console.error("Failed to fetch contexts list", e); }
   };
 
   // ── Enter / exit context mode ──
   const saveContextFilterState = async (contextId, filters, combineMode, presets) => {
     try {
-      await authFetch(`${API}/user/contexts/set_filter_state/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          context_id: contextId,
-          filter_state: {
-            legend_filters: filters,
-            filter_combine_mode: combineMode,
-            filter_presets: presets || [],
-          },
-        }),
+      await saveContextFilterStateApi(contextId, {
+        legend_filters: filters,
+        filter_combine_mode: combineMode,
+        filter_presets: presets || [],
       });
     } catch (e) { console.error("Failed to save context filter state", e); }
   };
-  const enterContext = (ctx) => {
+  const enterContext = async (ctx) => {
     // ctx = {id, name, color, category_ids, legend_ids, filter_state}
     // Save current context's filter state before switching
     if (activeContext) {
       saveContextFilterState(activeContext.id, legendFilters, filterCombineMode, filterPresets);
     }
+    // Re-fetch fresh context data to get latest category_ids and legend_ids
+    try {
+      const freshList = await fetchContextsApi();
+      const freshCtx = freshList.find(c => c.id === ctx.id);
+      if (freshCtx) {
+        ctx = freshCtx;
+      }
+    } catch (e) { /* fall back to the passed ctx */ }
     setActiveContext(ctx);
     setViewMode("ideas");
     // Restore filter state from the entered context
@@ -364,1196 +339,8 @@ export default function IdeaBin() {
     if (!activeContext) return;
     setActiveContext(prev => ({ ...prev, color }));
     try {
-      await authFetch(`${API}/user/contexts/set_color/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ context_id: activeContext.id, color }),
-      });
+      await setContextColorApi(activeContext.id, color);
     } catch (err) { console.error("IdeaBin: set context color failed", err); }
-  };
-
-  const rename_category_api = async (id, newName) => {
-    await authFetch(`${API}/user/categories/rename/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, name: newName }),
-    });
-    setCategories(prev => ({ ...prev, [id]: { ...prev[id], name: newName } }));
-  };
-
-  const toggle_archive_category = async (id) => {
-    const res = await authFetch(`${API}/user/categories/toggle_archive/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    const data = await res.json();
-    setCategories(prev => ({ ...prev, [id]: { ...prev[id], archived: data.archived } }));
-    playSound('ideaCategoryArchive');
-  };
-
-  const toggle_public_category = async (id) => {
-    const res = await authFetch(`${API}/user/categories/toggle_public/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    const data = await res.json();
-    setCategories(prev => ({ ...prev, [id]: { ...prev[id], is_public: data.is_public } }));
-  };
-
-  const drop_adopted_category = async (id) => {
-    await authFetch(`${API}/categories/${id}/drop/`, { method: "DELETE" });
-    setCategories(prev => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-    setCategoryOrders(prev => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-  };
-
-  // ═══════════════════════════════════════════════════════
-  // ═══════════  IDEA API  ════════════════════════════════
-  // ═══════════════════════════════════════════════════════
-
-  const fetch_all_ideas = async () => {
-    try {
-      const res = await authFetch(`${API}/user/ideas/all/`);
-      const data = await res.json();
-      const list = data?.data || [];
-      const obj = {};
-      // Flatten placement + nested idea into a single object keyed by placement id
-      for (const p of list) {
-        obj[p.id] = {
-          placement_id: p.id,
-          id: p.id,                          // for ordering / drag — this is the placement id
-          idea_id: p.idea?.id,               // the meta idea id
-          title: p.idea?.title || "",
-          headline: p.idea?.headline || "",
-          description: p.idea?.description || "",
-          legend_types: p.idea?.legend_types || {},  // {legend_id: {legend_type_id, name, color}}
-          owner: p.idea?.owner,
-          owner_username: p.idea?.owner_username,
-          created_at: p.idea?.created_at,
-          placement_count: p.idea?.placement_count || 1,
-          placement_categories: p.idea?.placement_categories || [],
-          upvote_count: p.idea?.upvote_count || 0,
-          comment_count: p.idea?.comment_count || 0,
-          user_has_upvoted: p.idea?.user_has_upvoted || false,
-          category: p.category,
-          order_index: p.order_index,
-        };
-      }
-      setIdeas(obj);
-      setUnassignedOrder(data?.order || []);
-      setCategoryOrders(data?.category_orders || {});
-    } catch (err) { console.error("IdeaBin: fetch ideas failed", err); }
-  };
-
-  // Compute unique meta ideas from placements (deduplicated by idea_id)
-  const metaIdeaList = (() => {
-    const seen = new Set();
-    const result = [];
-    for (const p of Object.values(ideas)) {
-      if (!p.idea_id || seen.has(p.idea_id)) continue;
-      seen.add(p.idea_id);
-      result.push(p);
-    }
-    return result;
-  })();
-
-  const create_idea = async () => {
-    if (!ideaName.trim() && !ideaHeadline.trim()) return;
-    await authFetch(`${API}/user/ideas/create/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        idea_name: ideaName.trim() || ideaHeadline.trim(),
-        description: "",
-        headline: ideaHeadline,
-        ...(selectedCategoryIds.size === 1 ? { category_id: parseInt([...selectedCategoryIds][0]) } : {}),
-      }),
-    });
-    setIdeaName("");
-    setIdeaHeadline("");
-    playSound('ideaCreate');
-    fetch_all_ideas();
-  };
-
-  const delete_idea = async (id) => {
-    await authFetch(`${API}/user/ideas/delete/`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    playSound('ideaDelete');
-    fetch_all_ideas();
-  };
-
-  const update_idea_title_api = async (placementId, title, headline = null) => {
-    if (!title.trim()) return;
-    const idea = ideas[placementId];
-    const ideaId = idea?.idea_id || placementId;
-    await authFetch(`${API}/user/ideas/update_title/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: ideaId, title }),
-    });
-    if (headline !== null) {
-      await authFetch(`${API}/user/ideas/update_headline/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: ideaId, headline }),
-      });
-    }
-    // Update all placements of the same idea in local state
-    setIdeas(prev => {
-      const updated = { ...prev };
-      for (const [pid, p] of Object.entries(updated)) {
-        if (p.idea_id === ideaId) {
-          updated[pid] = { ...p, title, headline: headline !== null ? headline : p.headline };
-        }
-      }
-      return updated;
-    });
-  };
-
-  const safe_order = async (order, categoryId = null) => {
-    await authFetch(`${API}/user/ideas/safe_order/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order, category_id: categoryId }),
-    });
-  };
-
-  const assign_idea_to_category = async (placementId, categoryId) => {
-    await authFetch(`${API}/user/ideas/assign_to_category/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ placement_id: placementId, category_id: categoryId }),
-    });
-    fetch_all_ideas();
-  };
-
-  // ── Copy idea to another category ──
-  const [copiedIdeaId, setCopiedIdeaId] = useState(null);  // meta idea id for Ctrl+C
-
-  const copy_idea = (placementId) => {
-    const idea = ideas[placementId];
-    if (idea) {
-      setCopiedIdeaId(idea.idea_id);
-      playSound('ideaCopy');
-    }
-  };
-
-  const pasteGuard = useRef(false);
-  const paste_idea = async (categoryId = null) => {
-    if (!copiedIdeaId || pasteGuard.current) return;
-    pasteGuard.current = true;
-    try {
-      await authFetch(`${API}/user/ideas/copy/`, {
-      });
-      playSound('ideaCreate');
-      await fetch_all_ideas();
-    } finally {
-      pasteGuard.current = false;
-    }
-  };
-
-  // ── Spinoff: create a personal copy of someone else's idea ──
-  const spinoff_idea = async (metaIdeaId) => {
-    if (!metaIdeaId) return;
-    try {
-      await authFetch(`${API}/user/ideas/spinoff/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea_id: metaIdeaId }),
-      });
-      playSound('ideaCreate');
-      await fetch_all_ideas();
-    } catch (err) { console.error("Spinoff failed:", err); }
-  };
-
-  const delete_meta_idea = async (ideaId) => {
-    await authFetch(`${API}/user/ideas/delete_meta/`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: ideaId }),
-    });
-    playSound('ideaDelete');
-    fetch_all_ideas();
-  };
-
-  const remove_idea_from_category = async (placementId) => {
-    await authFetch(`${API}/user/ideas/remove_from_category/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ placement_id: placementId }),
-    });
-    fetch_all_ideas();
-  };
-
-  const remove_all_idea_categories = async (ideaId) => {
-    await authFetch(`${API}/user/ideas/remove_all_categories/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idea_id: ideaId }),
-    });
-    fetch_all_ideas();
-  };
-
-  const remove_all_idea_legend_types = async (ideaId) => {
-    await authFetch(`${API}/user/ideas/remove_all_legend_types/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idea_id: ideaId }),
-    });
-    fetch_all_ideas();
-  };
-
-  const remove_idea_legend_type = async (ideaId, legendId) => {
-    await authFetch(`${API}/user/ideas/assign_legend_type/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idea_id: ideaId, legend_id: legendId, legend_type_id: null }),
-    });
-    fetch_all_ideas();
-  };
-
-  // ── Create category from filtered ideas ──
-  const createCategoryFromFilter = async (name) => {
-    // Collect all unique idea_ids visible in current context that pass the current filter
-    const seen = new Set();
-    const matchedIdeaIds = [];
-    for (const p of Object.values(ideas)) {
-      if (!p.idea_id || seen.has(p.idea_id)) continue;
-      seen.add(p.idea_id);
-      if (passesAllFilters(p)) {
-        matchedIdeaIds.push(p.idea_id);
-      }
-    }
-    if (matchedIdeaIds.length === 0) return;
-    try {
-      await authFetch(`${API}/user/categories/create_with_ideas/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name || "Filtered Ideas",
-          idea_ids: matchedIdeaIds,
-          context_id: activeContext?.id || null,
-        }),
-      });
-      playSound('ideaCategoryCreate');
-      await fetch_categories();
-      await fetch_all_ideas();
-      // Auto-assign to context
-      if (activeContext) {
-        const res2 = await authFetch(`${API}/user/categories/`);
-        const data2 = await res2.json();
-        const latest = (data2.categories || []).sort((a, b) => b.id - a.id)[0];
-        if (latest) {
-          setActiveContext(prev => prev ? { ...prev, category_ids: [...(prev.category_ids || []), latest.id] } : prev);
-        }
-      }
-    } catch (err) { console.error("Create category from filter failed:", err); }
-  };
-
-  // ── Batch remove legend type from context ideas ──
-  const batchRemoveLegendType = async (legendId, typeId = null) => {
-    // Collect idea_ids in current context that have this legend type assigned
-    const seen = new Set();
-    const ideaIds = [];
-    for (const p of Object.values(ideas)) {
-      if (!p.idea_id || seen.has(p.idea_id)) continue;
-      seen.add(p.idea_id);
-      const dt = p.legend_types?.[String(legendId)];
-      if (!dt) continue;
-      // If typeId specified, only remove if that specific type matches
-      if (typeId !== null && dt.legend_type_id !== typeId) continue;
-      ideaIds.push(p.idea_id);
-    }
-    if (ideaIds.length === 0) return;
-    try {
-      await authFetch(`${API}/user/ideas/batch_remove_legend_type/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea_ids: ideaIds, legend_id: legendId }),
-      });
-      await fetch_all_ideas();
-    } catch (err) { console.error("Batch remove legend type failed:", err); }
-  };
-
-  // ── Upvote & Comments ──
-  const toggle_upvote = async (ideaId) => {
-    try {
-      const res = await authFetch(`${API}/user/ideas/${ideaId}/upvote/`, { method: "POST" });
-      const data = await res.json();
-      // Optimistic update across all placements sharing this idea
-      setIdeas(prev => {
-        const next = { ...prev };
-        for (const key of Object.keys(next)) {
-          if (next[key].idea_id === ideaId) {
-            next[key] = { ...next[key], upvote_count: data.upvote_count, user_has_upvoted: data.upvoted };
-          }
-        }
-        return next;
-      });
-    } catch (err) { console.error("Upvote failed:", err); }
-  };
-
-  const fetch_comments = async (ideaId) => {
-    try {
-      const res = await authFetch(`${API}/user/ideas/${ideaId}/comments/`);
-      const data = await res.json();
-      return data.comments || [];
-    } catch (err) { console.error("Fetch comments failed:", err); return []; }
-  };
-
-  const add_comment = async (ideaId, text) => {
-    try {
-      const res = await authFetch(`${API}/user/ideas/${ideaId}/comments/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      if (!res.ok) return null;
-      const data = await res.json();
-      // Update comment count across all placements sharing this idea
-      setIdeas(prev => {
-        const next = { ...prev };
-        for (const key of Object.keys(next)) {
-          if (next[key].idea_id === ideaId) {
-            next[key] = { ...next[key], comment_count: (next[key].comment_count || 0) + 1 };
-          }
-        }
-        return next;
-      });
-      return data;
-    } catch (err) { console.error("Add comment failed:", err); return null; }
-  };
-
-  const delete_comment = async (commentId, ideaId) => {
-    try {
-      await authFetch(`${API}/user/ideas/comments/${commentId}/delete/`, { method: "DELETE" });
-      // Update comment count
-      setIdeas(prev => {
-        const next = { ...prev };
-        for (const key of Object.keys(next)) {
-          if (next[key].idea_id === ideaId) {
-            next[key] = { ...next[key], comment_count: Math.max(0, (next[key].comment_count || 1) - 1) };
-          }
-        }
-        return next;
-      });
-    } catch (err) { console.error("Delete comment failed:", err); }
-  };
-
-  // ── Meta ideas list ──
-  const [showMetaList, setShowMetaList] = useState(false);
-  const [metaIdeas, setMetaIdeas] = useState([]);
-
-  const fetch_meta_ideas = async () => {
-    try {
-      const res = await authFetch(`${API}/user/ideas/meta/`);
-      const data = await res.json();
-      setMetaIdeas(data?.ideas || []);
-    } catch (err) { console.error("IdeaBin: fetch meta ideas failed", err); }
-  };
-
-  // ═══════════════════════════════════════════════════════
-  // ═══════════  FORMATIONS  ══════════════════════════════
-  // ═══════════════════════════════════════════════════════
-
-  const [formations, setFormations] = useState([]);
-  const [showFormationPanel, setShowFormationPanel] = useState(false);
-  const [formationName, setFormationName] = useState("");
-  const [editingFormationId, setEditingFormationId] = useState(null);
-  const [editingFormationName, setEditingFormationName] = useState("");
-
-  const fetch_formations = async () => {
-    try {
-      const res = await authFetch(`${API}/user/formations/`);
-      const data = await res.json();
-      setFormations(data?.formations || []);
-    } catch (err) { console.error("Fetch formations failed", err); }
-  };
-
-  useEffect(() => { fetch_formations(); }, []);
-
-  /** Collect all saveable visual state into a single JSON-serialisable object. */
-  const collectFormationState = useCallback(() => {
-    const state = {
-      version: 1,
-
-      // window
-      window_pos: windowPos,
-      window_size: windowSize,
-      is_maximized: isMaximized,
-
-      // view
-      view_mode: viewMode,
-
-      // sidebar
-      sidebar_width: sidebarWidth,
-      sidebar_headline_only: sidebarHeadlineOnly,
-      show_sidebar_meta: showSidebarMeta,
-      list_filter: listFilter,
-      show_archive: showArchive,
-
-      // legend
-      active_legend_id: dims.activeLegendId,
-      legend_panel_collapsed: legendPanelCollapsed,
-      global_type_filter: globalTypeFilter,
-      legend_filters: legendFilters,
-      filter_combine_mode: filterCombineMode,
-
-      // active context
-      active_context: activeContext,
-
-      // categories
-      minimized_categories: minimizedCategories,
-      collapsed_ideas: collapsedIdeas,
-      selected_category_ids: [...selectedCategoryIds],
-      show_meta_list: showMetaList,
-      docked_categories: dockedCategories,
-
-      // category canvas positions (snapshot current state)
-      category_positions: Object.fromEntries(
-        Object.entries(categories).map(([id, c]) => [id, { x: c.x, y: c.y, width: c.width, height: c.height, z_index: c.z_index }])
-      ),
-    };
-
-    // Context view state (if ref available)
-    if (contextViewRef.current?.getFormationState) {
-      const ctxState = contextViewRef.current.getFormationState();
-      state.context_sidebar_mode = ctxState.sidebar_mode;
-      state.minimized_contexts = ctxState.minimized_contexts;
-      state.context_positions = ctxState.context_positions;
-    }
-
-    return state;
-  }, [windowPos, windowSize, isMaximized, viewMode, sidebarWidth, sidebarHeadlineOnly,
-      showSidebarMeta, listFilter, showArchive, dims.activeLegendId, legendPanelCollapsed,
-      globalTypeFilter, legendFilters, filterCombineMode, activeContext,
-      minimizedCategories, collapsedIdeas, selectedCategoryIds,
-      showMetaList, dockedCategories, categories]);
-
-  /** Apply a formation state object — restores all visual settings. */
-  const applyFormationState = useCallback(async (state) => {
-    if (!state) return;
-
-    // window
-    if (state.window_pos) setWindowPos(state.window_pos);
-    if (state.window_size) setWindowSize(state.window_size);
-    if (state.is_maximized !== undefined) setIsMaximized(state.is_maximized);
-
-    // view
-    if (state.view_mode) setViewMode(state.view_mode);
-
-    // sidebar
-    if (state.sidebar_width) setSidebarWidth(state.sidebar_width);
-    if (state.sidebar_headline_only !== undefined) setSidebarHeadlineOnly(state.sidebar_headline_only);
-    if (state.show_sidebar_meta !== undefined) setShowSidebarMeta(state.show_sidebar_meta);
-    if (state.list_filter !== undefined) setListFilter(state.list_filter);
-    if (state.show_archive !== undefined) setShowArchive(state.show_archive);
-
-    // legend
-    if (state.active_legend_id !== undefined) dims.setActiveLegendId(state.active_legend_id);
-    if (state.legend_panel_collapsed !== undefined) setLegendPanelCollapsed(state.legend_panel_collapsed);
-    if (state.global_type_filter) setGlobalTypeFilter(state.global_type_filter);
-    if (state.legend_filters) setLegendFilters(state.legend_filters);
-    if (state.filter_combine_mode) setFilterCombineMode(state.filter_combine_mode);
-
-    // active context
-    if (state.active_context !== undefined) setActiveContext(state.active_context);
-
-    // categories
-    if (state.minimized_categories) setMinimizedCategories(state.minimized_categories);
-    if (state.collapsed_ideas) setCollapsedIdeas(state.collapsed_ideas);
-    if (state.selected_category_id !== undefined) setSelectedCategoryIds(new Set(state.selected_category_id ? [state.selected_category_id] : []));
-    if (state.selected_category_ids) setSelectedCategoryIds(new Set(state.selected_category_ids));
-    if (state.show_meta_list !== undefined) setShowMetaList(state.show_meta_list);
-    if (state.docked_categories) setDockedCategories(state.docked_categories);
-
-    // Restore category canvas positions via API (so they persist)
-    if (state.category_positions) {
-      for (const [catId, pos] of Object.entries(state.category_positions)) {
-        if (categories[catId]) {
-          authFetch(`${API}/user/categories/set_position/`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: parseInt(catId), x: pos.x, y: pos.y }),
-          });
-          authFetch(`${API}/user/categories/set_area/`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: parseInt(catId), width: pos.width, height: pos.height }),
-          });
-        }
-      }
-      // Update local state immediately
-      setCategories(prev => {
-        const next = { ...prev };
-        for (const [catId, pos] of Object.entries(state.category_positions)) {
-          if (next[catId]) {
-            next[catId] = { ...next[catId], ...pos };
-          }
-        }
-        return next;
-      });
-    }
-
-    // Restore context view state
-    if (contextViewRef.current?.applyFormationState) {
-      contextViewRef.current.applyFormationState({
-        sidebar_mode: state.context_sidebar_mode,
-        minimized_contexts: state.minimized_contexts,
-      });
-    }
-
-    // Restore context canvas positions via API
-    if (state.context_positions) {
-      for (const [ctxId, pos] of Object.entries(state.context_positions)) {
-        authFetch(`${API}/user/contexts/set_position/`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: parseInt(ctxId), x: pos.x, y: pos.y }),
-        });
-        authFetch(`${API}/user/contexts/set_area/`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: parseInt(ctxId), width: pos.width, height: pos.height }),
-        });
-      }
-    }
-
-    playSound('ideaOpen');
-  }, [categories, dims]);
-
-  const save_formation = async (name) => {
-    const state = collectFormationState();
-    try {
-      await authFetch(`${API}/user/formations/create/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, state }),
-      });
-      setFormationName("");
-      fetch_formations();
-      playSound('ideaCategoryCreate');
-    } catch (err) { console.error("Save formation failed", err); }
-  };
-
-  const update_formation_state = async (formationId) => {
-    const state = collectFormationState();
-    try {
-      await authFetch(`${API}/user/formations/${formationId}/update/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state }),
-      });
-      playSound('ideaCategoryCreate');
-    } catch (err) { console.error("Update formation failed", err); }
-  };
-
-  const rename_formation = async (formationId, name) => {
-    try {
-      await authFetch(`${API}/user/formations/${formationId}/update/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-      fetch_formations();
-    } catch (err) { console.error("Rename formation failed", err); }
-  };
-
-  const load_formation = async (formationId) => {
-    try {
-      const res = await authFetch(`${API}/user/formations/${formationId}/`);
-      const data = await res.json();
-      await applyFormationState(data.state);
-    } catch (err) { console.error("Load formation failed", err); }
-  };
-
-  const delete_formation = async (formationId) => {
-    try {
-      await authFetch(`${API}/user/formations/${formationId}/delete/`, { method: "DELETE" });
-      fetch_formations();
-      playSound('ideaDelete');
-    } catch (err) { console.error("Delete formation failed", err); }
-  };
-
-  const toggle_default_formation = async (formationId) => {
-    try {
-      const res = await authFetch(`${API}/user/formations/${formationId}/set-default/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      const data = await res.json();
-      setFormations(prev => prev.map(f => ({ ...f, is_default: f.id === formationId ? data.is_default : false })));
-    } catch (err) { console.error("Toggle default formation failed", err); }
-  };
-
-  // Auto-load default formation on first mount
-  const defaultFormationLoaded = useRef(false);
-  useEffect(() => {
-    if (defaultFormationLoaded.current) return;
-    defaultFormationLoaded.current = true;
-    (async () => {
-      try {
-        const res = await authFetch(`${API}/user/formations/default/`);
-        const data = await res.json();
-        if (data?.formation?.state) {
-          await applyFormationState(data.formation.state);
-        }
-      } catch (err) { console.error("Load default formation failed", err); }
-    })();
-  }, []);
-
-  // ═══════════════════════════════════════════════════════
-  // ═══════════  DRAG HANDLERS  ═══════════════════════════
-  // ═══════════════════════════════════════════════════════
-
-  const assign_idea_legend_type = async (placementId, legendTypeId) => {
-    const idea = ideas[placementId];
-    const ideaId = idea?.idea_id || placementId;
-    const legendId = dims.activeLegendId;
-    if (!legendId) return;
-    await authFetch(`${API}/user/ideas/assign_legend_type/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idea_id: ideaId, legend_id: legendId, legend_type_id: legendTypeId }),
-    });
-    // Update all placements of the same idea in local state
-    setIdeas(prev => {
-      const updated = { ...prev };
-      for (const [pid, p] of Object.entries(updated)) {
-        if (p.idea_id === ideaId) {
-          const newDt = { ...p.legend_types };
-          if (legendTypeId) {
-            const lt = dims.legendTypes[legendTypeId];
-            newDt[String(legendId)] = { legend_type_id: legendTypeId, name: lt?.name || "", color: lt?.color || "#ccc", icon: lt?.icon || null };
-          } else {
-            delete newDt[String(legendId)];
-          }
-          updated[pid] = { ...p, legend_types: newDt };
-        }
-      }
-      return updated;
-    });
-  };
-
-  // ── Category drag (with merge support in refactor mode) ──
-  const handleCategoryDrag = (e, catKey) => {
-    e.stopPropagation();
-    const cat = categories[catKey];
-    if (!categoryContainerRef.current) return;
-    const rect = categoryContainerRef.current.getBoundingClientRect();
-    bring_to_front_category(catKey);
-
-    const startX = e.clientX - cat.x;
-    const startY = e.clientY - cat.y;
-    let nx = cat.x, ny = cat.y;
-    let currentMergeTarget = null;
-
-    const onMove = (ev) => {
-      nx = Math.max(0, Math.min(ev.clientX - startX, rect.width - cat.width));
-      ny = Math.max(0, Math.min(ev.clientY - startY, rect.height - cat.height));
-      setCategories(prev => ({ ...prev, [catKey]: { ...prev[catKey], x: nx, y: ny } }));
-
-      // In refactor mode, detect overlap with other categories
-      if (refactorMode) {
-        const dragCenterX = nx + cat.width / 2;
-        const dragCenterY = ny + cat.height / 2;
-        let found = null;
-        for (const [ck, cd] of Object.entries(categories)) {
-          if (ck === catKey || cd.archived || dockedCategories.includes(String(ck))) continue;
-          if (dragCenterX >= cd.x && dragCenterX <= cd.x + cd.width &&
-              dragCenterY >= cd.y && dragCenterY <= cd.y + cd.height) {
-            found = ck;
-            break;
-          }
-        }
-        currentMergeTarget = found;
-        setMergeCategoryTarget(found);
-      }
-    };
-    const onUp = () => {
-      if (refactorMode && currentMergeTarget && currentMergeTarget !== catKey) {
-        const targetCat = categories[currentMergeTarget];
-        setConfirmModal({
-          message: (
-            <div>
-              <p className="mb-1 text-sm font-medium">Merge categories?</p>
-              <p className="text-xs text-gray-600">
-                Move all ideas from <span className="font-semibold">"{cat.name}"</span> into{" "}
-                <span className="font-semibold">"{targetCat?.name}"</span>.{" "}
-                <span className="text-red-600 font-semibold">"{cat.name}" will be deleted.</span>
-              </p>
-            </div>
-          ),
-          confirmLabel: "Merge",
-          confirmColor: "bg-orange-500 hover:bg-orange-600",
-          onConfirm: () => {
-            merge_categories_api(catKey, currentMergeTarget);
-            setConfirmModal(null);
-          },
-          onCancel: () => setConfirmModal(null),
-        });
-      } else {
-        set_position_category(catKey, { x: nx, y: ny });
-      }
-      setMergeCategoryTarget(null);
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  };
-
-  // ── Category resize ──
-  // edge: "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw"
-  const handleCategoryResize = (e, catKey, edge = "se") => {
-    e.preventDefault();
-    e.stopPropagation();
-    bring_to_front_category(catKey);
-    const cat = categories[catKey];
-    if (!categoryContainerRef.current) return;
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const startW = cat.width;
-    const startH = cat.height;
-    const startLeft = cat.x;
-    const startTop = cat.y;
-    const minW = Math.max(80, cat.name.length * 9 + 60);
-    const minH = 50;
-    let fw = startW, fh = startH, fx = startLeft, fy = startTop;
-
-    const resizeW = edge.includes("w");
-    const resizeE = edge.includes("e");
-    const resizeN = edge.includes("n");
-    const resizeS = edge.includes("s") || edge === "s";
-
-    const onMove = (ev) => {
-      const dx = ev.clientX - startX;
-      const dy = ev.clientY - startY;
-
-      if (resizeE) {
-        fw = Math.max(minW, startW + dx);
-      } else if (resizeW) {
-        const newW = Math.max(minW, startW - dx);
-        fx = startLeft + (startW - newW);
-        fw = newW;
-      }
-
-      if (resizeS) {
-        fh = Math.max(minH, startH + dy);
-      } else if (resizeN) {
-        const newH = Math.max(minH, startH - dy);
-        fy = startTop + (startH - newH);
-        fh = newH;
-      }
-
-      setCategories(prev => ({ ...prev, [catKey]: { ...prev[catKey], width: fw, height: fh, x: fx, y: fy } }));
-    };
-    const onUp = () => {
-      set_area_category(catKey, fw, fh);
-      if (fx !== startLeft || fy !== startTop) {
-        set_position_category(catKey, { x: fx, y: fy });
-      }
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  };
-
-  // ── Idea drag (between unassigned ↔ categories ↔ external Dependencies) ──
-  const isPointInRect = (px, py, r) => px >= r.left && px <= r.right && py >= r.top && py <= r.bottom;
-
-  // External drag ghost state
-  const [externalGhost, setExternalGhost] = useState(null); // { idea, x, y, teamId, teamName, teamColor, taskId, taskName }
-
-  const handleIdeaDrag = (e, idea, index, source) => {
-    const fromIdx = index;
-    let toIdx = index;
-    let dropTarget = null;
-    let ghost = { idea, x: e.clientX, y: e.clientY };
-    let isExternal = false;
-    let extInfo = { teamId: null, teamName: null, teamColor: null, taskId: null, taskName: null, dayIndex: null, dayLabel: null, dayWeekday: null };
-    let lastHighlightedCell = null;
-
-    setDragging(ghost);
-    setPrevIndex(index);
-    setDragSource(source);
-
-    let srcElements = [];
-    if ((source.type === "unassigned" || source.type === "all") && IdeaListRef.current) {
-      srcElements = [...IdeaListRef.current.querySelectorAll("[data-idea-item]")];
-    } else if (source.type === "category" && categoryRefs.current[source.id]) {
-      srcElements = [...categoryRefs.current[source.id].querySelectorAll("[data-idea-item]")];
-    }
-
-    const onMove = (ev) => {
-      ghost = { ...ghost, x: ev.clientX, y: ev.clientY };
-      setDragging(ghost);
-
-      // Check if cursor is outside the IdeaBin window
-      const winRect = windowRef.current?.getBoundingClientRect();
-      const outsideWindow = winRect && !isPointInRect(ev.clientX, ev.clientY, winRect);
-
-      if (outsideWindow) {
-        isExternal = true;
-        // Detect Dependencies team/task elements under cursor
-        // Hide ghost temporarily to get element underneath
-        const ghostEl = document.getElementById("ideabin-external-ghost");
-        if (ghostEl) ghostEl.style.pointerEvents = "none";
-        const elUnder = document.elementFromPoint(ev.clientX, ev.clientY);
-        if (ghostEl) ghostEl.style.pointerEvents = "auto";
-
-        // Walk up to find data-dep-team-id, data-dep-task-id, or data-dep-day-index
-        let teamEl = elUnder?.closest?.("[data-dep-team-id]");
-        let taskEl = elUnder?.closest?.("[data-dep-task-id]");
-        let dayEl = elUnder?.closest?.("[data-dep-day-index]");
-        extInfo = {
-          teamId: teamEl?.dataset?.depTeamId || dayEl?.dataset?.depDayTeamId || null,
-          teamName: teamEl?.dataset?.depTeamName || null,
-          teamColor: teamEl?.dataset?.depTeamColor || null,
-          taskId: taskEl?.dataset?.depTaskId || dayEl?.dataset?.depDayTaskId || null,
-          taskName: taskEl?.dataset?.depTaskName || dayEl?.dataset?.depDayTaskName || null,
-          dayIndex: dayEl?.dataset?.depDayIndex ?? null,
-          dayLabel: dayEl?.dataset?.depDayLabel || null,
-          dayWeekday: dayEl?.dataset?.depDayWeekday || null,
-        };
-
-        // Highlight the hovered day cell
-        if (lastHighlightedCell && lastHighlightedCell !== dayEl) {
-          lastHighlightedCell.style.backgroundColor = '';
-          lastHighlightedCell.style.outline = '';
-        }
-        if (dayEl) {
-          dayEl.style.backgroundColor = '#ddd6fe';
-          dayEl.style.outline = '2px solid #7c3aed';
-          lastHighlightedCell = dayEl;
-        } else if (lastHighlightedCell) {
-          lastHighlightedCell.style.backgroundColor = '';
-          lastHighlightedCell.style.outline = '';
-          lastHighlightedCell = null;
-        }
-
-        setExternalGhost({
-          idea,
-          x: ev.clientX,
-          y: ev.clientY,
-          ...extInfo,
-          dayLabel: extInfo.dayLabel,
-          dayWeekday: extInfo.dayWeekday,
-        });
-        setHoverCategory(null);
-        setHoverUnassigned(false);
-        dropTarget = null;
-        return;
-      }
-
-      // Inside IdeaBin — clear external ghost
-      isExternal = false;
-      extInfo = { teamId: null, teamName: null, teamColor: null, taskId: null, taskName: null, dayIndex: null, dayLabel: null, dayWeekday: null };
-      setExternalGhost(null);
-      if (lastHighlightedCell) {
-        lastHighlightedCell.style.backgroundColor = '';
-        lastHighlightedCell.style.outline = '';
-        lastHighlightedCell = null;
-      }
-
-      let foundUnassigned = false;
-      if (IdeaListRef.current) {
-        const listRect = IdeaListRef.current.getBoundingClientRect();
-        if (isPointInRect(ev.clientX, ev.clientY, listRect)) foundUnassigned = true;
-      }
-
-      let foundCategory = null;
-      if (!foundUnassigned && categoryContainerRef.current) {
-        const cRect = categoryContainerRef.current.getBoundingClientRect();
-        // Sort by z_index descending so the topmost window is checked first
-        const sortedCats = Object.entries(categories)
-          .filter(([, d]) => !d.archived)
-          .sort(([, a], [, b]) => (b.z_index || 0) - (a.z_index || 0));
-        for (const [catId, catData] of sortedCats) {
-          const catRect = {
-            left: cRect.left + catData.x, top: cRect.top + catData.y,
-            right: cRect.left + catData.x + catData.width,
-            bottom: cRect.top + catData.y + catData.height,
-          };
-          if (isPointInRect(ev.clientX, ev.clientY, catRect)) { foundCategory = catId; break; }
-        }
-      }
-
-      setHoverCategory(foundCategory);
-      setHoverUnassigned(foundUnassigned);
-      dropTarget = foundCategory
-        ? { type: "category", id: foundCategory }
-        : foundUnassigned
-        ? { type: "unassigned" }
-        : null;
-
-      const isOverSrc =
-        (source.type === "unassigned" && foundUnassigned) ||
-        (source.type === "category" && foundCategory === String(source.id));
-      if (isOverSrc && srcElements.length > 1) {
-        for (let i = 0; i < srcElements.length - 1; i++) {
-          const r = srcElements[i].getBoundingClientRect();
-          const nr = srcElements[i + 1].getBoundingClientRect();
-          if (ghost.y > r.y && ghost.y < nr.y) { setHoverIndex(i); toIdx = i; }
-        }
-      } else {
-        setHoverIndex(null);
-      }
-    };
-
-    const onUp = () => {
-      // Clear any highlighted day cell
-      if (lastHighlightedCell) {
-        lastHighlightedCell.style.backgroundColor = '';
-        lastHighlightedCell.style.outline = '';
-        lastHighlightedCell = null;
-      }
-      setExternalGhost(null);
-
-      // External drop — onto Dependencies team, task, or day grid
-      // Skip drops on virtual (unassigned) team header - can't create tasks there
-      const isVirtualTeamDrop = extInfo.teamId && isNaN(parseInt(extInfo.teamId));
-      if (isExternal && (extInfo.teamId || extInfo.dayIndex !== null) && !isVirtualTeamDrop) {
-        const ideaName = idea.headline || idea.title.split(/\s+/).slice(0, 6).join(" ");
-        const truncatedName = ideaName.length > 30 ? ideaName.slice(0, 27) + "..." : ideaName;
-
-        if (extInfo.dayIndex !== null && extInfo.taskId) {
-          // Dropped on a day grid cell → create milestone at this day position
-          const dayDateStr = extInfo.dayLabel
-            ? `${extInfo.dayWeekday || ''} ${extInfo.dayLabel}`.trim()
-            : `Day ${parseInt(extInfo.dayIndex) + 1}`;
-          setConfirmModal({
-            message: (
-              <div>
-                <p className="mb-1 text-sm font-medium">Create Milestone?</p>
-                <p className="text-xs text-gray-600">
-                  Place milestone <span className="font-semibold">"{truncatedName}"</span>{" "}
-                  on <span className="font-semibold">{dayDateStr}</span>{" "}
-                  of task <span className="font-semibold">"{extInfo.taskName || "task"}"</span>
-                </p>
-              </div>
-            ),
-            confirmLabel: "Create Milestone",
-            confirmColor: "bg-blue-500 hover:bg-blue-600",
-            onConfirm: async () => {
-              try {
-                await add_milestone(projectId, parseInt(extInfo.taskId), {
-                  name: truncatedName,
-                  description: idea.title,
-                  start_index: parseInt(extInfo.dayIndex),
-                });
-                await delete_idea(idea.id);
-                playSound('ideaExternalDrop');
-                window.dispatchEvent(new CustomEvent("ideabin-dep-refresh"));
-              } catch (err) {
-                console.error("Failed to create milestone from idea:", err);
-              }
-              setConfirmModal(null);
-            },
-            onCancel: () => setConfirmModal(null),
-          });
-        } else if (extInfo.taskId) {
-          // Dropped on a task row → ask: create milestone on this task?
-          setConfirmModal({
-            message: (
-              <div>
-                <p className="mb-1 text-sm font-medium">Create Milestone?</p>
-                <p className="text-xs text-gray-600">
-                  Add milestone <span className="font-semibold">"{truncatedName}"</span> to task{" "}
-                  <span className="font-semibold">"{extInfo.taskName}"</span>
-                  {extInfo.teamName && <> in <span className="font-semibold" style={{ color: extInfo.teamColor }}>{extInfo.teamName}</span></>}
-                </p>
-              </div>
-            ),
-            confirmLabel: "Create Milestone",
-            confirmColor: "bg-blue-500 hover:bg-blue-600",
-            onConfirm: async () => {
-              try {
-                await add_milestone(projectId, parseInt(extInfo.taskId), {
-                  name: truncatedName,
-                  description: idea.title,
-                });
-                await delete_idea(idea.id);
-                playSound('ideaExternalDrop');
-                window.dispatchEvent(new CustomEvent("ideabin-dep-refresh"));
-              } catch (err) {
-                console.error("Failed to create milestone from idea:", err);
-              }
-              setConfirmModal(null);
-            },
-            onCancel: () => setConfirmModal(null),
-          });
-        } else {
-          // Dropped on a team → ask: create task in this team?
-          setConfirmModal({
-            message: (
-              <div>
-                <p className="mb-1 text-sm font-medium">Create Task?</p>
-                <p className="text-xs text-gray-600">
-                  Create task <span className="font-semibold">"{truncatedName}"</span> in team{" "}
-                  <span className="font-semibold" style={{ color: extInfo.teamColor }}>{extInfo.teamName}</span>
-                </p>
-              </div>
-            ),
-            confirmLabel: "Create Task",
-            confirmColor: "bg-amber-500 hover:bg-amber-600",
-            onConfirm: async () => {
-              try {
-                await createTaskForProject(projectId, {
-                  name: truncatedName,
-                  description: idea.title,
-                  team_id: parseInt(extInfo.teamId),
-                });
-                await delete_idea(idea.id);
-                playSound('ideaExternalDrop');
-                window.dispatchEvent(new CustomEvent("ideabin-dep-refresh"));
-              } catch (err) {
-                console.error("Failed to create task from idea:", err);
-              }
-              setConfirmModal(null);
-            },
-            onCancel: () => setConfirmModal(null),
-          });
-        }
-      } else {
-        // Internal drop logic (within IdeaBin)
-        // Determine if this is a multi-select drag (dragged idea is part of selection)
-        const isMultiDrag = selectedIdeaIds.size > 1 && selectedIdeaIds.has(idea.placement_id);
-        // Collect all selected placement ids in their current order within the source
-        const getSelectedInOrder = (orderArr) => {
-          if (!isMultiDrag) return [idea.placement_id];
-          return orderArr.filter(id => selectedIdeaIds.has(id));
-        };
-
-        const sameSrc = dropTarget && (
-          (dropTarget.type === source.type && dropTarget.type === "unassigned") ||
-          (dropTarget.type === "category" && source.type === "category" && String(dropTarget.id) === String(source.id))
-        );
-        if (sameSrc) {
-          if (source.type === "unassigned") {
-            const movingIds = getSelectedInOrder(unassignedOrder);
-            const newOrd = unassignedOrder.filter(id => !movingIds.includes(id));
-            // Insert position: adjust for removed items before toIdx
-            let insertAt = toIdx;
-            const removedBefore = unassignedOrder.slice(0, toIdx).filter(id => movingIds.includes(id)).length;
-            insertAt -= removedBefore;
-            newOrd.splice(insertAt, 0, ...movingIds);
-            setUnassignedOrder(newOrd);
-            safe_order(newOrd, null);
-            playSound('ideaDragDrop');
-          } else if (source.type === "category") {
-            const srcOrder = categoryOrders[source.id] || [];
-            const movingIds = getSelectedInOrder(srcOrder);
-            const newOrd = srcOrder.filter(id => !movingIds.includes(id));
-            let insertAt = toIdx;
-            const removedBefore = srcOrder.slice(0, toIdx).filter(id => movingIds.includes(id)).length;
-            insertAt -= removedBefore;
-            newOrd.splice(insertAt, 0, ...movingIds);
-            setCategoryOrders(prev => ({ ...prev, [source.id]: newOrd }));
-            safe_order(newOrd, source.id);
-            playSound('ideaDragDrop');
-          }
-        } else if (dropTarget) {
-          const targetCatId = dropTarget.type === "category" ? parseInt(dropTarget.id) : null;
-          if (targetCatId !== null || dropTarget.type === "unassigned") {
-            if (source.type === "all") {
-              // Drag from "All Ideas" → category = ADD reference (copy) — for all selected
-              const idsToMove = isMultiDrag
-                ? [...selectedIdeaIds].map(pid => ideas[pid]).filter(Boolean).map(i => i.idea_id)
-                : [idea.idea_id];
-              Promise.all(idsToMove.map(ideaId =>
-                authFetch(`${API}/user/ideas/copy/`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ idea_id: ideaId, category_id: targetCatId }),
-                })
-              ))
-                .then(() => { playSound('ideaCreate'); fetch_all_ideas(); })
-                .catch(err => console.error("Multi-copy on drag failed:", err));
-            } else {
-              // Drag from category/unassigned → another category = MOVE all selected placements
-              const placementIds = isMultiDrag ? [...selectedIdeaIds] : [idea.placement_id];
-              Promise.all(placementIds.map(pid =>
-                authFetch(`${API}/user/ideas/assign_to_category/`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ placement_id: pid, category_id: targetCatId }),
-                })
-              ))
-                .then(() => { playSound('ideaDragDrop'); fetch_all_ideas(); })
-                .catch(err => console.error("Multi-move on drag failed:", err));
-            }
-          }
-        }
-      }
-
-      setDragging(null);
-      setPrevIndex(null);
-      setHoverIndex(null);
-      setDragSource(null);
-      setHoverCategory(null);
-      setHoverUnassigned(false);
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  };
-
-  // ── Type drag handler ──
-  const handleTypeDrag = (e, legendTypeId) => {
-    e.preventDefault();
-    e.stopPropagation();
-    let currentHoverIdeaId = null;
-    setDraggingType({
-      id: legendTypeId, x: e.clientX, y: e.clientY,
-      color: legendTypeId ? dims.legendTypes[legendTypeId]?.color : "#374151",
-    });
-    const onMove = (ev) => {
-      setDraggingType(prev => ({ ...prev, x: ev.clientX, y: ev.clientY }));
-      let found = null;
-      for (const [refKey, ref] of Object.entries(ideaRefs.current)) {
-        if (ref) {
-          const r = ref.getBoundingClientRect();
-          if (ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) {
-            found = (refKey.startsWith("meta_") || refKey.startsWith("all_")) ? refKey : parseInt(refKey); break;
-          }
-        }
-      }
-      currentHoverIdeaId = found;
-      setHoverIdeaForType(found);
-    };
-    const onUp = () => {
-      if (currentHoverIdeaId) {
-        // Resolve the actual placement ID from the ref key (strip "meta_" or "all_" prefix)
-        const actualId = String(currentHoverIdeaId).startsWith("meta_")
-          ? parseInt(String(currentHoverIdeaId).replace("meta_", ""))
-          : String(currentHoverIdeaId).startsWith("all_")
-          ? parseInt(String(currentHoverIdeaId).replace("all_", ""))
-          : currentHoverIdeaId;
-        assign_idea_legend_type(actualId, legendTypeId);
-      }
-      setDraggingType(null);
-      setHoverIdeaForType(null);
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
   };
 
   // ═══════════════════════════════════════════════════════
@@ -1565,6 +352,7 @@ export default function IdeaBin() {
       fetch_categories();
       fetch_all_ideas();
       fetch_contexts_for_selector();
+      fetch_formations();
     }
   }, [isOpen]);
 
@@ -1613,88 +401,6 @@ export default function IdeaBin() {
       }).catch(() => {});
     }
   }, [transformModal, projectId]);
-
-  // ── Ctrl+V to paste copied idea ──
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (e) => {
-      // Only handle if IdeaBin window is visible and no text input is focused
-      const tag = document.activeElement?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-
-      if (e.ctrlKey && e.key === "v" && copiedIdeaId) {
-        e.preventDefault();
-        paste_idea([...selectedCategoryIds][0] || null);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, copiedIdeaId, selectedCategoryIds]);
-
-  // ── Focus tracking: mousedown inside = focused, mousedown outside = unfocused ──
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleGlobalMouseDown = (e) => {
-      const win = windowRef.current;
-      if (win && win.contains(e.target)) {
-        setIsFocused(true);
-      } else {
-        setIsFocused(false);
-        setRefactorMode(false); // leave refactor mode when losing focus
-      }
-    };
-    document.addEventListener("mousedown", handleGlobalMouseDown, true);
-    return () => document.removeEventListener("mousedown", handleGlobalMouseDown, true);
-  }, [isOpen]);
-
-  // ── "R" key toggles refactor mode when focused ──
-  useEffect(() => {
-    if (!isOpen || !isFocused) return;
-    const handleRefactorKey = (e) => {
-      const tag = document.activeElement?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if (e.key === "r" || e.key === "R") {
-        e.preventDefault();
-        setRefactorMode(prev => !prev);
-      }
-    };
-    window.addEventListener("keydown", handleRefactorKey);
-    return () => window.removeEventListener("keydown", handleRefactorKey);
-  }, [isOpen, isFocused]);
-
-  // ── "H" key toggles headline mode for selected category (or single idea if idea selected) ──
-  useEffect(() => {
-    if (!isOpen || !isFocused) return;
-    const handleHeadlineKey = (e) => {
-      const tag = document.activeElement?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if (e.key === "h" || e.key === "H") {
-        // If exactly one idea is selected → single-idea headline mode
-        if (selectedIdeaIds.size === 1) {
-          const theId = [...selectedIdeaIds][0];
-          e.preventDefault();
-          const idea = ideas[theId];
-          const catId = idea?.category ? String(idea.category) : null;
-          setHeadlineModeIdeaId(prev => prev === theId ? null : theId);
-          if (catId) setHeadlineModeCategoryId(catId);
-          else setHeadlineModeCategoryId(null);
-          return;
-        }
-        // If exactly one category is selected → whole-category headline mode
-        if (selectedCategoryIds.size === 1) {
-          const theCatId = [...selectedCategoryIds][0];
-          e.preventDefault();
-          setHeadlineModeIdeaId(null);
-          setHeadlineModeCategoryId(prev => {
-            if (prev === String(theCatId)) return null;
-            return String(theCatId);
-          });
-        }
-      }
-    };
-    window.addEventListener("keydown", handleHeadlineKey);
-    return () => window.removeEventListener("keydown", handleHeadlineKey);
-  }, [isOpen, isFocused, selectedCategoryIds, selectedIdeaIds, ideas]);
 
   // ── Listen for dep-refactor-drop events (Dependencies → IdeaBin reverse transform) ──
   useEffect(() => {
@@ -2186,75 +892,6 @@ export default function IdeaBin() {
                   {unassignedCount}
                 </span>
               )}
-              {/* ── Always-visible mode indicators ── */}
-              <span
-                className={`text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wide cursor-pointer transition-all ${
-                  refactorMode
-                    ? "bg-orange-600 text-white animate-pulse"
-                    : "bg-gray-200 text-gray-400"
-                }`}
-                onMouseDown={e => e.stopPropagation()}
-                onClick={() => setRefactorMode(prev => !prev)}
-                title={refactorMode ? "Refactor mode ON (R to toggle)" : "Refactor mode OFF (R to toggle)"}
-              >
-                REFACTOR
-              </span>
-              <span
-                className={`text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wide cursor-pointer transition-all ${
-                  (headlineModeCategoryId || headlineModeIdeaId)
-                    ? "bg-purple-600 text-white animate-pulse"
-                    : "bg-gray-200 text-gray-400"
-                }`}
-                onMouseDown={e => e.stopPropagation()}
-                onClick={() => {
-                  if (headlineModeCategoryId || headlineModeIdeaId) {
-                    setHeadlineModeCategoryId(null);
-                    setHeadlineModeIdeaId(null);
-                  }
-                }}
-                title={headlineModeIdeaId
-                  ? `Headline mode for "${(ideas[headlineModeIdeaId]?.headline || ideas[headlineModeIdeaId]?.title || '...').slice(0, 30)}" (H to toggle)`
-                  : headlineModeCategoryId
-                  ? `Headline mode for "${categories[headlineModeCategoryId]?.name || '...'}" (H to toggle)`
-                  : "Headline mode OFF (H to toggle)"
-                }
-              >
-                HEADLINE{headlineModeIdeaId
-                  ? ` · ${(ideas[headlineModeIdeaId]?.headline || ideas[headlineModeIdeaId]?.title || '').slice(0, 20)}${(ideas[headlineModeIdeaId]?.headline || ideas[headlineModeIdeaId]?.title || '').length > 20 ? '…' : ''}`
-                  : headlineModeCategoryId && categories[headlineModeCategoryId] ? ` · ${categories[headlineModeCategoryId].name}` : ''}
-              </span>
-              {/* ── View mode switcher ── */}
-              <div
-                className="flex items-center rounded-full p-0.5 ml-1"
-                style={{ backgroundColor: activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 15%, transparent)` : "rgba(217,119,6,0.15)" }}
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                <button
-                  onClick={() => setViewMode("ideas")}
-                  className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors ${
-                    viewMode === "ideas"
-                      ? "bg-white shadow-sm"
-                      : ""
-                  }`}
-                  style={{ color: activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 70%, #333)` : "#92400e" }}
-                  title="Ideas & Categories"
-                >
-                  Ideas
-                </button>
-                <button
-                  onClick={() => setViewMode("contexts")}
-                  className={`px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors flex items-center gap-0.5 ${
-                    viewMode === "contexts"
-                      ? "bg-white shadow-sm"
-                      : ""
-                  }`}
-                  style={{ color: activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 70%, #333)` : "#92400e" }}
-                  title="Categories & Contexts"
-                >
-                  <Layers size={10} />
-                  Contexts
-                </button>
-              </div>
             </div>
             <div className="flex items-center gap-1">
               {viewMode === "ideas" && (
@@ -2404,6 +1041,16 @@ export default function IdeaBin() {
               </button>
             </div>
           </div>
+
+          {/* ── Toolbar ── */}
+          <IdeaBinToolbar
+            refactorMode={refactorMode} setRefactorMode={setRefactorMode}
+            headlineModeCategoryId={headlineModeCategoryId} setHeadlineModeCategoryId={setHeadlineModeCategoryId}
+            headlineModeIdeaId={headlineModeIdeaId} setHeadlineModeIdeaId={setHeadlineModeIdeaId}
+            viewMode={viewMode} setViewMode={setViewMode}
+            ideas={ideas} categories={categories}
+            activeContext={activeContext}
+          />
 
           {/* ── Content area ── */}
           <div className="flex-1 flex overflow-hidden relative">
@@ -2695,11 +1342,7 @@ export default function IdeaBin() {
                   const latest = dims.legends[dims.legends.length - 1];
                   if (latest) {
                     try {
-                      await authFetch(`${API}/user/contexts/assign_legend/`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ legend_id: latest.id, context_id: activeContext.id }),
-                      });
+                      await assignLegendToContextApi(latest.id, activeContext.id);
                       setActiveContext(prev => prev ? { ...prev, legend_ids: [...(prev.legend_ids || []), latest.id] } : prev);
                     } catch (err) { console.error("Auto-assign legend to context failed", err); }
                   }
