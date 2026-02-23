@@ -947,6 +947,37 @@ def batch_remove_legend_type(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+def batch_assign_legend_type(request):
+    """Assign (or unassign) a legend type for a specific legend to multiple ideas at once."""
+    idea_ids = request.data.get("idea_ids", [])
+    legend_id = request.data.get("legend_id")
+    legend_type_id = request.data.get("legend_type_id")  # None to unassign
+
+    if not legend_id:
+        return Response({"error": "legend_id required"}, status=400)
+
+    legend = get_object_or_404(Legend, id=legend_id)
+    ideas = Idea.objects.filter(id__in=idea_ids, owner=request.user)
+
+    if legend_type_id is not None:
+        lt = get_object_or_404(LegendType, id=legend_type_id)
+        updated = 0
+        for idea in ideas:
+            IdeaLegendType.objects.update_or_create(
+                idea=idea, legend=legend,
+                defaults={"legend_type": lt},
+            )
+            updated += 1
+        return Response({"updated": updated})
+    else:
+        removed = IdeaLegendType.objects.filter(
+            idea__in=ideas, legend=legend,
+        ).delete()[0]
+        return Response({"removed": removed})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def sync_category_ideas(request):
     """Sync a category's ideas from a list of idea IDs (used by refetch/live).
     Adds new ideas and optionally removes ideas no longer matching the filter."""

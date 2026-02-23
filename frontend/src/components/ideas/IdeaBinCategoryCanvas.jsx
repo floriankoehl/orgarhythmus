@@ -67,6 +67,7 @@ export default function IdeaBinCategoryCanvas({
   paintType,
   setPaintType,
   assign_idea_legend_type,
+  batch_assign_idea_legend_type,
   showOrderNumbers,
   setShowOrderNumbers,
 }) {
@@ -237,10 +238,8 @@ export default function IdeaBinCategoryCanvas({
         });
         if (hitIds.length > 0) {
           // Paint mode: assign type to all marquee-hit ideas
-          if (paintType && assign_idea_legend_type) {
-            for (const id of hitIds) {
-              assign_idea_legend_type(id, paintType.typeId, dims);
-            }
+          if (paintType && batch_assign_idea_legend_type) {
+            batch_assign_idea_legend_type(hitIds, paintType.typeId, dims);
           } else if (ideaMarqueeRef.current?.ctrlKey) {
             setSelectedIdeaIds(old => {
               const next = new Set(old);
@@ -256,7 +255,7 @@ export default function IdeaBinCategoryCanvas({
     };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  }, [categoryRefs, setSelectedIdeaIds, paintType, setPaintType, assign_idea_legend_type, dims]);
+  }, [categoryRefs, setSelectedIdeaIds, paintType, setPaintType, batch_assign_idea_legend_type, dims]);
 
   // Click anywhere on the canvas background → deselect everything & exit headline/paint mode
   const handleCanvasClick = useCallback((e) => {

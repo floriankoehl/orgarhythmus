@@ -157,6 +157,7 @@ from .ideas import (
     delete_idea_comment,
     create_category_with_ideas,
     batch_remove_legend_type,
+    batch_assign_legend_type,
     sync_category_ideas,
     toggle_archive_idea,
     get_archived_ideas,

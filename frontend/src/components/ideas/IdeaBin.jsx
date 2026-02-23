@@ -180,6 +180,7 @@ export default function IdeaBin() {
     remove_all_idea_legend_types,
     remove_idea_legend_type,
     assign_idea_legend_type,
+    batch_assign_idea_legend_type,
     batchRemoveLegendType,
     toggle_upvote,
     fetch_comments,
@@ -1516,6 +1517,7 @@ export default function IdeaBin() {
                 ideas={ideas}
                 selectedIdeaIds={selectedIdeaIds}
                 assign_idea_legend_type={assign_idea_legend_type}
+                batch_assign_idea_legend_type={batch_assign_idea_legend_type}
                 passesAllFilters={passesAllFilters}
                 paintType={paintType}
                 setPaintType={setPaintType}
@@ -1618,6 +1620,7 @@ export default function IdeaBin() {
                 paintType={paintType}
                 setPaintType={setPaintType}
                 assign_idea_legend_type={assign_idea_legend_type}
+                batch_assign_idea_legend_type={batch_assign_idea_legend_type}
                 showOrderNumbers={showOrderNumbers}
                 setShowOrderNumbers={setShowOrderNumbers}
               />

@@ -16,6 +16,7 @@ import {
   removeAllIdeaLegendTypesApi,
   assignIdeaLegendTypeApi,
   batchRemoveLegendTypeApi,
+  batchAssignLegendTypeApi,
   toggleUpvoteApi,
   fetchCommentsApi,
   addCommentApi,
@@ -219,6 +220,39 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
     } catch (err) { console.error("Batch remove legend type failed:", err); }
   }, [ideas, fetch_all_ideas]);
 
+  const batch_assign_idea_legend_type = useCallback(async (placementIds, legendTypeId, dims) => {
+    const legendId = dims.activeLegendId;
+    if (!legendId) return;
+    // Collect unique idea IDs from placement IDs
+    const seen = new Set();
+    const ideaIds = [];
+    for (const pid of placementIds) {
+      const idea = ideas[pid];
+      const ideaId = idea?.idea_id || pid;
+      if (!seen.has(ideaId)) { seen.add(ideaId); ideaIds.push(ideaId); }
+    }
+    if (ideaIds.length === 0) return;
+    // Optimistic UI update
+    setIdeas(prev => {
+      const updated = { ...prev };
+      for (const [pid, p] of Object.entries(updated)) {
+        if (seen.has(p.idea_id)) {
+          const newDt = { ...p.legend_types };
+          if (legendTypeId) {
+            const lt = dims.legendTypes[legendTypeId];
+            newDt[String(legendId)] = { legend_type_id: legendTypeId, name: lt?.name || "", color: lt?.color || "#ccc", icon: lt?.icon || null };
+          } else {
+            delete newDt[String(legendId)];
+          }
+          updated[pid] = { ...p, legend_types: newDt };
+        }
+      }
+      return updated;
+    });
+    // Single API call
+    await batchAssignLegendTypeApi(ideaIds, legendId, legendTypeId);
+  }, [ideas]);
+
   // ── Upvote & Comments ──
   const toggle_upvote = useCallback(async (ideaId) => {
     try {
@@ -330,6 +364,7 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
     remove_all_idea_legend_types,
     remove_idea_legend_type,
     assign_idea_legend_type,
+    batch_assign_idea_legend_type,
     batchRemoveLegendType,
     toggle_upvote,
     fetch_comments,

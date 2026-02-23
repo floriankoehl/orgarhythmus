@@ -95,6 +95,7 @@ urlpatterns = [
     path("user/ideas/remove_all_legend_types/", views.remove_all_idea_legend_types),
     path("user/categories/create_with_ideas/", views.create_category_with_ideas),
     path("user/ideas/batch_remove_legend_type/", views.batch_remove_legend_type),
+    path("user/ideas/batch_assign_legend_type/", views.batch_assign_legend_type),
     path("user/categories/sync_ideas/", views.sync_category_ideas),
     path("user/categories/update_filter_config/", views.update_category_filter_config),
 

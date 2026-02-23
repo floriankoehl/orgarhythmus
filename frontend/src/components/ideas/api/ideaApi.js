@@ -152,6 +152,14 @@ export async function batchRemoveLegendTypeApi(ideaIds, legendId) {
   });
 }
 
+export async function batchAssignLegendTypeApi(ideaIds, legendId, legendTypeId) {
+  await authFetch(`${API}/user/ideas/batch_assign_legend_type/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ idea_ids: ideaIds, legend_id: legendId, legend_type_id: legendTypeId }),
+  });
+}
+
 export async function toggleUpvoteApi(ideaId) {
   const res = await authFetch(`${API}/user/ideas/${ideaId}/upvote/`, { method: "POST" });
   return res.json();

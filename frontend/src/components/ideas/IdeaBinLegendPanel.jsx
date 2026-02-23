@@ -37,6 +37,7 @@ export default function IdeaBinLegendPanel({
   ideas,
   selectedIdeaIds,
   assign_idea_legend_type,
+  batch_assign_idea_legend_type,
   passesAllFilters,
   filterPresets,
   saveFilterPreset,
@@ -362,11 +363,9 @@ export default function IdeaBinLegendPanel({
           <div
             className={`flex items-center gap-1.5 mb-1 cursor-pointer rounded px-1 py-0.5 text-[10px] ${paintType && paintType.typeId === null ? "ring-2 ring-gray-500 bg-gray-100" : ""} ${globalTypeFilter.includes("unassigned") ? "bg-gray-200" : "hover:bg-gray-100"}`}
             onClick={() => {
-              if (selectedIdeaIds?.size > 0 && assign_idea_legend_type) {
+              if (selectedIdeaIds?.size > 0 && batch_assign_idea_legend_type) {
                 // Bulk-assign: remove legend type from all selected ideas
-                for (const pid of selectedIdeaIds) {
-                  assign_idea_legend_type(pid, null, dims);
-                }
+                batch_assign_idea_legend_type([...selectedIdeaIds], null, dims);
                 return;
               }
               setGlobalTypeFilter(prev => prev.includes("unassigned") ? prev.filter(t => t !== "unassigned") : [...prev, "unassigned"]);
@@ -377,10 +376,8 @@ export default function IdeaBinLegendPanel({
               onMouseDown={(e) => { e.stopPropagation(); handleTypeDrag(e, null); }}
               onClick={(e) => {
                 e.stopPropagation();
-                if (selectedIdeaIds?.size > 0 && assign_idea_legend_type) {
-                  for (const pid of selectedIdeaIds) {
-                    assign_idea_legend_type(pid, null, dims);
-                  }
+                if (selectedIdeaIds?.size > 0 && batch_assign_idea_legend_type) {
+                  batch_assign_idea_legend_type([...selectedIdeaIds], null, dims);
                   return;
                 }
                 if (paintType && paintType.typeId === null) {
@@ -400,11 +397,9 @@ export default function IdeaBinLegendPanel({
               <div
                 className={`flex items-center gap-1.5 mb-1 group cursor-pointer rounded px-1 py-0.5 text-[10px] ${globalTypeFilter.includes(lt.id) ? "bg-gray-200" : "hover:bg-gray-100"}`}
                 onClick={() => {
-                  if (selectedIdeaIds?.size > 0 && assign_idea_legend_type) {
+                  if (selectedIdeaIds?.size > 0 && batch_assign_idea_legend_type) {
                     // Bulk-assign this legend type to all selected ideas
-                    for (const pid of selectedIdeaIds) {
-                      assign_idea_legend_type(pid, lt.id, dims);
-                    }
+                    batch_assign_idea_legend_type([...selectedIdeaIds], lt.id, dims);
                     return;
                   }
                   setGlobalTypeFilter(prev => prev.includes(lt.id) ? prev.filter(t => t !== lt.id) : [...prev, lt.id]);
@@ -416,10 +411,8 @@ export default function IdeaBinLegendPanel({
                   onMouseDown={(e) => { e.stopPropagation(); handleTypeDrag(e, lt.id); }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (selectedIdeaIds?.size > 0 && assign_idea_legend_type) {
-                      for (const pid of selectedIdeaIds) {
-                        assign_idea_legend_type(pid, lt.id, dims);
-                      }
+                    if (selectedIdeaIds?.size > 0 && batch_assign_idea_legend_type) {
+                      batch_assign_idea_legend_type([...selectedIdeaIds], lt.id, dims);
                       return;
                     }
                     if (paintType && paintType.typeId === lt.id) {
@@ -455,50 +448,53 @@ export default function IdeaBinLegendPanel({
                   </span>
                 )}
                 {globalTypeFilter.includes(lt.id) && <span className="text-blue-500">✓</span>}
-                {/* Icon picker button */}
-                <button
-                  onClick={(e) => { e.stopPropagation(); setIconPickerTypeId(iconPickerTypeId === lt.id ? null : lt.id); }}
-                  className="w-4 h-4 flex items-center justify-center rounded text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
-                  title="Choose icon"
-                >
-                  {lt.icon
-                    ? renderLegendTypeIcon(lt.icon, { style: { fontSize: 11, color: "inherit" } })
-                    : <span className="text-[9px]">☆</span>
-                  }
-                </button>
-                <label
-                  className="relative w-4 h-4 rounded cursor-pointer border border-gray-300 hover:border-blue-400 transition-colors flex-shrink-0"
-                  style={{ backgroundColor: lt.color }}
-                  title="Pick color"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <input
-                    type="color" value={lt.color}
-                    onChange={e => dims.update_type(lt.id, { color: e.target.value })}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                </label>
-                {/* Unselect all ideas from this type */}
-                {batchRemoveLegendType && countIdeasWithType(dims.activeLegendId, lt.id) > 0 && (
+                {/* Right-aligned action buttons */}
+                <div className="flex items-center gap-0.5 ml-auto flex-shrink-0">
+                  {/* Icon picker button */}
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const count = countIdeasWithType(dims.activeLegendId, lt.id);
-                      if (window.confirm(`Remove "${lt.name}" from ${count} idea${count !== 1 ? "s" : ""}${activeContext ? ` in "${activeContext.name}"` : ""}?`)) {
-                        batchRemoveLegendType(dims.activeLegendId, lt.id);
-                      }
-                    }}
-                    className="text-[8px] text-orange-400 hover:text-orange-600 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                    title={`Unassign "${lt.name}" from all ideas${activeContext ? ` in "${activeContext.name}"` : ""}`}
+                    onClick={(e) => { e.stopPropagation(); setIconPickerTypeId(iconPickerTypeId === lt.id ? null : lt.id); }}
+                    className="w-4 h-4 flex items-center justify-center rounded text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
+                    title="Choose icon"
                   >
-                    ✕all
+                    {lt.icon
+                      ? renderLegendTypeIcon(lt.icon, { style: { fontSize: 11, color: "inherit" } })
+                      : <span className="text-[9px]">☆</span>
+                    }
                   </button>
-                )}
-                <DeleteForeverIcon
-                  onClick={e => { e.stopPropagation(); dims.delete_type(lt.id); }}
-                  className="text-gray-300 hover:text-red-500! cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ fontSize: 13 }}
-                />
+                  <label
+                    className="relative w-4 h-4 rounded cursor-pointer border border-gray-300 hover:border-blue-400 transition-colors flex-shrink-0"
+                    style={{ backgroundColor: lt.color }}
+                    title="Pick color"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="color" value={lt.color}
+                      onChange={e => dims.update_type(lt.id, { color: e.target.value })}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                  </label>
+                  {/* Unselect all ideas from this type */}
+                  {batchRemoveLegendType && countIdeasWithType(dims.activeLegendId, lt.id) > 0 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const count = countIdeasWithType(dims.activeLegendId, lt.id);
+                        if (window.confirm(`Remove "${lt.name}" from ${count} idea${count !== 1 ? "s" : ""}${activeContext ? ` in "${activeContext.name}"` : ""}?`)) {
+                          batchRemoveLegendType(dims.activeLegendId, lt.id);
+                        }
+                      }}
+                      className="text-[8px] text-orange-400 hover:text-orange-600 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                      title={`Unassign "${lt.name}" from all ideas${activeContext ? ` in "${activeContext.name}"` : ""}`}
+                    >
+                      ✕all
+                    </button>
+                  )}
+                  <DeleteForeverIcon
+                    onClick={e => { e.stopPropagation(); dims.delete_type(lt.id); }}
+                    className="text-gray-300 hover:text-red-500! cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ fontSize: 13 }}
+                  />
+                </div>
               </div>
               {/* Icon picker dropdown */}
               {iconPickerTypeId === lt.id && (
