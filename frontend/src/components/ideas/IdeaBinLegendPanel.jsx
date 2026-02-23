@@ -23,6 +23,8 @@ export default function IdeaBinLegendPanel({
   globalTypeFilter, setGlobalTypeFilter,
   legendFilters, setLegendFilters,
   filterCombineMode, setFilterCombineMode,
+  stackedFilters, setStackedFilters,
+  stackCombineMode, setStackCombineMode,
   handleTypeDrag,
   editingTypeId, setEditingTypeId,
   editingTypeName, setEditingTypeName,
@@ -59,7 +61,8 @@ export default function IdeaBinLegendPanel({
   const [presetName, setPresetName] = useState("");
   const [editingPresetIdx, setEditingPresetIdx] = useState(null);
   const [editingPresetName, setEditingPresetName] = useState("");
-  const [appliedPresetName, setAppliedPresetName] = useState("");
+  const [hoveredPresetIdx, setHoveredPresetIdx] = useState(null);
+  const [activePresetIndices, setActivePresetIndices] = useState(new Set()); // which presets are currently toggled on
   const [allLegendTypes, setAllLegendTypes] = useState({}); // {legendId: {typeId: typeObj}}
   const [filterPanelCollapsed, setFilterPanelCollapsed] = useState(false);
 
@@ -100,7 +103,8 @@ export default function IdeaBinLegendPanel({
     if (onLegendCreated) onLegendCreated();
   };
 
-  const hasAnyFilter = legendFilters.length > 0 || globalTypeFilter.length > 0;
+  const hasAnyFilter = legendFilters.length > 0 || stackedFilters.length > 0 || globalTypeFilter.length > 0;
+  const totalGroupCount = (legendFilters.length > 0 ? 1 : 0) + stackedFilters.length;
 
   // Toggle a type in a specific filter rule
   const toggleTypeInFilter = (filterIndex, typeId) => {
@@ -167,12 +171,14 @@ export default function IdeaBinLegendPanel({
   const clearAllFilters = () => {
     setLegendFilters([]);
     setGlobalTypeFilter([]);
-    setAppliedPresetName("");
+    setStackedFilters([]);
+    setStackCombineMode("or");
+    setActivePresetIndices(new Set());
   };
 
   // Toggle a type in a filter for a specific legend (used in modal)
   const toggleTypeForLegend = (legendId, typeId) => {
-    setAppliedPresetName("");
+    setActivePresetIndices(new Set());
     setLegendFilters(prev => {
       const existingIdx = prev.findIndex(f => f.legendId === legendId);
       if (existingIdx >= 0) {
@@ -223,19 +229,92 @@ export default function IdeaBinLegendPanel({
 
   // Build a filter description for the category name
   const getFilterDisplayName = () => {
-    if (appliedPresetName) return appliedPresetName;
-    // Build from filter rules
     const parts = legendFilters.map(f => {
       const legend = displayLegends.find(l => l.id === f.legendId) || dims.legends.find(l => l.id === f.legendId);
       const legendName = legend?.name || "Legend";
-      const types = allLegendTypes[f.legendId] || (f.legendId === dims.activeLegendId ? dims.legendTypes : {});
-      const typeNames = f.typeIds.map(tid => {
-        if (tid === "unassigned") return "Unassigned";
-        return types[tid]?.name || "Type";
-      });
-      return `${f.mode === "exclude" ? "excl" : "incl"} ${typeNames.join(", ")} (${legendName})`;
+      const typeNames = f.typeIds.map(tid => resolveTypeName(f.legendId, tid));
+      return `${f.mode === "exclude" ? "excl " : ""}${typeNames.join(", ")} (${legendName})`;
     });
     return parts.join(` ${filterCombineMode} `) || "filter";
+  };
+
+  // Resolve type name from any available source
+  const resolveTypeName = (legendId, typeId) => {
+    if (typeId === "unassigned") return "Unassigned";
+    // Try allLegendTypes first (populated when modal opens)
+    if (allLegendTypes[legendId]?.[typeId]?.name) return allLegendTypes[legendId][typeId].name;
+    // Fall back to dims.legendTypes for active legend
+    if (dims.activeLegendId === legendId && dims.legendTypes[typeId]?.name) return dims.legendTypes[typeId].name;
+    return `Type #${typeId}`;
+  };
+
+  // Render human-readable filter description for a set of rules (one group)
+  const renderFilterSentence = (rules, combineMode) => {
+    if (!rules || rules.length === 0) return null;
+    return rules.map((f, idx) => {
+      const legend = displayLegends.find(l => l.id === f.legendId) || dims.legends.find(l => l.id === f.legendId);
+      const legendName = legend?.name || `Legend #${f.legendId}`;
+      const typeNames = f.typeIds.map(tid => resolveTypeName(f.legendId, tid));
+      const isExclude = f.mode === "exclude";
+      return (
+        <div key={`${f.legendId}-${idx}`} className="flex items-start gap-1 flex-wrap">
+          {idx > 0 && (
+            <span className="font-bold text-blue-600 mr-0.5">{combineMode.toUpperCase()}</span>
+          )}
+          {isExclude && (
+            <span className="font-bold text-red-600">EXCLUDE</span>
+          )}
+          <span className="text-gray-500">{typeNames.join(", ")}</span>
+          <span className="text-gray-400 italic">from {legendName}</span>
+        </div>
+      );
+    });
+  };
+
+  // Render the full compound boolean expression (primary + stacked groups)
+  const renderFullFilterExpression = () => {
+    const groups = [];
+    if (legendFilters.length > 0) {
+      groups.push({ name: "Primary", rules: legendFilters, combineMode: filterCombineMode });
+    }
+    for (const sg of stackedFilters) {
+      if (sg.rules.length > 0) groups.push(sg);
+    }
+    if (groups.length === 0) return null;
+
+    return (
+      <div className="space-y-1">
+        {groups.map((g, gi) => {
+          const groupRuleTexts = g.rules.map(f => {
+            const legend = displayLegends.find(l => l.id === f.legendId) || dims.legends.find(l => l.id === f.legendId);
+            const legendName = legend?.name || "Legend";
+            const typeNames = f.typeIds.map(tid => resolveTypeName(f.legendId, tid));
+            const prefix = f.mode === "exclude" ? "excl " : "";
+            return `${prefix}${typeNames.join(", ")} (${legendName})`;
+          });
+          const groupText = groupRuleTexts.join(` ${g.combineMode} `);
+          return (
+            <div key={gi} className="flex items-start gap-1 flex-wrap">
+              {gi > 0 && (
+                <span className="font-bold text-purple-600 mr-0.5">{stackCombineMode.toUpperCase()}</span>
+              )}
+              {groups.length > 1 ? (
+                <span className="text-gray-600">
+                  <span className="text-gray-400 font-bold">(</span>
+                  {groupText}
+                  <span className="text-gray-400 font-bold">)</span>
+                </span>
+              ) : (
+                <span className="text-gray-600">{groupText}</span>
+              )}
+              {g.name && g.name !== "Primary" && (
+                <span className="text-[9px] text-indigo-400 italic">— {g.name}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
   };
   return (
     <div className="bg-white border-t border-gray-200 flex-shrink-0">
@@ -634,7 +713,7 @@ export default function IdeaBinLegendPanel({
           <div className="flex items-center gap-1">
             <Filter size={12} className="text-gray-500" />
             <h3 className="text-[10px] font-semibold text-gray-500">
-              Filters {hasAnyFilter && <span className="text-blue-500">({legendFilters.length})</span>}
+              Filters {hasAnyFilter && <span className="text-blue-500">({totalGroupCount} group{totalGroupCount !== 1 ? "s" : ""})</span>}
             </h3>
           </div>
           <span className="text-gray-400 text-[10px]">{filterPanelCollapsed ? "▲" : "▼"}</span>
@@ -642,14 +721,6 @@ export default function IdeaBinLegendPanel({
         {!filterPanelCollapsed && (
           <div className="mt-1">
             <div className="flex items-center justify-end gap-1.5 mb-1.5">
-                {hasAnyFilter && (
-                  <button
-                    onClick={clearAllFilters}
-                    className="text-[10px] text-red-400 hover:text-red-600 transition-colors font-medium"
-                  >
-                    Clear
-                  </button>
-                )}
                 <button
                   onClick={openFilterModal}
                   className="text-[10px] px-2 py-1 bg-blue-50 border border-blue-200 rounded text-blue-600 hover:bg-blue-100 transition-colors font-medium flex items-center gap-1"
@@ -657,54 +728,19 @@ export default function IdeaBinLegendPanel({
                   <Pencil size={9} />
                   {hasAnyFilter ? "Edit" : "Define"}
                 </button>
+                {hasAnyFilter && (
+                  <button
+                    onClick={clearAllFilters}
+                    className="text-[10px] px-2 py-1 bg-red-50 border border-red-200 rounded text-red-500 hover:bg-red-100 transition-colors font-medium flex items-center gap-1"
+                  >
+                    <Trash2 size={9} />
+                    Clear all
+                  </button>
+                )}
             </div>
 
-            {/* ── Human-readable filter summary (draggable) ── */}
-            {legendFilters.length > 0 && (
-              <div
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData("application/ideabin-filter", JSON.stringify({
-                    legend_filters: legendFilters,
-                    filter_combine_mode: filterCombineMode,
-                  }));
-                  e.dataTransfer.effectAllowed = "copy";
-                }}
-                className="mb-2 p-2 bg-blue-50 rounded-lg border border-blue-200 text-[11px] text-gray-700 leading-relaxed cursor-grab active:cursor-grabbing hover:border-blue-400 transition-colors"
-                title="Drag to a category to apply this filter"
-              >
-                <div className="font-semibold text-blue-700 mb-1">Showing ideas where:</div>
-                {legendFilters.map((f, idx) => {
-                  const legend = displayLegends.find(l => l.id === f.legendId) || dims.legends.find(l => l.id === f.legendId);
-                  const legendName = legend?.name || `Legend #${f.legendId}`;
-                  const isActiveLeg = dims.activeLegendId === f.legendId;
-                  const typeNames = f.typeIds.map(tid => {
-                    if (tid === "unassigned") return "Unassigned";
-                    if (isActiveLeg && dims.legendTypes[tid]) return dims.legendTypes[tid].name;
-                    return `Type ${tid}`;
-                  });
-                  return (
-                    <div key={`${f.legendId}-${idx}`} className="flex items-start gap-1">
-                      {idx > 0 && (
-                        <span className="font-bold text-blue-600 mr-0.5">{filterCombineMode.toUpperCase()}</span>
-                      )}
-                      <span className={`font-bold ${f.mode === "exclude" ? "text-red-600" : "text-green-600"}`}>
-                        {f.mode === "exclude" ? "EXCLUDE" : "INCLUDE"}
-                      </span>
-                      <span className="text-gray-500">
-                        {typeNames.join(", ")}
-                      </span>
-                      <span className="text-gray-400 italic">
-                        from {legendName}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
             {/* ═══ Filter Presets ═══ */}
-            {activeContext && saveFilterPreset && (
+            {saveFilterPreset && (
               <div className="mb-2 space-y-1">
                 {/* Save current filter as preset */}
                 {hasAnyFilter && (
@@ -752,7 +788,26 @@ export default function IdeaBinLegendPanel({
                 {/* Preset list */}
                 {filterPresets && filterPresets.length > 0 && (
                   <div className="space-y-1">
-                    <div className="text-[10px] font-semibold text-gray-500 mb-0.5">Presets</div>
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="text-[10px] font-semibold text-gray-500">Presets</div>
+                      {activePresetIndices.size >= 2 && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-[9px] text-gray-400">Combine:</span>
+                          <button
+                            onClick={() => setStackCombineMode("and")}
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-bold transition-colors ${
+                              stackCombineMode === "and" ? "bg-purple-500 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                            }`}
+                          >AND</button>
+                          <button
+                            onClick={() => setStackCombineMode("or")}
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-bold transition-colors ${
+                              stackCombineMode === "or" ? "bg-purple-500 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                            }`}
+                          >OR</button>
+                        </div>
+                      )}
+                    </div>
                 {filterPresets.map((preset, idx) => (
                   <div key={idx}>
                     {editingPresetIdx === idx ? (
@@ -776,43 +831,136 @@ export default function IdeaBinLegendPanel({
                       </div>
                     ) : (
                       <div
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData("application/ideabin-filter", JSON.stringify({
-                            legend_filters: preset.legend_filters || [],
-                            filter_combine_mode: preset.filter_combine_mode || "and",
-                          }));
-                          e.dataTransfer.effectAllowed = "copy";
-                        }}
-                        onClick={() => { applyFilterPreset(preset); setAppliedPresetName(preset.name); }}
-                        className="flex items-center gap-1 group p-1.5 bg-gray-50 rounded border border-gray-200 hover:border-blue-300 hover:bg-blue-50 cursor-grab active:cursor-grabbing transition-colors"
-                        title="Drag to a category to apply this filter"
+                        className="relative"
+                        onMouseEnter={() => setHoveredPresetIdx(idx)}
+                        onMouseLeave={() => setHoveredPresetIdx(null)}
                       >
-                        <span className="flex-1 text-[10px] font-medium text-gray-700 truncate">{preset.name}</span>
-                        <span className="text-[9px] text-gray-400 flex-shrink-0">{preset.legend_filters?.length || 0}r</span>
-                        {stackFilterPreset && legendFilters.length > 0 && (
+                        <div
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("application/ideabin-filter", JSON.stringify({
+                              name: preset.name,
+                              legend_filters: preset.legend_filters || [],
+                              filter_combine_mode: preset.filter_combine_mode || "and",
+                              stacked_filters: preset.stacked_filters || [],
+                              stack_combine_mode: preset.stack_combine_mode || "or",
+                            }));
+                            e.dataTransfer.effectAllowed = "copy";
+                          }}
+                          onClick={() => {
+                            const isActive = activePresetIndices.has(idx);
+                            if (isActive) {
+                              // Toggle off — remove this preset
+                              const newActive = new Set(activePresetIndices);
+                              newActive.delete(idx);
+                              setActivePresetIndices(newActive);
+                              if (newActive.size === 0) {
+                                // No presets active — clear everything
+                                setLegendFilters([]);
+                                setFilterCombineMode("and");
+                                setStackedFilters([]);
+                                setStackCombineMode("or");
+                              } else {
+                                // Rebuild: first active = primary, rest = stacked
+                                const remaining = [...newActive].sort((a, b) => a - b);
+                                const firstPreset = filterPresets[remaining[0]];
+                                setLegendFilters(JSON.parse(JSON.stringify(firstPreset.legend_filters || [])));
+                                setFilterCombineMode(firstPreset.filter_combine_mode || "and");
+                                setStackedFilters(remaining.slice(1).map(ri => {
+                                  const p = filterPresets[ri];
+                                  return { name: p.name, rules: JSON.parse(JSON.stringify(p.legend_filters || [])), combineMode: p.filter_combine_mode || "and" };
+                                }));
+                              }
+                            } else {
+                              // Toggle on
+                              const isGroup = preset.stacked_filters?.length > 0;
+                              if (isGroup) {
+                                // Filter groups always apply standalone — replace everything
+                                setActivePresetIndices(new Set([idx]));
+                                applyFilterPreset(preset);
+                              } else {
+                                const newActive = new Set(activePresetIndices);
+                                // If current active is a group, replace it
+                                const currentIsGroup = activePresetIndices.size === 1 &&
+                                  filterPresets[[...activePresetIndices][0]]?.stacked_filters?.length > 0;
+                                if (currentIsGroup) {
+                                  setActivePresetIndices(new Set([idx]));
+                                  applyFilterPreset(preset);
+                                } else {
+                                  newActive.add(idx);
+                                  setActivePresetIndices(newActive);
+                                  if (activePresetIndices.size === 0) {
+                                    applyFilterPreset(preset);
+                                  } else {
+                                    stackFilterPreset(preset);
+                                  }
+                                }
+                              }
+                            }
+                          }}
+                          className={`flex items-center gap-1 group p-1.5 rounded border cursor-pointer transition-colors ${
+                            activePresetIndices.has(idx)
+                              ? "bg-blue-100 border-blue-400 ring-1 ring-blue-300"
+                              : "bg-gray-50 border-gray-200 hover:border-blue-300 hover:bg-blue-50"
+                          }`}
+                          title="Click to toggle filter on/off. Drag to a category."
+                        >
+                          {(preset.stacked_filters?.length > 0) ? (
+                            <Layers size={10} className={`flex-shrink-0 ${activePresetIndices.has(idx) ? "text-purple-500" : "text-purple-400"}`} />
+                          ) : (
+                            <Filter size={10} className={`flex-shrink-0 ${activePresetIndices.has(idx) ? "text-blue-500" : "text-gray-400"}`} />
+                          )}
+                          <span className={`flex-1 text-[10px] font-medium truncate ${activePresetIndices.has(idx) ? "text-blue-700" : "text-gray-700"}`}>
+                            {preset.name}
+                          </span>
+                          <span className="text-[9px] text-gray-400 flex-shrink-0">
+                            {preset.stacked_filters?.length > 0
+                              ? `${1 + preset.stacked_filters.length}g`
+                              : `${preset.legend_filters?.length || 0}r`}
+                          </span>
                           <button
-                            onClick={(e) => { e.stopPropagation(); stackFilterPreset(preset); }}
-                            className="text-indigo-400 hover:text-indigo-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Stack — merge into current filter"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Load preset into the primary filter and open modal for editing
+                              applyFilterPreset(preset);
+                              setActivePresetIndices(new Set([idx]));
+                              openFilterModal();
+                            }}
+                            className="text-gray-400 hover:text-blue-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Edit filter"
                           >
-                            <Layers size={10} />
+                            <Pencil size={10} />
                           </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setEditingPresetIdx(idx); setEditingPresetName(preset.name); }}
+                            className="text-gray-400 hover:text-gray-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Rename"
+                          >
+                            <span className="text-[9px] font-bold">Aa</span>
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteFilterPreset(idx);
+                              const newActive = new Set(activePresetIndices);
+                              newActive.delete(idx);
+                              // Shift indices above deleted
+                              const shifted = new Set();
+                              for (const ai of newActive) shifted.add(ai > idx ? ai - 1 : ai);
+                              setActivePresetIndices(shifted);
+                            }}
+                            className="text-gray-400 hover:text-red-500 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Delete"
+                          >
+                            <Trash2 size={10} />
+                          </button>
+                        </div>
+                        {/* Hover tooltip — filter description */}
+                        {hoveredPresetIdx === idx && preset.legend_filters?.length > 0 && (
+                          <div className="absolute left-0 right-0 top-full mt-0.5 z-50 p-1.5 bg-white rounded-lg border border-blue-200 shadow-lg text-[10px] text-gray-600 leading-relaxed">
+                            {renderFilterSentence(preset.legend_filters, preset.filter_combine_mode || "and")}
+                          </div>
                         )}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setEditingPresetIdx(idx); setEditingPresetName(preset.name); }}
-                          className="text-gray-400 hover:text-gray-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="Rename"
-                        >
-                          <Pencil size={10} />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); deleteFilterPreset(idx); }}
-                          className="text-gray-400 hover:text-red-500 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="Delete"
-                        >
-                          <Trash2 size={10} />
-                        </button>
                       </div>
                     )}
                   </div>
@@ -900,6 +1048,13 @@ export default function IdeaBinLegendPanel({
 
                 {/* Modal body */}
                 <div className="p-4 overflow-y-auto flex-1" style={{ scrollbarWidth: "thin" }}>
+                  {/* Live filter sentence — full boolean expression */}
+                  <div className={`mb-3 p-2 rounded-lg border text-[11px] leading-relaxed ${hasAnyFilter ? "bg-blue-50 border-blue-200 text-gray-700" : "bg-gray-50 border-gray-200 text-gray-400 italic"}`}>
+                    {hasAnyFilter
+                      ? renderFullFilterExpression()
+                      : "No filter rules defined yet. Select legend types below to create rules."}
+                  </div>
+
                   {/* AND/OR toggle */}
                   {legendFilters.length >= 2 && (
                     <div className="flex items-center gap-2 mb-3 pb-3 border-b border-gray-100">
@@ -1001,20 +1156,80 @@ export default function IdeaBinLegendPanel({
                     })}
                   </div>
 
-                  {/* ── Stack presets section ── */}
-                  {filterPresets && filterPresets.length > 0 && stackFilterPreset && (
+                  {/* ── Active stacked groups ── */}
+                  {stackedFilters.length > 0 && (
+                    <div className="mt-4 pt-3 border-t border-gray-200">
+                      <div className="text-[10px] font-semibold text-gray-500 mb-1.5 flex items-center justify-between">
+                        <div className="flex items-center gap-1">
+                          <Layers size={10} className="text-indigo-500" />
+                          Stacked Groups ({stackedFilters.length})
+                        </div>
+                        {/* Outer AND/OR — how groups combine */}
+                        {totalGroupCount >= 2 && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-[9px] text-gray-400">Groups:</span>
+                            <button
+                              onClick={() => setStackCombineMode("and")}
+                              className={`text-[10px] px-1.5 py-0.5 rounded font-bold transition-colors ${
+                                stackCombineMode === "and" ? "bg-purple-500 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                              }`}
+                            >AND</button>
+                            <button
+                              onClick={() => setStackCombineMode("or")}
+                              className={`text-[10px] px-1.5 py-0.5 rounded font-bold transition-colors ${
+                                stackCombineMode === "or" ? "bg-purple-500 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                              }`}
+                            >OR</button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        {stackedFilters.map((sg, si) => (
+                          <div key={si} className="flex items-start gap-1 p-1.5 bg-indigo-50 rounded border border-indigo-200 group">
+                            <div className="flex-1 text-[10px] text-gray-600">
+                              <span className="font-medium text-indigo-600">{sg.name}</span>
+                              <span className="text-gray-400 ml-1">({sg.rules.length}r, {sg.combineMode.toUpperCase()})</span>
+                              <div className="mt-0.5 text-[9px] text-gray-500 italic">
+                                {sg.rules.map((f, fi) => {
+                                  const legend = displayLegends.find(l => l.id === f.legendId) || dims.legends.find(l => l.id === f.legendId);
+                                  const typeNames = f.typeIds.map(tid => resolveTypeName(f.legendId, tid));
+                                  return (
+                                    <span key={fi}>
+                                      {fi > 0 && <span className="font-bold text-indigo-400"> {sg.combineMode.toUpperCase()} </span>}
+                                      {f.mode === "exclude" && <span className="text-red-500">excl </span>}
+                                      {typeNames.join(", ")} ({legend?.name || "Legend"})
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => setStackedFilters(prev => prev.filter((_, i) => i !== si))}
+                              className="text-gray-400 hover:text-red-500 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                              title="Remove stacked group"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Stack presets section (only simple filters, not groups) ── */}
+                  {filterPresets && filterPresets.filter(p => !(p.stacked_filters?.length > 0)).length > 0 && stackFilterPreset && (
                     <div className="mt-4 pt-3 border-t border-gray-200">
                       <div className="text-[10px] font-semibold text-gray-500 mb-1.5 flex items-center gap-1">
                         <Layers size={10} className="text-indigo-500" />
-                        Stack a preset
+                        Stack a filter
                       </div>
                       <div className="flex flex-wrap gap-1">
-                        {filterPresets.map((preset, idx) => (
+                        {filterPresets.filter(p => !(p.stacked_filters?.length > 0)).map((preset, idx) => (
                           <button
                             key={idx}
                             onClick={() => stackFilterPreset(preset)}
                             className="text-[10px] px-2 py-1 bg-indigo-50 border border-indigo-200 rounded-full text-indigo-600 hover:bg-indigo-100 transition-colors font-medium flex items-center gap-1"
-                            title={`Merge "${preset.name}" rules into current filter`}
+                            title={`Add "${preset.name}" as a separate filter group`}
                           >
                             <Plus size={9} />
                             {preset.name}

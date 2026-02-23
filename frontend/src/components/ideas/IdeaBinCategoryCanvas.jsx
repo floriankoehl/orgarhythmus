@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
-import { Copy, Settings, Globe, Lock, UserRound, LinkIcon, PanelTopDashed, Pencil, Type, X, RotateCcw, ArrowDownUp, BookOpenText, Rss, ListOrdered } from "lucide-react";
+import { Copy, Settings, Globe, Lock, UserRound, LinkIcon, PanelTopDashed, Pencil, Type, X, RotateCcw, ArrowDownUp, BookOpenText, Rss, ListOrdered, Filter } from "lucide-react";
 import FeedFilterPanel from "./FeedFilterPanel";
 
 /**
@@ -64,6 +64,7 @@ export default function IdeaBinCategoryCanvas({
   setCategoryFilterConfig,
   legendFilters,
   filterCombineMode,
+  filterPresets,
   paintType,
   setPaintType,
   assign_idea_legend_type,
@@ -77,8 +78,6 @@ export default function IdeaBinCategoryCanvas({
 
   // Feed Filter panel state – which category key has its panel open (null = closed)
   const [feedFilterOpen, setFeedFilterOpen] = useState(null);
-  // Cached legend→types map for the filter panel  {legendId: {typeId: typeObj}}
-  const [feedFilterTypes, setFeedFilterTypes] = useState({});
 
   // "define" = manual order with drag-to-reorder, "description" = auto-sorted by position in description
   const [headlineOrderMode, setHeadlineOrderMode] = useState("define");
@@ -101,18 +100,9 @@ export default function IdeaBinCategoryCanvas({
   }, [update_idea_title_api]);
 
   // ── Feed Filter panel helpers ──
-  const openFeedFilter = useCallback(async (catKey) => {
+  const openFeedFilter = useCallback((catKey) => {
     setFeedFilterOpen(prev => (prev === catKey ? null : catKey));
-    // Pre-fetch legend types if not already cached
-    if (dims?.legends?.length && Object.keys(feedFilterTypes).length === 0) {
-      const typesMap = {};
-      for (const leg of dims.legends) {
-        const raw = await dims.fetchTypesRaw(leg.id);
-        typesMap[leg.id] = raw;
-      }
-      setFeedFilterTypes(typesMap);
-    }
-  }, [dims, feedFilterTypes]);
+  }, []);
 
   // Close feed-filter panel when clicking elsewhere (uses effect)
   const feedFilterRef = useRef(null);
@@ -399,6 +389,7 @@ export default function IdeaBinCategoryCanvas({
         const isSelected = selectedCategoryIds.has(catKey) || selectedCategoryIds.has(String(catKey));
         const isAdopted = catData.adopted;
         const isMergeTarget = refactorMode && mergeCategoryTarget === catKey;
+        const hasConstantFilter = !!catData.filter_config;
 
         return (
           <div
@@ -417,8 +408,9 @@ export default function IdeaBinCategoryCanvas({
                       ? (isHovered ? "#e8ecff" : isSelected ? "#eef1ff" : "#f4f6ff")
                       : (isHovered ? "#fff59d" : isSelected ? "#fff8b0" : contextColor ? `color-mix(in srgb, ${contextColor} 12%, #ffffff)` : "#fff9c4"),
               transition: "background-color 150ms ease",
+              ...(hasConstantFilter && !isMergeTarget ? { borderLeft: "3px solid #3b82f6" } : {}),
             }}
-            className={`absolute shadow-lg rounded p-1.5 flex flex-col ${isSelected ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${isAdopted ? "border border-indigo-300" : ""} ${isMergeTarget ? "ring-2 ring-orange-500 ring-offset-1" : ""} ${filterDropTarget === catKey ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}
+            className={`absolute shadow-lg rounded p-1.5 flex flex-col ${isSelected ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${isAdopted ? "border border-indigo-300" : ""} ${isMergeTarget ? "ring-2 ring-orange-500 ring-offset-1" : ""} ${filterDropTarget === catKey ? "ring-2 ring-blue-500 ring-offset-1" : ""} ${hasConstantFilter && !isAdopted ? "border border-blue-200" : ""}`}
             data-category-card
             onDragOver={(e) => {
               if (e.dataTransfer.types.includes("application/ideabin-filter")) {
@@ -439,7 +431,16 @@ export default function IdeaBinCategoryCanvas({
                 e.preventDefault();
                 try {
                   const parsed = JSON.parse(filterData);
-                  setCategoryFilterConfig(catKey, parsed);
+                  const catName = catData.name || `Category #${catKey}`;
+                  setConfirmModal({
+                    message: `Apply this filter as a constant filter on "${catName}"? The category will auto-populate with matching ideas.`,
+                    onConfirm: () => {
+                      setCategoryFilterConfig(catKey, parsed);
+                      refetchCategoryByFilter(catKey, ideas);
+                      setConfirmModal(null);
+                    },
+                    onCancel: () => setConfirmModal(null),
+                  });
                 } catch (err) { console.error("Failed to parse dropped filter:", err); }
               }
               setFilterDropTarget(null);
@@ -541,6 +542,14 @@ export default function IdeaBinCategoryCanvas({
                   {catData.is_public && !isAdopted && (
                     <Globe size={9} className="text-emerald-600 flex-shrink-0" title="Public category" />
                   )}
+                  {hasConstantFilter && (
+                    <Filter size={9} className="text-blue-500 flex-shrink-0" title="Constant filter applied" />
+                  )}
+                  {catData.filter_config?.name && (
+                    <span className="text-[8px] font-medium text-blue-600 bg-blue-50 rounded px-1 py-0.5 flex-shrink-0 truncate max-w-[80px]" title={catData.filter_config.name}>
+                      {catData.filter_config.name}
+                    </span>
+                  )}
                 </span>
               )}
               <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -594,15 +603,12 @@ export default function IdeaBinCategoryCanvas({
                       catData={catData}
                       isOwner={!isAdopted}
                       dims={dims}
-                      feedFilterTypes={feedFilterTypes}
-                      legendFilters={legendFilters}
-                      filterCombineMode={filterCombineMode}
-                      globalTypeFilter={globalTypeFilter}
                       setCategoryFilterConfig={setCategoryFilterConfig}
                       refetchCategoryByFilter={refetchCategoryByFilter}
                       toggleLiveCategory={toggleLiveCategory}
                       liveCategoryIds={liveCategoryIds}
                       ideas={ideas}
+                      filterPresets={filterPresets}
                       onClose={() => setFeedFilterOpen(null)}
                     />
                   )}

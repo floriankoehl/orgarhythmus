@@ -167,6 +167,8 @@ urlpatterns = [
     # User Shortcuts (per-user keyboard shortcut configuration)
     path("user/shortcuts/", views.get_user_shortcuts, name="get_user_shortcuts"),
     path("user/shortcuts/save/", views.save_user_shortcuts, name="save_user_shortcuts"),
+    path("user/filter-presets/", views.get_filter_presets, name="get_filter_presets"),
+    path("user/filter-presets/save/", views.save_filter_presets, name="save_filter_presets"),
 
     # Legends (user-scoped)
     path("user/legends/", views.get_user_legends, name="get_user_legends"),

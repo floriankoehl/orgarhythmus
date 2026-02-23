@@ -176,6 +176,8 @@ from .notifications import (
 from .shortcuts import (
     get_user_shortcuts,
     save_user_shortcuts,
+    get_filter_presets,
+    save_filter_presets,
 )
 
 from .protopersonas import (

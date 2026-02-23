@@ -29,3 +29,28 @@ def save_user_shortcuts(request):
     obj.shortcuts = shortcuts
     obj.save()
     return Response({"shortcuts": obj.shortcuts})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_filter_presets(request):
+    """Get the current user's saved filter presets."""
+    obj, _ = UserShortcuts.objects.get_or_create(user=request.user)
+    return Response({"filter_presets": obj.filter_presets or []})
+
+
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+def save_filter_presets(request):
+    """
+    Save/update the current user's filter presets.
+    Body: { "filter_presets": [ {name, legend_filters, ...}, ... ] }
+    """
+    presets = request.data.get("filter_presets", [])
+    if not isinstance(presets, list):
+        return Response({"detail": "filter_presets must be a list"}, status=status.HTTP_400_BAD_REQUEST)
+
+    obj, _ = UserShortcuts.objects.get_or_create(user=request.user)
+    obj.filter_presets = presets
+    obj.save()
+    return Response({"filter_presets": obj.filter_presets})

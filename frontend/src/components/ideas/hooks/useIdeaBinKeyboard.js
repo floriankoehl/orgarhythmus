@@ -20,7 +20,8 @@ export default function useIdeaBinKeyboard(deps) {
     // Ctrl+A / Ctrl+Shift+A deps
     categoryOrders, unassignedOrder, metaIdeaList,
     listFilter, viewMode, dockedCategories, activeContext,
-    legendFilters, filterCombineMode, globalTypeFilter, dims,
+    legendFilters, filterCombineMode, stackedFilters, stackCombineMode,
+    globalTypeFilter, dims,
     sidebarFocused,
     undo, redo,
   } = deps;
@@ -179,21 +180,38 @@ export default function useIdeaBinKeyboard(deps) {
   }, [isOpen, isFocused, undo, redo]);
 
   // ── Helper: compute passesAllFilters inside this hook ──
+  // Evaluate a single group of rules against an idea
+  const evalFilterGroup = useCallback((rules, combineMode, idea) => {
+    if (rules.length === 0) return true;
+    const results = rules.map(f => {
+      const legId = String(f.legendId);
+      const dt = idea.legend_types?.[legId];
+      const typeId = dt?.legend_type_id;
+      const hasType = !!dt;
+      const matchesSelected = f.typeIds.includes("unassigned")
+        ? (!hasType || f.typeIds.includes(typeId))
+        : (hasType && f.typeIds.includes(typeId));
+      return f.mode === "exclude" ? !matchesSelected : matchesSelected;
+    });
+    return combineMode === "and" ? results.every(Boolean) : results.some(Boolean);
+  }, []);
+
   const passesAllFilters = useCallback((idea) => {
     if (!idea) return false;
-    const hasLF = legendFilters.length > 0;
+    const hasLF = legendFilters.length > 0 || stackedFilters.length > 0;
     if (hasLF) {
-      const results = legendFilters.map(f => {
-        const legId = String(f.legendId);
-        const dt = idea.legend_types?.[legId];
-        const typeId = dt?.legend_type_id;
-        const hasType = !!dt;
-        const matchesSelected = f.typeIds.includes("unassigned")
-          ? (!hasType || f.typeIds.includes(typeId))
-          : (hasType && f.typeIds.includes(typeId));
-        return f.mode === "exclude" ? !matchesSelected : matchesSelected;
-      });
-      return filterCombineMode === "and" ? results.every(Boolean) : results.some(Boolean);
+      const groups = [];
+      if (legendFilters.length > 0) {
+        groups.push({ rules: legendFilters, combineMode: filterCombineMode });
+      }
+      for (const sg of stackedFilters) {
+        if (sg.rules.length > 0) groups.push(sg);
+      }
+      if (groups.length === 0) return true;
+      const groupResults = groups.map(g => evalFilterGroup(g.rules, g.combineMode, idea));
+      return stackCombineMode === "and"
+        ? groupResults.every(Boolean)
+        : groupResults.some(Boolean);
     }
     if (globalTypeFilter.length > 0) {
       const dimId = String(dims?.activeLegendId || "");
@@ -203,7 +221,7 @@ export default function useIdeaBinKeyboard(deps) {
       return false;
     }
     return true;
-  }, [legendFilters, filterCombineMode, globalTypeFilter, dims?.activeLegendId]);
+  }, [legendFilters, filterCombineMode, stackedFilters, stackCombineMode, evalFilterGroup, globalTypeFilter, dims?.activeLegendId]);
 
   // ── Helper: get active (visible on canvas) categories ──
   const getActiveCategories = useCallback(() => {
@@ -231,22 +249,28 @@ export default function useIdeaBinKeyboard(deps) {
         setSelectedCategoryIds(new Set(activeCats.map(([k]) => k)));
         setSelectedIdeaIds(new Set());
       } else {
-        // Ctrl+A → select all displayed ideas on the canvas
-        const activeCats = getActiveCategories();
+        // Ctrl+A → select ideas
+        // If categories are selected, only select ideas within those categories;
+        // otherwise select all ideas across all active categories.
+        const hasSelectedCats = selectedCategoryIds && selectedCategoryIds.size > 0;
+        const catsToScan = hasSelectedCats
+          ? [...selectedCategoryIds].map(k => [String(k), categories[k]]).filter(([, c]) => c)
+          : getActiveCategories();
         const allIds = new Set();
-        for (const [catKey] of activeCats) {
+        for (const [catKey] of catsToScan) {
           for (const pid of (categoryOrders[catKey] || [])) {
             if (passesAllFilters(ideas[pid])) allIds.add(pid);
           }
         }
         setSelectedIdeaIds(allIds);
-        setSelectedCategoryIds(new Set());
+        // Don't clear category selection when scoped to selected categories
+        if (!hasSelectedCats) setSelectedCategoryIds(new Set());
       }
     };
     window.addEventListener("keydown", handleSelectAll);
     return () => window.removeEventListener("keydown", handleSelectAll);
   }, [isOpen, isFocused, categories, categoryOrders, ideas,
-      passesAllFilters, getActiveCategories,
+      passesAllFilters, getActiveCategories, selectedCategoryIds,
       setSelectedIdeaIds, setSelectedCategoryIds]);
 
   return {

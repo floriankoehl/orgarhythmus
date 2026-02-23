@@ -529,6 +529,7 @@ class UserShortcuts(models.Model):
     """
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="shortcuts")
     shortcuts = models.JSONField(default=dict, blank=True)
+    filter_presets = models.JSONField(default=list, blank=True)  # [{name, legend_filters, filter_combine_mode, ...}]
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

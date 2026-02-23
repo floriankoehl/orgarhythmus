@@ -30,7 +30,7 @@ import useIdeaBinKeyboard from "./hooks/useIdeaBinKeyboard";
 
 // Extracted API helpers
 import { authFetch, API } from "./api/authFetch";
-import { fetchContextsApi, saveContextFilterStateApi, setContextColorApi, assignLegendToContextApi } from "./api/contextApi";
+import { fetchContextsApi, saveContextFilterStateApi, setContextColorApi, assignLegendToContextApi, fetchFilterPresetsApi, saveFilterPresetsApi } from "./api/contextApi";
 
 // ───────────────────── Constants ─────────────────────
 const CATEGORY_THRESHOLD = 560; // show categories when wider than this
@@ -85,6 +85,9 @@ export default function IdeaBin() {
   const [legendFilters, setLegendFilters] = useState([]);
   const [filterCombineMode, setFilterCombineMode] = useState("and"); // "and" | "or"
   const [filterPresets, setFilterPresets] = useState([]); // [{name, legend_filters, filter_combine_mode}, ...]
+  // ───── Stacked filter groups (each preset stacked is evaluated as its own group) ─────
+  const [stackedFilters, setStackedFilters] = useState([]); // [{name, rules: [...], combineMode: "and"|"or"}, ...]
+  const [stackCombineMode, setStackCombineMode] = useState("or"); // how groups combine: "or" | "and"
 
   // ───── View mode ─────
   const [viewMode, setViewMode] = useState("ideas"); // "ideas" | "contexts"
@@ -257,7 +260,8 @@ export default function IdeaBin() {
     // Ctrl+A / Ctrl+Shift+A deps
     categoryOrders, unassignedOrder, metaIdeaList,
     listFilter, viewMode, dockedCategories, activeContext,
-    legendFilters, filterCombineMode, globalTypeFilter, dims,
+    legendFilters, filterCombineMode, stackedFilters, stackCombineMode,
+    globalTypeFilter, dims,
     sidebarFocused,
     undo, redo,
   });
@@ -326,12 +330,13 @@ export default function IdeaBin() {
   };
 
   // ── Enter / exit context mode ──
-  const saveContextFilterState = async (contextId, filters, combineMode, presets) => {
+  const saveContextFilterState = async (contextId, filters, combineMode, stacked, stackMode) => {
     try {
       await saveContextFilterStateApi(contextId, {
         legend_filters: filters,
         filter_combine_mode: combineMode,
-        filter_presets: presets || [],
+        stacked_filters: stacked || [],
+        stack_combine_mode: stackMode || "or",
       });
     } catch (e) { console.error("Failed to save context filter state", e); }
   };
@@ -339,7 +344,7 @@ export default function IdeaBin() {
     // ctx = {id, name, color, category_ids, legend_ids, filter_state}
     // Save current context's filter state before switching
     if (activeContext) {
-      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode, filterPresets);
+      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode, stackedFilters, stackCombineMode);
     }
     // Re-fetch fresh context data to get latest category_ids and legend_ids
     try {
@@ -355,24 +360,27 @@ export default function IdeaBin() {
     if (ctx.filter_state) {
       setLegendFilters(ctx.filter_state.legend_filters || []);
       setFilterCombineMode(ctx.filter_state.filter_combine_mode || "and");
-      setFilterPresets(ctx.filter_state.filter_presets || []);
+      setStackedFilters(ctx.filter_state.stacked_filters || []);
+      setStackCombineMode(ctx.filter_state.stack_combine_mode || "or");
       setGlobalTypeFilter([]);
     } else {
       setLegendFilters([]);
       setFilterCombineMode("and");
-      setFilterPresets([]);
+      setStackedFilters([]);
+      setStackCombineMode("or");
       setGlobalTypeFilter([]);
     }
   };
   const exitContext = () => {
     // Save current context's filter state before exiting
     if (activeContext) {
-      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode, filterPresets);
+      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode, stackedFilters, stackCombineMode);
     }
     setActiveContext(null);
     setLegendFilters([]);
     setFilterCombineMode("and");
-    setFilterPresets([]);
+    setStackedFilters([]);
+    setStackCombineMode("or");
     setGlobalTypeFilter([]);
   };
   const updateActiveContextColor = async (color) => {
@@ -453,6 +461,8 @@ export default function IdeaBin() {
       fetch_all_ideas();
       fetch_contexts_for_selector();
       fetch_formations();
+      // Load user-level filter presets
+      fetchFilterPresetsApi().then(p => setFilterPresets(p)).catch(() => {});
     }
   }, [isOpen]);
 
@@ -491,42 +501,58 @@ export default function IdeaBin() {
   useEffect(() => {
     if (!activeContext) return;
     const timer = setTimeout(() => {
-      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode, filterPresets);
+      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode, stackedFilters, stackCombineMode);
     }, 600);
     return () => clearTimeout(timer);
-  }, [legendFilters, filterCombineMode, filterPresets]);
+  }, [legendFilters, filterCombineMode, stackedFilters, stackCombineMode]);
+
+  // ── Auto-save filter presets at user level ──
+  const presetsLoadedRef = useRef(false);
+  useEffect(() => {
+    // Skip the initial render / load to avoid overwriting with empty array
+    if (!presetsLoadedRef.current) { presetsLoadedRef.current = true; return; }
+    const timer = setTimeout(() => {
+      saveFilterPresetsApi(filterPresets).catch(() => {});
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [filterPresets]);
 
   // ── Filter preset management ──
   const saveFilterPreset = (name) => {
-    if (!activeContext) return;
     const preset = {
       name: name || `Filter ${new Date().toLocaleString()}`,
       legend_filters: JSON.parse(JSON.stringify(legendFilters)),
       filter_combine_mode: filterCombineMode,
+      stacked_filters: JSON.parse(JSON.stringify(stackedFilters)),
+      stack_combine_mode: stackCombineMode,
     };
     setFilterPresets(prev => [...prev, preset]);
   };
   const applyFilterPreset = (preset) => {
-    setLegendFilters(JSON.parse(JSON.stringify(preset.legend_filters)));
+    setLegendFilters(JSON.parse(JSON.stringify(preset.legend_filters || [])));
     setFilterCombineMode(preset.filter_combine_mode || "and");
+    setStackedFilters(JSON.parse(JSON.stringify(preset.stacked_filters || [])));
+    setStackCombineMode(preset.stack_combine_mode || "or");
   };
   const stackFilterPreset = (preset) => {
-    // Merge preset rules into current filters (additive / stackable)
-    setLegendFilters(prev => {
-      const merged = [...prev];
-      for (const rule of (preset.legend_filters || [])) {
-        const existingIdx = merged.findIndex(r => r.legendId === rule.legendId);
-        if (existingIdx >= 0) {
-          // Merge typeIds (union)
-          const existing = merged[existingIdx];
-          const unionIds = [...new Set([...existing.typeIds, ...rule.typeIds])];
-          merged[existingIdx] = { ...existing, typeIds: unionIds, mode: rule.mode };
-        } else {
-          merged.push(JSON.parse(JSON.stringify(rule)));
-        }
+    // Add preset as a separate filter group (not merged into the primary)
+    // If the preset itself has stacked groups, add them all
+    const newGroups = [];
+    if (preset.legend_filters?.length > 0) {
+      newGroups.push({
+        name: preset.name || "Stacked",
+        rules: JSON.parse(JSON.stringify(preset.legend_filters)),
+        combineMode: preset.filter_combine_mode || "and",
+      });
+    }
+    if (preset.stacked_filters?.length > 0) {
+      for (const sg of preset.stacked_filters) {
+        newGroups.push(JSON.parse(JSON.stringify(sg)));
       }
-      return merged;
-    });
+    }
+    if (newGroups.length > 0) {
+      setStackedFilters(prev => [...prev, ...newGroups]);
+    }
   };
   const deleteFilterPreset = (index) => {
     setFilterPresets(prev => prev.filter((_, i) => i !== index));
@@ -795,29 +821,48 @@ export default function IdeaBin() {
     : dims.legends;
 
   // ── Advanced idea filter (multi-legend, stackable, AND/OR, include/exclude) ──
-  const hasLegendFilters = legendFilters.length > 0;
-  const passesLegendFilters = useCallback((idea) => {
-    if (!idea) return false;
-    if (legendFilters.length === 0) return true;
+  const hasLegendFilters = legendFilters.length > 0 || stackedFilters.length > 0;
 
-    const results = legendFilters.map(f => {
+  // Evaluate a single group of rules against an idea
+  const evalFilterGroup = useCallback((rules, combineMode, idea) => {
+    if (rules.length === 0) return true;
+    const results = rules.map(f => {
       const legId = String(f.legendId);
       const dt = idea.legend_types?.[legId];
       const typeId = dt?.legend_type_id;
       const hasType = !!dt;
-      // Does the idea's type for this legend match any of the selected typeIds?
-      const matchesSelected = f.typeIds.includes("unassigned")
-        ? (!hasType || f.typeIds.includes(typeId))
-        : (hasType && f.typeIds.includes(typeId));
-
+      // Coerce to strings for safe comparison (typeIds may be int or string after JSON round-trip)
+      const typeIdStr = typeId != null ? String(typeId) : null;
+      const selectedStrs = (f.typeIds || []).map(String);
+      const matchesSelected = selectedStrs.includes("unassigned")
+        ? (!hasType || (typeIdStr != null && selectedStrs.includes(typeIdStr)))
+        : (hasType && typeIdStr != null && selectedStrs.includes(typeIdStr));
       return f.mode === "exclude" ? !matchesSelected : matchesSelected;
     });
+    return combineMode === "and" ? results.every(Boolean) : results.some(Boolean);
+  }, []);
 
-    // Combine results with AND/OR
-    return filterCombineMode === "and"
-      ? results.every(Boolean)
-      : results.some(Boolean);
-  }, [legendFilters, filterCombineMode]);
+  const passesLegendFilters = useCallback((idea) => {
+    if (!idea) return false;
+
+    // Build list of groups to evaluate
+    const groups = [];
+    if (legendFilters.length > 0) {
+      groups.push({ rules: legendFilters, combineMode: filterCombineMode });
+    }
+    for (const sg of stackedFilters) {
+      if (sg.rules.length > 0) {
+        groups.push(sg);
+      }
+    }
+    if (groups.length === 0) return true;
+
+    // Evaluate each group, then combine with stackCombineMode
+    const groupResults = groups.map(g => evalFilterGroup(g.rules, g.combineMode, idea));
+    return stackCombineMode === "and"
+      ? groupResults.every(Boolean)
+      : groupResults.some(Boolean);
+  }, [legendFilters, filterCombineMode, stackedFilters, stackCombineMode, evalFilterGroup]);
 
   // Also keep the old globalTypeFilter working as fallback (single active legend filter)
   const passesGlobalTypeFilter = useCallback((idea) => {
@@ -1508,6 +1553,8 @@ export default function IdeaBin() {
                 globalTypeFilter={globalTypeFilter} setGlobalTypeFilter={setGlobalTypeFilter}
                 legendFilters={legendFilters} setLegendFilters={setLegendFilters}
                 filterCombineMode={filterCombineMode} setFilterCombineMode={setFilterCombineMode}
+                stackedFilters={stackedFilters} setStackedFilters={setStackedFilters}
+                stackCombineMode={stackCombineMode} setStackCombineMode={setStackCombineMode}
                 handleTypeDrag={handleTypeDrag}
                 editingTypeId={editingTypeId} setEditingTypeId={setEditingTypeId}
                 editingTypeName={editingTypeName} setEditingTypeName={setEditingTypeName}
@@ -1620,6 +1667,7 @@ export default function IdeaBin() {
                 setCategoryFilterConfig={setCategoryFilterConfig}
                 legendFilters={legendFilters}
                 filterCombineMode={filterCombineMode}
+                filterPresets={filterPresets}
                 globalTypeFilter={globalTypeFilter}
                 paintType={paintType}
                 setPaintType={setPaintType}
