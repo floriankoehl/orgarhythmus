@@ -1,6 +1,6 @@
 import { useState } from "react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
-import { Filter, X, Plus, FolderPlus, Save, Pencil, Trash2 } from "lucide-react";
+import { Filter, X, Plus, FolderPlus, Save, Pencil, Trash2, Layers } from "lucide-react";
 import { LEGEND_TYPE_ICONS, ICON_CATEGORIES, renderLegendTypeIcon } from "./legendTypeIcons";
 
 /**
@@ -35,14 +35,17 @@ export default function IdeaBinLegendPanel({
   batchRemoveLegendType,
   activeContext,
   ideas,
+  selectedIdeaIds,
+  assign_idea_legend_type,
   passesAllFilters,
   filterPresets,
   saveFilterPreset,
   applyFilterPreset,
+  stackFilterPreset,
   deleteFilterPreset,
   renameFilterPreset,
 }) {
-  const displayLegends = legendsList || dims.legends;
+  const displayLegends = legendsList?.length ? legendsList : dims.legends;
   const [showAddFilter, setShowAddFilter] = useState(false);
   const [iconPickerTypeId, setIconPickerTypeId] = useState(null); // type id with open icon picker
   const [newTypeIcon, setNewTypeIcon] = useState(null); // icon for create-type form
@@ -355,6 +358,13 @@ export default function IdeaBinLegendPanel({
           <div
             className={`flex items-center gap-1.5 mb-1 cursor-pointer rounded px-1 py-0.5 text-[10px] ${globalTypeFilter.includes("unassigned") ? "bg-gray-200" : "hover:bg-gray-100"}`}
             onClick={() => {
+              if (selectedIdeaIds?.size > 0 && assign_idea_legend_type) {
+                // Bulk-assign: remove legend type from all selected ideas
+                for (const pid of selectedIdeaIds) {
+                  assign_idea_legend_type(pid, null, dims);
+                }
+                return;
+              }
               setGlobalTypeFilter(prev => prev.includes("unassigned") ? prev.filter(t => t !== "unassigned") : [...prev, "unassigned"]);
               addFilterForActiveLegend("unassigned");
             }}
@@ -372,6 +382,13 @@ export default function IdeaBinLegendPanel({
               <div
                 className={`flex items-center gap-1.5 mb-1 group cursor-pointer rounded px-1 py-0.5 text-[10px] ${globalTypeFilter.includes(lt.id) ? "bg-gray-200" : "hover:bg-gray-100"}`}
                 onClick={() => {
+                  if (selectedIdeaIds?.size > 0 && assign_idea_legend_type) {
+                    // Bulk-assign this legend type to all selected ideas
+                    for (const pid of selectedIdeaIds) {
+                      assign_idea_legend_type(pid, lt.id, dims);
+                    }
+                    return;
+                  }
                   setGlobalTypeFilter(prev => prev.includes(lt.id) ? prev.filter(t => t !== lt.id) : [...prev, lt.id]);
                   addFilterForActiveLegend(lt.id);
                 }}
@@ -717,6 +734,15 @@ export default function IdeaBinLegendPanel({
                       >
                         <span className="flex-1 text-[10px] font-medium text-gray-700 truncate">{preset.name}</span>
                         <span className="text-[9px] text-gray-400 flex-shrink-0">{preset.legend_filters?.length || 0}r</span>
+                        {stackFilterPreset && legendFilters.length > 0 && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); stackFilterPreset(preset); }}
+                            className="text-indigo-400 hover:text-indigo-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Stack — merge into current filter"
+                          >
+                            <Layers size={10} />
+                          </button>
+                        )}
                         <button
                           onClick={(e) => { e.stopPropagation(); setEditingPresetIdx(idx); setEditingPresetName(preset.name); }}
                           className="text-gray-400 hover:text-gray-600 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -917,6 +943,29 @@ export default function IdeaBinLegendPanel({
                       );
                     })}
                   </div>
+
+                  {/* ── Stack presets section ── */}
+                  {filterPresets && filterPresets.length > 0 && stackFilterPreset && (
+                    <div className="mt-4 pt-3 border-t border-gray-200">
+                      <div className="text-[10px] font-semibold text-gray-500 mb-1.5 flex items-center gap-1">
+                        <Layers size={10} className="text-indigo-500" />
+                        Stack a preset
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {filterPresets.map((preset, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => stackFilterPreset(preset)}
+                            className="text-[10px] px-2 py-1 bg-indigo-50 border border-indigo-200 rounded-full text-indigo-600 hover:bg-indigo-100 transition-colors font-medium flex items-center gap-1"
+                            title={`Merge "${preset.name}" rules into current filter`}
+                          >
+                            <Plus size={9} />
+                            {preset.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Save as preset */}
                   {activeContext && saveFilterPreset && hasAnyFilter && (

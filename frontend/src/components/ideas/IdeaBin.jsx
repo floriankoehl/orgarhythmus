@@ -200,6 +200,10 @@ export default function IdeaBin() {
     createCategoryFromFilter: createCategoryFromFilterRaw,
     handleCategoryDrag: handleCategoryDragRaw,
     handleCategoryResize,
+    refetchCategoryByFilter,
+    toggleLiveCategory,
+    liveCategoryIds,
+    setCategoryFilterConfig,
   } = useIdeaBinCategories({ activeContext, setActiveContext, fetchAllIdeas: fetch_all_ideas, selectedCategoryIds });
 
   // ── Drag hook ──
@@ -265,8 +269,15 @@ export default function IdeaBin() {
 
   // Wrap createCategoryFromFilter to inject runtime deps
   const createCategoryFromFilter = useCallback((name) => {
-    return createCategoryFromFilterRaw(name, passesAllFilters, ideas);
-  }, [createCategoryFromFilterRaw, ideas]);
+    // Capture the current filter state to store on the category
+    const filterState = {
+      legend_filters: JSON.parse(JSON.stringify(legendFilters)),
+      filter_combine_mode: filterCombineMode,
+      global_type_filter: [...globalTypeFilter],
+      active_legend_id: dims.activeLegendId || null,
+    };
+    return createCategoryFromFilterRaw(name, passesAllFilters, ideas, filterState);
+  }, [createCategoryFromFilterRaw, ideas, legendFilters, filterCombineMode, globalTypeFilter, dims.activeLegendId]);
 
   // Wrap handleCategoryDrag to inject runtime deps
   const handleCategoryDrag = useCallback((e, catKey) => {
@@ -356,6 +367,17 @@ export default function IdeaBin() {
     }
   }, [isOpen]);
 
+  // ── Live filter: periodically refetch categories that have live mode on ──
+  useEffect(() => {
+    if (liveCategoryIds.size === 0) return;
+    const interval = setInterval(() => {
+      for (const catKey of liveCategoryIds) {
+        refetchCategoryByFilter(catKey, ideas);
+      }
+    }, 5000); // every 5 seconds
+    return () => clearInterval(interval);
+  }, [liveCategoryIds, ideas, refetchCategoryByFilter]);
+
   // ── Auto-save filter state when filters change while inside a context ──
   useEffect(() => {
     if (!activeContext) return;
@@ -378,6 +400,24 @@ export default function IdeaBin() {
   const applyFilterPreset = (preset) => {
     setLegendFilters(JSON.parse(JSON.stringify(preset.legend_filters)));
     setFilterCombineMode(preset.filter_combine_mode || "and");
+  };
+  const stackFilterPreset = (preset) => {
+    // Merge preset rules into current filters (additive / stackable)
+    setLegendFilters(prev => {
+      const merged = [...prev];
+      for (const rule of (preset.legend_filters || [])) {
+        const existingIdx = merged.findIndex(r => r.legendId === rule.legendId);
+        if (existingIdx >= 0) {
+          // Merge typeIds (union)
+          const existing = merged[existingIdx];
+          const unionIds = [...new Set([...existing.typeIds, ...rule.typeIds])];
+          merged[existingIdx] = { ...existing, typeIds: unionIds, mode: rule.mode };
+        } else {
+          merged.push(JSON.parse(JSON.stringify(rule)));
+        }
+      }
+      return merged;
+    });
   };
   const deleteFilterPreset = (index) => {
     setFilterPresets(prev => prev.filter((_, i) => i !== index));
@@ -1168,7 +1208,7 @@ export default function IdeaBin() {
                   fullWidth
                   sx={{
                     backgroundColor: "white", borderRadius: 1,
-                    "& .MuiInputBase-root": { resize: "vertical", overflow: "auto", maxHeight: 400 },
+                    "& .MuiInputBase-root": { resize: "vertical", overflow: "auto", maxHeight: 400, alignItems: "flex-start" },
                     "& .MuiInputBase-input": { fontSize: 12, caretColor: "#1f2937", color: "#1f2937" },
                   }}
                 />
@@ -1331,10 +1371,13 @@ export default function IdeaBin() {
                 batchRemoveLegendType={batchRemoveLegendType}
                 activeContext={activeContext}
                 ideas={ideas}
+                selectedIdeaIds={selectedIdeaIds}
+                assign_idea_legend_type={assign_idea_legend_type}
                 passesAllFilters={passesAllFilters}
                 filterPresets={filterPresets}
                 saveFilterPreset={saveFilterPreset}
                 applyFilterPreset={applyFilterPreset}
+                stackFilterPreset={stackFilterPreset}
                 deleteFilterPreset={deleteFilterPreset}
                 renameFilterPreset={renameFilterPreset}
                 onLegendCreated={activeContext ? async () => {
@@ -1419,6 +1462,13 @@ export default function IdeaBin() {
                 update_idea_title_api={update_idea_title_api}
                 selectedIdeaIds={selectedIdeaIds}
                 setSelectedIdeaIds={setSelectedIdeaIds}
+                refetchCategoryByFilter={refetchCategoryByFilter}
+                toggleLiveCategory={toggleLiveCategory}
+                liveCategoryIds={liveCategoryIds}
+                setCategoryFilterConfig={setCategoryFilterConfig}
+                legendFilters={legendFilters}
+                filterCombineMode={filterCombineMode}
+                globalTypeFilter={globalTypeFilter}
               />
             )}
             </>

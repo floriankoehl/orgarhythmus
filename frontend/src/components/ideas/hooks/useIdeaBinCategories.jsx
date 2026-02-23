@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { playSound } from "../../../assets/sound_registry";
 import {
   fetchCategories as fetchCategoriesApi,
@@ -13,6 +13,8 @@ import {
   togglePublicCategory as togglePublicCategoryApiCall,
   dropAdoptedCategoryApi,
   createCategoryWithIdeas,
+  syncCategoryIdeas,
+  updateCategoryFilterConfig,
 } from "../api/categoryApi";
 import {
   assignCategoryToContextApi,
@@ -130,7 +132,11 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
     });
   }, []);
 
-  const createCategoryFromFilter = useCallback(async (name, passesAllFilters, ideas) => {
+  // ── Live filter state ──
+  const [liveCategoryIds, setLiveCategoryIds] = useState(new Set()); // category IDs with live mode on
+  const liveIntervalRefs = useRef({});
+
+  const createCategoryFromFilter = useCallback(async (name, passesAllFilters, ideas, filterState) => {
     const seen = new Set();
     const matchedIdeaIds = [];
     for (const p of Object.values(ideas)) {
@@ -142,7 +148,7 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
     }
     if (matchedIdeaIds.length === 0) return;
     try {
-      await createCategoryWithIdeas(name, matchedIdeaIds, activeContext?.id);
+      await createCategoryWithIdeas(name, matchedIdeaIds, activeContext?.id, filterState || null);
       playSound('ideaCategoryCreate');
       await fetch_categories();
       await fetchAllIdeas();
@@ -157,6 +163,84 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
       }
     } catch (err) { console.error("Create category from filter failed:", err); }
   }, [activeContext, setActiveContext, fetch_categories, fetchAllIdeas]);
+
+  // ── Refetch: re-run a category's stored filter and sync ideas ──
+  const refetchCategoryByFilter = useCallback(async (catKey, ideas) => {
+    const cat = categories[catKey];
+    if (!cat?.filter_config) return;
+    const fc = cat.filter_config;
+    // Rebuild the filter function from stored config
+    const matchFilter = (idea) => {
+      if (!idea) return false;
+      const lf = fc.legend_filters || [];
+      const gtf = fc.global_type_filter || [];
+      const combineMode = fc.filter_combine_mode || "and";
+      const activeLegendId = fc.active_legend_id;
+      const hasLF = lf.length > 0;
+      if (hasLF) {
+        const results = lf.map(f => {
+          const legId = String(f.legendId);
+          const dt = idea.legend_types?.[legId];
+          const typeId = dt?.legend_type_id;
+          const hasType = !!dt;
+          const matchesSelected = f.typeIds.includes("unassigned")
+            ? (!hasType || f.typeIds.includes(typeId))
+            : (hasType && f.typeIds.includes(typeId));
+          return f.mode === "exclude" ? !matchesSelected : matchesSelected;
+        });
+        return combineMode === "and" ? results.every(Boolean) : results.some(Boolean);
+      }
+      if (gtf.length > 0) {
+        const dimId = String(activeLegendId || "");
+        const dt = idea.legend_types?.[dimId];
+        if (gtf.includes("unassigned") && !dt) return true;
+        if (dt && gtf.includes(dt.legend_type_id)) return true;
+        return false;
+      }
+      return true;
+    };
+    // Find matching ideas
+    const seen = new Set();
+    const matchedIdeaIds = [];
+    for (const p of Object.values(ideas)) {
+      if (!p.idea_id || seen.has(p.idea_id)) continue;
+      seen.add(p.idea_id);
+      if (matchFilter(p)) matchedIdeaIds.push(p.idea_id);
+    }
+    try {
+      await syncCategoryIdeas(parseInt(catKey), matchedIdeaIds, true);
+      await fetchAllIdeas();
+    } catch (err) { console.error("Refetch category failed:", err); }
+  }, [categories, fetchAllIdeas]);
+
+  // ── Live toggle ──
+  const toggleLiveCategory = useCallback((catKey) => {
+    setLiveCategoryIds(prev => {
+      const next = new Set(prev);
+      if (next.has(catKey)) {
+        next.delete(catKey);
+        // Clear interval
+        if (liveIntervalRefs.current[catKey]) {
+          clearInterval(liveIntervalRefs.current[catKey]);
+          delete liveIntervalRefs.current[catKey];
+        }
+      } else {
+        next.add(catKey);
+      }
+      return next;
+    });
+  }, []);
+
+  // ── Set/update filter config on existing category ──
+  const setCategoryFilterConfig = useCallback(async (catKey, filterState) => {
+    try {
+      await updateCategoryFilterConfig(parseInt(catKey), filterState);
+      setCategories(prev => ({
+        ...prev,
+        [catKey]: { ...prev[catKey], filter_config: filterState },
+      }));
+    } catch (err) { console.error("Update filter config failed:", err); }
+  }, []);
 
   // ── Category drag (with merge support in refactor mode, multi-move) ──
   const handleCategoryDrag = useCallback((e, catKey, { refactorMode, setConfirmModal }) => {
@@ -374,5 +458,9 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
     createCategoryFromFilter,
     handleCategoryDrag,
     handleCategoryResize,
+    refetchCategoryByFilter,
+    toggleLiveCategory,
+    liveCategoryIds,
+    setCategoryFilterConfig,
   };
 }

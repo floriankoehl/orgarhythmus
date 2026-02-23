@@ -14,6 +14,7 @@ export async function fetchCategories() {
       is_public: c.is_public || false,
       adopted: c.adopted || false,
       owner_username: c.owner_username || null,
+      filter_config: c.filter_config || null,
     };
   }
   return serialized;
@@ -98,14 +99,41 @@ export async function dropAdoptedCategoryApi(id) {
   await authFetch(`${API}/categories/${id}/drop/`, { method: "DELETE" });
 }
 
-export async function createCategoryWithIdeas(name, ideaIds, contextId) {
-  await authFetch(`${API}/user/categories/create_with_ideas/`, {
+export async function createCategoryWithIdeas(name, ideaIds, contextId, filterConfig) {
+  const res = await authFetch(`${API}/user/categories/create_with_ideas/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: name || "Filtered Ideas",
       idea_ids: ideaIds,
       context_id: contextId || null,
+      filter_config: filterConfig || null,
     }),
   });
+  return res.json();
+}
+
+export async function syncCategoryIdeas(categoryId, ideaIds, removeOld = false) {
+  const res = await authFetch(`${API}/user/categories/sync_ideas/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      category_id: categoryId,
+      idea_ids: ideaIds,
+      remove_old: removeOld,
+    }),
+  });
+  return res.json();
+}
+
+export async function updateCategoryFilterConfig(categoryId, filterConfig) {
+  const res = await authFetch(`${API}/user/categories/update_filter_config/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      category_id: categoryId,
+      filter_config: filterConfig,
+    }),
+  });
+  return res.json();
 }

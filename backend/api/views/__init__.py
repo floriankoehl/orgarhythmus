@@ -157,6 +157,8 @@ from .ideas import (
     delete_idea_comment,
     create_category_with_ideas,
     batch_remove_legend_type,
+    sync_category_ideas,
+    update_category_filter_config,
 )
 
 from .notifications import (

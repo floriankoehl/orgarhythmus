@@ -915,3 +915,59 @@ def batch_remove_legend_type(request):
 
     return Response({"removed": removed})
 
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def sync_category_ideas(request):
+    """Sync a category's ideas from a list of idea IDs (used by refetch/live).
+    Adds new ideas and optionally removes ideas no longer matching the filter."""
+    category_id = request.data.get("category_id")
+    idea_ids = request.data.get("idea_ids", [])
+    remove_old = request.data.get("remove_old", False)  # if True, remove ideas not in the new list
+
+    category = get_object_or_404(Category, id=category_id, owner=request.user)
+
+    existing_idea_ids = set(IdeaPlacement.objects.filter(
+        category=category, idea__owner=request.user
+    ).values_list('idea_id', flat=True))
+
+    new_ids = set(idea_ids)
+    added = 0
+    removed = 0
+
+    # Add new ones
+    max_order = IdeaPlacement.objects.filter(
+        category=category, idea__owner=request.user
+    ).aggregate(db_models.Max('order_index'))['order_index__max']
+    next_order = (max_order + 1) if max_order is not None else 0
+
+    for idea_id in new_ids - existing_idea_ids:
+        idea = Idea.objects.filter(id=idea_id, owner=request.user).first()
+        if idea and not IdeaPlacement.objects.filter(idea=idea, category=category).exists():
+            IdeaPlacement.objects.create(idea=idea, category=category, order_index=next_order)
+            next_order += 1
+            added += 1
+
+    # Remove old ones not in the new list
+    if remove_old:
+        to_remove = existing_idea_ids - new_ids
+        if to_remove:
+            removed = IdeaPlacement.objects.filter(
+                category=category, idea__owner=request.user, idea_id__in=to_remove
+            ).delete()[0]
+
+    return Response({"added": added, "removed": removed})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def update_category_filter_config(request):
+    """Set or clear the filter_config JSON on a category."""
+    category_id = request.data.get("category_id")
+    filter_config = request.data.get("filter_config")  # dict or None
+
+    category = get_object_or_404(Category, id=category_id, owner=request.user)
+    category.filter_config = filter_config
+    category.save(update_fields=["filter_config"])
+    return Response({"updated": True, "filter_config": category.filter_config})
+
