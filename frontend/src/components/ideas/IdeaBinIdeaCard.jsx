@@ -29,6 +29,7 @@ export default function IdeaBinIdeaCard({
   spinoff_idea, categories, currentUserId,
   toggle_upvote, fetch_comments, add_comment, delete_comment,
   selectedIdeaIds, setSelectedIdeaIds, lastSelectedIdeaRef,
+  paintType, setPaintType, assign_idea_legend_type,
 }) {
   const moreButtonRef = useRef(null);
   const [showComments, setShowComments] = useState(false);
@@ -120,6 +121,11 @@ export default function IdeaBinIdeaCard({
           onMouseDown={(e) => { e.stopPropagation(); handleIdeaDrag(e, idea, arrayIndex, source); }}
           onClick={(e) => {
             e.stopPropagation();
+            // Paint mode: clicking an idea assigns the paint type
+            if (paintType && assign_idea_legend_type) {
+              assign_idea_legend_type(ideaId, paintType.typeId, dims);
+              return;
+            }
             if (e.ctrlKey || e.metaKey) {
               // Toggle this idea in the selection
               setSelectedIdeaIds(prev => {

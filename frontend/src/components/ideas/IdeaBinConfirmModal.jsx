@@ -1,7 +1,17 @@
 // ───────────────────── Confirm Modal ─────────────────────
 import { useEffect, useRef } from "react";
 
-export default function IdeaBinConfirmModal({ message, onConfirm, onCancel, confirmLabel = "Delete", confirmColor = "bg-red-500 hover:bg-red-600" }) {
+export default function IdeaBinConfirmModal({
+  message,
+  onConfirm,
+  onCancel,
+  confirmLabel = "Delete",
+  confirmColor = "bg-red-500 hover:bg-red-600",
+  // Optional middle button (e.g. "Remove from category")
+  middleLabel,
+  middleColor = "bg-amber-500 hover:bg-amber-600",
+  onMiddle,
+}) {
   const confirmRef = useRef(null);
 
   useEffect(() => {
@@ -20,6 +30,11 @@ export default function IdeaBinConfirmModal({ message, onConfirm, onCancel, conf
           <button onClick={onCancel} className="px-3 py-1.5 rounded border border-gray-300 hover:bg-gray-100 text-xs">
             Cancel
           </button>
+          {middleLabel && onMiddle && (
+            <button onClick={onMiddle} className={`px-3 py-1.5 rounded text-white text-xs ${middleColor}`}>
+              {middleLabel}
+            </button>
+          )}
           <button ref={confirmRef} onClick={onConfirm} className={`px-3 py-1.5 rounded text-white text-xs ${confirmColor}`}>
             {confirmLabel}
           </button>

@@ -44,6 +44,8 @@ export default function IdeaBinLegendPanel({
   stackFilterPreset,
   deleteFilterPreset,
   renameFilterPreset,
+  paintType,
+  setPaintType,
 }) {
   const displayLegends = legendsList?.length ? legendsList : dims.legends;
   const [showAddFilter, setShowAddFilter] = useState(false);
@@ -356,7 +358,7 @@ export default function IdeaBinLegendPanel({
           {/* ═══ Types for active legend ═══ */}
           {/* Unassigned type */}
           <div
-            className={`flex items-center gap-1.5 mb-1 cursor-pointer rounded px-1 py-0.5 text-[10px] ${globalTypeFilter.includes("unassigned") ? "bg-gray-200" : "hover:bg-gray-100"}`}
+            className={`flex items-center gap-1.5 mb-1 cursor-pointer rounded px-1 py-0.5 text-[10px] ${paintType && paintType.typeId === null ? "ring-2 ring-gray-500 bg-gray-100" : ""} ${globalTypeFilter.includes("unassigned") ? "bg-gray-200" : "hover:bg-gray-100"}`}
             onClick={() => {
               if (selectedIdeaIds?.size > 0 && assign_idea_legend_type) {
                 // Bulk-assign: remove legend type from all selected ideas
@@ -371,7 +373,15 @@ export default function IdeaBinLegendPanel({
           >
             <div
               onMouseDown={(e) => { e.stopPropagation(); handleTypeDrag(e, null); }}
-              className="w-4 h-4 rounded-full cursor-grab bg-gray-700 border border-gray-300 hover:scale-110 transition-transform"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (paintType && paintType.typeId === null) {
+                  setPaintType(null); // deactivate
+                } else {
+                  setPaintType({ typeId: null, color: "#374151", icon: null, name: "Unassigned" });
+                }
+              }}
+              className={`w-4 h-4 rounded-full cursor-pointer bg-gray-700 border border-gray-300 hover:scale-110 transition-transform ${paintType && paintType.typeId === null ? "ring-2 ring-offset-1 ring-gray-500" : ""}`}
             />
             <span className="text-gray-500 italic flex-1">Unassigned</span>
             {globalTypeFilter.includes("unassigned") && <span className="text-blue-500">✓</span>}
@@ -396,8 +406,16 @@ export default function IdeaBinLegendPanel({
                 {/* Icon or color circle */}
                 <div
                   onMouseDown={(e) => { e.stopPropagation(); handleTypeDrag(e, lt.id); }}
-                  className="w-4 h-4 rounded-full cursor-grab border border-gray-200 hover:scale-110 transition-transform flex items-center justify-center flex-shrink-0"
-                  style={{ backgroundColor: lt.icon ? "transparent" : lt.color }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (paintType && paintType.typeId === lt.id) {
+                      setPaintType(null); // deactivate
+                    } else {
+                      setPaintType({ typeId: lt.id, color: lt.color, icon: lt.icon, name: lt.name });
+                    }
+                  }}
+                  className={`w-4 h-4 rounded-full cursor-pointer border border-gray-200 hover:scale-110 transition-transform flex items-center justify-center flex-shrink-0 ${paintType && paintType.typeId === lt.id ? "ring-2 ring-offset-1" : ""}`}
+                  style={{ backgroundColor: lt.icon ? "transparent" : lt.color, ...(paintType && paintType.typeId === lt.id ? { ringColor: lt.color } : {}) }}
                 >
                   {lt.icon && renderLegendTypeIcon(lt.icon, { style: { fontSize: 14, color: lt.color } })}
                 </div>

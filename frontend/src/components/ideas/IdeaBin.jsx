@@ -3,12 +3,13 @@ import { useParams } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 
-import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings, Layers, Save, FolderOpen, Trash2, Pencil, Check, Palette, ChevronDown, Star } from "lucide-react";
+import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings, Layers, Save, FolderOpen, Trash2, Pencil, Check, Palette, ChevronDown, Star, Paintbrush } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
 import { playSound } from "../../assets/sound_registry";
 import { useLegends } from "./useLegends";
+import { renderLegendTypeIcon } from "./legendTypeIcons";
 import IdeaBinConfirmModal from "./IdeaBinConfirmModal";
 import useIdeaBinWindow from "./useIdeaBinWindow";
 import IdeaBinTransformModal from "./IdeaBinTransformModal";
@@ -97,6 +98,10 @@ export default function IdeaBin() {
   // ───── Headline mode ─────
   const [headlineModeCategoryId, setHeadlineModeCategoryId] = useState(null); // catKey or null
   const [headlineModeIdeaId, setHeadlineModeIdeaId] = useState(null); // placement id or null
+
+  // ───── Paint mode (legend type brush) ─────
+  // null or { typeId, color, icon, name }  – when set, clicking an idea paints it with this type
+  const [paintType, setPaintType] = useState(null);
 
   // ───── List view filter ─────
   const [listFilter, setListFilter] = useState("all"); // "all" | "unassigned" | category id
@@ -228,9 +233,12 @@ export default function IdeaBin() {
   const { isFocused, refactorMode, setRefactorMode } = useIdeaBinKeyboard({
     isOpen, windowRef,
     copiedIdeaId, selectedCategoryIds, paste_idea,
-    selectedIdeaIds, ideas, categories,
+    selectedIdeaIds, setSelectedIdeaIds, ideas, categories,
     headlineModeCategoryId, setHeadlineModeCategoryId,
     headlineModeIdeaId, setHeadlineModeIdeaId,
+    delete_idea, remove_idea_from_category,
+    setConfirmModal,
+    paintType, setPaintType,
   });
 
   // ── Formations hook ──
@@ -663,6 +671,9 @@ export default function IdeaBin() {
       selectedIdeaIds={selectedIdeaIds}
       setSelectedIdeaIds={setSelectedIdeaIds}
       lastSelectedIdeaRef={lastSelectedIdeaRef}
+      paintType={paintType}
+      setPaintType={setPaintType}
+      assign_idea_legend_type={assign_idea_legend_type}
     />
   );
 
@@ -1096,7 +1107,7 @@ export default function IdeaBin() {
           <div className="flex-1 flex overflow-hidden relative">
             {/* Confirm modal overlay */}
             {confirmModal && (
-              <IdeaBinConfirmModal message={confirmModal.message} onConfirm={confirmModal.onConfirm} onCancel={confirmModal.onCancel} confirmLabel={confirmModal.confirmLabel} confirmColor={confirmModal.confirmColor} />
+              <IdeaBinConfirmModal message={confirmModal.message} onConfirm={confirmModal.onConfirm} onCancel={confirmModal.onCancel} confirmLabel={confirmModal.confirmLabel} confirmColor={confirmModal.confirmColor} middleLabel={confirmModal.middleLabel} middleColor={confirmModal.middleColor} onMiddle={confirmModal.onMiddle} />
             )}
 
             {/* ── Meta Ideas list overlay ── */}
@@ -1374,6 +1385,8 @@ export default function IdeaBin() {
                 selectedIdeaIds={selectedIdeaIds}
                 assign_idea_legend_type={assign_idea_legend_type}
                 passesAllFilters={passesAllFilters}
+                paintType={paintType}
+                setPaintType={setPaintType}
                 filterPresets={filterPresets}
                 saveFilterPreset={saveFilterPreset}
                 applyFilterPreset={applyFilterPreset}
@@ -1469,6 +1482,9 @@ export default function IdeaBin() {
                 legendFilters={legendFilters}
                 filterCombineMode={filterCombineMode}
                 globalTypeFilter={globalTypeFilter}
+                paintType={paintType}
+                setPaintType={setPaintType}
+                assign_idea_legend_type={assign_idea_legend_type}
               />
             )}
             </>
@@ -1502,8 +1518,56 @@ export default function IdeaBin() {
         </div>
       )}
 
+      {/* ── Paint mode cursor overlay ── */}
+      {paintType && (
+        <PaintCursorOverlay paintType={paintType} />
+      )}
+
       {/* ── Drag ghosts (extracted) ── */}
       <IdeaBinDragGhosts dragging={dragging} externalGhost={externalGhost} draggingType={draggingType} selectedIdeaIds={selectedIdeaIds} />
     </>
+  );
+}
+
+/**
+ * Fixed-position cursor follower that shows the active paint type icon+color.
+ * Renders a small badge next to the mouse cursor.
+ */
+function PaintCursorOverlay({ paintType }) {
+  const posRef = useRef({ x: 0, y: 0 });
+  const elRef = useRef(null);
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (elRef.current) {
+        elRef.current.style.left = `${e.clientX + 14}px`;
+        elRef.current.style.top = `${e.clientY + 14}px`;
+      }
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    // Set cursor to crosshair on the whole document while in paint mode
+    document.body.style.cursor = "crosshair";
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      document.body.style.cursor = "";
+    };
+  }, []);
+
+  return (
+    <div
+      ref={elRef}
+      className="fixed pointer-events-none z-[99999] flex items-center gap-1 px-1.5 py-0.5 rounded-full shadow-lg border border-gray-200 bg-white/90 backdrop-blur-sm"
+      style={{ left: -100, top: -100 }}
+    >
+      <div
+        className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 border border-gray-200"
+        style={{ backgroundColor: paintType.icon ? "transparent" : paintType.color }}
+      >
+        {paintType.icon && renderLegendTypeIcon(paintType.icon, { style: { fontSize: 12, color: paintType.color } })}
+      </div>
+      <span className="text-[9px] font-medium text-gray-600 whitespace-nowrap max-w-[80px] truncate">
+        {paintType.name}
+      </span>
+    </div>
   );
 }

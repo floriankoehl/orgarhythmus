@@ -63,6 +63,9 @@ export default function IdeaBinCategoryCanvas({
   setCategoryFilterConfig,
   legendFilters,
   filterCombineMode,
+  paintType,
+  setPaintType,
+  assign_idea_legend_type,
 }) {
   // Local state for headline-mode draft headlines (keyed by ideaId)
   const [draftHeadlines, setDraftHeadlines] = useState({});
@@ -219,8 +222,9 @@ export default function IdeaBinCategoryCanvas({
         const my2 = Math.max(prev.y1, prev.y2);
         const area = (mx2 - mx1) * (my2 - my1);
         if (area < 100) {
-          // Click on empty space inside category → deselect all ideas
+          // Click on empty space inside category → deselect all ideas & exit paint mode
           setSelectedIdeaIds(new Set());
+          if (paintType) setPaintType(null);
           return null;
         }
         const ideaElements = container.querySelectorAll('[data-idea-id]');
@@ -233,7 +237,12 @@ export default function IdeaBinCategoryCanvas({
           }
         });
         if (hitIds.length > 0) {
-          if (ideaMarqueeRef.current?.ctrlKey) {
+          // Paint mode: assign type to all marquee-hit ideas
+          if (paintType && assign_idea_legend_type) {
+            for (const id of hitIds) {
+              assign_idea_legend_type(id, paintType.typeId, dims);
+            }
+          } else if (ideaMarqueeRef.current?.ctrlKey) {
             setSelectedIdeaIds(old => {
               const next = new Set(old);
               hitIds.forEach(id => next.add(id));
@@ -248,9 +257,9 @@ export default function IdeaBinCategoryCanvas({
     };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  }, [categoryRefs, setSelectedIdeaIds]);
+  }, [categoryRefs, setSelectedIdeaIds, paintType, setPaintType, assign_idea_legend_type, dims]);
 
-  // Click anywhere on the canvas background → deselect everything & exit headline mode
+  // Click anywhere on the canvas background → deselect everything & exit headline/paint mode
   const handleCanvasClick = useCallback((e) => {
     if (marqueeJustFinishedRef.current) return;
     if (e.target.closest('[data-headline-builder]')) return;
@@ -258,13 +267,15 @@ export default function IdeaBinCategoryCanvas({
     // Clear all selections
     setSelectedCategoryIds(new Set());
     setSelectedIdeaIds(new Set());
+    // Exit paint mode
+    if (paintType) setPaintType(null);
     // Exit headline mode
     if (headlineModeCategoryId || headlineModeIdeaId) {
       setHeadlineModeCategoryId(null);
       setHeadlineModeIdeaId(null);
       setDraftHeadlines({});
     }
-  }, [headlineModeCategoryId, headlineModeIdeaId, setHeadlineModeCategoryId, setHeadlineModeIdeaId, setSelectedCategoryIds, setSelectedIdeaIds]);
+  }, [headlineModeCategoryId, headlineModeIdeaId, setHeadlineModeCategoryId, setHeadlineModeIdeaId, setSelectedCategoryIds, setSelectedIdeaIds, paintType, setPaintType]);
 
   return (
     <div
@@ -294,8 +305,11 @@ export default function IdeaBinCategoryCanvas({
         const h = Math.abs(ideaMarquee.y2 - ideaMarquee.y1);
         return w * h > 100 ? (
           <div
-            style={{ position: 'fixed', left: x, top: y, width: w, height: h }}
-            className="border-2 border-blue-400 bg-blue-100/20 rounded pointer-events-none z-[9999]"
+            style={{
+              position: 'fixed', left: x, top: y, width: w, height: h,
+              ...(paintType ? { borderColor: paintType.color, backgroundColor: `${paintType.color}20` } : {}),
+            }}
+            className={`border-2 rounded pointer-events-none z-[9999] ${paintType ? "" : "border-blue-400 bg-blue-100/20"}`}
           />
         ) : null;
       })()}
@@ -355,6 +369,29 @@ export default function IdeaBinCategoryCanvas({
               + Category
             </button>
           )}
+          {/* Global order-numbers toggle */}
+          <button
+            onClick={() => {
+              if (allOrderVisible) {
+                // Turn off all
+                setShowOrderNumbers(new Set());
+              } else {
+                // Turn on all active
+                setShowOrderNumbers(new Set(activeCategories.map(([k]) => k)));
+              }
+            }}
+            className={`flex items-center gap-0.5 text-[10px] px-1.5 py-1 rounded border flex-shrink-0 transition-colors ${
+              allOrderVisible
+                ? "bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200"
+                : anyOrderVisible
+                  ? "bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100"
+                  : "bg-gray-100 text-gray-500 border-gray-300 hover:bg-gray-200"
+            }`}
+            title={allOrderVisible ? "Hide all order numbers" : "Show all order numbers"}
+          >
+            <ListOrdered size={11} />
+            <span className="hidden sm:inline">#</span>
+          </button>
           {archivedCategories.length > 0 && (
             <div className="relative flex-shrink-0">
               <button
