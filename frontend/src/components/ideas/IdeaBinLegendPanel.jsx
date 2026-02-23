@@ -60,6 +60,7 @@ export default function IdeaBinLegendPanel({
   const [editingPresetName, setEditingPresetName] = useState("");
   const [appliedPresetName, setAppliedPresetName] = useState("");
   const [allLegendTypes, setAllLegendTypes] = useState({}); // {legendId: {typeId: typeObj}}
+  const [filterPanelCollapsed, setFilterPanelCollapsed] = useState(true);
 
   // Count ideas matching filter (for display)
   const filteredIdeaCount = (() => {
@@ -236,18 +237,19 @@ export default function IdeaBinLegendPanel({
     return parts.join(` ${filterCombineMode} `) || "filter";
   };
   return (
-    <div className="bg-white border-t border-gray-200 p-2 flex-shrink-0">
-      <div
-        className="flex items-center justify-between cursor-pointer"
-        onClick={() => setLegendPanelCollapsed(!legendPanelCollapsed)}
-      >
-        <div className="flex items-center gap-1">
-          <h3 className="text-[10px] font-semibold text-gray-500">
-            Legends {hasAnyFilter && <span className="text-blue-500">(filtered)</span>}
-          </h3>
-          {!legendPanelCollapsed && !showCreateLegend && (
-            <button
-              onClick={(e) => { e.stopPropagation(); setShowCreateLegend(true); }}
+    <div className="bg-white border-t border-gray-200 flex-shrink-0">
+      {/* ═══════════════ SECTION 1: LEGENDS ═══════════════ */}
+      <div className="p-2 pb-0">
+        <div
+          className="flex items-center justify-between cursor-pointer"
+          onClick={() => setLegendPanelCollapsed(!legendPanelCollapsed)}
+        >
+          <div className="flex items-center gap-1">
+            <Layers size={12} className="text-gray-500" />
+            <h3 className="text-[10px] font-semibold text-gray-500">Legends</h3>
+            {!legendPanelCollapsed && !showCreateLegend && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowCreateLegend(true); }}
               className="w-4 h-4 flex items-center justify-center rounded text-[11px] font-bold text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
               title="New Legend"
             >+</button>
@@ -375,6 +377,12 @@ export default function IdeaBinLegendPanel({
               onMouseDown={(e) => { e.stopPropagation(); handleTypeDrag(e, null); }}
               onClick={(e) => {
                 e.stopPropagation();
+                if (selectedIdeaIds?.size > 0 && assign_idea_legend_type) {
+                  for (const pid of selectedIdeaIds) {
+                    assign_idea_legend_type(pid, null, dims);
+                  }
+                  return;
+                }
                 if (paintType && paintType.typeId === null) {
                   setPaintType(null); // deactivate
                 } else {
@@ -408,6 +416,12 @@ export default function IdeaBinLegendPanel({
                   onMouseDown={(e) => { e.stopPropagation(); handleTypeDrag(e, lt.id); }}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (selectedIdeaIds?.size > 0 && assign_idea_legend_type) {
+                      for (const pid of selectedIdeaIds) {
+                        assign_idea_legend_type(pid, lt.id, dims);
+                      }
+                      return;
+                    }
                     if (paintType && paintType.typeId === lt.id) {
                       setPaintType(null); // deactivate
                     } else {
@@ -611,18 +625,27 @@ export default function IdeaBinLegendPanel({
               + Add Type
             </button>
           )}
+        </div>
+      )}
+      </div>
 
-          {/* ═══ Advanced Filters Section ═══ */}
-          <div className="mt-3 pt-2 border-t border-gray-200">
-            <div className="flex items-center justify-between mb-1.5">
-              <div className="flex items-center gap-1.5">
-                <Filter size={12} className="text-gray-500" />
-                <span className="text-[11px] font-bold text-gray-600">Filters</span>
-                {legendFilters.length > 0 && (
-                  <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-semibold">{legendFilters.length}</span>
-                )}
-              </div>
-              <div className="flex items-center gap-1.5">
+      {/* ═══════════════ SECTION 2: FILTERS ═══════════════ */}
+      <div className="p-2 pt-0 mt-1 border-t border-gray-100">
+        <div
+          className="flex items-center justify-between cursor-pointer"
+          onClick={() => setFilterPanelCollapsed(!filterPanelCollapsed)}
+        >
+          <div className="flex items-center gap-1">
+            <Filter size={12} className="text-gray-500" />
+            <h3 className="text-[10px] font-semibold text-gray-500">
+              Filters {hasAnyFilter && <span className="text-blue-500">({legendFilters.length})</span>}
+            </h3>
+          </div>
+          <span className="text-gray-400 text-[10px]">{filterPanelCollapsed ? "▲" : "▼"}</span>
+        </div>
+        {!filterPanelCollapsed && (
+          <div className="mt-1">
+            <div className="flex items-center justify-end gap-1.5 mb-1.5">
                 {hasAnyFilter && (
                   <button
                     onClick={clearAllFilters}
@@ -638,12 +661,22 @@ export default function IdeaBinLegendPanel({
                   <Pencil size={9} />
                   {hasAnyFilter ? "Edit" : "Define"}
                 </button>
-              </div>
             </div>
 
-            {/* ── Human-readable filter summary ── */}
+            {/* ── Human-readable filter summary (draggable) ── */}
             {legendFilters.length > 0 && (
-              <div className="mb-2 p-2 bg-blue-50 rounded-lg border border-blue-200 text-[11px] text-gray-700 leading-relaxed">
+              <div
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("application/ideabin-filter", JSON.stringify({
+                    legend_filters: legendFilters,
+                    filter_combine_mode: filterCombineMode,
+                  }));
+                  e.dataTransfer.effectAllowed = "copy";
+                }}
+                className="mb-2 p-2 bg-blue-50 rounded-lg border border-blue-200 text-[11px] text-gray-700 leading-relaxed cursor-grab active:cursor-grabbing hover:border-blue-400 transition-colors"
+                title="Drag to a category to apply this filter"
+              >
                 <div className="font-semibold text-blue-700 mb-1">Showing ideas where:</div>
                 {legendFilters.map((f, idx) => {
                   const legend = displayLegends.find(l => l.id === f.legendId) || dims.legends.find(l => l.id === f.legendId);
@@ -747,8 +780,17 @@ export default function IdeaBinLegendPanel({
                       </div>
                     ) : (
                       <div
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("application/ideabin-filter", JSON.stringify({
+                            legend_filters: preset.legend_filters || [],
+                            filter_combine_mode: preset.filter_combine_mode || "and",
+                          }));
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
                         onClick={() => { applyFilterPreset(preset); setAppliedPresetName(preset.name); }}
-                        className="flex items-center gap-1 group p-1.5 bg-gray-50 rounded border border-gray-200 hover:border-blue-300 hover:bg-blue-50 cursor-pointer transition-colors"
+                        className="flex items-center gap-1 group p-1.5 bg-gray-50 rounded border border-gray-200 hover:border-blue-300 hover:bg-blue-50 cursor-grab active:cursor-grabbing transition-colors"
+                        title="Drag to a category to apply this filter"
                       >
                         <span className="flex-1 text-[10px] font-medium text-gray-700 truncate">{preset.name}</span>
                         <span className="text-[9px] text-gray-400 flex-shrink-0">{preset.legend_filters?.length || 0}r</span>
@@ -834,9 +876,10 @@ export default function IdeaBinLegendPanel({
             )}
 
           </div>
+        )}
 
-          {/* ═══ Filter Rules Modal ═══ */}
-          {showFilterModal && (
+        {/* ═══ Filter Rules Modal ═══ */}
+        {showFilterModal && (
             <div className="fixed inset-0 z-[9999] flex items-center justify-center">
               <div className="fixed inset-0 bg-black/30" onClick={() => setShowFilterModal(false)} />
               <div className="relative bg-white rounded-xl shadow-2xl border border-gray-200 w-[420px] max-h-[80vh] flex flex-col">
@@ -1032,8 +1075,7 @@ export default function IdeaBinLegendPanel({
               </div>
             </div>
           )}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

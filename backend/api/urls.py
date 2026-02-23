@@ -85,6 +85,8 @@ urlpatterns = [
     path("user/ideas/update_headline/", views.update_idea_headline),
     path("user/categories/toggle_archive/", views.toggle_archive_category),
     path("user/categories/toggle_public/", views.toggle_public_category),
+    path("user/ideas/toggle_archive/", views.toggle_archive_idea),
+    path("user/ideas/archived/", views.get_archived_ideas),
 
     # Legend Types (user-scoped)
     path("user/ideas/assign_legend_type/", views.assign_idea_legend_type),

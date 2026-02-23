@@ -195,20 +195,20 @@ def assign_idea_to_category(request):
 def get_all_ideas(request):
     """Return all idea placements for the current user, grouped by category.
     Also includes placements from adopted categories (read-only)."""
-    # Own placements
-    placements = IdeaPlacement.objects.filter(idea__owner=request.user).select_related('idea', 'idea__owner', 'category').prefetch_related('idea__legend_types__legend_type', 'idea__legend_types__legend')
+    # Own placements (exclude archived ideas)
+    placements = IdeaPlacement.objects.filter(idea__owner=request.user, idea__archived=False).select_related('idea', 'idea__owner', 'category').prefetch_related('idea__legend_types__legend_type', 'idea__legend_types__legend')
     ctx = {'request': request}
     all_placements_serialized = IdeaPlacementSerializer(placements, many=True, context=ctx).data
 
     unassigned_order = list(
-        IdeaPlacement.objects.filter(idea__owner=request.user, category__isnull=True)
+        IdeaPlacement.objects.filter(idea__owner=request.user, idea__archived=False, category__isnull=True)
         .order_by('order_index')
         .values_list('id', flat=True)
     )
     category_orders = {}
     for cat in Category.objects.filter(owner=request.user):
         category_orders[cat.id] = list(
-            IdeaPlacement.objects.filter(idea__owner=request.user, category=cat)
+            IdeaPlacement.objects.filter(idea__owner=request.user, idea__archived=False, category=cat)
             .order_by('order_index')
             .values_list('id', flat=True)
         )
@@ -767,7 +767,7 @@ def spinoff_idea(request):
 @permission_classes([IsAuthenticated])
 def get_user_ideas(request):
     """Get all ideas owned by the current user — the meta view."""
-    ideas = Idea.objects.filter(owner=request.user).prefetch_related('placements__category', 'legend_types__legend_type', 'legend_types__legend')
+    ideas = Idea.objects.filter(owner=request.user, archived=False).prefetch_related('placements__category', 'legend_types__legend_type', 'legend_types__legend')
     return Response({"ideas": IdeaSerializer(ideas, many=True, context={'request': request}).data})
 
 
@@ -775,7 +775,36 @@ def get_user_ideas(request):
 @permission_classes([IsAuthenticated])
 def get_meta_ideas(request):
     """Get all unique ideas for the current user (meta view — no placement duplicates)."""
-    ideas = Idea.objects.filter(owner=request.user).select_related('owner').prefetch_related('placements__category', 'legend_types__legend_type', 'legend_types__legend')
+    ideas = Idea.objects.filter(owner=request.user, archived=False).select_related('owner').prefetch_related('placements__category', 'legend_types__legend_type', 'legend_types__legend')
+    return Response({
+        "ideas": IdeaSerializer(ideas, many=True, context={'request': request}).data,
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def toggle_archive_idea(request):
+    """Toggle the archived flag on one or more ideas."""
+    idea_ids = request.data.get("idea_ids", [])
+    single_id = request.data.get("idea_id")
+    if single_id:
+        idea_ids = [single_id]
+    if not idea_ids:
+        return Response({"error": "No idea_ids provided"}, status=400)
+    ideas = Idea.objects.filter(id__in=idea_ids, owner=request.user)
+    for idea in ideas:
+        idea.archived = not idea.archived
+        idea.save(update_fields=["archived"])
+    return Response({"toggled": True, "count": ideas.count()})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_archived_ideas(request):
+    """Return all archived ideas for the current user."""
+    ideas = Idea.objects.filter(owner=request.user, archived=True).select_related('owner').prefetch_related(
+        'placements__category', 'legend_types__legend_type', 'legend_types__legend'
+    )
     return Response({
         "ideas": IdeaSerializer(ideas, many=True, context={'request': request}).data,
     })

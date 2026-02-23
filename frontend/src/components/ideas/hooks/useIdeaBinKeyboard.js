@@ -10,13 +10,18 @@ import { useState, useEffect, useCallback } from "react";
 export default function useIdeaBinKeyboard(deps) {
   const {
     isOpen, windowRef,
-    copiedIdeaId, selectedCategoryIds, paste_idea,
+    copiedIdeaId, selectedCategoryIds, setSelectedCategoryIds, paste_idea,
     selectedIdeaIds, setSelectedIdeaIds, ideas, categories,
     headlineModeCategoryId, setHeadlineModeCategoryId,
     headlineModeIdeaId, setHeadlineModeIdeaId,
-    delete_idea, remove_idea_from_category,
+    delete_idea, remove_idea_from_category, toggle_archive_idea,
     setConfirmModal,
     paintType, setPaintType,
+    // Ctrl+A / Ctrl+Shift+A deps
+    categoryOrders, unassignedOrder, metaIdeaList,
+    listFilter, viewMode, dockedCategories, activeContext,
+    legendFilters, filterCombineMode, globalTypeFilter, dims,
+    sidebarFocused,
   } = deps;
 
   const [isFocused, setIsFocused] = useState(false);
@@ -101,59 +106,44 @@ export default function useIdeaBinKeyboard(deps) {
     return () => window.removeEventListener("keydown", handleHeadlineKey);
   }, [isOpen, isFocused, selectedCategoryIds, selectedIdeaIds, ideas]);
 
-  // ── Delete key – delete selected ideas ──
+  // ── shared archive handler for Delete & Backspace ──
+  const archiveHandler = useCallback((e) => {
+    const tag = document.activeElement?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
+    if (e.key !== "Delete" && e.key !== "Backspace") return;
+    if (selectedIdeaIds.size === 0) return;
+    e.preventDefault();
+
+    const count = selectedIdeaIds.size;
+    const ideaIds = [...selectedIdeaIds];
+    const metaIds = [...new Set(ideaIds.map(id => ideas[id]?.idea_id).filter(Boolean))];
+
+    setConfirmModal({
+      message: count === 1
+        ? `Archive this idea?`
+        : `Archive ${count} ideas?`,
+      confirmLabel: "Archive",
+      confirmColor: "bg-indigo-500 hover:bg-indigo-600",
+      onConfirm: () => {
+        toggle_archive_idea(metaIds);
+        setSelectedIdeaIds(new Set());
+        setConfirmModal(null);
+      },
+      onCancel: () => setConfirmModal(null),
+    });
+  }, [selectedIdeaIds, ideas, toggle_archive_idea, setConfirmModal, setSelectedIdeaIds]);
+
+  // ── Delete key – archive selected ideas ──
   useEffect(() => {
     if (!isOpen || !isFocused) return;
-    const handleDeleteKey = (e) => {
-      const tag = document.activeElement?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if (e.key !== "Delete") return;
-      if (selectedIdeaIds.size === 0) return;
-      e.preventDefault();
+    window.addEventListener("keydown", archiveHandler);
+    return () => window.removeEventListener("keydown", archiveHandler);
+  }, [isOpen, isFocused, archiveHandler]);
 
-      const count = selectedIdeaIds.size;
-      const ideaIds = [...selectedIdeaIds];
-      // Check if any selected ideas belong to a category (for "remove reference" option)
-      const hasCategory = ideaIds.some(id => {
-        const idea = ideas[id];
-        return idea && idea.category;
-      });
-
-      setConfirmModal({
-        message: count === 1
-          ? `Delete this idea permanently?`
-          : `Delete ${count} ideas permanently?`,
-        confirmLabel: "Yes, delete",
-        confirmColor: "bg-red-500 hover:bg-red-600",
-        onConfirm: () => {
-          for (const id of ideaIds) {
-            const idea = ideas[id];
-            if (idea) delete_idea(idea.idea_id || id);
-          }
-          setSelectedIdeaIds(new Set());
-          setConfirmModal(null);
-        },
-        onCancel: () => setConfirmModal(null),
-        // Show "Remove from category" only if at least one idea has a category
-        ...(hasCategory ? {
-          middleLabel: count === 1 ? "Remove from category" : "Remove from categories",
-          middleColor: "bg-amber-500 hover:bg-amber-600",
-          onMiddle: () => {
-            for (const id of ideaIds) {
-              const idea = ideas[id];
-              if (idea && idea.category) {
-                remove_idea_from_category(id);
-              }
-            }
-            setSelectedIdeaIds(new Set());
-            setConfirmModal(null);
-          },
-        } : {}),
-      });
-    };
-    window.addEventListener("keydown", handleDeleteKey);
-    return () => window.removeEventListener("keydown", handleDeleteKey);
-  }, [isOpen, isFocused, selectedIdeaIds, ideas, delete_idea, remove_idea_from_category, setConfirmModal, setSelectedIdeaIds]);
+  // ── Backspace key – same archive (keeps hook count stable) ──
+  useEffect(() => {
+    // intentionally empty – archiveHandler above handles both keys
+  }, [isOpen, isFocused, archiveHandler]);
 
   // ── Escape key – exit paint mode ──
   useEffect(() => {
@@ -167,6 +157,77 @@ export default function useIdeaBinKeyboard(deps) {
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
   }, [isOpen, paintType, setPaintType]);
+
+  // ── Helper: compute passesAllFilters inside this hook ──
+  const passesAllFilters = useCallback((idea) => {
+    if (!idea) return false;
+    const hasLF = legendFilters.length > 0;
+    if (hasLF) {
+      const results = legendFilters.map(f => {
+        const legId = String(f.legendId);
+        const dt = idea.legend_types?.[legId];
+        const typeId = dt?.legend_type_id;
+        const hasType = !!dt;
+        const matchesSelected = f.typeIds.includes("unassigned")
+          ? (!hasType || f.typeIds.includes(typeId))
+          : (hasType && f.typeIds.includes(typeId));
+        return f.mode === "exclude" ? !matchesSelected : matchesSelected;
+      });
+      return filterCombineMode === "and" ? results.every(Boolean) : results.some(Boolean);
+    }
+    if (globalTypeFilter.length > 0) {
+      const dimId = String(dims?.activeLegendId || "");
+      const dt = idea.legend_types?.[dimId];
+      if (globalTypeFilter.includes("unassigned") && !dt) return true;
+      if (dt && globalTypeFilter.includes(dt.legend_type_id)) return true;
+      return false;
+    }
+    return true;
+  }, [legendFilters, filterCombineMode, globalTypeFilter, dims?.activeLegendId]);
+
+  // ── Helper: get active (visible on canvas) categories ──
+  const getActiveCategories = useCallback(() => {
+    return Object.entries(categories).filter(([k, c]) => {
+      if (c.archived || (dockedCategories || []).includes(String(k))) return false;
+      if (activeContext) {
+        return (activeContext.category_ids || []).includes(Number(k));
+      }
+      return true;
+    });
+  }, [categories, dockedCategories, activeContext]);
+
+  // ── Ctrl+A = select all displayed ideas · Ctrl+Shift+A = select all displayed categories ──
+  useEffect(() => {
+    if (!isOpen || !isFocused) return;
+    const handleSelectAll = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "a") return;
+      const tag = document.activeElement?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      e.preventDefault();
+
+      if (e.shiftKey) {
+        // Ctrl+Shift+A → select all currently displayed (active) categories
+        const activeCats = getActiveCategories();
+        setSelectedCategoryIds(new Set(activeCats.map(([k]) => k)));
+        setSelectedIdeaIds(new Set());
+      } else {
+        // Ctrl+A → select all displayed ideas on the canvas
+        const activeCats = getActiveCategories();
+        const allIds = new Set();
+        for (const [catKey] of activeCats) {
+          for (const pid of (categoryOrders[catKey] || [])) {
+            if (passesAllFilters(ideas[pid])) allIds.add(pid);
+          }
+        }
+        setSelectedIdeaIds(allIds);
+        setSelectedCategoryIds(new Set());
+      }
+    };
+    window.addEventListener("keydown", handleSelectAll);
+    return () => window.removeEventListener("keydown", handleSelectAll);
+  }, [isOpen, isFocused, categories, categoryOrders, ideas,
+      passesAllFilters, getActiveCategories,
+      setSelectedIdeaIds, setSelectedCategoryIds]);
 
   return {
     isFocused, setIsFocused,

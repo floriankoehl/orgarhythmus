@@ -116,6 +116,16 @@ export default function IdeaBin() {
   // ───── Archive ─────
   const [showArchive, setShowArchive] = useState(false);
 
+  // ───── Order numbers (lifted from canvas) ─────
+  const [showOrderNumbers, setShowOrderNumbers] = useState(new Set());
+
+  // ───── Sidebar marquee selection ─────
+  const [sidebarMarquee, setSidebarMarquee] = useState(null); // { x1, y1, x2, y2 } in client coords
+  const sidebarMarqueeRef = useRef(null);
+
+  // ───── Sidebar focus tracking (for Ctrl+A context) ─────
+  const [sidebarFocused, setSidebarFocused] = useState(false);
+
   // ───── Transform modal ─────
   const [transformModal, setTransformModal] = useState(null); // { idea, step: 'choose' | 'task' | 'milestone' }
   const [transformName, setTransformName] = useState("");
@@ -176,6 +186,7 @@ export default function IdeaBin() {
     add_comment,
     delete_comment,
     fetch_meta_ideas,
+    toggle_archive_idea,
   } = useIdeaBinIdeas({ selectedCategoryIds });
 
   // ── Categories hook ──
@@ -232,13 +243,18 @@ export default function IdeaBin() {
   // ── Keyboard hook ──
   const { isFocused, refactorMode, setRefactorMode } = useIdeaBinKeyboard({
     isOpen, windowRef,
-    copiedIdeaId, selectedCategoryIds, paste_idea,
+    copiedIdeaId, selectedCategoryIds, setSelectedCategoryIds, paste_idea,
     selectedIdeaIds, setSelectedIdeaIds, ideas, categories,
     headlineModeCategoryId, setHeadlineModeCategoryId,
     headlineModeIdeaId, setHeadlineModeIdeaId,
-    delete_idea, remove_idea_from_category,
+    delete_idea, remove_idea_from_category, toggle_archive_idea,
     setConfirmModal,
     paintType, setPaintType,
+    // Ctrl+A / Ctrl+Shift+A deps
+    categoryOrders, unassignedOrder, metaIdeaList,
+    listFilter, viewMode, dockedCategories, activeContext,
+    legendFilters, filterCombineMode, globalTypeFilter, dims,
+    sidebarFocused,
   });
 
   // ── Formations hook ──
@@ -362,6 +378,66 @@ export default function IdeaBin() {
     } catch (err) { console.error("IdeaBin: set context color failed", err); }
   };
 
+  // ── Sidebar marquee selection handler ──
+  const handleSidebarMarqueeStart = useCallback((e) => {
+    // Only start on empty space (not on idea cards or buttons)
+    if (e.target.closest('[data-idea-item]') || e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea')) return;
+    if (e.button !== 0) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    setSidebarMarquee({ x1: startX, y1: startY, x2: startX, y2: startY });
+    sidebarMarqueeRef.current = { ctrlKey: e.ctrlKey || e.metaKey };
+
+    const onMove = (moveE) => {
+      setSidebarMarquee(prev => prev ? { ...prev, x2: moveE.clientX, y2: moveE.clientY } : null);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      setSidebarMarquee(prev => {
+        if (!prev || !IdeaListRef.current) return null;
+        const mx1 = Math.min(prev.x1, prev.x2);
+        const my1 = Math.min(prev.y1, prev.y2);
+        const mx2 = Math.max(prev.x1, prev.x2);
+        const my2 = Math.max(prev.y1, prev.y2);
+        const area = (mx2 - mx1) * (my2 - my1);
+        if (area < 100) {
+          // Tiny drag = click on empty space → deselect all & exit paint mode
+          setSelectedIdeaIds(new Set());
+          if (paintType) setPaintType(null);
+          return null;
+        }
+        const ideaElements = IdeaListRef.current.querySelectorAll('[data-idea-id]');
+        const hitIds = [];
+        ideaElements.forEach(el => {
+          const rect = el.getBoundingClientRect();
+          if (rect.right > mx1 && rect.left < mx2 && rect.bottom > my1 && rect.top < my2) {
+            const id = el.getAttribute('data-idea-id');
+            hitIds.push(Number(id) || id);
+          }
+        });
+        if (hitIds.length > 0) {
+          if (paintType && assign_idea_legend_type) {
+            for (const id of hitIds) {
+              assign_idea_legend_type(id, paintType.typeId, dims);
+            }
+          } else if (sidebarMarqueeRef.current?.ctrlKey) {
+            setSelectedIdeaIds(old => {
+              const next = new Set(old);
+              hitIds.forEach(id => next.add(id));
+              return next;
+            });
+          } else {
+            setSelectedIdeaIds(new Set(hitIds));
+          }
+        }
+        return null;
+      });
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [paintType, assign_idea_legend_type, dims, setSelectedIdeaIds, setPaintType]);
+
   // ═══════════════════════════════════════════════════════
   // ═══════════  EFFECTS  ═════════════════════════════════
   // ═══════════════════════════════════════════════════════
@@ -385,6 +461,26 @@ export default function IdeaBin() {
     }, 5000); // every 5 seconds
     return () => clearInterval(interval);
   }, [liveCategoryIds, ideas, refetchCategoryByFilter]);
+
+  // ── Refresh activeContext when switching back to ideas view ──
+  // (picks up category/legend changes made in the Contexts view)
+  useEffect(() => {
+    if (viewMode === "ideas" && activeContext) {
+      (async () => {
+        try {
+          const freshList = await fetchContextsApi();
+          const freshCtx = freshList.find(c => c.id === activeContext.id);
+          if (freshCtx) {
+            setActiveContext(prev => ({
+              ...prev,
+              category_ids: freshCtx.category_ids,
+              legend_ids: freshCtx.legend_ids,
+            }));
+          }
+        } catch (e) { /* ignore */ }
+      })();
+    }
+  }, [viewMode]);
 
   // ── Auto-save filter state when filters change while inside a context ──
   useEffect(() => {
@@ -1101,6 +1197,15 @@ export default function IdeaBin() {
             viewMode={viewMode} setViewMode={setViewMode}
             ideas={ideas} categories={categories}
             activeContext={activeContext}
+            displayCategoryForm={displayCategoryForm} setDisplayCategoryForm={setDisplayCategoryForm}
+            newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName}
+            newCategoryPublic={newCategoryPublic} setNewCategoryPublic={setNewCategoryPublic}
+            create_category_api={create_category_api}
+            showOrderNumbers={showOrderNumbers} setShowOrderNumbers={setShowOrderNumbers}
+            activeCategories={activeCategories}
+            toggle_archive_idea={toggle_archive_idea}
+            delete_meta_idea={delete_meta_idea}
+            fetch_all_ideas={fetch_all_ideas}
           />
 
           {/* ── Content area ── */}
@@ -1149,6 +1254,7 @@ export default function IdeaBin() {
             <div
               className="flex flex-col flex-shrink-0 bg-white"
               style={{ width: showCategories ? sidebarWidth : "100%" }}
+              onMouseDown={() => setSidebarFocused(true)}
             >
               {/* ── Input form ── */}
               <div className="p-2 bg-gray-50 border-b border-gray-200 flex-shrink-0">
@@ -1259,9 +1365,12 @@ export default function IdeaBin() {
               <div
                 ref={IdeaListRef}
                 data-idea-list
+                onMouseDown={handleSidebarMarqueeStart}
                 style={{
                   backgroundColor: dragging && hoverUnassigned ? "#f3f4f6" : "#ffffff",
                   transition: "background-color 150ms ease",
+                  position: "relative",
+                  userSelect: sidebarMarquee ? "none" : undefined,
                 }}
                 className="flex-1 p-1.5 overflow-y-auto overflow-x-hidden"
               >
@@ -1358,7 +1467,30 @@ export default function IdeaBin() {
                   : (categoryOrders[listFilter] || [])
                       .filter(ideaId => passesAllFilters(ideas[ideaId]))
                       .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: listFilter }))
-                }              </div>
+                }
+                {/* Sidebar marquee overlay */}
+                {sidebarMarquee && (() => {
+                  const mx1 = Math.min(sidebarMarquee.x1, sidebarMarquee.x2);
+                  const my1 = Math.min(sidebarMarquee.y1, sidebarMarquee.y2);
+                  const mw = Math.abs(sidebarMarquee.x2 - sidebarMarquee.x1);
+                  const mh = Math.abs(sidebarMarquee.y2 - sidebarMarquee.y1);
+                  if (mw < 2 && mh < 2) return null;
+                  return (
+                    <div
+                      style={{
+                        position: "fixed",
+                        left: mx1, top: my1,
+                        width: mw, height: mh,
+                        border: "1.5px dashed rgba(99,102,241,0.7)",
+                        backgroundColor: "rgba(99,102,241,0.08)",
+                        pointerEvents: "none",
+                        zIndex: 50,
+                        borderRadius: 3,
+                      }}
+                    />
+                  );
+                })()}
+              </div>
 
               {/* ── Legends panel (extracted) ── */}
               <IdeaBinLegendPanel
@@ -1429,6 +1561,7 @@ export default function IdeaBin() {
             {/* ── RIGHT: Category canvas (only when wide enough) ── */}
             {showCategories && (
               <IdeaBinCategoryCanvas
+                onCanvasMouseDown={() => setSidebarFocused(false)}
                 categoryContainerRef={categoryContainerRef}
                 displayCategoryForm={displayCategoryForm} setDisplayCategoryForm={setDisplayCategoryForm}
                 newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName}
@@ -1485,6 +1618,8 @@ export default function IdeaBin() {
                 paintType={paintType}
                 setPaintType={setPaintType}
                 assign_idea_legend_type={assign_idea_legend_type}
+                showOrderNumbers={showOrderNumbers}
+                setShowOrderNumbers={setShowOrderNumbers}
               />
             )}
             </>

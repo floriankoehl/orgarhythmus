@@ -10,6 +10,7 @@ import FeedFilterPanel from "./FeedFilterPanel";
  * Pure presentational; all mutation callbacks come from props.
  */
 export default function IdeaBinCategoryCanvas({
+  onCanvasMouseDown,
   categoryContainerRef,
   displayCategoryForm, setDisplayCategoryForm,
   newCategoryName, setNewCategoryName,
@@ -66,6 +67,8 @@ export default function IdeaBinCategoryCanvas({
   paintType,
   setPaintType,
   assign_idea_legend_type,
+  showOrderNumbers,
+  setShowOrderNumbers,
 }) {
   // Local state for headline-mode draft headlines (keyed by ideaId)
   const [draftHeadlines, setDraftHeadlines] = useState({});
@@ -79,12 +82,8 @@ export default function IdeaBinCategoryCanvas({
   // "define" = manual order with drag-to-reorder, "description" = auto-sorted by position in description
   const [headlineOrderMode, setHeadlineOrderMode] = useState("define");
 
-  // Toggle: show order numbers on the left of ideas inside categories
-  // Set<catKey> – which categories have order numbers visible. Empty set = none.
-  const [showOrderNumbers, setShowOrderNumbers] = useState(new Set());
-  // Derived: are ALL active categories showing order numbers?
-  const allOrderVisible = activeCategories.length > 0 && activeCategories.every(([k]) => showOrderNumbers.has(k));
-  const anyOrderVisible = showOrderNumbers.size > 0;
+  // Filter drag-drop target state
+  const [filterDropTarget, setFilterDropTarget] = useState(null); // catKey being hovered with a filter
 
   // Drag-to-reorder state
   const dragItemRef = useRef(null);   // { ideaId, index }
@@ -282,7 +281,7 @@ export default function IdeaBinCategoryCanvas({
       ref={categoryContainerRef}
       className="flex-1 relative overflow-auto bg-gray-50"
       onClick={handleCanvasClick}
-      onMouseDown={handleMarqueeStart}
+      onMouseDown={(e) => { onCanvasMouseDown?.(); handleMarqueeStart(e); }}
     >
       {/* Category marquee overlay */}
       {marquee && (() => {
@@ -316,82 +315,6 @@ export default function IdeaBinCategoryCanvas({
       {/* Toolbar */}
       <div className="sticky top-0 z-30 bg-gray-50/90 backdrop-blur-sm border-b border-gray-200">
         <div className="flex items-center gap-2 p-2">
-          {displayCategoryForm ? (
-            <div className="flex items-center gap-1 flex-1">
-              <input
-                autoFocus
-                value={newCategoryName}
-                onChange={e => setNewCategoryName(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === "Enter") create_category_api();
-                  else if (e.key === "Escape") { setDisplayCategoryForm(false); setNewCategoryName(""); setNewCategoryPublic(false); }
-                }}
-                placeholder="Category name..."
-                className="text-xs px-2 py-1 border border-gray-300 rounded outline-none flex-1"
-                style={{ borderColor: contextColor ? `color-mix(in srgb, ${contextColor} 30%, #ccc)` : undefined }}
-              />
-              <button
-                onClick={() => setNewCategoryPublic(p => !p)}
-                title={newCategoryPublic ? "Public – visible to everyone" : "Private – only you"}
-                className={`flex items-center gap-0.5 text-[10px] px-1.5 py-1 rounded border transition-colors ${
-                  newCategoryPublic
-                    ? "bg-emerald-100 text-emerald-700 border-emerald-300 hover:bg-emerald-200"
-                    : "bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200"
-                }`}
-              >
-                {newCategoryPublic ? <Globe size={10} /> : <Lock size={10} />}
-                {newCategoryPublic ? "Public" : "Private"}
-              </button>
-              <button
-                onClick={create_category_api}
-                className="text-[10px] px-2 py-1 rounded font-medium"
-                style={{
-                  backgroundColor: contextColor ? `color-mix(in srgb, ${contextColor} 35%, #fff)` : "#fbbf24",
-                  color: contextColor ? `color-mix(in srgb, ${contextColor} 70%, #333)` : undefined,
-                }}
-              >
-                Create
-              </button>
-              <button onClick={() => { setDisplayCategoryForm(false); setNewCategoryName(""); setNewCategoryPublic(false); }} className="text-[10px] px-2 py-1 bg-gray-200 rounded hover:bg-gray-300">
-                ✕
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setDisplayCategoryForm(true)}
-              className="text-[10px] px-2 py-1 rounded font-medium flex-shrink-0 border"
-              style={{
-                backgroundColor: contextColor ? `color-mix(in srgb, ${contextColor} 15%, #fff)` : "#fef3c7",
-                color: contextColor ? `color-mix(in srgb, ${contextColor} 70%, #333)` : "#92400e",
-                borderColor: contextColor ? `color-mix(in srgb, ${contextColor} 25%, #ddd)` : "#fcd34d",
-              }}
-            >
-              + Category
-            </button>
-          )}
-          {/* Global order-numbers toggle */}
-          <button
-            onClick={() => {
-              if (allOrderVisible) {
-                // Turn off all
-                setShowOrderNumbers(new Set());
-              } else {
-                // Turn on all active
-                setShowOrderNumbers(new Set(activeCategories.map(([k]) => k)));
-              }
-            }}
-            className={`flex items-center gap-0.5 text-[10px] px-1.5 py-1 rounded border flex-shrink-0 transition-colors ${
-              allOrderVisible
-                ? "bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200"
-                : anyOrderVisible
-                  ? "bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100"
-                  : "bg-gray-100 text-gray-500 border-gray-300 hover:bg-gray-200"
-            }`}
-            title={allOrderVisible ? "Hide all order numbers" : "Show all order numbers"}
-          >
-            <ListOrdered size={11} />
-            <span className="hidden sm:inline">#</span>
-          </button>
           {archivedCategories.length > 0 && (
             <div className="relative flex-shrink-0">
               <button
@@ -496,8 +419,32 @@ export default function IdeaBinCategoryCanvas({
                       : (isHovered ? "#fff59d" : isSelected ? "#fff8b0" : contextColor ? `color-mix(in srgb, ${contextColor} 12%, #ffffff)` : "#fff9c4"),
               transition: "background-color 150ms ease",
             }}
-            className={`absolute shadow-lg rounded p-1.5 flex flex-col ${isSelected ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${isAdopted ? "border border-indigo-300" : ""} ${isMergeTarget ? "ring-2 ring-orange-500 ring-offset-1" : ""}`}
+            className={`absolute shadow-lg rounded p-1.5 flex flex-col ${isSelected ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${isAdopted ? "border border-indigo-300" : ""} ${isMergeTarget ? "ring-2 ring-orange-500 ring-offset-1" : ""} ${filterDropTarget === catKey ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}
             data-category-card
+            onDragOver={(e) => {
+              if (e.dataTransfer.types.includes("application/ideabin-filter")) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "copy";
+                setFilterDropTarget(catKey);
+              }
+            }}
+            onDragLeave={(e) => {
+              // Only clear if we actually left the card (not entering a child)
+              if (!e.currentTarget.contains(e.relatedTarget)) {
+                setFilterDropTarget(prev => prev === catKey ? null : prev);
+              }
+            }}
+            onDrop={(e) => {
+              const filterData = e.dataTransfer.getData("application/ideabin-filter");
+              if (filterData && setCategoryFilterConfig) {
+                e.preventDefault();
+                try {
+                  const parsed = JSON.parse(filterData);
+                  setCategoryFilterConfig(catKey, parsed);
+                } catch (err) { console.error("Failed to parse dropped filter:", err); }
+              }
+              setFilterDropTarget(null);
+            }}
             onMouseDown={(e) => {
               bring_to_front_category(catKey);
               if (e.ctrlKey || e.metaKey) {

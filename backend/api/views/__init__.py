@@ -158,6 +158,8 @@ from .ideas import (
     create_category_with_ideas,
     batch_remove_legend_type,
     sync_category_ideas,
+    toggle_archive_idea,
+    get_archived_ideas,
     update_category_filter_config,
 )
 

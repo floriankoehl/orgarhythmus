@@ -142,7 +142,7 @@ class IdeaSerializer(serializers.ModelSerializer):
         fields = [
             "id", "title", "headline", "description",
             "owner", "owner_username",
-            "created_at", "placement_count", "placement_categories",
+            "created_at", "archived", "placement_count", "placement_categories",
             "legend_types",
             "upvote_count", "comment_count", "user_has_upvoted",
         ]

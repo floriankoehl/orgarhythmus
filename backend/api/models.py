@@ -553,6 +553,7 @@ class Idea(models.Model):
     headline = models.CharField(max_length=200, blank=True, default="")
     description = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True, null=True)
+    archived = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["-created_at"]

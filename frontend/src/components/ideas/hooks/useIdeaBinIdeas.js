@@ -21,6 +21,7 @@ import {
   addCommentApi,
   deleteCommentApi,
   fetchMetaIdeasApi,
+  toggleArchiveIdeaApi,
 } from "../api/ideaApi";
 
 export default function useIdeaBinIdeas({ selectedCategoryIds }) {
@@ -50,12 +51,13 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
   const [showMetaList, setShowMetaList] = useState(false);
   const [metaIdeas, setMetaIdeas] = useState([]);
 
-  // ── Computed: unique meta ideas from placements ──
+  // ── Computed: unique meta ideas from placements (exclude archived) ──
   const metaIdeaList = (() => {
     const seen = new Set();
     const result = [];
     for (const p of Object.values(ideas)) {
       if (!p.idea_id || seen.has(p.idea_id)) continue;
+      if (p.archived) continue;
       seen.add(p.idea_id);
       result.push(p);
     }
@@ -278,6 +280,20 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
     } catch (err) { console.error("IdeaBin: fetch meta ideas failed", err); }
   }, []);
 
+  const toggle_archive_idea = useCallback(async (ideaIds) => {
+    const ids = Array.isArray(ideaIds) ? ideaIds : [ideaIds];
+    // Optimistically remove archived ideas from local state
+    setIdeas(prev => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (ids.includes(next[key].idea_id)) delete next[key];
+      }
+      return next;
+    });
+    await toggleArchiveIdeaApi(ids);
+    fetch_all_ideas();
+  }, [fetch_all_ideas]);
+
   return {
     ideas, setIdeas,
     unassignedOrder, setUnassignedOrder,
@@ -320,5 +336,6 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
     add_comment,
     delete_comment,
     fetch_meta_ideas,
+    toggle_archive_idea,
   };
 }

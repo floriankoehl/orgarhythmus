@@ -17,6 +17,7 @@ export async function fetchAllIdeas() {
       owner: p.idea?.owner,
       owner_username: p.idea?.owner_username,
       created_at: p.idea?.created_at,
+      archived: p.idea?.archived || false,
       placement_count: p.idea?.placement_count || 1,
       placement_categories: p.idea?.placement_categories || [],
       upvote_count: p.idea?.upvote_count || 0,
@@ -178,6 +179,20 @@ export async function deleteCommentApi(commentId) {
 
 export async function fetchMetaIdeasApi() {
   const res = await authFetch(`${API}/user/ideas/meta/`);
+  const data = await res.json();
+  return data?.ideas || [];
+}
+
+export async function toggleArchiveIdeaApi(ideaIds) {
+  await authFetch(`${API}/user/ideas/toggle_archive/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ idea_ids: Array.isArray(ideaIds) ? ideaIds : [ideaIds] }),
+  });
+}
+
+export async function fetchArchivedIdeasApi() {
+  const res = await authFetch(`${API}/user/ideas/archived/`);
   const data = await res.json();
   return data?.ideas || [];
 }
