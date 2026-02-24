@@ -151,70 +151,74 @@ export default function IdeaBinCategoryCanvas({
     setMarquee({ startX, startY, currentX: startX, currentY: startY, isDrawMode });
     marqueeRef.current = { startX, startY, ctrlKey: e.ctrlKey || e.metaKey, isDrawMode };
 
+    // Track latest position in a mutable local variable (readable synchronously in mouseUp)
+    let lastX = startX;
+    let lastY = startY;
+
     const handleMouseMove = (moveE) => {
       const cx = moveE.clientX - rect.left + categoryContainerRef.current.scrollLeft;
       const cy = moveE.clientY - rect.top + categoryContainerRef.current.scrollTop;
+      lastX = cx;
+      lastY = cy;
       setMarquee(prev => prev ? { ...prev, currentX: cx, currentY: cy } : null);
     };
     const handleMouseUp = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
-      setMarquee(prev => {
-        if (!prev) return null;
-        const mx1 = Math.min(prev.startX, prev.currentX);
-        const my1 = Math.min(prev.startY, prev.currentY);
-        const mx2 = Math.max(prev.startX, prev.currentX);
-        const my2 = Math.max(prev.startY, prev.currentY);
-        const area = (mx2 - mx1) * (my2 - my1);
-        if (area < 100) return null; // too small = just a click
+      setMarquee(null);
 
-        // ── Draw-to-create category mode ──
-        if (prev.isDrawMode) {
-          const w = mx2 - mx1;
-          const h = my2 - my1;
-          if (w >= 80 && h >= 50) {
-            create_category_at({ x: Math.round(mx1), y: Math.round(my1), width: Math.round(w), height: Math.round(h) })
-              .then((newCatId) => {
-                if (newCatId) {
-                  // Put the new category into edit mode so user can name it
-                  setEditingCategoryId(String(newCatId));
-                  setEditingCategoryName("New Category");
-                  // Exit draw mode
-                  setDrawCategoryMode(false);
-                  setDisplayCategoryForm(false);
-                }
-              })
-              .catch(err => console.error("Draw-to-create failed:", err));
-          }
-          return null;
-        }
+      const mx1 = Math.min(startX, lastX);
+      const my1 = Math.min(startY, lastY);
+      const mx2 = Math.max(startX, lastX);
+      const my2 = Math.max(startY, lastY);
+      const area = (mx2 - mx1) * (my2 - my1);
+      if (area < 100) return; // too small = just a click
 
-        // ── Normal marquee selection ──
-        const hit = [];
-        activeCategories.forEach(([catKey, catData]) => {
-          const cx = catData.x;
-          const cy = catData.y + 36;
-          const cw = catData.width;
-          const ch = catData.height;
-          if (cx + cw > mx1 && cx < mx2 && cy + ch > my1 && cy < my2) {
-            hit.push(catKey);
-          }
-        });
-        if (hit.length > 0) {
-          marqueeJustFinishedRef.current = true;
-          setTimeout(() => { marqueeJustFinishedRef.current = false; }, 0);
-          if (marqueeRef.current?.ctrlKey) {
-            setSelectedCategoryIds(old => {
-              const next = new Set(old);
-              hit.forEach(id => next.add(id));
-              return next;
-            });
-          } else {
-            setSelectedCategoryIds(new Set(hit));
-          }
+      // ── Draw-to-create category mode ──
+      if (isDrawMode) {
+        const w = mx2 - mx1;
+        const h = my2 - my1;
+        if (w >= 80 && h >= 50) {
+          create_category_at({ x: Math.round(mx1), y: Math.round(my1), width: Math.round(w), height: Math.round(h) })
+            .then((newCatId) => {
+              if (newCatId) {
+                // Put the new category into edit mode so user can name it
+                setEditingCategoryId(String(newCatId));
+                setEditingCategoryName("New Category");
+                // Exit draw mode
+                setDrawCategoryMode(false);
+                setDisplayCategoryForm(false);
+              }
+            })
+            .catch(err => console.error("Draw-to-create failed:", err));
         }
-        return null;
+        return;
+      }
+
+      // ── Normal marquee selection ──
+      const hit = [];
+      activeCategories.forEach(([catKey, catData]) => {
+        const cx = catData.x;
+        const cy = catData.y + 36;
+        const cw = catData.width;
+        const ch = catData.height;
+        if (cx + cw > mx1 && cx < mx2 && cy + ch > my1 && cy < my2) {
+          hit.push(catKey);
+        }
       });
+      if (hit.length > 0) {
+        marqueeJustFinishedRef.current = true;
+        setTimeout(() => { marqueeJustFinishedRef.current = false; }, 0);
+        if (marqueeRef.current?.ctrlKey) {
+          setSelectedCategoryIds(old => {
+            const next = new Set(old);
+            hit.forEach(id => next.add(id));
+            return next;
+          });
+        } else {
+          setSelectedCategoryIds(new Set(hit));
+        }
+      }
     };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);

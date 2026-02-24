@@ -183,7 +183,7 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
   const create_idea = useCallback(async (overrideTitle = null, overrideDescription = null) => {
     const title = overrideTitle ?? ideaName;
     const desc = overrideDescription ?? newIdeaDescription;
-    if (!title.trim()) return;
+    if (!title.trim() && !desc.trim()) return;
     const catId = selectedCategoryIds.size === 1 ? [...selectedCategoryIds][0] : null;
     await createIdeaApi(
       title.trim(),
@@ -203,8 +203,9 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
   }, [fetch_all_ideas]);
 
   const update_idea_title_api = useCallback(async (placementId, title, description = null) => {
-    if (!title.trim()) return;
     const idea = ideas[placementId];
+    const descToCheck = description !== null ? description : (idea?.description || "");
+    if (!title.trim() && !descToCheck.trim()) return;
     const ideaId = idea?.idea_id || placementId;
     // Record move for undo
     pushMove({

@@ -1836,7 +1836,7 @@ export default function IdeaBin() {
                         if (editingIdeaId) {
                           update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaDescription);
                           setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription(""); setEditFormTitleMode(false);
-                        } else { create_idea(); setCreateFormTitleMode(false); }
+                        } else if (ideaName.trim() || newIdeaDescription.trim()) { create_idea(); setCreateFormTitleMode(false); }
                       } else if (e.key === "Escape" && editingIdeaId) {
                         setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription(""); setEditFormTitleMode(false);
                       }
@@ -1877,7 +1877,7 @@ export default function IdeaBin() {
                             e.preventDefault();
                             update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaDescription);
                             setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription(""); setEditFormTitleMode(false);
-                          } else if (ideaName.trim()) {
+                          } else if (ideaName.trim() || newIdeaDescription.trim()) {
                             e.preventDefault(); create_idea(); setCreateFormTitleMode(false);
                           }
                         }
@@ -1944,7 +1944,7 @@ export default function IdeaBin() {
                         if (editingIdeaId) {
                           update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaDescription);
                           setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription(""); setEditFormTitleMode(false);
-                        } else if (ideaName.trim()) {
+                        } else if (ideaName.trim() || newIdeaDescription.trim()) {
                           create_idea(); setCreateFormTitleMode(false);
                         }
                       } else if (e.key === "Escape" && editingIdeaId) {
@@ -1989,7 +1989,7 @@ export default function IdeaBin() {
                       </button>
                     </>
                   ) : (
-                    ideaName.trim() && (
+                    (ideaName.trim() || newIdeaDescription.trim()) && (
                       <button
                         onClick={() => { create_idea(); setCreateFormTitleMode(false); }}
                         className="px-2 py-0.5 bg-green-500 text-white rounded hover:bg-green-600 text-[11px]"

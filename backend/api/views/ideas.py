@@ -43,8 +43,8 @@ def create_idea(request):
     title = request.data.get("idea_name", "").strip()
     description = request.data.get("description", "")
     category_id = request.data.get("category_id")  # optional — place into category
-    if not title:
-        return Response({"error": "Title is required"}, status=400)
+    if not title and not description.strip():
+        return Response({"error": "Title or description is required"}, status=400)
 
     idea = Idea.objects.create(
         owner=request.user,
@@ -407,13 +407,13 @@ def rename_category(request):
 def update_idea_title(request):
     idea_id = request.data.get("id")
     new_title = request.data.get("title", "").strip()
-    if not new_title:
-        return Response({"error": "Title is required"}, status=400)
     idea = Idea.objects.filter(id=idea_id, owner=request.user).first()
     if not idea:
         placement = IdeaPlacement.objects.filter(id=idea_id, idea__owner=request.user).first()
         if placement:
             idea = placement.idea
+    if not new_title and idea and not idea.description.strip():
+        return Response({"error": "Title or description is required"}, status=400)
     if idea:
         idea.title = new_title
         idea.save()
