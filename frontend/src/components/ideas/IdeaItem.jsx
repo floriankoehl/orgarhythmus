@@ -40,11 +40,17 @@ export default function IdeaItem({
   const isHoveredForType = hoverIdeaForType === ideaId;
 
   const getDisplayText = () => {
-    const words = idea.title.split(/\s+/);
-    if (words.length > 5) {
-      return <span className="font-semibold">{words.slice(0, 5).join(" ")}...</span>;
+    if (idea.title && idea.title.trim()) {
+      // Full title — never truncate, allow line-break
+      return <span className="font-semibold">{idea.title}</span>;
     }
-    return <span className="font-semibold">{idea.title}</span>;
+    // No title — show first few words of desc with "..."
+    if (idea.description) {
+      const words = idea.description.split(/\s+/);
+      const preview = words.length > 5 ? words.slice(0, 5).join(" ") + "..." : words.join(" ");
+      return <span className="font-semibold text-gray-400 italic">{preview}</span>;
+    }
+    return <span className="font-semibold text-gray-400 italic">Untitled</span>;
   };
 
   return (

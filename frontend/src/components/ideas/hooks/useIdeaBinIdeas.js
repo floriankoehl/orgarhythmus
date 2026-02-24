@@ -24,6 +24,7 @@ import {
   deleteCommentApi,
   fetchMetaIdeasApi,
   toggleArchiveIdeaApi,
+  mergeIdeasApi,
 } from "../api/ideaApi";
 
 export default function useIdeaBinIdeas({ selectedCategoryIds }) {
@@ -31,6 +32,7 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
   const [unassignedOrder, setUnassignedOrder] = useState([]);
   const [categoryOrders, setCategoryOrders] = useState({});
   const [ideaName, setIdeaName] = useState("");
+  const [newIdeaDescription, setNewIdeaDescription] = useState("");
 
   // ── Edit state ──
   const [editingIdeaId, setEditingIdeaId] = useState(null);
@@ -52,13 +54,13 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
   const [showMetaList, setShowMetaList] = useState(false);
   const [metaIdeas, setMetaIdeas] = useState([]);
 
-  // ── Undo / Redo history (max 10 moves) ──
+  // ── Undo / Redo history (max 20 moves) ──
   const historyRef = useRef({ undo: [], redo: [] });
   const [historyCount, setHistoryCount] = useState({ undo: 0, redo: 0 });
 
   const pushMove = useCallback((move) => {
     const h = historyRef.current;
-    h.undo = [...h.undo.slice(-9), move]; // keep last 10
+    h.undo = [...h.undo.slice(-19), move]; // keep last 20
     h.redo = [];
     setHistoryCount({ undo: h.undo.length, redo: 0 });
   }, []);
@@ -113,6 +115,48 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
         await fetch_all_ideas();
         break;
       }
+      case 'rename_idea': {
+        // Swap between old and new title/description
+        const ideaId = move.ideaId;
+        const restoreTitle = direction === 'undo' ? move.oldTitle : move.newTitle;
+        const restoreDesc = direction === 'undo' ? move.oldDescription : move.newDescription;
+        await updateIdeaTitleApi(ideaId, restoreTitle);
+        if (restoreDesc !== null) {
+          await updateIdeaDescriptionApi(ideaId, restoreDesc);
+        }
+        // Optimistic UI
+        setIdeas(prev => {
+          const updated = { ...prev };
+          for (const [pid, p] of Object.entries(updated)) {
+            if (p.idea_id === ideaId) {
+              updated[pid] = {
+                ...p,
+                title: restoreTitle,
+                ...(restoreDesc !== null ? { description: restoreDesc } : {}),
+              };
+            }
+          }
+          return updated;
+        });
+        break;
+      }
+      case 'merge_ideas': {
+        if (direction === 'undo') {
+          // Restore target's old description
+          await updateIdeaTitleApi(move.targetIdeaId, move.targetOldTitle);
+          await updateIdeaDescriptionApi(move.targetIdeaId, move.targetOldDescription);
+          // Recreate source ideas
+          for (const src of move.sourceIdeas) {
+            await createIdeaApi(src.title, src.description || "", null);
+          }
+          await fetch_all_ideas();
+        } else {
+          // Redo = merge again
+          await mergeIdeasApi(move.targetIdeaId, move.sourceIdeas.map(s => s.ideaId));
+          await fetch_all_ideas();
+        }
+        break;
+      }
     }
   };
 
@@ -136,18 +180,21 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
     await executeMoveRef.current(move, 'redo');
   }, []);
 
-  const create_idea = useCallback(async () => {
-    if (!ideaName.trim()) return;
+  const create_idea = useCallback(async (overrideTitle = null, overrideDescription = null) => {
+    const title = overrideTitle ?? ideaName;
+    const desc = overrideDescription ?? newIdeaDescription;
+    if (!title.trim()) return;
     const catId = selectedCategoryIds.size === 1 ? [...selectedCategoryIds][0] : null;
     await createIdeaApi(
-      ideaName.trim(),
-      "",
+      title.trim(),
+      desc.trim(),
       catId
     );
     setIdeaName("");
+    setNewIdeaDescription("");
     playSound('ideaCreate');
     fetch_all_ideas();
-  }, [ideaName, selectedCategoryIds, fetch_all_ideas]);
+  }, [ideaName, newIdeaDescription, selectedCategoryIds, fetch_all_ideas]);
 
   const delete_idea = useCallback(async (id) => {
     await deleteIdeaApi(id);
@@ -159,6 +206,15 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
     if (!title.trim()) return;
     const idea = ideas[placementId];
     const ideaId = idea?.idea_id || placementId;
+    // Record move for undo
+    pushMove({
+      type: 'rename_idea',
+      ideaId,
+      oldTitle: idea?.title || "",
+      oldDescription: idea?.description ?? null,
+      newTitle: title,
+      newDescription: description,
+    });
     await updateIdeaTitleApi(ideaId, title);
     if (description !== null) {
       await updateIdeaDescriptionApi(ideaId, description);
@@ -176,7 +232,7 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
       }
       return updated;
     });
-  }, [ideas]);
+  }, [ideas, pushMove]);
 
   const safe_order = useCallback(async (order, categoryId = null) => {
     await safeOrderApi(order, categoryId);
@@ -425,6 +481,7 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
     unassignedOrder, setUnassignedOrder,
     categoryOrders, setCategoryOrders,
     ideaName, setIdeaName,
+    newIdeaDescription, setNewIdeaDescription,
 
     editingIdeaId, setEditingIdeaId,
     editingIdeaTitle, setEditingIdeaTitle,
@@ -466,5 +523,6 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
     undo,
     redo,
     historyCount,
+    pushMove,
   };
 }

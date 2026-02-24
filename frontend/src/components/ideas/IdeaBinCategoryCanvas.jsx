@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
@@ -94,6 +94,7 @@ export default function IdeaBinCategoryCanvas({
   // Drag-to-reorder state
   const dragItemRef = useRef(null);   // { ideaId, index }
   const dragOverRef = useRef(null);   // { ideaId, index }
+  const [canvasDropIdx, setCanvasDropIdx] = useState(null); // drop indicator position
 
   // Auto-save title with small debounce to batch rapid clicks
   const updateDraftAndSave = useCallback((ideaId, newTitle, idea) => {
@@ -629,6 +630,7 @@ export default function IdeaBinCategoryCanvas({
                   autoFocus
                   value={editingCategoryName}
                   onChange={e => setEditingCategoryName(e.target.value)}
+                  onFocus={e => e.target.select()}
                   onKeyDown={e => {
                     if (e.key === "Enter") { rename_category_api(catKey, editingCategoryName); setEditingCategoryId(null); }
                     else if (e.key === "Escape") setEditingCategoryId(null);
@@ -1012,10 +1014,15 @@ export default function IdeaBinCategoryCanvas({
                         e.target.style.opacity = "1";
                         dragItemRef.current = null;
                         dragOverRef.current = null;
+                        setCanvasDropIdx(null);
                       };
                       const handleDragOver = (e, wordIdx) => {
                         e.preventDefault();
-                        dragOverRef.current = { ideaId, index: wordIdx };
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const midX = rect.left + rect.width / 2;
+                        const gapIdx = e.clientX < midX ? wordIdx : wordIdx + 1;
+                        dragOverRef.current = { ideaId, index: gapIdx };
+                        setCanvasDropIdx(gapIdx);
                       };
                       const handleDrop = (e) => {
                         e.preventDefault();
@@ -1023,13 +1030,15 @@ export default function IdeaBinCategoryCanvas({
                         if (dragItemRef.current.ideaId !== ideaId) return;
                         const fromIdx = dragItemRef.current.index;
                         const toIdx = dragOverRef.current.index;
-                        if (fromIdx === toIdx) return;
+                        if (fromIdx === toIdx || fromIdx + 1 === toIdx) { setCanvasDropIdx(null); return; }
                         const reordered = [...draftWords];
                         const [moved] = reordered.splice(fromIdx, 1);
-                        reordered.splice(toIdx, 0, moved);
+                        const insertAt = toIdx > fromIdx ? toIdx - 1 : toIdx;
+                        reordered.splice(insertAt, 0, moved);
                         updateDraftAndSave(ideaId, reordered.join(" "), idea);
                         dragItemRef.current = null;
                         dragOverRef.current = null;
+                        setCanvasDropIdx(null);
                       };
 
                       return (
@@ -1066,29 +1075,36 @@ export default function IdeaBinCategoryCanvas({
                               onDrop={handleDrop}
                             >
                               {draftWords.length > 0 ? draftWords.map((w, i) => (
-                                <span
-                                  key={i}
-                                  draggable={headlineOrderMode === "define"}
-                                  onDragStart={(e) => handleDragStart(e, i)}
-                                  onDragEnd={handleDragEnd}
-                                  onDragOver={(e) => handleDragOver(e, i)}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const newWords = [...draftWords];
-                                    newWords.splice(i, 1);
-                                    const newHeadline = newWords.join(" ");
-                                    updateDraftAndSave(ideaId, newHeadline, idea);
-                                  }}
-                                  className={`inline-flex items-center bg-purple-200 text-purple-800 rounded px-1 py-0.5 cursor-pointer hover:bg-red-200 hover:text-red-700 transition-colors text-[10px] ${
-                                    headlineOrderMode === "define" ? "cursor-grab active:cursor-grabbing" : ""
-                                  }`}
-                                  title={headlineOrderMode === "define" ? "Drag to reorder · Click to remove" : "Click to remove"}
-                                >
-                                  {w}
-                                  <X size={8} className="ml-0.5 opacity-60" />
-                                </span>
+                                <React.Fragment key={i}>
+                                  {canvasDropIdx === i && dragItemRef.current && dragItemRef.current.index !== i && dragItemRef.current.index !== i - 1 && (
+                                    <div className="w-0.5 self-stretch bg-purple-500 rounded-full min-h-[16px] flex-shrink-0 animate-pulse" />
+                                  )}
+                                  <span
+                                    draggable={headlineOrderMode === "define"}
+                                    onDragStart={(e) => handleDragStart(e, i)}
+                                    onDragEnd={handleDragEnd}
+                                    onDragOver={(e) => handleDragOver(e, i)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const newWords = [...draftWords];
+                                      newWords.splice(i, 1);
+                                      const newHeadline = newWords.join(" ");
+                                      updateDraftAndSave(ideaId, newHeadline, idea);
+                                    }}
+                                    className={`inline-flex items-center bg-purple-200 text-purple-800 rounded px-1 py-0.5 cursor-pointer hover:bg-red-200 hover:text-red-700 transition-colors text-[10px] ${
+                                      headlineOrderMode === "define" ? "cursor-grab active:cursor-grabbing" : ""
+                                    }`}
+                                    title={headlineOrderMode === "define" ? "Drag to reorder · Click to remove" : "Click to remove"}
+                                  >
+                                    {w}
+                                    <X size={8} className="ml-0.5 opacity-60" />
+                                  </span>
+                                </React.Fragment>
                               )) : (
                                 <span className="text-purple-400 italic text-[10px]">Click words below to build title…</span>
+                              )}
+                              {canvasDropIdx === draftWords.length && dragItemRef.current && (
+                                <div className="w-0.5 self-stretch bg-purple-500 rounded-full min-h-[16px] flex-shrink-0 animate-pulse" />
                               )}
                             </div>
                             <RotateCcw
@@ -1102,35 +1118,42 @@ export default function IdeaBinCategoryCanvas({
                             />
                           </div>
                           {/* Word chips from description */}
-                          <div className="flex flex-wrap gap-[3px]">
-                            {descWords.map((word, i) => {
-                              const isUsed = draftWords.some(dw => dw.toLowerCase() === word.toLowerCase());
+                          <div className="text-[10px]">
+                            {(idea.description || "").split("\n").map((line, li) => {
+                              if (line.trim() === "") return <div key={`line-${li}`} className="h-2" />;
+                              const lineWords = line.split(/\s+/).filter(w => w.length > 0);
                               return (
-                                <span
-                                  key={i}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const current = draftHeadlines[ideaId] ?? idea.title ?? "";
-                                    let newHeadline;
-                                    if (headlineOrderMode === "description") {
-                                      // Insert word and re-sort by description position
-                                      const currentWords = current ? current.split(/\s+/).filter(w => w.length > 0) : [];
-                                      currentWords.push(word);
-                                      newHeadline = sortByDescription(currentWords).join(" ");
-                                    } else {
-                                      newHeadline = current ? `${current} ${word}` : word;
-                                    }
-                                    updateDraftAndSave(ideaId, newHeadline, idea);
-                                  }}
-                                  className={`inline-block rounded px-1.5 py-0.5 text-[10px] cursor-pointer transition-all select-none ${
-                                    isUsed
-                                      ? "bg-purple-100 text-purple-400 border border-purple-200"
-                                      : "bg-gray-100 text-gray-700 border border-gray-200 hover:bg-purple-100 hover:text-purple-700 hover:border-purple-300"
-                                  }`}
-                                  title={`Add "${word}" to title`}
-                                >
-                                  {word}
-                                </span>
+                                <div key={`line-${li}`} className="flex flex-wrap gap-[3px]" style={{ lineHeight: "18px" }}>
+                                  {lineWords.map((word, wi) => {
+                                    const isUsed = draftWords.some(dw => dw.toLowerCase() === word.toLowerCase());
+                                    return (
+                                      <span
+                                        key={wi}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const current = draftHeadlines[ideaId] ?? idea.title ?? "";
+                                          let newHeadline;
+                                          if (headlineOrderMode === "description") {
+                                            const currentWords = current ? current.split(/\s+/).filter(w => w.length > 0) : [];
+                                            currentWords.push(word);
+                                            newHeadline = sortByDescription(currentWords).join(" ");
+                                          } else {
+                                            newHeadline = current ? `${current} ${word}` : word;
+                                          }
+                                          updateDraftAndSave(ideaId, newHeadline, idea);
+                                        }}
+                                        className={`inline-block rounded px-[3px] py-[1px] cursor-pointer transition-all select-none ${
+                                          isUsed
+                                            ? "bg-purple-100 text-purple-400 border border-purple-200"
+                                            : "text-gray-700 hover:bg-purple-100 hover:text-purple-700 border border-transparent hover:border-purple-300"
+                                        }`}
+                                        title={`Add "${word}" to title`}
+                                      >
+                                        {word}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
                               );
                             })}
                           </div>

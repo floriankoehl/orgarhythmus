@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 
-import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings, Layers, Save, FolderOpen, Trash2, Pencil, Check, Palette, ChevronDown, Star, Paintbrush } from "lucide-react";
+import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings, Layers, Save, FolderOpen, Trash2, Pencil, Check, Palette, ChevronDown, Star, Paintbrush, RotateCcw, ArrowDownUp, BookOpenText, Type } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
@@ -113,12 +113,25 @@ export default function IdeaBin() {
   const [headlineModeCategoryId, setHeadlineModeCategoryId] = useState(null); // catKey or null
   const [headlineModeIdeaId, setHeadlineModeIdeaId] = useState(null); // placement id or null
 
+  // ───── Create-form title mode ─────
+  const [createFormTitleMode, setCreateFormTitleMode] = useState(false);
+  const [createFormOrderMode, setCreateFormOrderMode] = useState("define"); // "define" | "description"
+
+  // ───── Edit-form title mode ─────
+  const [editFormTitleMode, setEditFormTitleMode] = useState(false);
+  const [editFormOrderMode, setEditFormOrderMode] = useState("define"); // "define" | "description"
+
+  // ───── Sidebar title mode (for H key on sidebar ideas) ─────
+  const [sidebarDraftTitle, setSidebarDraftTitle] = useState("");
+  const [sidebarTitleOrderMode, setSidebarTitleOrderMode] = useState("define");
+  const sidebarSaveTimerRef = useRef(null);
+
   // ───── Paint mode (legend type brush) ─────
   // null or { typeId, color, icon, name }  – when set, clicking an idea paints it with this type
   const [paintType, setPaintType] = useState(null);
 
   // ───── List view filter ─────
-  const [listFilter, setListFilter] = useState("all"); // "all" | "unassigned" | category id
+  const [listFilter, setListFilter] = useState("unassigned"); // "all" | "unassigned" | category id
   const [showListFilterDropdown, setShowListFilterDropdown] = useState(false);
   const [showSidebarMeta, setShowSidebarMeta] = useState(false);   // show meta info in sidebar
   const [sidebarHeadlineOnly, setSidebarHeadlineOnly] = useState(false); // collapse all in sidebar
@@ -159,6 +172,14 @@ export default function IdeaBin() {
   const ideaRefs = useRef({});
   const contextViewRef = useRef(null);
 
+  // Create-form title-mode drag refs
+  const cfDragItemRef = useRef(null);   // { index }
+  const cfDragOverRef = useRef(null);   // { index }
+  const [cfDropIdx, setCfDropIdx] = useState(null); // drop indicator position
+
+  // Edit form ref for click-outside auto-save
+  const editFormRef = useRef(null);
+
   const showCategories = windowSize.w >= CATEGORY_THRESHOLD;
 
   // ═══════════════════════════════════════════════════════
@@ -171,6 +192,7 @@ export default function IdeaBin() {
     unassignedOrder, setUnassignedOrder,
     categoryOrders, setCategoryOrders,
     ideaName, setIdeaName,
+    newIdeaDescription, setNewIdeaDescription,
     editingIdeaId, setEditingIdeaId,
     editingIdeaTitle, setEditingIdeaTitle,
     editingIdeaDescription, setEditingIdeaDescription,
@@ -207,6 +229,7 @@ export default function IdeaBin() {
     undo,
     redo,
     historyCount,
+    pushMove,
   } = useIdeaBinIdeas({ selectedCategoryIds });
 
   // ── Categories hook ──
@@ -589,6 +612,34 @@ export default function IdeaBin() {
     return () => clearTimeout(timer);
   }, [filterPresets]);
 
+  // ── Sync sidebar draft title when headline mode changes ──
+  useEffect(() => {
+    if (headlineModeIdeaId) {
+      const idea = ideas[headlineModeIdeaId];
+      setSidebarDraftTitle(idea?.title || "");
+    } else {
+      setSidebarDraftTitle("");
+    }
+  }, [headlineModeIdeaId]); // intentionally only on id change
+
+  // ── Auto-save on click-outside when editing an idea ──
+  useEffect(() => {
+    if (!editingIdeaId) return;
+    const handler = (e) => {
+      if (editFormRef.current && !editFormRef.current.contains(e.target)) {
+        // Click was outside the edit form – auto-save & close
+        update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaDescription);
+        setEditingIdeaId(null);
+        setEditingIdeaTitle("");
+        setEditingIdeaDescription("");
+        setEditFormTitleMode(false);
+      }
+    };
+    // Use mousedown so we capture before other click handlers
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [editingIdeaId, editingIdeaTitle, editingIdeaDescription, update_idea_title_api]);
+
   // ── Filter preset management ──
   const saveFilterPreset = (name) => {
     const preset = {
@@ -641,6 +692,19 @@ export default function IdeaBin() {
 
   const executeMerge = useCallback(async (targetIdeaId, sourceIdeaIds) => {
     try {
+      // Capture state for undo before merging
+      const targetIdea = Object.values(ideas).find(p => p.idea_id === targetIdeaId);
+      const sourceIdeas = sourceIdeaIds.map(sid => {
+        const src = Object.values(ideas).find(p => p.idea_id === sid);
+        return src ? { ideaId: sid, title: src.title, description: src.description || "" } : null;
+      }).filter(Boolean);
+      pushMove({
+        type: 'merge_ideas',
+        targetIdeaId,
+        targetOldTitle: targetIdea?.title || "",
+        targetOldDescription: targetIdea?.description || "",
+        sourceIdeas,
+      });
       await mergeIdeasApi(targetIdeaId, sourceIdeaIds);
       setSelectedIdeaIds(new Set());
       setShowMergeModal(false);
@@ -648,7 +712,7 @@ export default function IdeaBin() {
     } catch (e) {
       console.error("Merge failed", e);
     }
-  }, [fetch_all_ideas]);
+  }, [fetch_all_ideas, ideas, pushMove]);
 
   const handleMergeClick = useCallback(() => {
     if (selectedIdeaIds.size < 2) return;
@@ -883,6 +947,128 @@ export default function IdeaBin() {
   // ═══════════════════════════════════════════════════════
   // ═══════════  RENDER HELPERS  ══════════════════════════
   // ═══════════════════════════════════════════════════════
+
+  // Sidebar title mode: debounced auto-save
+  const sidebarUpdateDraftAndSave = useCallback((ideaId, newTitle) => {
+    setSidebarDraftTitle(newTitle);
+    if (sidebarSaveTimerRef.current) clearTimeout(sidebarSaveTimerRef.current);
+    sidebarSaveTimerRef.current = setTimeout(() => {
+      update_idea_title_api(ideaId, newTitle);
+    }, 400);
+  }, [update_idea_title_api]);
+
+  // Sidebar title mode: render the title builder inline for an idea
+  const renderSidebarTitleBuilder = (ideaId) => {
+    const idea = ideas[ideaId];
+    if (!idea) return null;
+    const draft = sidebarDraftTitle;
+    const draftWords = draft.split(/\s+/).filter(w => w.length > 0);
+    const descWords = (idea.description || "").split(/\s+/).filter(w => w.length > 0);
+    const sortByDescription = (wordsArr) => {
+      const lowerDesc = descWords.map(w => w.toLowerCase());
+      return [...wordsArr].sort((a, b) => {
+        const idxA = lowerDesc.indexOf(a.toLowerCase());
+        const idxB = lowerDesc.indexOf(b.toLowerCase());
+        return (idxA === -1 ? 9999 : idxA) - (idxB === -1 ? 9999 : idxB);
+      });
+    };
+    return (
+      <div key={`idea_${ideaId}`} className="bg-white rounded border border-purple-200 shadow-sm p-1.5 mb-0.5" onClick={(e) => e.stopPropagation()}>
+        {/* Idea title preview */}
+        <div className="text-[10px] font-semibold text-gray-600 mb-1">{idea.title || "Untitled"}</div>
+        {/* Order toggle + clear */}
+        <div className="flex items-center gap-1 mb-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              const newMode = sidebarTitleOrderMode === "define" ? "description" : "define";
+              setSidebarTitleOrderMode(newMode);
+              if (newMode === "description" && draftWords.length > 1) {
+                sidebarUpdateDraftAndSave(ideaId, sortByDescription(draftWords).join(" "));
+              }
+            }}
+            className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+              sidebarTitleOrderMode === "define"
+                ? "bg-purple-50 text-purple-700 border-purple-300 hover:bg-purple-100"
+                : "bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
+            }`}
+          >
+            {sidebarTitleOrderMode === "define" ? <ArrowDownUp size={10} /> : <BookOpenText size={10} />}
+            {sidebarTitleOrderMode === "define" ? "Define Order" : "Order from Desc"}
+          </button>
+          <RotateCcw
+            size={12}
+            onClick={(e) => { e.stopPropagation(); sidebarUpdateDraftAndSave(ideaId, ""); }}
+            className="text-gray-400 hover:text-red-500 cursor-pointer flex-shrink-0 ml-auto"
+            title="Clear title"
+          />
+        </div>
+        {/* Current title as chips */}
+        <div className="min-h-[20px] px-1.5 py-0.5 rounded border text-[11px] font-semibold bg-purple-50 border-purple-300 text-purple-900 flex items-center flex-wrap gap-0.5 mb-1">
+          {draftWords.length > 0 ? draftWords.map((w, i) => (
+            <span
+              key={i}
+              onClick={(e) => {
+                e.stopPropagation();
+                const newWords = [...draftWords];
+                newWords.splice(i, 1);
+                sidebarUpdateDraftAndSave(ideaId, newWords.join(" "));
+              }}
+              className="inline-flex items-center bg-purple-200 text-purple-800 rounded px-1 py-0.5 cursor-pointer hover:bg-red-200 hover:text-red-700 transition-colors text-[10px]"
+              title="Click to remove"
+            >
+              {w}
+              <X size={8} className="ml-0.5 opacity-60" />
+            </span>
+          )) : (
+            <span className="text-purple-400 italic text-[10px]">Click words below to build title…</span>
+          )}
+        </div>
+        {/* Word chips from description, preserving line breaks */}
+        <div className="text-[10px]">
+          {(idea.description || "").split("\n").map((line, li) => {
+            if (line.trim() === "") return <div key={`line-${li}`} className="h-2" />;
+            const lineWords = line.split(/\s+/).filter(w => w.length > 0);
+            return (
+              <div key={`line-${li}`} className="flex flex-wrap gap-[3px]" style={{ lineHeight: "18px" }}>
+                {lineWords.map((word, wi) => {
+                  const isUsed = draftWords.some(dw => dw.toLowerCase() === word.toLowerCase());
+                  return (
+                    <span
+                      key={wi}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        let newTitle;
+                        if (sidebarTitleOrderMode === "description") {
+                          const currentWords = draft ? draft.split(/\s+/).filter(w => w.length > 0) : [];
+                          currentWords.push(word);
+                          newTitle = sortByDescription(currentWords).join(" ");
+                        } else {
+                          newTitle = draft ? `${draft} ${word}` : word;
+                        }
+                        sidebarUpdateDraftAndSave(ideaId, newTitle);
+                      }}
+                      className={`inline-block rounded px-[3px] py-[1px] cursor-pointer transition-all select-none ${
+                        isUsed
+                          ? "bg-purple-100 text-purple-400 border border-purple-200"
+                          : "text-gray-700 hover:bg-purple-100 hover:text-purple-700 border border-transparent hover:border-purple-300"
+                      }`}
+                      title={`Add "${word}" to title`}
+                    >
+                      {word}
+                    </span>
+                  );
+                })}
+              </div>
+            );
+          })}
+          {descWords.length === 0 && (
+            <span className="text-gray-400 italic text-[10px]">No description to extract words from</span>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const renderIdeaItem = (ideaId, arrayIndex, source) => (
     <IdeaBinIdeaCard
@@ -1466,10 +1652,33 @@ export default function IdeaBin() {
               onMouseDown={() => setSidebarFocused(true)}
             >
               {/* ── Input form ── */}
-              <div className="p-2 bg-gray-50 border-b border-gray-200 flex-shrink-0">
-                <h2 className="text-xs font-semibold text-gray-500 mb-1.5">
-                  {editingIdeaId ? "Edit Idea" : "New Idea"}
-                </h2>
+              <div
+                ref={editFormRef}
+                className="p-2 bg-gray-50 border-b border-gray-200 flex-shrink-0"
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                }}
+              >
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <h2 className="text-xs font-semibold text-gray-500">
+                    {editingIdeaId ? "Edit Idea" : "New Idea"}
+                  </h2>
+                  <button
+                    onClick={() => {
+                      if (editingIdeaId) setEditFormTitleMode(prev => !prev);
+                      else setCreateFormTitleMode(prev => !prev);
+                    }}
+                    className={`flex items-center gap-0.5 text-[9px] font-medium px-1 py-0.5 rounded border transition-colors ${
+                      (editingIdeaId ? editFormTitleMode : createFormTitleMode)
+                        ? "bg-purple-100 text-purple-700 border-purple-300 hover:bg-purple-200"
+                        : "bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200"
+                    }`}
+                    title="Toggle Title Mode (Ctrl+Alt)"
+                  >
+                    <Type size={9} />
+                    Title Mode
+                  </button>
+                </div>
                 {!editingIdeaId && selectedCategoryIds.size === 1 && categories[[...selectedCategoryIds][0]] && (
                   <div className="flex items-center gap-1 mb-1.5 px-1.5 py-1 bg-indigo-50 border border-indigo-200 rounded text-[10px] text-indigo-700">
                     <span className="font-medium">Auto-add to:</span>
@@ -1483,46 +1692,272 @@ export default function IdeaBin() {
                     </button>
                   </div>
                 )}
-                <TextField
-                  inputRef={headlineInputRef}
-                  value={editingIdeaId ? editingIdeaTitle : ideaName}
-                  onChange={(e) => {
-                    if (editingIdeaId) setEditingIdeaTitle(e.target.value);
-                    else setIdeaName(e.target.value);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      if (editingIdeaId) {
-                        update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaDescription);
-                        setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription("");
-                      } else { create_idea(); }
-                    } else if (e.key === "Escape" && editingIdeaId) {
-                      setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription("");
-                    }
-                  }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  label={editingIdeaId ? "Edit your idea..." : "What's your idea?"}
-                  variant="outlined"
-                  size="small"
-                  fullWidth
-                  sx={{ backgroundColor: "white", borderRadius: 1, marginBottom: 0.5, "& .MuiInputLabel-root": { fontSize: 11 }, "& .MuiInputLabel-shrink": { fontSize: 12 }, "& .MuiInputBase-input": { fontSize: 12, padding: "6px 10px", caretColor: "#1f2937", color: "#1f2937" } }}
-                />
-                {editingIdeaId && (
+
+                {/* ── Title section ── */}
+                {(editingIdeaId ? editFormTitleMode : createFormTitleMode) ? (() => {
+                  const cfTitleWords = (editingIdeaId ? editingIdeaTitle : ideaName) ? (editingIdeaId ? editingIdeaTitle : ideaName).split(/\s+/).filter(w => w.length > 0) : [];
+                  const cfDescWords = ((editingIdeaId ? editingIdeaDescription : newIdeaDescription) || "").split(/\s+/).filter(w => w.length > 0);
+                  const cfSortByDescription = (wordsArr) => {
+                    const lowerDesc = cfDescWords.map(w => w.toLowerCase());
+                    return [...wordsArr].sort((a, b) => {
+                      const idxA = lowerDesc.indexOf(a.toLowerCase());
+                      const idxB = lowerDesc.indexOf(b.toLowerCase());
+                      return (idxA === -1 ? 9999 : idxA) - (idxB === -1 ? 9999 : idxB);
+                    });
+                  };
+                  // Drag handlers for reordering title words
+                  const cfHandleDragStart = (e, wordIdx) => {
+                    cfDragItemRef.current = { index: wordIdx };
+                    e.dataTransfer.effectAllowed = "move";
+                    e.target.style.opacity = "0.4";
+                  };
+                  const cfHandleDragEnd = (e) => {
+                    e.target.style.opacity = "1";
+                    cfDragItemRef.current = null;
+                    cfDragOverRef.current = null;
+                    setCfDropIdx(null);
+                  };
+                  const cfHandleDragOver = (e, wordIdx) => {
+                    e.preventDefault();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const midX = rect.left + rect.width / 2;
+                    const gapIdx = e.clientX < midX ? wordIdx : wordIdx + 1;
+                    cfDragOverRef.current = { index: gapIdx };
+                    setCfDropIdx(gapIdx);
+                  };
+                  const cfHandleDrop = (e) => {
+                    e.preventDefault();
+                    if (!cfDragItemRef.current || cfDragOverRef.current == null) return;
+                    const fromIdx = cfDragItemRef.current.index;
+                    const toIdx = cfDragOverRef.current.index;
+                    if (fromIdx === toIdx || fromIdx + 1 === toIdx) { setCfDropIdx(null); return; }
+                    const reordered = [...cfTitleWords];
+                    const [moved] = reordered.splice(fromIdx, 1);
+                    const insertAt = toIdx > fromIdx ? toIdx - 1 : toIdx;
+                    reordered.splice(insertAt, 0, moved);
+                    if (editingIdeaId) setEditingIdeaTitle(reordered.join(" "));
+                    else setIdeaName(reordered.join(" "));
+                    cfDragItemRef.current = null;
+                    cfDragOverRef.current = null;
+                    setCfDropIdx(null);
+                  };
+                  return (
+                    <div className="bg-white rounded border border-purple-200 shadow-sm p-1.5 mb-1" onClick={(e) => e.stopPropagation()}>
+                      {/* Order toggle + clear */}
+                      <div className="flex items-center gap-1 mb-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const currentOrderMode = editingIdeaId ? editFormOrderMode : createFormOrderMode;
+                            const newMode = currentOrderMode === "define" ? "description" : "define";
+                            if (editingIdeaId) setEditFormOrderMode(newMode);
+                            else setCreateFormOrderMode(newMode);
+                            if (newMode === "description" && cfTitleWords.length > 1) {
+                              const sorted = cfSortByDescription(cfTitleWords).join(" ");
+                              if (editingIdeaId) setEditingIdeaTitle(sorted);
+                              else setIdeaName(sorted);
+                            }
+                          }}
+                          className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                            (editingIdeaId ? editFormOrderMode : createFormOrderMode) === "define"
+                              ? "bg-purple-50 text-purple-700 border-purple-300 hover:bg-purple-100"
+                              : "bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
+                          }`}
+                          title={(editingIdeaId ? editFormOrderMode : createFormOrderMode) === "define" ? "Switch to auto-order by description position" : "Switch to manual drag-to-reorder"}
+                        >
+                          {(editingIdeaId ? editFormOrderMode : createFormOrderMode) === "define" ? <ArrowDownUp size={10} /> : <BookOpenText size={10} />}
+                          {(editingIdeaId ? editFormOrderMode : createFormOrderMode) === "define" ? "Define Order" : "Order from Description"}
+                        </button>
+                        <RotateCcw
+                          size={12}
+                          onClick={(e) => { e.stopPropagation(); if (editingIdeaId) setEditingIdeaTitle(""); else setIdeaName(""); }}
+                          className="text-gray-400 hover:text-red-500 cursor-pointer flex-shrink-0 ml-auto"
+                          title="Clear title"
+                        />
+                      </div>
+                      {/* Current title as chips */}
+                      <div className="flex items-center gap-1 mb-1">
+                        <div
+                          className="flex-1 min-h-[22px] px-1.5 py-0.5 rounded border text-[11px] font-semibold bg-purple-50 border-purple-300 text-purple-900 flex items-center flex-wrap gap-0.5"
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={cfHandleDrop}
+                        >
+                          {cfTitleWords.length > 0 ? cfTitleWords.map((w, i) => (
+                            <React.Fragment key={i}>
+                              {cfDropIdx === i && cfDragItemRef.current && cfDragItemRef.current.index !== i && cfDragItemRef.current.index !== i - 1 && (
+                                <div className="w-0.5 self-stretch bg-purple-500 rounded-full min-h-[16px] flex-shrink-0 animate-pulse" />
+                              )}
+                              <span
+                                draggable={(editingIdeaId ? editFormOrderMode : createFormOrderMode) === "define"}
+                                onDragStart={(e) => cfHandleDragStart(e, i)}
+                                onDragEnd={cfHandleDragEnd}
+                                onDragOver={(e) => cfHandleDragOver(e, i)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const newWords = [...cfTitleWords];
+                                  newWords.splice(i, 1);
+                                  if (editingIdeaId) setEditingIdeaTitle(newWords.join(" "));
+                                  else setIdeaName(newWords.join(" "));
+                                }}
+                                className={`inline-flex items-center bg-purple-200 text-purple-800 rounded px-1 py-0.5 cursor-pointer hover:bg-red-200 hover:text-red-700 transition-colors text-[10px] ${
+                                  (editingIdeaId ? editFormOrderMode : createFormOrderMode) === "define" ? "cursor-grab active:cursor-grabbing" : ""
+                                }`}
+                                title={(editingIdeaId ? editFormOrderMode : createFormOrderMode) === "define" ? "Drag to reorder · Click to remove" : "Click to remove"}
+                              >
+                                {w}
+                                <X size={8} className="ml-0.5 opacity-60" />
+                              </span>
+                            </React.Fragment>
+                          )) : (
+                            <span className="text-purple-400 italic text-[10px]">Click words below to build title…</span>
+                          )}
+                          {cfDropIdx === cfTitleWords.length && cfDragItemRef.current && (
+                            <div className="w-0.5 self-stretch bg-purple-500 rounded-full min-h-[16px] flex-shrink-0 animate-pulse" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })() : (
                   <TextField
-                    value={editingIdeaDescription}
-                    onChange={(e) => setEditingIdeaDescription(e.target.value)}
+                    inputRef={headlineInputRef}
+                    value={editingIdeaId ? editingIdeaTitle : ideaName}
+                    onChange={(e) => {
+                      if (editingIdeaId) setEditingIdeaTitle(e.target.value);
+                      else setIdeaName(e.target.value);
+                    }}
                     onKeyDown={(e) => {
-                      if (e.key === "Escape") {
-                        setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription("");
+                      if ((e.key === "Alt" && e.ctrlKey) || (e.key === "Control" && e.altKey)) {
+                        e.preventDefault();
+                        if (editingIdeaId) setEditFormTitleMode(prev => !prev);
+                        else setCreateFormTitleMode(prev => !prev);
+                      } else if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        if (editingIdeaId) {
+                          update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaDescription);
+                          setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription(""); setEditFormTitleMode(false);
+                        } else { create_idea(); setCreateFormTitleMode(false); }
+                      } else if (e.key === "Escape" && editingIdeaId) {
+                        setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription(""); setEditFormTitleMode(false);
                       }
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    label={editingIdeaId ? "Edit your idea..." : "What's your idea?"}
+                    variant="outlined"
+                    size="small"
+                    fullWidth
+                    sx={{ backgroundColor: "white", borderRadius: 1, marginBottom: 0.5, "& .MuiInputLabel-root": { fontSize: 11 }, "& .MuiInputLabel-shrink": { fontSize: 12 }, "& .MuiInputBase-input": { fontSize: 12, padding: "6px 10px", caretColor: "#1f2937", color: "#1f2937" } }}
+                  />
+                )}
+
+                {/* Description area – textarea when off, word chips when title mode is on */}
+                {(editingIdeaId ? editFormTitleMode : createFormTitleMode) ? (() => {
+                  const cfDescWordsForChips = ((editingIdeaId ? editingIdeaDescription : newIdeaDescription) || "").split(/\s+/).filter(w => w.length > 0);
+                  const cfTitleWordsForChips = (editingIdeaId ? editingIdeaTitle : ideaName) ? (editingIdeaId ? editingIdeaTitle : ideaName).split(/\s+/).filter(w => w.length > 0) : [];
+                  const cfSortByDescForChips = (wordsArr) => {
+                    const lowerDesc = cfDescWordsForChips.map(w => w.toLowerCase());
+                    return [...wordsArr].sort((a, b) => {
+                      const idxA = lowerDesc.indexOf(a.toLowerCase());
+                      const idxB = lowerDesc.indexOf(b.toLowerCase());
+                      return (idxA === -1 ? 9999 : idxA) - (idxB === -1 ? 9999 : idxB);
+                    });
+                  };
+                  return (
+                    <div
+                      className="mt-1 rounded border border-gray-300 bg-white px-2.5 py-2 min-h-[56px] cursor-default transition-colors"
+                      style={{ fontSize: 11, lineHeight: "20px" }}
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if ((e.key === "Alt" && e.ctrlKey) || (e.key === "Control" && e.altKey)) {
+                          e.preventDefault();
+                          if (editingIdeaId) setEditFormTitleMode(false);
+                          else setCreateFormTitleMode(false);
+                        } else if (e.key === "Enter" && !e.shiftKey) {
+                          if (editingIdeaId) {
+                            e.preventDefault();
+                            update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaDescription);
+                            setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription(""); setEditFormTitleMode(false);
+                          } else if (ideaName.trim()) {
+                            e.preventDefault(); create_idea(); setCreateFormTitleMode(false);
+                          }
+                        }
+                      }}
+                    >
+                      {cfDescWordsForChips.length > 0 ? ((editingIdeaId ? editingIdeaDescription : newIdeaDescription) || "").split("\n").map((line, li) => {
+                        if (line.trim() === "") return <div key={`line-${li}`} className="h-3" />;
+                        const lineWords = line.split(/\s+/).filter(w => w.length > 0);
+                        return (
+                          <div key={`line-${li}`} className="flex flex-wrap gap-[4px]" style={{ lineHeight: "20px" }}>
+                            {lineWords.map((word, wi) => {
+                              const isUsed = cfTitleWordsForChips.some(dw => dw.toLowerCase() === word.toLowerCase());
+                              return (
+                                <span
+                                  key={wi}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const currentOrderMode = editingIdeaId ? editFormOrderMode : createFormOrderMode;
+                                    const currentTitle = editingIdeaId ? editingIdeaTitle : ideaName;
+                                    let newTitle;
+                                    if (currentOrderMode === "description") {
+                                      const currentWords = currentTitle ? currentTitle.split(/\s+/).filter(w => w.length > 0) : [];
+                                      currentWords.push(word);
+                                      newTitle = cfSortByDescForChips(currentWords).join(" ");
+                                    } else {
+                                      newTitle = currentTitle ? `${currentTitle} ${word}` : word;
+                                    }
+                                    if (editingIdeaId) setEditingIdeaTitle(newTitle);
+                                    else setIdeaName(newTitle);
+                                  }}
+                                  className={`inline-block rounded px-[3px] py-[1px] cursor-pointer transition-all select-none ${
+                                    isUsed
+                                      ? "bg-purple-100 text-purple-400 border border-purple-200"
+                                      : "text-gray-600 hover:bg-purple-100 hover:text-purple-700 border border-transparent hover:border-purple-300"
+                                  }`}
+                                  style={{ fontSize: 11, lineHeight: "18px" }}
+                                  title={`Add "${word}" to title`}
+                                >
+                                  {word}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        );
+                      }) : (
+                        <span className="text-gray-400 italic" style={{ fontSize: 11 }}>Write a description first, then press Ctrl+Alt to pick words…</span>
+                      )}
+                    </div>
+                  );
+                })() : (
+                  <TextField
+                    value={editingIdeaId ? editingIdeaDescription : newIdeaDescription}
+                    onChange={(e) => {
+                      if (editingIdeaId) setEditingIdeaDescription(e.target.value);
+                      else setNewIdeaDescription(e.target.value);
+                    }}
+                    onKeyDown={(e) => {
+                      if ((e.key === "Alt" && e.ctrlKey) || (e.key === "Control" && e.altKey)) {
+                        e.preventDefault();
+                        if (editingIdeaId) setEditFormTitleMode(prev => !prev);
+                        else setCreateFormTitleMode(prev => !prev);
+                      } else if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        if (editingIdeaId) {
+                          update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaDescription);
+                          setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription(""); setEditFormTitleMode(false);
+                        } else if (ideaName.trim()) {
+                          create_idea(); setCreateFormTitleMode(false);
+                        }
+                      } else if (e.key === "Escape" && editingIdeaId) {
+                        setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription(""); setEditFormTitleMode(false);
+                      }
+                      // Shift+Enter falls through naturally → inserts line break
                     }}
                     onMouseDown={(e) => e.stopPropagation()}
                     label="Description (optional)"
                     variant="outlined"
                     multiline
                     minRows={2}
-                    maxRows={10}
+                    maxRows={editingIdeaId ? 10 : 6}
                     fullWidth
                     sx={{
                       backgroundColor: "white", borderRadius: 1, marginTop: 0.5,
@@ -1533,20 +1968,21 @@ export default function IdeaBin() {
                     }}
                   />
                 )}
+
                 <div className="flex gap-1.5 mt-1.5">
                   {editingIdeaId ? (
                     <>
                       <button
                         onClick={() => {
                           update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaDescription);
-                          setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription("");
+                          setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription(""); setEditFormTitleMode(false);
                         }}
                         className="px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-[11px]"
                       >
                         Update
                       </button>
                       <button
-                        onClick={() => { setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription(""); }}
+                        onClick={() => { setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription(""); setEditFormTitleMode(false); }}
                         className="px-2 py-0.5 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 text-[11px]"
                       >
                         Cancel
@@ -1555,7 +1991,7 @@ export default function IdeaBin() {
                   ) : (
                     ideaName.trim() && (
                       <button
-                        onClick={create_idea}
+                        onClick={() => { create_idea(); setCreateFormTitleMode(false); }}
                         className="px-2 py-0.5 bg-green-500 text-white rounded hover:bg-green-600 text-[11px]"
                       >
                         Create{selectedCategoryIds.size === 1 && categories[[...selectedCategoryIds][0]] ? ` → ${categories[[...selectedCategoryIds][0]].name}` : ""}
@@ -1671,14 +2107,26 @@ export default function IdeaBin() {
                 {listFilter === "all"
                   ? metaIdeaList
                       .filter(idea => passesAllFilters(idea))
-                      .map((idea, idx) => renderIdeaItem(idea.id, idx, { type: "all" }))
+                      .map((idea, idx) =>
+                        headlineModeIdeaId === idea.id
+                          ? renderSidebarTitleBuilder(idea.id)
+                          : renderIdeaItem(idea.id, idx, { type: "all" })
+                      )
                   : listFilter === "unassigned"
                   ? unassignedOrder
                       .filter(ideaId => passesAllFilters(ideas[ideaId]))
-                      .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "unassigned" }))
+                      .map((ideaId, idx) =>
+                        headlineModeIdeaId === ideaId
+                          ? renderSidebarTitleBuilder(ideaId)
+                          : renderIdeaItem(ideaId, idx, { type: "unassigned" })
+                      )
                   : (categoryOrders[listFilter] || [])
                       .filter(ideaId => passesAllFilters(ideas[ideaId]))
-                      .map((ideaId, idx) => renderIdeaItem(ideaId, idx, { type: "category", id: listFilter }))
+                      .map((ideaId, idx) =>
+                        headlineModeIdeaId === ideaId
+                          ? renderSidebarTitleBuilder(ideaId)
+                          : renderIdeaItem(ideaId, idx, { type: "category", id: listFilter })
+                      )
                 }
                 {/* Sidebar marquee overlay */}
                 {sidebarMarquee && (() => {

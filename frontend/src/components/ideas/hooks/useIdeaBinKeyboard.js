@@ -83,30 +83,33 @@ export default function useIdeaBinKeyboard(deps) {
       const tag = document.activeElement?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (e.key === "h" || e.key === "H") {
+        // If already in headline mode (idea or category), toggle OFF and exit
+        if (headlineModeIdeaId || headlineModeCategoryId) {
+          e.preventDefault();
+          setHeadlineModeIdeaId(null);
+          setHeadlineModeCategoryId(null);
+          return;
+        }
         if (selectedIdeaIds.size === 1) {
           const theId = [...selectedIdeaIds][0];
           e.preventDefault();
           const idea = ideas[theId];
           const catId = idea?.category ? String(idea.category) : null;
-          setHeadlineModeIdeaId(prev => prev === theId ? null : theId);
-          if (catId) setHeadlineModeCategoryId(catId);
-          else setHeadlineModeCategoryId(null);
+          setHeadlineModeIdeaId(theId);
+          setHeadlineModeCategoryId(catId);
           return;
         }
         if (selectedCategoryIds.size === 1) {
           const theCatId = [...selectedCategoryIds][0];
           e.preventDefault();
           setHeadlineModeIdeaId(null);
-          setHeadlineModeCategoryId(prev => {
-            if (prev === String(theCatId)) return null;
-            return String(theCatId);
-          });
+          setHeadlineModeCategoryId(String(theCatId));
         }
       }
     };
     window.addEventListener("keydown", handleHeadlineKey);
     return () => window.removeEventListener("keydown", handleHeadlineKey);
-  }, [isOpen, isFocused, selectedCategoryIds, selectedIdeaIds, ideas]);
+  }, [isOpen, isFocused, selectedCategoryIds, selectedIdeaIds, ideas, headlineModeIdeaId, headlineModeCategoryId]);
 
   // ── shared handler for Delete & Backspace ──
   const deleteHandler = useCallback((e) => {

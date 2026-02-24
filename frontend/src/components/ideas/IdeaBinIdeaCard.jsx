@@ -93,10 +93,17 @@ export default function IdeaBinIdeaCard({
   };
 
   const getDisplayText = () => {
-    const words = idea.title.split(/\s+/);
-    return words.length > 5
-      ? <span className="font-semibold text-[11px]">{words.slice(0, 5).join(" ")}...</span>
-      : <span className="font-semibold text-[11px]">{idea.title}</span>;
+    if (idea.title && idea.title.trim()) {
+      // Full title — never truncate, allow line-break
+      return <span className="font-semibold text-[11px]">{idea.title}</span>;
+    }
+    // No title — show first few words of desc with "..."
+    if (idea.description) {
+      const words = idea.description.split(/\s+/);
+      const preview = words.length > 5 ? words.slice(0, 5).join(" ") + "..." : words.join(" ");
+      return <span className="font-semibold text-[11px] text-gray-400 italic">{preview}</span>;
+    }
+    return <span className="font-semibold text-[11px] text-gray-400 italic">Untitled</span>;
   };
 
   return (
@@ -198,7 +205,7 @@ export default function IdeaBinIdeaCard({
                   : { borderWidth: "8px 5px 0 5px", borderColor: `${legendType?.color || "#374151"} transparent transparent transparent` }),
               }}
             />
-            <div className="break-words whitespace-pre-wrap">
+            <div className="break-words whitespace-pre-wrap min-w-0 flex-1">
               {isIdeaCollapsed ? getDisplayText() : (
                 <>
                   <div className="font-semibold text-xs mb-0.5">{idea.title}</div>
