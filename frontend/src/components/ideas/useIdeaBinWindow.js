@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { playSound } from "../../assets/sound_registry";
 
 // ───────────────────── Constants ─────────────────────
@@ -61,6 +61,17 @@ export default function useIdeaBinWindow(headlineInputRef) {
       setIsMaximized(true);
     }
   }, [isMaximized, preMaxState, windowPos, windowSize]);
+
+  // ── Keep maximized window in sync with browser viewport size ──
+  useEffect(() => {
+    if (!isMaximized) return;
+    const onResize = () => {
+      setWindowPos({ x: 8, y: 60 });
+      setWindowSize({ w: window.innerWidth - 16, h: window.innerHeight - 68 });
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [isMaximized]);
 
   // ── Icon drag (direct DOM for performance) ──
   const handleIconDrag = useCallback((e) => {

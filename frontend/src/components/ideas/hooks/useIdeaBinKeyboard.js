@@ -108,8 +108,8 @@ export default function useIdeaBinKeyboard(deps) {
     return () => window.removeEventListener("keydown", handleHeadlineKey);
   }, [isOpen, isFocused, selectedCategoryIds, selectedIdeaIds, ideas]);
 
-  // ── shared archive handler for Delete & Backspace ──
-  const archiveHandler = useCallback((e) => {
+  // ── shared handler for Delete & Backspace ──
+  const deleteHandler = useCallback((e) => {
     const tag = document.activeElement?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA") return;
     if (e.key !== "Delete" && e.key !== "Backspace") return;
@@ -120,32 +120,63 @@ export default function useIdeaBinKeyboard(deps) {
     const ideaIds = [...selectedIdeaIds];
     const metaIds = [...new Set(ideaIds.map(id => ideas[id]?.idea_id).filter(Boolean))];
 
-    setConfirmModal({
-      message: count === 1
-        ? `Archive this idea?`
-        : `Archive ${count} ideas?`,
-      confirmLabel: "Archive",
-      confirmColor: "bg-indigo-500 hover:bg-indigo-600",
-      onConfirm: () => {
-        toggle_archive_idea(metaIds);
-        setSelectedIdeaIds(new Set());
-        setConfirmModal(null);
-      },
-      onCancel: () => setConfirmModal(null),
-    });
-  }, [selectedIdeaIds, ideas, toggle_archive_idea, setConfirmModal, setSelectedIdeaIds]);
+    // Check which selected ideas are in a category (have a placement that can be removed)
+    const inCategory = ideaIds.filter(id => ideas[id]?.category);
+    const inCategoryCount = inCategory.length;
 
-  // ── Delete key – archive selected ideas ──
+    if (inCategoryCount > 0) {
+      // Primary action: unassign from category, secondary: archive
+      setConfirmModal({
+        message: count === 1
+          ? `Remove this idea from its category?`
+          : `Remove ${count} idea${count !== 1 ? "s" : ""} from ${inCategoryCount === count ? "their categories" : "categories"}?`,
+        confirmLabel: "Unassign",
+        confirmColor: "bg-amber-500 hover:bg-amber-600",
+        onConfirm: () => {
+          for (const id of inCategory) {
+            remove_idea_from_category(id);
+          }
+          setSelectedIdeaIds(new Set());
+          setConfirmModal(null);
+        },
+        middleLabel: "Archive",
+        middleColor: "bg-indigo-500 hover:bg-indigo-600",
+        onMiddle: () => {
+          toggle_archive_idea(metaIds);
+          setSelectedIdeaIds(new Set());
+          setConfirmModal(null);
+        },
+        onCancel: () => setConfirmModal(null),
+      });
+    } else {
+      // Not in any category — archive is the only meaningful action
+      setConfirmModal({
+        message: count === 1
+          ? `Archive this idea?`
+          : `Archive ${count} ideas?`,
+        confirmLabel: "Archive",
+        confirmColor: "bg-indigo-500 hover:bg-indigo-600",
+        onConfirm: () => {
+          toggle_archive_idea(metaIds);
+          setSelectedIdeaIds(new Set());
+          setConfirmModal(null);
+        },
+        onCancel: () => setConfirmModal(null),
+      });
+    }
+  }, [selectedIdeaIds, ideas, toggle_archive_idea, remove_idea_from_category, setConfirmModal, setSelectedIdeaIds]);
+
+  // ── Delete key – unassign / archive selected ideas ──
   useEffect(() => {
     if (!isOpen || !isFocused) return;
-    window.addEventListener("keydown", archiveHandler);
-    return () => window.removeEventListener("keydown", archiveHandler);
-  }, [isOpen, isFocused, archiveHandler]);
+    window.addEventListener("keydown", deleteHandler);
+    return () => window.removeEventListener("keydown", deleteHandler);
+  }, [isOpen, isFocused, deleteHandler]);
 
-  // ── Backspace key – same archive (keeps hook count stable) ──
+  // ── Backspace key – same handler (keeps hook count stable) ──
   useEffect(() => {
-    // intentionally empty – archiveHandler above handles both keys
-  }, [isOpen, isFocused, archiveHandler]);
+    // intentionally empty – deleteHandler above handles both keys
+  }, [isOpen, isFocused, deleteHandler]);
 
   // ── Escape key – exit paint mode ──
   useEffect(() => {

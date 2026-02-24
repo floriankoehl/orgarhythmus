@@ -357,17 +357,21 @@ export default function IdeaBinCategoryCanvas({
                 const cat = categories[catId];
                 if (!cat || cat.archived) return null;
                 const isAdopted = cat.adopted;
+                const isFed = !!cat.filter_config;
                 return (
                   <button
                     key={catId}
                     onClick={() => setDockedCategories(prev => prev.filter(id => id !== catId))}
                     title={`Click to restore "${cat.name}" to canvas`}
-                    className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border whitespace-nowrap transition-colors cursor-pointer flex-shrink-0 ${
-                      isAdopted
-                        ? "bg-indigo-50 text-indigo-700 border-indigo-300 hover:bg-indigo-100"
-                        : "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100"
+                    className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap transition-colors cursor-pointer flex-shrink-0 ${
+                      isFed
+                        ? "bg-blue-50 text-blue-700 border border-dashed border-blue-400 hover:bg-blue-100"
+                        : isAdopted
+                          ? "bg-indigo-50 text-indigo-700 border border-indigo-300 hover:bg-indigo-100"
+                          : "bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100"
                     }`}
                   >
+                    {isFed && <Filter size={8} className="text-blue-500 flex-shrink-0" />}
                     {cat.name}
                     {isAdopted && (
                       <span className="text-[8px] text-indigo-400">
@@ -400,17 +404,18 @@ export default function IdeaBinCategoryCanvas({
               zIndex: catData.z_index || 0,
               backgroundColor: isMergeTarget
                 ? "#fef3e2"
-                : contextColor && isSelected
-                  ? `color-mix(in srgb, ${contextColor} 18%, #ffffff)`
-                  : contextColor && isHovered
-                    ? `color-mix(in srgb, ${contextColor} 22%, #ffffff)`
-                    : isAdopted
-                      ? (isHovered ? "#e8ecff" : isSelected ? "#eef1ff" : "#f4f6ff")
-                      : (isHovered ? "#fff59d" : isSelected ? "#fff8b0" : contextColor ? `color-mix(in srgb, ${contextColor} 12%, #ffffff)` : "#fff9c4"),
+                : hasConstantFilter
+                  ? (isHovered ? "#dbeafe" : isSelected ? "#e0f2fe" : "#eff6ff")
+                  : contextColor && isSelected
+                    ? `color-mix(in srgb, ${contextColor} 18%, #ffffff)`
+                    : contextColor && isHovered
+                      ? `color-mix(in srgb, ${contextColor} 22%, #ffffff)`
+                      : isAdopted
+                        ? (isHovered ? "#e8ecff" : isSelected ? "#eef1ff" : "#f4f6ff")
+                        : (isHovered ? "#fff59d" : isSelected ? "#fff8b0" : contextColor ? `color-mix(in srgb, ${contextColor} 12%, #ffffff)` : "#fff9c4"),
               transition: "background-color 150ms ease",
-              ...(hasConstantFilter && !isMergeTarget ? { borderLeft: "3px solid #3b82f6" } : {}),
             }}
-            className={`absolute shadow-lg rounded p-1.5 flex flex-col ${isSelected ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${isAdopted ? "border border-indigo-300" : ""} ${isMergeTarget ? "ring-2 ring-orange-500 ring-offset-1" : ""} ${filterDropTarget === catKey ? "ring-2 ring-blue-500 ring-offset-1" : ""} ${hasConstantFilter && !isAdopted ? "border border-blue-200" : ""}`}
+            className={`absolute shadow-lg rounded p-1.5 flex flex-col ${isSelected ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${isAdopted ? "border border-indigo-300" : ""} ${isMergeTarget ? "ring-2 ring-orange-500 ring-offset-1" : ""} ${filterDropTarget === catKey ? "ring-2 ring-blue-500 ring-offset-1" : ""} ${hasConstantFilter ? "border border-dashed border-blue-400" : ""}`}
             data-category-card
             onDragOver={(e) => {
               if (e.dataTransfer.types.includes("application/ideabin-filter")) {
@@ -507,12 +512,16 @@ export default function IdeaBinCategoryCanvas({
               }}
               className="flex justify-between items-center mb-0.5 flex-shrink-0 rounded-t px-1 py-0.5 cursor-grab active:cursor-grabbing border-b"
               style={{
-                backgroundColor: contextColor
-                  ? `color-mix(in srgb, ${contextColor} 25%, #ffffff)`
-                  : isAdopted ? "rgba(165,180,252,0.35)" : "rgba(253,216,53,0.55)",
-                borderColor: contextColor
-                  ? `color-mix(in srgb, ${contextColor} 20%, transparent)`
-                  : isAdopted ? "rgba(165,180,252,0.3)" : "rgba(253,216,53,0.4)",
+                backgroundColor: hasConstantFilter
+                  ? "rgba(59,130,246,0.18)"
+                  : contextColor
+                    ? `color-mix(in srgb, ${contextColor} 25%, #ffffff)`
+                    : isAdopted ? "rgba(165,180,252,0.35)" : "rgba(253,216,53,0.55)",
+                borderColor: hasConstantFilter
+                  ? "rgba(59,130,246,0.25)"
+                  : contextColor
+                    ? `color-mix(in srgb, ${contextColor} 20%, transparent)`
+                    : isAdopted ? "rgba(165,180,252,0.3)" : "rgba(253,216,53,0.4)",
               }}
             >
               {editingCategoryId === catKey && !isAdopted ? (
@@ -529,7 +538,10 @@ export default function IdeaBinCategoryCanvas({
                   className="bg-white text-[11px] font-semibold px-1 py-0.5 rounded outline-none border border-blue-400 flex-1 mr-1"
                 />
               ) : (
-                <span className="font-semibold text-[11px] truncate flex items-center gap-1">
+                <span className={`font-semibold text-[11px] truncate flex items-center gap-1 ${hasConstantFilter ? "text-blue-800" : ""}`}>
+                  {hasConstantFilter && (
+                    <span className="text-[8px] font-bold text-blue-600 bg-blue-100 border border-blue-300 rounded px-1 py-0.5 flex-shrink-0 uppercase tracking-wide">Feed</span>
+                  )}
                   {catData.name}
                   {headlineModeCategoryId === catKey && (
                     <span className="text-[8px] font-medium text-purple-600 bg-purple-100 rounded px-1 py-0.5 flex-shrink-0">HEADLINE</span>
@@ -541,9 +553,6 @@ export default function IdeaBinCategoryCanvas({
                   )}
                   {catData.is_public && !isAdopted && (
                     <Globe size={9} className="text-emerald-600 flex-shrink-0" title="Public category" />
-                  )}
-                  {hasConstantFilter && (
-                    <Filter size={9} className="text-blue-500 flex-shrink-0" title="Constant filter applied" />
                   )}
                   {catData.filter_config?.name && (
                     <span className="text-[8px] font-medium text-blue-600 bg-blue-50 rounded px-1 py-0.5 flex-shrink-0 truncate max-w-[80px]" title={catData.filter_config.name}>

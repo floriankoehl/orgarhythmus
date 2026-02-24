@@ -1491,16 +1491,24 @@ export default function IdeaBin() {
                         >
                           Unassigned ({unassignedCount})
                         </div>
-                        {Object.entries(categories).map(([catKey, catData]) => (
-                          <div
-                            key={catKey}
-                            onClick={() => { setListFilter(catKey); setShowListFilterDropdown(false); }}
-                            className={`px-2.5 py-1.5 text-[11px] cursor-pointer transition-colors flex items-center gap-1.5 ${String(listFilter) === String(catKey) ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-50 text-gray-700"}`}
-                          >
-                            {catData.archived && <span className="text-[9px] text-gray-400">📦</span>}
-                            {catData.name} ({(categoryOrders[catKey] || []).length})
-                          </div>
-                        ))}
+                        {Object.entries(categories).map(([catKey, catData]) => {
+                          const isFed = !!catData.filter_config;
+                          return (
+                            <div
+                              key={catKey}
+                              onClick={() => { setListFilter(catKey); setShowListFilterDropdown(false); }}
+                              className={`px-2.5 py-1.5 text-[11px] cursor-pointer transition-colors flex items-center gap-1.5 ${
+                                String(listFilter) === String(catKey)
+                                  ? isFed ? "bg-blue-100 text-blue-800 font-medium" : "bg-amber-100 text-amber-800 font-medium"
+                                  : isFed ? "hover:bg-blue-50 text-blue-700" : "hover:bg-gray-50 text-gray-700"
+                              }`}
+                            >
+                              {catData.archived && <span className="text-[9px] text-gray-400">📦</span>}
+                              {isFed && <span className="text-[8px] font-bold text-blue-500 border border-blue-300 rounded px-0.5 flex-shrink-0">FEED</span>}
+                              {catData.name} ({(categoryOrders[catKey] || []).length})
+                            </div>
+                          );
+                        })}
                       </div>
                     </>
                   )}

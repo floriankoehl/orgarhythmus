@@ -5,6 +5,13 @@ export function useLegends() {
   const [legends, setLegends] = useState([]);
   const [activeLegendId, setActiveLegendId] = useState(null);
   const [legendTypes, setLegendTypes] = useState({});
+  const [hasUserSelected, setHasUserSelected] = useState(false);
+
+  // Wrap setActiveLegendId to track explicit user selection
+  const setActiveLegendIdWrapped = (val) => {
+    setHasUserSelected(true);
+    setActiveLegendId(val);
+  };
 
   const fetch_legends = async () => {
     try {
@@ -12,7 +19,8 @@ export function useLegends() {
       const data = await res.json();
       const legs = data.legends || [];
       setLegends(legs);
-      setActiveLegendId(prev => (legs.length > 0 && !prev) ? legs[0].id : prev);
+      // Only auto-select first legend on initial load, not after user explicitly chose "No Legend"
+      setActiveLegendId(prev => (legs.length > 0 && !prev && !hasUserSelected) ? legs[0].id : prev);
     } catch (err) {
       console.error("Failed to fetch legends:", err);
     }
@@ -132,7 +140,7 @@ export function useLegends() {
   return {
     legends,
     activeLegendId,
-    setActiveLegendId,
+    setActiveLegendId: setActiveLegendIdWrapped,
     legendTypes,
     fetch_legends,
     fetch_types,

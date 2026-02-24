@@ -319,6 +319,7 @@ export default function IdeasSidebar({
                       onChange={(e) => setActiveLegendId(e.target.value ? parseInt(e.target.value) : null)}
                       className="flex-1 text-xs px-1 py-0.5 border border-gray-300 rounded outline-none focus:border-blue-400 bg-white"
                     >
+                      <option value="">— No Legend —</option>
                       {legends.map(d => (
                         <option key={d.id} value={d.id}>{d.name}</option>
                       ))}

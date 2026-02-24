@@ -369,6 +369,7 @@ export default function IdeaBinLegendPanel({
                     onChange={(e) => dims.setActiveLegendId(e.target.value ? parseInt(e.target.value) : null)}
                     className="flex-1 text-[10px] px-1 py-0.5 border border-gray-300 rounded outline-none bg-white"
                   >
+                    <option value="">— No Legend —</option>
                     {displayLegends.map(d => (
                       <option key={d.id} value={d.id}>{d.name}</option>
                     ))}
@@ -438,6 +439,8 @@ export default function IdeaBinLegendPanel({
             </div>
           ) : null}
           {/* ═══ Types for active legend ═══ */}
+          {dims.activeLegendId ? (
+          <>
           {/* Unassigned type */}
           <div
             className={`flex items-center gap-1.5 mb-1 cursor-pointer rounded px-1 py-0.5 text-[10px] ${paintType && paintType.typeId === null ? "ring-2 ring-gray-500 bg-gray-100" : ""} ${globalTypeFilter.includes("unassigned") ? "bg-gray-200" : "hover:bg-gray-100"}`}
@@ -700,6 +703,12 @@ export default function IdeaBinLegendPanel({
               + Add Type
             </button>
           )}
+          </>
+          ) : (
+            <div className="text-[10px] text-gray-400 italic py-2 text-center">
+              No legend selected — ideas are not highlighted.
+            </div>
+          )}
         </div>
       )}
       </div>
@@ -957,7 +966,7 @@ export default function IdeaBinLegendPanel({
                         </div>
                         {/* Hover tooltip — filter description */}
                         {hoveredPresetIdx === idx && preset.legend_filters?.length > 0 && (
-                          <div className="absolute left-0 right-0 top-full mt-0.5 z-50 p-1.5 bg-white rounded-lg border border-blue-200 shadow-lg text-[10px] text-gray-600 leading-relaxed">
+                          <div className="absolute left-0 right-0 bottom-full mb-0.5 z-[9999] p-1.5 bg-white rounded-lg border border-blue-200 shadow-lg text-[10px] text-gray-600 leading-relaxed">
                             {renderFilterSentence(preset.legend_filters, preset.filter_combine_mode || "and")}
                           </div>
                         )}

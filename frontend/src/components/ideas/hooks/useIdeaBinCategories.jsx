@@ -208,7 +208,8 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
       if (matchFilter(p)) matchedIdeaIds.push(p.idea_id);
     }
     try {
-      await syncCategoryIdeas(parseInt(catKey), matchedIdeaIds, true);
+      const collectAndRemove = !!(fc.collect_and_remove);
+      await syncCategoryIdeas(parseInt(catKey), matchedIdeaIds, true, collectAndRemove);
       await fetchAllIdeas();
     } catch (err) { console.error("Refetch category failed:", err); }
   }, [categories, fetchAllIdeas]);

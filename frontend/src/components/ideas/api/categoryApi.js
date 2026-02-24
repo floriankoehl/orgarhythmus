@@ -113,7 +113,7 @@ export async function createCategoryWithIdeas(name, ideaIds, contextId, filterCo
   return res.json();
 }
 
-export async function syncCategoryIdeas(categoryId, ideaIds, removeOld = false) {
+export async function syncCategoryIdeas(categoryId, ideaIds, removeOld = false, collectAndRemove = false) {
   const res = await authFetch(`${API}/user/categories/sync_ideas/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -121,6 +121,7 @@ export async function syncCategoryIdeas(categoryId, ideaIds, removeOld = false) 
       category_id: categoryId,
       idea_ids: ideaIds,
       remove_old: removeOld,
+      collect_and_remove: collectAndRemove,
     }),
   });
   return res.json();

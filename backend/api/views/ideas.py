@@ -992,10 +992,12 @@ def batch_assign_legend_type(request):
 @permission_classes([IsAuthenticated])
 def sync_category_ideas(request):
     """Sync a category's ideas from a list of idea IDs (used by refetch/live).
-    Adds new ideas and optionally removes ideas no longer matching the filter."""
+    Adds new ideas and optionally removes ideas no longer matching the filter.
+    If collect_and_remove is True, matched ideas are also removed from all OTHER categories."""
     category_id = request.data.get("category_id")
     idea_ids = request.data.get("idea_ids", [])
     remove_old = request.data.get("remove_old", False)  # if True, remove ideas not in the new list
+    collect_and_remove = request.data.get("collect_and_remove", False)
 
     category = get_object_or_404(Category, id=category_id, owner=request.user)
 
@@ -1006,6 +1008,7 @@ def sync_category_ideas(request):
     new_ids = set(idea_ids)
     added = 0
     removed = 0
+    detached = 0
 
     # Add new ones
     max_order = IdeaPlacement.objects.filter(
@@ -1013,12 +1016,14 @@ def sync_category_ideas(request):
     ).aggregate(db_models.Max('order_index'))['order_index__max']
     next_order = (max_order + 1) if max_order is not None else 0
 
+    newly_added_ids = []
     for idea_id in new_ids - existing_idea_ids:
         idea = Idea.objects.filter(id=idea_id, owner=request.user).first()
         if idea and not IdeaPlacement.objects.filter(idea=idea, category=category).exists():
             IdeaPlacement.objects.create(idea=idea, category=category, order_index=next_order)
             next_order += 1
             added += 1
+            newly_added_ids.append(idea_id)
 
     # Remove old ones not in the new list
     if remove_old:
@@ -1028,7 +1033,14 @@ def sync_category_ideas(request):
                 category=category, idea__owner=request.user, idea_id__in=to_remove
             ).delete()[0]
 
-    return Response({"added": added, "removed": removed})
+    # Collect & remove: detach matched ideas from all OTHER categories
+    if collect_and_remove and new_ids:
+        detached = IdeaPlacement.objects.filter(
+            idea_id__in=new_ids,
+            idea__owner=request.user,
+        ).exclude(category=category).delete()[0]
+
+    return Response({"added": added, "removed": removed, "detached": detached})
 
 
 @api_view(["POST"])

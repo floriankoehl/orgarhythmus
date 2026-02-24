@@ -1,5 +1,5 @@
-import { useCallback } from "react";
-import { RefreshCw, Radio, Filter, X, Trash2, Layers } from "lucide-react";
+import { useCallback, useState } from "react";
+import { RefreshCw, Radio, Filter, X, Trash2, Layers, PackageMinus } from "lucide-react";
 
 /**
  * Feed Filter dropdown panel – shown when the Rss icon on a category header is clicked.
@@ -8,6 +8,7 @@ import { RefreshCw, Radio, Filter, X, Trash2, Layers } from "lucide-react";
  *   • Lists saved filter presets
  *   • Click one to assign it to the category (only ONE at a time)
  *   • Refetch / Live / Clear actions
+ *   • Collect & Remove toggle – when enabled, matched ideas are detached from other categories
  *
  * The filter EFFECT (details) is visible in the bottom-left legend panel,
  * so no hover descriptions are needed here — only the filter name.
@@ -28,6 +29,8 @@ export default function FeedFilterPanel({
   const fc = catData.filter_config;
   const isLive = liveCategoryIds.has(catKey);
   const assignedName = fc?.name || null;
+  const isCollectMode = !!(fc?.collect_and_remove);
+  const [showCollectConfirm, setShowCollectConfirm] = useState(false);
 
   const clearFilter = useCallback(() => {
     setCategoryFilterConfig(catKey, null);
@@ -45,6 +48,13 @@ export default function FeedFilterPanel({
     };
     setCategoryFilterConfig(catKey, newConfig);
   }, [catKey, dims.activeLegendId, setCategoryFilterConfig]);
+
+  const toggleCollectMode = useCallback((enable) => {
+    if (!fc) return;
+    const updated = { ...fc, collect_and_remove: enable };
+    setCategoryFilterConfig(catKey, updated);
+    setShowCollectConfirm(false);
+  }, [catKey, fc, setCategoryFilterConfig]);
 
   return (
     <div
@@ -121,6 +131,64 @@ export default function FeedFilterPanel({
                 <Trash2 size={11} />
                 Clear filter
               </button>
+            )}
+            {/* ── Collect & Remove toggle ── */}
+            {fc && (
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    if (isCollectMode) {
+                      // Turning off — no confirmation needed
+                      toggleCollectMode(false);
+                    } else {
+                      // Turning on — show confirmation
+                      setShowCollectConfirm(true);
+                    }
+                  }}
+                  className={`w-full text-left px-2 py-1.5 text-[11px] rounded flex items-center gap-2 transition-colors ${
+                    isCollectMode
+                      ? "text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-300"
+                      : "text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  <PackageMinus size={11} className={isCollectMode ? "text-orange-600" : ""} />
+                  {isCollectMode ? "Collect & Remove ● ON" : "Collect & Remove"}
+                </button>
+                {!isCollectMode && (
+                  <div className="text-[9px] text-gray-400 px-2 mt-0.5 leading-snug">
+                    Detach matched ideas from other categories
+                  </div>
+                )}
+                {/* Confirmation modal */}
+                {showCollectConfirm && (
+                  <>
+                    <div className="fixed inset-0 z-[9998]" onClick={() => setShowCollectConfirm(false)} />
+                    <div
+                      className="absolute left-0 right-0 top-full mt-1 z-[9999] bg-white rounded-lg shadow-2xl border border-orange-300 p-3"
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); toggleCollectMode(true); } }}
+                    >
+                      <p className="text-[11px] text-gray-700 mb-2 leading-snug">
+                        <strong className="text-orange-700">Collect & Remove</strong> will detach matched ideas from <em>all other categories</em> on every fetch. Are you sure?
+                      </p>
+                      <div className="flex justify-end gap-1.5">
+                        <button
+                          onClick={() => setShowCollectConfirm(false)}
+                          className="px-2.5 py-1 text-[10px] rounded border border-gray-300 hover:bg-gray-100"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          autoFocus
+                          onClick={() => toggleCollectMode(true)}
+                          className="px-2.5 py-1 text-[10px] rounded bg-orange-500 hover:bg-orange-600 text-white font-medium"
+                        >
+                          Enable
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </div>
 
