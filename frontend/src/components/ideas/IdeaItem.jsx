@@ -40,9 +40,6 @@ export default function IdeaItem({
   const isHoveredForType = hoverIdeaForType === ideaId;
 
   const getDisplayText = () => {
-    if (idea.headline) {
-      return <span className="font-semibold">{idea.headline}</span>;
-    }
     const words = idea.title.split(/\s+/);
     if (words.length > 5) {
       return <span className="font-semibold">{words.slice(0, 5).join(" ")}...</span>;
@@ -130,8 +127,8 @@ export default function IdeaItem({
                 getDisplayText()
               ) : (
                 <>
-                  {idea.headline && <div className="font-semibold mb-0.5">{idea.headline}</div>}
-                  {idea.title}
+                  <div className="font-semibold mb-0.5">{idea.title}</div>
+                  {idea.description && <div className="text-[10px] text-gray-500 mt-1 whitespace-pre-wrap">{idea.description}</div>}
                 </>
               )}
             </div>

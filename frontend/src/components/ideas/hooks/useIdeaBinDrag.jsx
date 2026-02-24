@@ -172,7 +172,7 @@ export default function useIdeaBinDrag(deps) {
 
       const isVirtualTeamDrop = extInfo.teamId && isNaN(parseInt(extInfo.teamId));
       if (isExternal && (extInfo.teamId || extInfo.dayIndex !== null) && !isVirtualTeamDrop) {
-        const ideaName = idea.headline || idea.title.split(/\s+/).slice(0, 6).join(" ");
+        const ideaName = idea.title.split(/\s+/).slice(0, 6).join(" ");
         const truncatedName = ideaName.length > 30 ? ideaName.slice(0, 27) + "..." : ideaName;
 
         if (extInfo.dayIndex !== null && extInfo.taskId) {
@@ -196,7 +196,7 @@ export default function useIdeaBinDrag(deps) {
               try {
                 await add_milestone(projectId, parseInt(extInfo.taskId), {
                   name: truncatedName,
-                  description: idea.title,
+                  description: idea.description || "",
                   start_index: parseInt(extInfo.dayIndex),
                 });
                 await delete_idea(idea.id);
@@ -227,7 +227,7 @@ export default function useIdeaBinDrag(deps) {
               try {
                 await add_milestone(projectId, parseInt(extInfo.taskId), {
                   name: truncatedName,
-                  description: idea.title,
+                  description: idea.description || "",
                 });
                 await delete_idea(idea.id);
                 playSound('ideaExternalDrop');
@@ -256,7 +256,7 @@ export default function useIdeaBinDrag(deps) {
               try {
                 await createTaskForProject(projectId, {
                   name: truncatedName,
-                  description: idea.title,
+                  description: idea.description || "",
                   team_id: parseInt(extInfo.teamId),
                 });
                 await delete_idea(idea.id);

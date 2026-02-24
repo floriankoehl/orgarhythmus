@@ -20,11 +20,18 @@ export async function fetchCategories() {
   return serialized;
 }
 
-export async function createCategoryApi(name, isPublic) {
+export async function createCategoryApi(name, isPublic, position = null) {
+  const payload = { name, is_public: isPublic };
+  if (position) {
+    payload.x = position.x;
+    payload.y = position.y;
+    payload.width = position.width;
+    payload.height = position.height;
+  }
   const res = await authFetch(`${API}/user/categories/create/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, is_public: isPublic }),
+    body: JSON.stringify(payload),
   });
   return res.json();
 }

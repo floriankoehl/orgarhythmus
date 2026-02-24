@@ -5,7 +5,7 @@ import {
   createIdeaApi,
   deleteIdeaApi,
   updateIdeaTitleApi,
-  updateIdeaHeadlineApi,
+  updateIdeaDescriptionApi,
   safeOrderApi,
   assignIdeaToCategoryApi,
   pasteIdeaApi,
@@ -31,12 +31,11 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
   const [unassignedOrder, setUnassignedOrder] = useState([]);
   const [categoryOrders, setCategoryOrders] = useState({});
   const [ideaName, setIdeaName] = useState("");
-  const [ideaHeadline, setIdeaHeadline] = useState("");
 
   // ── Edit state ──
   const [editingIdeaId, setEditingIdeaId] = useState(null);
   const [editingIdeaTitle, setEditingIdeaTitle] = useState("");
-  const [editingIdeaHeadline, setEditingIdeaHeadline] = useState("");
+  const [editingIdeaDescription, setEditingIdeaDescription] = useState("");
 
   // ── Collapse state ──
   const [collapsedIdeas, setCollapsedIdeas] = useState({});
@@ -138,19 +137,17 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
   }, []);
 
   const create_idea = useCallback(async () => {
-    if (!ideaName.trim() && !ideaHeadline.trim()) return;
+    if (!ideaName.trim()) return;
     const catId = selectedCategoryIds.size === 1 ? [...selectedCategoryIds][0] : null;
     await createIdeaApi(
-      ideaName.trim() || ideaHeadline.trim(),
+      ideaName.trim(),
       "",
-      ideaHeadline,
       catId
     );
     setIdeaName("");
-    setIdeaHeadline("");
     playSound('ideaCreate');
     fetch_all_ideas();
-  }, [ideaName, ideaHeadline, selectedCategoryIds, fetch_all_ideas]);
+  }, [ideaName, selectedCategoryIds, fetch_all_ideas]);
 
   const delete_idea = useCallback(async (id) => {
     await deleteIdeaApi(id);
@@ -158,19 +155,23 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
     fetch_all_ideas();
   }, [fetch_all_ideas]);
 
-  const update_idea_title_api = useCallback(async (placementId, title, headline = null) => {
+  const update_idea_title_api = useCallback(async (placementId, title, description = null) => {
     if (!title.trim()) return;
     const idea = ideas[placementId];
     const ideaId = idea?.idea_id || placementId;
     await updateIdeaTitleApi(ideaId, title);
-    if (headline !== null) {
-      await updateIdeaHeadlineApi(ideaId, headline);
+    if (description !== null) {
+      await updateIdeaDescriptionApi(ideaId, description);
     }
     setIdeas(prev => {
       const updated = { ...prev };
       for (const [pid, p] of Object.entries(updated)) {
         if (p.idea_id === ideaId) {
-          updated[pid] = { ...p, title, headline: headline !== null ? headline : p.headline };
+          updated[pid] = {
+            ...p,
+            title,
+            description: description !== null ? description : p.description,
+          };
         }
       }
       return updated;
@@ -424,11 +425,10 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
     unassignedOrder, setUnassignedOrder,
     categoryOrders, setCategoryOrders,
     ideaName, setIdeaName,
-    ideaHeadline, setIdeaHeadline,
 
     editingIdeaId, setEditingIdeaId,
     editingIdeaTitle, setEditingIdeaTitle,
-    editingIdeaHeadline, setEditingIdeaHeadline,
+    editingIdeaDescription, setEditingIdeaDescription,
 
     collapsedIdeas, setCollapsedIdeas,
     ideaSettingsOpen, setIdeaSettingsOpen,

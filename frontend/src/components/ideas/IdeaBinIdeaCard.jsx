@@ -13,7 +13,7 @@ export default function IdeaBinIdeaCard({
   ideaId, arrayIndex, source,
   ideas, dims, draggingType,
   dragSource, hoverIndex, prevIndex,
-  editingIdeaId, setEditingIdeaId, setEditingIdeaTitle, setEditingIdeaHeadline,
+  editingIdeaId, setEditingIdeaId, setEditingIdeaTitle, setEditingIdeaDescription,
   hoverIdeaForType, sidebarHeadlineOnly, showSidebarMeta,
   collapsedIdeas, setCollapsedIdeas,
   wigglingIdeaId, setWigglingIdeaId,
@@ -93,7 +93,6 @@ export default function IdeaBinIdeaCard({
   };
 
   const getDisplayText = () => {
-    if (idea.headline) return <span className="font-semibold text-xs">{idea.headline}</span>;
     const words = idea.title.split(/\s+/);
     return words.length > 5
       ? <span className="font-semibold text-[11px]">{words.slice(0, 5).join(" ")}...</span>
@@ -165,7 +164,7 @@ export default function IdeaBinIdeaCard({
             if (isForeignIdea) return;
             setEditingIdeaId(ideaId);
             setEditingIdeaTitle(idea.title);
-            setEditingIdeaHeadline(idea.headline || "");
+            setEditingIdeaDescription(idea.description || "");
           }}
           style={{
             backgroundColor: isHoveredForType
@@ -202,8 +201,10 @@ export default function IdeaBinIdeaCard({
             <div className="break-words whitespace-pre-wrap">
               {isIdeaCollapsed ? getDisplayText() : (
                 <>
-                  {idea.headline && <div className="font-semibold text-xs mb-0.5">{idea.headline}</div>}
-                  <span className="text-[10px] text-gray-600">{idea.title}</span>
+                  <div className="font-semibold text-xs mb-0.5">{idea.title}</div>
+                  {idea.description && (
+                    <div className="text-[10px] text-gray-500 mt-1 whitespace-pre-wrap">{idea.description}</div>
+                  )}
                   {/* Meta info: categories + legends */}
                   {(isMetaView || showSidebarMeta) && (() => {
                     const cats = idea.placement_categories || [];
@@ -224,7 +225,7 @@ export default function IdeaBinIdeaCard({
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setConfirmModal({
-                                      message: <p className="text-sm">Remove <strong>{idea.headline || idea.title}</strong> from <strong>all {cats.length} categories</strong>?</p>,
+                                      message: <p className="text-sm">Remove <strong>{idea.title}</strong> from <strong>all {cats.length} categories</strong>?</p>,
                                       onConfirm: () => { remove_all_idea_categories(idea.idea_id); setConfirmModal(null); },
                                       onCancel: () => setConfirmModal(null),
                                     });
@@ -263,7 +264,7 @@ export default function IdeaBinIdeaCard({
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setConfirmModal({
-                                      message: <p className="text-sm">Remove <strong>{idea.headline || idea.title}</strong> from <strong>all {legendEntries.length} types</strong>?</p>,
+                                      message: <p className="text-sm">Remove <strong>{idea.title}</strong> from <strong>all {legendEntries.length} types</strong>?</p>,
                                       onConfirm: () => { remove_all_idea_legend_types(idea.idea_id); setConfirmModal(null); },
                                       onCancel: () => setConfirmModal(null),
                                     });
@@ -395,7 +396,7 @@ export default function IdeaBinIdeaCard({
                         e.stopPropagation();
                         setEditingIdeaId(ideaId);
                         setEditingIdeaTitle(idea.title);
-                        setEditingIdeaHeadline(idea.headline || "");
+                        setEditingIdeaDescription(idea.description || "");
                         setIdeaSettingsOpen(null);
                       }}
                       className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 transition-colors"
@@ -423,8 +424,7 @@ export default function IdeaBinIdeaCard({
                           message: (
                             <div>
                               <p className="mb-1 text-sm">{isMetaDel ? "Delete this idea and ALL its copies?" : "Delete this idea?"}</p>
-                              {idea.headline && <p className="font-semibold text-xs">{idea.headline}</p>}
-                              <p className="text-xs text-gray-600 mt-0.5">{idea.title.length > 80 ? idea.title.slice(0, 80) + "..." : idea.title}</p>
+                              <p className="font-semibold text-xs">{idea.title}</p>
                               {isMetaDel && idea.placement_count > 1 && (
                                 <p className="text-[10px] text-red-500 mt-1">{idea.placement_count} copies will be removed</p>
                               )}

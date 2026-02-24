@@ -32,9 +32,6 @@ export default function MyIdeas() {
               key={idea.id}
               className="bg-white border border-gray-200 rounded-lg px-4 py-3 shadow-sm"
             >
-              {idea.headline && (
-                <p className="text-xs font-semibold text-gray-500 mb-0.5">{idea.headline}</p>
-              )}
               <p className="text-sm text-gray-800">{idea.title}</p>
               <div className="flex gap-3 mt-1.5 text-xs text-gray-400">
                 {idea.placement_categories && idea.placement_categories.length > 0 && (

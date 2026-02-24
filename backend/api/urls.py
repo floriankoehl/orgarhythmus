@@ -82,7 +82,7 @@ urlpatterns = [
     path("user/ideas/assign_to_category/", views.assign_idea_to_category),
     path("user/categories/rename/", views.rename_category),
     path("user/ideas/update_title/", views.update_idea_title),
-    path("user/ideas/update_headline/", views.update_idea_headline),
+    path("user/ideas/update_description/", views.update_idea_description),
     path("user/categories/toggle_archive/", views.toggle_archive_category),
     path("user/categories/toggle_public/", views.toggle_public_category),
     path("user/ideas/toggle_archive/", views.toggle_archive_idea),
@@ -97,6 +97,7 @@ urlpatterns = [
     path("user/categories/create_with_ideas/", views.create_category_with_ideas),
     path("user/ideas/batch_remove_legend_type/", views.batch_remove_legend_type),
     path("user/ideas/batch_assign_legend_type/", views.batch_assign_legend_type),
+    path("user/ideas/merge/", views.merge_ideas),
     path("user/categories/sync_ideas/", views.sync_category_ideas),
     path("user/categories/update_filter_config/", views.update_category_filter_config),
 

@@ -50,14 +50,10 @@ export default function IdeasSidebar({
     editingIdeaId,
     editingIdeaTitle,
     setEditingIdeaTitle,
-    editingIdeaHeadline,
-    setEditingIdeaHeadline,
     startEditIdea,
     cancelEditIdea,
     ideaName,
     setIdeaName,
-    ideaHeadline,
-    setIdeaHeadline,
     formHeight,
     setFormHeight,
     collapsedIdeas,
@@ -100,12 +96,11 @@ export default function IdeasSidebar({
 
   const handleSubmitIdea = () => {
     if (editingIdeaId) {
-      update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaHeadline);
+      update_idea_title_api(editingIdeaId, editingIdeaTitle);
       cancelEditIdea();
     } else {
-      create_idea(ideaName, ideaHeadline);
+      create_idea(ideaName);
       setIdeaName("");
-      setIdeaHeadline("");
     }
   };
 
@@ -119,31 +114,6 @@ export default function IdeasSidebar({
         <h1 className="text-xl mb-2">
           {editingIdeaId ? "Edit Idea" : "New Idea"}
         </h1>
-        {/* Headline field */}
-        <TextField
-          value={editingIdeaId ? editingIdeaHeadline : ideaHeadline}
-          onChange={(e) => {
-            if (editingIdeaId) {
-              setEditingIdeaHeadline(e.target.value);
-            } else {
-              setIdeaHeadline(e.target.value);
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleSubmitIdea();
-            } else if (e.key === "Escape" && editingIdeaId) {
-              cancelEditIdea();
-            }
-          }}
-          id="idea-headline"
-          label="Headline (optional)"
-          variant="outlined"
-          size="small"
-          fullWidth
-          sx={{ backgroundColor: "white", borderRadius: 1, marginBottom: 1 }}
-        />
         <TextField
           value={editingIdeaId ? editingIdeaTitle : ideaName}
           onChange={(e) => {
@@ -164,9 +134,7 @@ export default function IdeasSidebar({
           id="idea-name"
           label={editingIdeaId ? "Edit your idea..." : "What's your idea?"}
           variant="outlined"
-          multiline
-          minRows={2}
-          maxRows={Math.max(2, Math.floor((formHeight - (editingIdeaId ? 100 : 60)) / 24))}
+          size="small"
           fullWidth
           sx={{ backgroundColor: "white", borderRadius: 1 }}
         />
@@ -176,7 +144,7 @@ export default function IdeasSidebar({
             <>
               <button
                 onClick={() => {
-                  update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaHeadline);
+                  update_idea_title_api(editingIdeaId, editingIdeaTitle);
                   cancelEditIdea();
                 }}
                 className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
@@ -191,12 +159,11 @@ export default function IdeasSidebar({
               </button>
             </>
           ) : (
-            (ideaName.trim() || ideaHeadline.trim()) && (
+            ideaName.trim() && (
               <button
                 onClick={() => {
-                  create_idea(ideaName, ideaHeadline);
+                  create_idea(ideaName);
                   setIdeaName("");
-                  setIdeaHeadline("");
                 }}
                 className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
               >

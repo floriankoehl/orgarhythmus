@@ -16,6 +16,8 @@ export default function IdeaBinCategoryCanvas({
   newCategoryName, setNewCategoryName,
   newCategoryPublic, setNewCategoryPublic,
   create_category_api,
+  create_category_at,
+  drawCategoryMode, setDrawCategoryMode,
   archivedCategories,
   dockedCategories, setDockedCategories,
   showArchive, setShowArchive,
@@ -93,13 +95,13 @@ export default function IdeaBinCategoryCanvas({
   const dragItemRef = useRef(null);   // { ideaId, index }
   const dragOverRef = useRef(null);   // { ideaId, index }
 
-  // Auto-save headline with small debounce to batch rapid clicks
-  const updateDraftAndSave = useCallback((ideaId, newHeadline, idea) => {
-    setDraftHeadlines(prev => ({ ...prev, [ideaId]: newHeadline }));
+  // Auto-save title with small debounce to batch rapid clicks
+  const updateDraftAndSave = useCallback((ideaId, newTitle, idea) => {
+    setDraftHeadlines(prev => ({ ...prev, [ideaId]: newTitle }));
     // Debounce the API call
     if (saveTimerRef.current[ideaId]) clearTimeout(saveTimerRef.current[ideaId]);
     saveTimerRef.current[ideaId] = setTimeout(() => {
-      update_idea_title_api(ideaId, idea.title, newHeadline);
+      update_idea_title_api(ideaId, newTitle);
     }, 400);
   }, [update_idea_title_api]);
 
@@ -126,6 +128,10 @@ export default function IdeaBinCategoryCanvas({
   const marqueeRef = useRef(null);
   const marqueeJustFinishedRef = useRef(false);
 
+  // ── Draw-to-create ref (stable ref for the callback) ──
+  const drawModeRef = useRef(false);
+  useEffect(() => { drawModeRef.current = drawCategoryMode; }, [drawCategoryMode]);
+
   // ── Idea marquee inside categories ──
   const [ideaMarquee, setIdeaMarquee] = useState(null); // { x1, y1, x2, y2 } in client coords
   const ideaMarqueeRef = useRef(null);
@@ -140,8 +146,9 @@ export default function IdeaBinCategoryCanvas({
     const scrollTop = categoryContainerRef.current.scrollTop;
     const startX = e.clientX - rect.left + scrollLeft;
     const startY = e.clientY - rect.top + scrollTop;
-    setMarquee({ startX, startY, currentX: startX, currentY: startY });
-    marqueeRef.current = { startX, startY, ctrlKey: e.ctrlKey || e.metaKey };
+    const isDrawMode = drawModeRef.current;
+    setMarquee({ startX, startY, currentX: startX, currentY: startY, isDrawMode });
+    marqueeRef.current = { startX, startY, ctrlKey: e.ctrlKey || e.metaKey, isDrawMode };
 
     const handleMouseMove = (moveE) => {
       const cx = moveE.clientX - rect.left + categoryContainerRef.current.scrollLeft;
@@ -153,20 +160,41 @@ export default function IdeaBinCategoryCanvas({
       window.removeEventListener('mouseup', handleMouseUp);
       setMarquee(prev => {
         if (!prev) return null;
-        // Calculate which categories are inside the marquee
         const mx1 = Math.min(prev.startX, prev.currentX);
         const my1 = Math.min(prev.startY, prev.currentY);
         const mx2 = Math.max(prev.startX, prev.currentX);
         const my2 = Math.max(prev.startY, prev.currentY);
         const area = (mx2 - mx1) * (my2 - my1);
         if (area < 100) return null; // too small = just a click
+
+        // ── Draw-to-create category mode ──
+        if (prev.isDrawMode) {
+          const w = mx2 - mx1;
+          const h = my2 - my1;
+          if (w >= 80 && h >= 50) {
+            create_category_at({ x: Math.round(mx1), y: Math.round(my1), width: Math.round(w), height: Math.round(h) })
+              .then((newCatId) => {
+                if (newCatId) {
+                  // Put the new category into edit mode so user can name it
+                  setEditingCategoryId(String(newCatId));
+                  setEditingCategoryName("New Category");
+                  // Exit draw mode
+                  setDrawCategoryMode(false);
+                  setDisplayCategoryForm(false);
+                }
+              })
+              .catch(err => console.error("Draw-to-create failed:", err));
+          }
+          return null;
+        }
+
+        // ── Normal marquee selection ──
         const hit = [];
         activeCategories.forEach(([catKey, catData]) => {
           const cx = catData.x;
           const cy = catData.y + 36;
           const cw = catData.width;
           const ch = catData.height;
-          // Check if category rect overlaps marquee rect
           if (cx + cw > mx1 && cx < mx2 && cy + ch > my1 && cy < my2) {
             hit.push(catKey);
           }
@@ -189,7 +217,7 @@ export default function IdeaBinCategoryCanvas({
     };
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  }, [activeCategories, categoryContainerRef, setSelectedCategoryIds]);
+  }, [activeCategories, categoryContainerRef, setSelectedCategoryIds, create_category_at, setDrawCategoryMode, setDisplayCategoryForm, setEditingCategoryId, setEditingCategoryName]);
 
   // ── Idea marquee start handler ──
   const handleIdeaMarqueeStart = useCallback((e, catKey) => {
@@ -272,21 +300,40 @@ export default function IdeaBinCategoryCanvas({
   return (
     <div
       ref={categoryContainerRef}
-      className="flex-1 relative overflow-auto bg-gray-50"
+      className={`flex-1 relative overflow-auto bg-gray-50 ${drawCategoryMode ? "cursor-crosshair" : ""}`}
       onClick={handleCanvasClick}
       onMouseDown={(e) => { onCanvasMouseDown?.(); handleMarqueeStart(e); }}
     >
-      {/* Category marquee overlay */}
+      {/* Draw-mode hint */}
+      {drawCategoryMode && !marquee && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[9998] bg-amber-100 text-amber-800 text-[11px] font-medium px-3 py-1.5 rounded-lg border border-amber-300 shadow-sm pointer-events-none animate-pulse">
+          Draw a rectangle to create a category — or use the form above
+        </div>
+      )}
+      {/* Category marquee / draw overlay */}
       {marquee && (() => {
         const x = Math.min(marquee.startX, marquee.currentX);
         const y = Math.min(marquee.startY, marquee.currentY);
         const w = Math.abs(marquee.currentX - marquee.startX);
         const h = Math.abs(marquee.currentY - marquee.startY);
+        const isDrawing = marquee.isDrawMode;
         return w * h > 100 ? (
           <div
             style={{ left: x, top: y, width: w, height: h }}
-            className="absolute border-2 border-indigo-400 bg-indigo-100/20 rounded pointer-events-none z-[9999]"
-          />
+            className={`absolute border-2 rounded pointer-events-none z-[9999] ${
+              isDrawing
+                ? "border-amber-500 bg-amber-100/30 shadow-lg"
+                : "border-indigo-400 bg-indigo-100/20"
+            }`}
+          >
+            {isDrawing && w >= 80 && h >= 50 && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-[10px] text-amber-700 font-semibold bg-amber-50/90 px-2 py-0.5 rounded">
+                  {Math.round(w)} × {Math.round(h)}
+                </span>
+              </div>
+            )}
+          </div>
         ) : null;
       })()}
       {/* Idea marquee overlay (fixed position, rendered above everything) */}
@@ -594,7 +641,7 @@ export default function IdeaBinCategoryCanvas({
                 <span className={`font-semibold text-[11px] truncate flex items-center gap-1 ${hasConstantFilter ? "text-blue-800" : ""}`}>
                   {catData.name}
                   {headlineModeCategoryId === catKey && (
-                    <span className="text-[8px] font-medium text-purple-600 bg-purple-100 rounded px-1 py-0.5 flex-shrink-0">HEADLINE</span>
+                    <span className="text-[8px] font-medium text-purple-600 bg-purple-100 rounded px-1 py-0.5 flex-shrink-0">TITLE</span>
                   )}
                   {isAdopted && (
                     <span className="text-[9px] font-normal text-indigo-500 flex items-center gap-0.5" title={`By ${catData.owner_username}`}>
@@ -720,7 +767,7 @@ export default function IdeaBinCategoryCanvas({
                             <LinkIcon size={11} />
                             Unadopt category
                           </button>
-                          {/* Headline Mode */}
+                          {/* Title Mode */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -732,7 +779,7 @@ export default function IdeaBinCategoryCanvas({
                                 const drafts = {};
                                 catIdeas.forEach(id => {
                                   const idea = ideas[id];
-                                  if (idea) drafts[id] = idea.headline || "";
+                                  if (idea) drafts[id] = idea.title || "";
                                 });
                                 setDraftHeadlines(drafts);
                                 setHeadlineModeCategoryId(catKey);
@@ -745,7 +792,7 @@ export default function IdeaBinCategoryCanvas({
                             }`}
                           >
                             <Type size={11} />
-                            {headlineModeCategoryId === catKey ? "Exit Headline Mode" : "Headline Mode"}
+                            {headlineModeCategoryId === catKey ? "Exit Title Mode" : "Title Mode"}
                           </button>
                           {/* Dock to header */}
                           <button
@@ -868,7 +915,7 @@ export default function IdeaBinCategoryCanvas({
                           <Pencil size={11} />
                           Rename
                         </button>
-                        {/* Headline Mode */}
+                        {/* Title Mode */}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -877,11 +924,11 @@ export default function IdeaBinCategoryCanvas({
                               setHeadlineModeCategoryId(null);
                               setDraftHeadlines({});
                             } else {
-                              // Initialize draft headlines from current ideas
+                              // Initialize draft titles from current ideas
                               const drafts = {};
                               catIdeas.forEach(id => {
                                 const idea = ideas[id];
-                                if (idea) drafts[id] = idea.headline || "";
+                                if (idea) drafts[id] = idea.title || "";
                               });
                               setDraftHeadlines(drafts);
                               setHeadlineModeCategoryId(catKey);
@@ -894,7 +941,7 @@ export default function IdeaBinCategoryCanvas({
                           }`}
                         >
                           <Type size={11} />
-                          {headlineModeCategoryId === catKey ? "Exit Headline Mode" : "Headline Mode"}
+                          {headlineModeCategoryId === catKey ? "Exit Title Mode" : "Title Mode"}
                         </button>
                         {/* Dock to header */}
                         <button
@@ -929,20 +976,20 @@ export default function IdeaBinCategoryCanvas({
               }}
             >
               {headlineModeCategoryId === catKey ? (
-                /* ── HEADLINE MODE (full category or single idea) ── */
+                /* ── TITLE MODE (full category or single idea) ── */
                 <div className="p-1 space-y-1">
                   {catIdeas
                     .filter(ideaId => passesAllFilters(ideas[ideaId]))
                     .map((ideaId, idx) => {
                       const idea = ideas[ideaId];
                       if (!idea) return null;
-                      // Single-idea mode: only show headline builder for the selected idea
+                      // Single-idea mode: only show title builder for the selected idea
                       const showHeadlineBuilder = headlineModeIdeaId ? headlineModeIdeaId === ideaId : true;
                       if (!showHeadlineBuilder) {
                         return renderIdeaItem(ideaId, idx, { type: "category", id: catKey });
                       }
-                      const draft = draftHeadlines[ideaId] ?? idea.headline ?? "";
-                      const descWords = idea.title.split(/\s+/).filter(w => w.length > 0);
+                      const draft = draftHeadlines[ideaId] ?? idea.title ?? "";
+                      const descWords = (idea.description || "").split(/\s+/).filter(w => w.length > 0);
                       const draftWords = draft.split(/\s+/).filter(w => w.length > 0);
 
                       // Sort helper: reorder words by their position in the description
@@ -1041,7 +1088,7 @@ export default function IdeaBinCategoryCanvas({
                                   <X size={8} className="ml-0.5 opacity-60" />
                                 </span>
                               )) : (
-                                <span className="text-purple-400 italic text-[10px]">Click words below to build headline…</span>
+                                <span className="text-purple-400 italic text-[10px]">Click words below to build title…</span>
                               )}
                             </div>
                             <RotateCcw
@@ -1051,7 +1098,7 @@ export default function IdeaBinCategoryCanvas({
                                 updateDraftAndSave(ideaId, "", idea);
                               }}
                               className="text-gray-400 hover:text-red-500 cursor-pointer flex-shrink-0"
-                              title="Clear headline"
+                              title="Clear title"
                             />
                           </div>
                           {/* Word chips from description */}
@@ -1063,7 +1110,7 @@ export default function IdeaBinCategoryCanvas({
                                   key={i}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    const current = draftHeadlines[ideaId] ?? idea.headline ?? "";
+                                    const current = draftHeadlines[ideaId] ?? idea.title ?? "";
                                     let newHeadline;
                                     if (headlineOrderMode === "description") {
                                       // Insert word and re-sort by description position
@@ -1080,7 +1127,7 @@ export default function IdeaBinCategoryCanvas({
                                       ? "bg-purple-100 text-purple-400 border border-purple-200"
                                       : "bg-gray-100 text-gray-700 border border-gray-200 hover:bg-purple-100 hover:text-purple-700 hover:border-purple-300"
                                   }`}
-                                  title={`Add "${word}" to headline`}
+                                  title={`Add "${word}" to title`}
                                 >
                                   {word}
                                 </span>

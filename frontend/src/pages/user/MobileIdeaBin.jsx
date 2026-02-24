@@ -36,7 +36,6 @@ export default function MobileIdeaBin() {
   // ── Form state ──
   const [formMode, setFormMode] = useState("idea"); // "idea" | "category"
   const [ideaName, setIdeaName] = useState("");
-  const [ideaHeadline, setIdeaHeadline] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryPublic, setNewCategoryPublic] = useState(false);
@@ -45,7 +44,6 @@ export default function MobileIdeaBin() {
   // ── Edit state ──
   const [editingIdeaId, setEditingIdeaId] = useState(null);
   const [editingIdeaTitle, setEditingIdeaTitle] = useState("");
-  const [editingIdeaHeadline, setEditingIdeaHeadline] = useState("");
 
   // ── List filter ──
   const [listFilter, setListFilter] = useState("all");
@@ -106,7 +104,6 @@ export default function MobileIdeaBin() {
           id: p.id,
           idea_id: p.idea?.id,
           title: p.idea?.title || "",
-          headline: p.idea?.headline || "",
           description: p.idea?.description || "",
           legend_types: p.idea?.legend_types || {},
           owner: p.idea?.owner,
@@ -128,19 +125,17 @@ export default function MobileIdeaBin() {
   };
 
   const create_idea = async () => {
-    if (!ideaName.trim() && !ideaHeadline.trim()) return;
+    if (!ideaName.trim()) return;
     await authFetch(`${API}/user/ideas/create/`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        idea_name: ideaName.trim() || ideaHeadline.trim(),
+        idea_name: ideaName.trim(),
         description: "",
-        headline: ideaHeadline,
         ...(selectedCategoryId ? { category_id: parseInt(selectedCategoryId) } : {}),
       }),
     });
     setIdeaName("");
-    setIdeaHeadline("");
     fetch_all_ideas();
   };
 
@@ -177,7 +172,7 @@ export default function MobileIdeaBin() {
     fetch_all_ideas();
   };
 
-  const update_idea_title_api = async (placementId, title, headline = null) => {
+  const update_idea_title_api = async (placementId, title) => {
     if (!title.trim()) return;
     const idea = ideas[placementId];
     const ideaId = idea?.idea_id || placementId;
@@ -186,25 +181,17 @@ export default function MobileIdeaBin() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: ideaId, title }),
     });
-    if (headline !== null) {
-      await authFetch(`${API}/user/ideas/update_headline/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: ideaId, headline }),
-      });
-    }
     setIdeas(prev => {
       const updated = { ...prev };
       for (const [pid, p] of Object.entries(updated)) {
         if (p.idea_id === ideaId) {
-          updated[pid] = { ...p, title, headline: headline !== null ? headline : p.headline };
+          updated[pid] = { ...p, title };
         }
       }
       return updated;
     });
     setEditingIdeaId(null);
     setEditingIdeaTitle("");
-    setEditingIdeaHeadline("");
   };
 
   const assign_idea_to_category = async (placementId, categoryId) => {
@@ -540,12 +527,6 @@ export default function MobileIdeaBin() {
             {formMode === "idea" ? (
               /* ── Idea form ── */
               <div className="space-y-2">
-                <input
-                  value={editingIdeaId ? editingIdeaHeadline : ideaHeadline}
-                  onChange={(e) => editingIdeaId ? setEditingIdeaHeadline(e.target.value) : setIdeaHeadline(e.target.value)}
-                  placeholder="Headline (optional)"
-                  className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-200 bg-white"
-                />
                 <textarea
                   value={editingIdeaId ? editingIdeaTitle : ideaName}
                   onChange={(e) => editingIdeaId ? setEditingIdeaTitle(e.target.value) : setIdeaName(e.target.value)}
@@ -553,7 +534,7 @@ export default function MobileIdeaBin() {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
                       if (editingIdeaId) {
-                        update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaHeadline);
+                        update_idea_title_api(editingIdeaId, editingIdeaTitle);
                       } else {
                         create_idea();
                       }
@@ -614,20 +595,20 @@ export default function MobileIdeaBin() {
                   {editingIdeaId ? (
                     <>
                       <button
-                        onClick={() => update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaHeadline)}
+                        onClick={() => update_idea_title_api(editingIdeaId, editingIdeaTitle)}
                         className="flex-1 py-2 bg-blue-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-600 transition-colors"
                       >
                         Update
                       </button>
                       <button
-                        onClick={() => { setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline(""); }}
+                        onClick={() => { setEditingIdeaId(null); setEditingIdeaTitle(""); }}
                         className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-300 transition-colors"
                       >
                         Cancel
                       </button>
                     </>
                   ) : (
-                    (ideaName.trim() || ideaHeadline.trim()) && (
+                    ideaName.trim() && (
                       <button
                         onClick={create_idea}
                         className="flex-1 py-2 bg-green-500 text-white rounded-lg text-sm font-semibold hover:bg-green-600 transition-colors"
@@ -744,7 +725,6 @@ export default function MobileIdeaBin() {
                       setFormMode("idea");
                       setEditingIdeaId(idea.id);
                       setEditingIdeaTitle(idea.title);
-                      setEditingIdeaHeadline(idea.headline || "");
                       setSelectedCategoryId(idea.category || "");
                       window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
@@ -1207,9 +1187,6 @@ function IdeaCard({ idea, categories, activeCategories, expanded, onToggleExpand
           </div>
         )}
         <div className="flex-1 min-w-0">
-          {idea.headline && (
-            <p className="text-xs font-semibold text-gray-500 mb-0.5 truncate">{idea.headline}</p>
-          )}
           <p className={`text-sm text-gray-800 ${expanded ? "" : "line-clamp-2"}`}>{idea.title}</p>
         </div>
         <ChevronDown

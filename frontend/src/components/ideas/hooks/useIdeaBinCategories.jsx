@@ -68,7 +68,24 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
         setActiveContext(prev => prev ? { ...prev, category_ids: [...(prev.category_ids || []), data.category.id] } : prev);
       } catch (err) { console.error("Auto-assign category to context failed", err); }
     }
+    return data;
   }, [newCategoryName, newCategoryPublic, activeContext, setActiveContext, fetch_categories]);
+
+  // Create a category at a specific position/size (draw-to-create)
+  // Returns the new category ID so caller can put it in edit mode
+  const create_category_at = useCallback(async ({ x, y, width, height }) => {
+    const name = "New Category";
+    const data = await createCategoryApi(name, false, { x, y, width, height });
+    playSound('ideaCategoryCreate');
+    await fetch_categories();
+    if (activeContext && data.category?.id) {
+      try {
+        await assignCategoryToContextApi(data.category.id, activeContext.id);
+        setActiveContext(prev => prev ? { ...prev, category_ids: [...(prev.category_ids || []), data.category.id] } : prev);
+      } catch (err) { console.error("Auto-assign category to context failed", err); }
+    }
+    return data.category?.id || null;
+  }, [activeContext, setActiveContext, fetch_categories]);
 
   const set_position_category = useCallback(async (id, pos) => {
     await setPositionCategory(id, pos);
@@ -647,6 +664,7 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
 
     fetch_categories,
     create_category_api,
+    create_category_at,
     set_position_category,
     set_area_category,
     bring_to_front_category,

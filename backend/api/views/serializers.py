@@ -140,7 +140,7 @@ class IdeaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Idea
         fields = [
-            "id", "title", "headline", "description",
+            "id", "title", "description",
             "owner", "owner_username",
             "created_at", "archived", "placement_count", "placement_categories",
             "legend_types",

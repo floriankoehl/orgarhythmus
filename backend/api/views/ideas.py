@@ -42,7 +42,6 @@ def _get_accessible_category(user, category_id):
 def create_idea(request):
     title = request.data.get("idea_name", "").strip()
     description = request.data.get("description", "")
-    headline = request.data.get("headline", "").strip()
     category_id = request.data.get("category_id")  # optional — place into category
     if not title:
         return Response({"error": "Title is required"}, status=400)
@@ -51,7 +50,6 @@ def create_idea(request):
         owner=request.user,
         title=title,
         description=description,
-        headline=headline,
     )
 
     # Auto-create one placement (own OR adopted category)
@@ -294,14 +292,20 @@ def create_category(request):
     max_z = Category.objects.filter(owner=request.user).aggregate(db_models.Max('z_index'))['z_index__max']
     next_z = (max_z + 1) if max_z is not None else 0
 
+    # Optional position/size from draw-to-create
+    x = request.data.get("x", 50)
+    y = request.data.get("y", 50)
+    width = request.data.get("width", max(250, len(name) * 9 + 80))
+    height = request.data.get("height", 200)
+
     category = Category.objects.create(
         owner=request.user,
         name=name,
         is_public=is_public,
-        x=50,
-        y=50,
-        width=max(250, len(name) * 9 + 80),
-        height=200,
+        x=x,
+        y=y,
+        width=max(80, width),
+        height=max(50, height),
         z_index=next_z,
     )
     return Response({"created": True, "category": CategorySerializer(category).data})
@@ -418,17 +422,17 @@ def update_idea_title(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-def update_idea_headline(request):
+def update_idea_description(request):
     idea_id = request.data.get("id")
-    new_headline = request.data.get("headline", "").strip()
+    new_description = request.data.get("description", "")
     idea = Idea.objects.filter(id=idea_id, owner=request.user).first()
     if not idea:
         placement = IdeaPlacement.objects.filter(id=idea_id, idea__owner=request.user).first()
         if placement:
             idea = placement.idea
     if idea:
-        idea.headline = new_headline
-        idea.save()
+        idea.description = new_description
+        idea.save(update_fields=["description"])
     return Response({"updated": True})
 
 
@@ -666,7 +670,7 @@ def drop_category(request, category_id):
 @permission_classes([IsAuthenticated])
 def spinoff_idea(request):
     """Create a personal copy (spinoff) of another user's idea.
-    Copies title, headline, description, and all legend-type assignments.
+    Copies title, description, and all legend-type assignments.
     The new idea is owned by the requesting user with a fresh timestamp."""
     idea_id = request.data.get("idea_id")
     if not idea_id:
@@ -683,7 +687,6 @@ def spinoff_idea(request):
     new_idea = Idea.objects.create(
         owner=request.user,
         title=original.title,
-        headline=original.headline,
         description=original.description,
     )
 
@@ -1004,6 +1007,87 @@ def sync_category_ideas(request):
         detached = detach_qs.delete()[0]
 
     return Response({"added": added, "removed": removed, "detached": detached})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def merge_ideas(request):
+    """Merge one or more source ideas into a target idea.
+
+    - Appends each source's title + description to the target's description.
+    - Transfers legend-type assignments (skip duplicates).
+    - Reassigns placements from sources to the target (skip duplicate categories).
+    - Deletes the source ideas (cascade).
+
+    Body: { target_idea_id: int, source_idea_ids: [int, ...] }
+    """
+    target_idea_id = request.data.get("target_idea_id")
+    source_idea_ids = request.data.get("source_idea_ids", [])
+
+    if not target_idea_id or not source_idea_ids:
+        return Response({"error": "target_idea_id and source_idea_ids are required"}, status=400)
+
+    target = Idea.objects.filter(id=target_idea_id, owner=request.user).first()
+    if not target:
+        return Response({"error": "Target idea not found"}, status=404)
+
+    sources = list(
+        Idea.objects.filter(id__in=source_idea_ids, owner=request.user)
+        .exclude(id=target.id)
+        .prefetch_related('legend_types', 'placements')
+    )
+    if not sources:
+        return Response({"error": "No valid source ideas found"}, status=404)
+
+    # ── Build merged description ──
+    desc_parts = []
+    if target.description.strip():
+        desc_parts.append(target.description.strip())
+
+    for src in sources:
+        lines = []
+        if src.title and src.title.strip():
+            lines.append(src.title.strip())
+        if src.description and src.description.strip():
+            lines.append(src.description.strip())
+        if lines:
+            desc_parts.append("\n".join(lines))
+
+    target.description = "\n\n".join(desc_parts)
+    target.save(update_fields=["description"])
+
+    # ── Transfer legend-type assignments ──
+    existing_legend_ids = set(
+        IdeaLegendType.objects.filter(idea=target).values_list('legend_id', flat=True)
+    )
+    for src in sources:
+        for ilt in src.legend_types.all():
+            if ilt.legend_id not in existing_legend_ids:
+                ilt.idea = target
+                ilt.save(update_fields=["idea"])
+                existing_legend_ids.add(ilt.legend_id)
+
+    # ── Transfer placements ──
+    target_categories = set(
+        IdeaPlacement.objects.filter(idea=target).values_list('category_id', flat=True)
+    )
+    for src in sources:
+        for p in list(src.placements.all()):
+            if p.category_id in target_categories:
+                p.delete()
+            else:
+                p.idea = target
+                p.save(update_fields=["idea"])
+                target_categories.add(p.category_id)
+
+    # ── Delete source ideas ──
+    Idea.objects.filter(id__in=[s.id for s in sources]).delete()
+
+    ctx = {'request': request}
+    return Response({
+        "merged": True,
+        "target": IdeaSerializer(target, context=ctx).data,
+    })
 
 
 @api_view(["POST"])

@@ -12,6 +12,7 @@ import { useLegends } from "./useLegends";
 import { renderLegendTypeIcon } from "./legendTypeIcons";
 import IdeaBinConfirmModal from "./IdeaBinConfirmModal";
 import CollectConflictModal from "./CollectConflictModal";
+import IdeaBinMergeModal from "./IdeaBinMergeModal";
 import useIdeaBinWindow from "./useIdeaBinWindow";
 import IdeaBinTransformModal from "./IdeaBinTransformModal";
 import IdeaBinLegendPanel from "./IdeaBinLegendPanel";
@@ -32,6 +33,7 @@ import useIdeaBinKeyboard from "./hooks/useIdeaBinKeyboard";
 // Extracted API helpers
 import { authFetch, API } from "./api/authFetch";
 import { fetchContextsApi, saveContextFilterStateApi, setContextColorApi, fetchFilterPresetsApi, saveFilterPresetsApi } from "./api/contextApi";
+import { mergeIdeasApi } from "./api/ideaApi";
 
 // ───────────────────── Constants ─────────────────────
 const CATEGORY_THRESHOLD = 560; // show categories when wider than this
@@ -67,6 +69,12 @@ export default function IdeaBin() {
 
   // ───── Confirm modal ─────
   const [confirmModal, setConfirmModal] = useState(null);
+
+  // ───── Merge ideas ─────
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [autoMerge, setAutoMerge] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("ideabin_auto_merge") || "false"); } catch { return false; }
+  });
 
   // ───── Legends (context-scoped) — state only, hook call is below after activeContext ─────
   const [legendPanelCollapsed, setLegendPanelCollapsed] = useState(true);
@@ -122,6 +130,9 @@ export default function IdeaBin() {
   // ───── Archive ─────
   const [showArchive, setShowArchive] = useState(false);
 
+  // ───── Draw-to-create category mode ─────
+  const [drawCategoryMode, setDrawCategoryMode] = useState(false);
+
   // ───── Order numbers (lifted from canvas) ─────
   const [showOrderNumbers, setShowOrderNumbers] = useState(new Set());
 
@@ -160,10 +171,9 @@ export default function IdeaBin() {
     unassignedOrder, setUnassignedOrder,
     categoryOrders, setCategoryOrders,
     ideaName, setIdeaName,
-    ideaHeadline, setIdeaHeadline,
     editingIdeaId, setEditingIdeaId,
     editingIdeaTitle, setEditingIdeaTitle,
-    editingIdeaHeadline, setEditingIdeaHeadline,
+    editingIdeaDescription, setEditingIdeaDescription,
     collapsedIdeas, setCollapsedIdeas,
     ideaSettingsOpen, setIdeaSettingsOpen,
     wigglingIdeaId, setWigglingIdeaId,
@@ -214,6 +224,7 @@ export default function IdeaBin() {
     mergeCategoryTarget, setMergeCategoryTarget,
     fetch_categories,
     create_category_api,
+    create_category_at,
     set_position_category,
     set_area_category,
     bring_to_front_category,
@@ -622,6 +633,56 @@ export default function IdeaBin() {
     setFilterPresets(prev => prev.map((p, i) => i === index ? { ...p, name: newName } : p));
   };
 
+  // ── Merge ideas ──
+  const handleAutoMergeChange = useCallback((val) => {
+    setAutoMerge(val);
+    try { localStorage.setItem("ideabin_auto_merge", JSON.stringify(val)); } catch {}
+  }, []);
+
+  const executeMerge = useCallback(async (targetIdeaId, sourceIdeaIds) => {
+    try {
+      await mergeIdeasApi(targetIdeaId, sourceIdeaIds);
+      setSelectedIdeaIds(new Set());
+      setShowMergeModal(false);
+      fetch_all_ideas();
+    } catch (e) {
+      console.error("Merge failed", e);
+    }
+  }, [fetch_all_ideas]);
+
+  const handleMergeClick = useCallback(() => {
+    if (selectedIdeaIds.size < 2) return;
+
+    // Gather unique meta-idea info for the selected placements
+    const seen = new Set();
+    const selectedIdeas = [];
+    for (const pid of selectedIdeaIds) {
+      const idea = ideas[pid];
+      if (!idea || seen.has(idea.idea_id)) continue;
+      seen.add(idea.idea_id);
+      selectedIdeas.push({
+        placement_id: pid,
+        idea_id: idea.idea_id,
+        title: idea.title,
+        order_index: idea.order_index,
+      });
+    }
+    if (selectedIdeas.length < 2) return;
+
+    if (autoMerge) {
+      // Auto-merge: higher order_index = target
+      const target = selectedIdeas.reduce((best, cur) =>
+        cur.order_index > best.order_index ? cur : best
+      );
+      const sourceIds = selectedIdeas
+        .filter(i => i.idea_id !== target.idea_id)
+        .map(i => i.idea_id);
+      executeMerge(target.idea_id, sourceIds);
+    } else {
+      setShowMergeModal(selectedIdeas);
+    }
+  }, [selectedIdeaIds, ideas, autoMerge, executeMerge]);
+
   // Fetch teams & tasks when transform modal opens
   useEffect(() => {
     if (transformModal && projectId) {
@@ -667,7 +728,6 @@ export default function IdeaBin() {
                 body: JSON.stringify({
                   idea_name: mName,
                   description: mDesc,
-                  headline: mName,
                 }),
               });
               await delete_milestone(projectId, id);
@@ -710,7 +770,6 @@ export default function IdeaBin() {
                 body: JSON.stringify({
                   idea_name: tName,
                   description: ideaDesc,
-                  headline: tName,
                 }),
               });
               await delete_task(projectId, id);
@@ -748,7 +807,6 @@ export default function IdeaBin() {
                 body: JSON.stringify({
                   idea_name: teamName,
                   description: tIds.length > 0 ? `Team with ${tIds.length} task(s)` : "",
-                  headline: teamName,
                 }),
               });
               await delete_team(projectId, id);
@@ -771,7 +829,7 @@ export default function IdeaBin() {
   // ── Transform handlers ──
   const openTransform = (idea) => {
     setTransformModal({ idea, step: 'choose' });
-    setTransformName(idea.headline || idea.title.split(/\s+/).slice(0, 6).join(" "));
+    setTransformName(idea.title.split(/\s+/).slice(0, 6).join(" "));
     setTransformTeamId(null);
     setTransformTaskId(null);
     setTransformTaskSearch("");
@@ -792,7 +850,7 @@ export default function IdeaBin() {
     try {
       await createTaskForProject(projectId, {
         name: transformName.trim(),
-        description: transformModal.idea.title,
+        description: transformModal.idea.description || "",
         team_id: transformTeamId,
       });
       // Optionally delete the idea after transform
@@ -811,7 +869,7 @@ export default function IdeaBin() {
     try {
       await add_milestone(projectId, transformTaskId, {
         name: transformName.trim(),
-        description: transformModal.idea.title,
+        description: transformModal.idea.description || "",
       });
       await delete_idea(transformModal.idea.id);
       playSound('ideaTransform');
@@ -833,7 +891,7 @@ export default function IdeaBin() {
       ideas={ideas} dims={dims} draggingType={draggingType}
       dragSource={dragSource} hoverIndex={hoverIndex} prevIndex={prevIndex}
       editingIdeaId={editingIdeaId} setEditingIdeaId={setEditingIdeaId}
-      setEditingIdeaTitle={setEditingIdeaTitle} setEditingIdeaHeadline={setEditingIdeaHeadline}
+      setEditingIdeaTitle={setEditingIdeaTitle} setEditingIdeaDescription={setEditingIdeaDescription}
       hoverIdeaForType={hoverIdeaForType} sidebarHeadlineOnly={sidebarHeadlineOnly}
       showSidebarMeta={showSidebarMeta}
       collapsedIdeas={collapsedIdeas} setCollapsedIdeas={setCollapsedIdeas}
@@ -1329,11 +1387,14 @@ export default function IdeaBin() {
             newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName}
             newCategoryPublic={newCategoryPublic} setNewCategoryPublic={setNewCategoryPublic}
             create_category_api={create_category_api}
+            drawCategoryMode={drawCategoryMode} setDrawCategoryMode={setDrawCategoryMode}
             showOrderNumbers={showOrderNumbers} setShowOrderNumbers={setShowOrderNumbers}
             activeCategories={activeCategories}
             toggle_archive_idea={toggle_archive_idea}
             delete_meta_idea={delete_meta_idea}
             fetch_all_ideas={fetch_all_ideas}
+            selectedIdeaCount={selectedIdeaIds.size}
+            onMergeClick={handleMergeClick}
           />
 
           {/* ── Content area ── */}
@@ -1349,6 +1410,17 @@ export default function IdeaBin() {
                 conflictData={crConflictData}
                 onResolve={(resolution) => resolveCRConflicts(resolution)}
                 onCancel={() => setCrConflictData(null)}
+              />
+            )}
+
+            {/* Merge ideas modal */}
+            {showMergeModal && Array.isArray(showMergeModal) && (
+              <IdeaBinMergeModal
+                selectedIdeas={showMergeModal}
+                onMerge={executeMerge}
+                onCancel={() => setShowMergeModal(false)}
+                autoMerge={autoMerge}
+                setAutoMerge={handleAutoMergeChange}
               />
             )}
 
@@ -1413,30 +1485,6 @@ export default function IdeaBin() {
                 )}
                 <TextField
                   inputRef={headlineInputRef}
-                  value={editingIdeaId ? editingIdeaHeadline : ideaHeadline}
-                  onChange={(e) => {
-                    if (editingIdeaId) setEditingIdeaHeadline(e.target.value);
-                    else setIdeaHeadline(e.target.value);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      if (editingIdeaId) {
-                        update_idea_title_api(editingIdeaId, editingIdeaTitle || editingIdeaHeadline, editingIdeaHeadline);
-                        setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline("");
-                      } else { create_idea(); }
-                    } else if (e.key === "Escape" && editingIdeaId) {
-                      setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline("");
-                    }
-                  }}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  label="Headline (optional)"
-                  variant="outlined"
-                  size="small"
-                  fullWidth
-                  sx={{ backgroundColor: "white", borderRadius: 1, marginBottom: 0.5, "& .MuiInputLabel-root": { fontSize: 11 }, "& .MuiInputLabel-shrink": { fontSize: 12 }, "& .MuiInputBase-input": { fontSize: 12, padding: "6px 10px", caretColor: "#1f2937", color: "#1f2937" } }}
-                />
-                <TextField
                   value={editingIdeaId ? editingIdeaTitle : ideaName}
                   onChange={(e) => {
                     if (editingIdeaId) setEditingIdeaTitle(e.target.value);
@@ -1446,47 +1494,66 @@ export default function IdeaBin() {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
                       if (editingIdeaId) {
-                        update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaHeadline);
-                        setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline("");
+                        update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaDescription);
+                        setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription("");
                       } else { create_idea(); }
                     } else if (e.key === "Escape" && editingIdeaId) {
-                      setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline("");
+                      setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription("");
                     }
                   }}
                   onMouseDown={(e) => e.stopPropagation()}
                   label={editingIdeaId ? "Edit your idea..." : "What's your idea?"}
                   variant="outlined"
-                  multiline
-                  minRows={2}
-                  maxRows={20}
+                  size="small"
                   fullWidth
-                  sx={{
-                    backgroundColor: "white", borderRadius: 1,
-                    "& .MuiInputBase-root": { resize: "vertical", overflow: "auto", maxHeight: 400, alignItems: "flex-start" },
-                    "& .MuiInputBase-input": { fontSize: 12, caretColor: "#1f2937", color: "#1f2937" },
-                  }}
+                  sx={{ backgroundColor: "white", borderRadius: 1, marginBottom: 0.5, "& .MuiInputLabel-root": { fontSize: 11 }, "& .MuiInputLabel-shrink": { fontSize: 12 }, "& .MuiInputBase-input": { fontSize: 12, padding: "6px 10px", caretColor: "#1f2937", color: "#1f2937" } }}
                 />
+                {editingIdeaId && (
+                  <TextField
+                    value={editingIdeaDescription}
+                    onChange={(e) => setEditingIdeaDescription(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription("");
+                      }
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    label="Description (optional)"
+                    variant="outlined"
+                    multiline
+                    minRows={2}
+                    maxRows={10}
+                    fullWidth
+                    sx={{
+                      backgroundColor: "white", borderRadius: 1, marginTop: 0.5,
+                      "& .MuiInputBase-root": { resize: "vertical", overflow: "auto", maxHeight: 300, alignItems: "flex-start" },
+                      "& .MuiInputBase-input": { fontSize: 11, caretColor: "#1f2937", color: "#6b7280" },
+                      "& .MuiInputLabel-root": { fontSize: 11 },
+                      "& .MuiInputLabel-shrink": { fontSize: 12 },
+                    }}
+                  />
+                )}
                 <div className="flex gap-1.5 mt-1.5">
                   {editingIdeaId ? (
                     <>
                       <button
                         onClick={() => {
-                          update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaHeadline);
-                          setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline("");
+                          update_idea_title_api(editingIdeaId, editingIdeaTitle, editingIdeaDescription);
+                          setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription("");
                         }}
                         className="px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-[11px]"
                       >
                         Update
                       </button>
                       <button
-                        onClick={() => { setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaHeadline(""); }}
+                        onClick={() => { setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription(""); }}
                         className="px-2 py-0.5 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 text-[11px]"
                       >
                         Cancel
                       </button>
                     </>
                   ) : (
-                    (ideaName.trim() || ideaHeadline.trim()) && (
+                    ideaName.trim() && (
                       <button
                         onClick={create_idea}
                         className="px-2 py-0.5 bg-green-500 text-white rounded hover:bg-green-600 text-[11px]"
@@ -1706,6 +1773,8 @@ export default function IdeaBin() {
                 newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName}
                 newCategoryPublic={newCategoryPublic} setNewCategoryPublic={setNewCategoryPublic}
                 create_category_api={create_category_api}
+                create_category_at={create_category_at}
+                drawCategoryMode={drawCategoryMode} setDrawCategoryMode={setDrawCategoryMode}
                 archivedCategories={archivedCategories}
                 dockedCategories={dockedCategories} setDockedCategories={setDockedCategories}
                 showArchive={showArchive} setShowArchive={setShowArchive}

@@ -90,11 +90,6 @@ export default function CollectConflictModal({
                   <span className="text-[12px] font-semibold text-gray-800 truncate flex-1">
                     {idea.title}
                   </span>
-                  {idea.headline && (
-                    <span className="text-[10px] text-gray-400 truncate max-w-[140px]">
-                      {idea.headline}
-                    </span>
-                  )}
                   {hasRemoval && (
                     <span className="text-[9px] text-green-600 font-medium flex-shrink-0">✓ resolved</span>
                   )}

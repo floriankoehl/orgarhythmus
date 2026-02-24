@@ -11,7 +11,6 @@ export async function fetchAllIdeas() {
       id: p.id,
       idea_id: p.idea?.id,
       title: p.idea?.title || "",
-      headline: p.idea?.headline || "",
       description: p.idea?.description || "",
       legend_types: p.idea?.legend_types || {},
       owner: p.idea?.owner,
@@ -30,14 +29,13 @@ export async function fetchAllIdeas() {
   return { ideas: obj, order: data?.order || [], categoryOrders: data?.category_orders || {} };
 }
 
-export async function createIdeaApi(ideaName, description, headline, categoryId) {
+export async function createIdeaApi(ideaName, description, categoryId) {
   await authFetch(`${API}/user/ideas/create/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       idea_name: ideaName,
       description: description || "",
-      headline: headline || "",
       ...(categoryId ? { category_id: parseInt(categoryId) } : {}),
     }),
   });
@@ -59,11 +57,11 @@ export async function updateIdeaTitleApi(ideaId, title) {
   });
 }
 
-export async function updateIdeaHeadlineApi(ideaId, headline) {
-  await authFetch(`${API}/user/ideas/update_headline/`, {
+export async function updateIdeaDescriptionApi(ideaId, description) {
+  await authFetch(`${API}/user/ideas/update_description/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: ideaId, headline }),
+    body: JSON.stringify({ id: ideaId, description }),
   });
 }
 
@@ -211,4 +209,13 @@ export async function fetchArchivedIdeasApi() {
   const res = await authFetch(`${API}/user/ideas/archived/`);
   const data = await res.json();
   return data?.ideas || [];
+}
+
+export async function mergeIdeasApi(targetIdeaId, sourceIdeaIds) {
+  const res = await authFetch(`${API}/user/ideas/merge/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ target_idea_id: targetIdeaId, source_idea_ids: sourceIdeaIds }),
+  });
+  return res.json();
 }

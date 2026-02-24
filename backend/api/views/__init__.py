@@ -129,7 +129,7 @@ from .ideas import (
     bring_to_front_category,
     rename_category,
     update_idea_title,
-    update_idea_headline,
+    update_idea_description,
     toggle_archive_category,
     toggle_public_category,
     assign_idea_legend_type,
@@ -160,6 +160,7 @@ from .ideas import (
     batch_set_archive,
     get_archived_ideas,
     update_category_filter_config,
+    merge_ideas,
 )
 
 from .notifications import (

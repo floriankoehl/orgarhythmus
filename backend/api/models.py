@@ -553,7 +553,6 @@ class Idea(models.Model):
     """
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="owned_ideas", null=True, blank=True)
     title = models.CharField(max_length=500)
-    headline = models.CharField(max_length=200, blank=True, default="")
     description = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     archived = models.BooleanField(default=False)

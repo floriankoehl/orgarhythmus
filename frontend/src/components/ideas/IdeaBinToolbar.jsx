@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Layers, ListOrdered, Globe, Lock } from "lucide-react";
+import { Layers, ListOrdered, Globe, Lock, Merge } from "lucide-react";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
@@ -23,6 +23,8 @@ export default function IdeaBinToolbar({
   newCategoryName, setNewCategoryName,
   newCategoryPublic, setNewCategoryPublic,
   create_category_api,
+  // draw-to-create
+  drawCategoryMode, setDrawCategoryMode,
   // order numbers
   showOrderNumbers, setShowOrderNumbers,
   activeCategories,
@@ -30,6 +32,9 @@ export default function IdeaBinToolbar({
   toggle_archive_idea,
   delete_meta_idea,
   fetch_all_ideas,
+  // merge
+  selectedIdeaCount,
+  onMergeClick,
 }) {
   const ctxColor = activeContext?.color;
 
@@ -106,10 +111,10 @@ export default function IdeaBinToolbar({
               value={newCategoryName}
               onChange={e => setNewCategoryName(e.target.value)}
               onKeyDown={e => {
-                if (e.key === "Enter") create_category_api();
-                else if (e.key === "Escape") { setDisplayCategoryForm(false); setNewCategoryName(""); setNewCategoryPublic(false); }
+                if (e.key === "Enter") { create_category_api(); setDrawCategoryMode(false); }
+                else if (e.key === "Escape") { setDisplayCategoryForm(false); setNewCategoryName(""); setNewCategoryPublic(false); setDrawCategoryMode(false); }
               }}
-              placeholder="Category name..."
+              placeholder="Category name…"
               className="text-xs px-2 py-0.5 border border-gray-300 rounded outline-none w-28"
               style={{ borderColor: ctxColor ? `color-mix(in srgb, ${ctxColor} 30%, #ccc)` : undefined }}
             />
@@ -125,7 +130,7 @@ export default function IdeaBinToolbar({
               {newCategoryPublic ? <Globe size={9} /> : <Lock size={9} />}
             </button>
             <button
-              onClick={create_category_api}
+              onClick={() => { create_category_api(); setDrawCategoryMode(false); }}
               className="text-[9px] px-1.5 py-0.5 rounded font-medium"
               style={{
                 backgroundColor: ctxColor ? `color-mix(in srgb, ${ctxColor} 35%, #fff)` : "#fbbf24",
@@ -134,13 +139,16 @@ export default function IdeaBinToolbar({
             >
               ✓
             </button>
-            <button onClick={() => { setDisplayCategoryForm(false); setNewCategoryName(""); setNewCategoryPublic(false); }} className="text-[9px] px-1 py-0.5 bg-gray-200 rounded hover:bg-gray-300">
+            <button onClick={() => { setDisplayCategoryForm(false); setNewCategoryName(""); setNewCategoryPublic(false); setDrawCategoryMode(false); }} className="text-[9px] px-1 py-0.5 bg-gray-200 rounded hover:bg-gray-300">
               ✕
             </button>
+            <span className="text-[9px] text-amber-600 font-medium ml-0.5">
+              or draw on canvas ↗
+            </span>
           </div>
         ) : (
           <button
-            onClick={() => setDisplayCategoryForm(true)}
+            onClick={() => { setDisplayCategoryForm(true); setDrawCategoryMode(true); }}
             className="text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 border"
             style={{
               backgroundColor: ctxColor ? `color-mix(in srgb, ${ctxColor} 15%, #fff)` : "#fef3c7",
@@ -247,6 +255,18 @@ export default function IdeaBinToolbar({
         </div>
       )}
 
+      {/* ── Merge button (visible when 2+ ideas selected) ── */}
+      {viewMode === "ideas" && selectedIdeaCount >= 2 && (
+        <button
+          onClick={onMergeClick}
+          className="text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 border flex items-center gap-0.5 bg-indigo-50 text-indigo-700 border-indigo-300 hover:bg-indigo-100 transition-colors"
+          title={`Merge ${selectedIdeaCount} selected ideas`}
+        >
+          <Merge size={10} />
+          Merge ({selectedIdeaCount})
+        </button>
+      )}
+
       {/* spacer */}
       <div className="flex-1" />
 
@@ -263,7 +283,7 @@ export default function IdeaBinToolbar({
         REFACTOR
       </button>
 
-      {/* ── Headline mode toggle ── */}
+      {/* ── Title mode toggle ── */}
       <button
         className={`text-[9px] px-2 py-0.5 rounded font-bold tracking-wide cursor-pointer transition-all ${
           (headlineModeCategoryId || headlineModeIdeaId)
@@ -277,14 +297,14 @@ export default function IdeaBinToolbar({
           }
         }}
         title={headlineModeIdeaId
-          ? `Headline mode for "${(ideas[headlineModeIdeaId]?.headline || ideas[headlineModeIdeaId]?.title || '...').slice(0, 30)}" (H to toggle)`
+          ? `Title mode for "${(ideas[headlineModeIdeaId]?.title || '...').slice(0, 30)}" (H to toggle)`
           : headlineModeCategoryId
-          ? `Headline mode for "${categories[headlineModeCategoryId]?.name || '...'}" (H to toggle)`
-          : "Headline mode OFF (H to toggle)"
+          ? `Title mode for "${categories[headlineModeCategoryId]?.name || '...'}" (H to toggle)`
+          : "Title mode OFF (H to toggle)"
         }
       >
-        HEADLINE{headlineModeIdeaId
-          ? ` · ${(ideas[headlineModeIdeaId]?.headline || ideas[headlineModeIdeaId]?.title || '').slice(0, 20)}${(ideas[headlineModeIdeaId]?.headline || ideas[headlineModeIdeaId]?.title || '').length > 20 ? '…' : ''}`
+        TITLE{headlineModeIdeaId
+          ? ` · ${(ideas[headlineModeIdeaId]?.title || '').slice(0, 20)}${(ideas[headlineModeIdeaId]?.title || '').length > 20 ? '…' : ''}`
           : headlineModeCategoryId && categories[headlineModeCategoryId] ? ` · ${categories[headlineModeCategoryId].name}` : ''}
       </button>
     </div>

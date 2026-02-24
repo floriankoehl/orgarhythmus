@@ -32,10 +32,10 @@ export default function IdeaBinTransformModal({
 
         {/* Idea preview */}
         <div className="px-4 pt-3 pb-2 border-b border-gray-100 bg-gray-50">
-          {transformModal.idea.headline && (
-            <p className="text-xs font-semibold text-gray-700">{transformModal.idea.headline}</p>
+          <p className="text-xs font-semibold text-gray-700">{transformModal.idea.title}</p>
+          {transformModal.idea.description && (
+            <p className="text-[11px] text-gray-500 line-clamp-2 mt-0.5">{transformModal.idea.description}</p>
           )}
-          <p className="text-[11px] text-gray-500 line-clamp-2 mt-0.5">{transformModal.idea.title}</p>
         </div>
 
         <div className="p-4">
