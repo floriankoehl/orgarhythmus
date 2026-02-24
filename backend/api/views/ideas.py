@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..models import Category, Idea, IdeaPlacement, IdeaLegendType, IdeaUpvote, IdeaComment, LegendType, Legend, UserLegendAdoption, UserCategoryAdoption, UserContextAdoption, CategoryContextPlacement, LegendContextPlacement
+from ..models import Category, Context, Idea, IdeaPlacement, IdeaLegendType, IdeaUpvote, IdeaComment, LegendType, Legend, UserCategoryAdoption, UserContextAdoption, CategoryContextPlacement
 from .serializers import IdeaSerializer, IdeaPlacementSerializer, CategorySerializer, LegendTypeSerializer, LegendSerializer
 
 
@@ -529,38 +529,24 @@ def remove_all_idea_legend_types(request):
 
     return Response({"removed": True})
 
-# ---- LEGEND ENDPOINTS ----
+# ---- LEGEND ENDPOINTS (context-scoped) ----
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def get_user_legends(request):
-    """Get all legends owned by, adopted by, or accessible via adopted contexts for the current user."""
-    owned = Legend.objects.filter(owner=request.user)
-    adopted_ids = set(UserLegendAdoption.objects.filter(user=request.user).values_list('legend_id', flat=True))
-    adopted = Legend.objects.filter(id__in=adopted_ids).exclude(owner=request.user)
-
-    # Legends from adopted contexts
-    adopted_ctx_ids = list(UserContextAdoption.objects.filter(user=request.user).values_list('context_id', flat=True))
-    already_ids = set(owned.values_list('id', flat=True)) | adopted_ids
-    ctx_legend_ids = []
-    if adopted_ctx_ids:
-        ctx_legend_ids = list(
-            LegendContextPlacement.objects.filter(context_id__in=adopted_ctx_ids)
-            .values_list('legend_id', flat=True)
-        )
-        ctx_legend_ids = [lid for lid in ctx_legend_ids if lid not in already_ids]
-    ctx_legends = Legend.objects.filter(id__in=ctx_legend_ids) if ctx_legend_ids else []
-
-    all_legends = list(owned) + list(adopted) + list(ctx_legends)
-    return Response({"legends": LegendSerializer(all_legends, many=True).data})
+def get_context_legends(request, context_id):
+    """Get all legends that belong to a specific context."""
+    ctx = get_object_or_404(Context, id=context_id, owner=request.user)
+    legends = Legend.objects.filter(context=ctx)
+    return Response({"legends": LegendSerializer(legends, many=True).data})
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-def create_legend(request):
-    """Create a new legend for the current user."""
+def create_legend(request, context_id):
+    """Create a new legend inside a context."""
+    ctx = get_object_or_404(Context, id=context_id, owner=request.user)
     name = request.data.get("name", "New Legend").strip()
-    leg = Legend.objects.create(owner=request.user, name=name)
+    leg = Legend.objects.create(owner=request.user, context=ctx, name=name)
     return Response({"created": True, "legend": LegendSerializer(leg).data})
 
 
@@ -585,33 +571,6 @@ def delete_legend(request, legend_id):
     return Response({"deleted": True})
 
 
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def adopt_legend(request, legend_id):
-    """Adopt another user's legend."""
-    leg = get_object_or_404(Legend, id=legend_id)
-    if leg.owner == request.user:
-        return Response({"error": "Cannot adopt your own legend"}, status=400)
-    UserLegendAdoption.objects.get_or_create(user=request.user, legend=leg)
-    return Response({"adopted": True})
-
-
-@api_view(["DELETE"])
-@permission_classes([IsAuthenticated])
-def drop_legend(request, legend_id):
-    """Drop (unadopt) a legend."""
-    UserLegendAdoption.objects.filter(user=request.user, legend_id=legend_id).delete()
-    return Response({"dropped": True})
-
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def get_all_public_legends(request):
-    """Get all legends (for browsing and adoption)."""
-    legs = Legend.objects.exclude(owner=request.user)
-    return Response({"legends": LegendSerializer(legs, many=True).data})
-
-
 # ---- TYPE (LegendType) ENDPOINTS ----
 
 @api_view(["GET"])
@@ -619,17 +578,10 @@ def get_all_public_legends(request):
 def get_legend_types(request, legend_id):
     """Get all types for a specific legend."""
     leg = get_object_or_404(Legend, id=legend_id)
-    is_owner = leg.owner == request.user
-    is_adopter = UserLegendAdoption.objects.filter(user=request.user, legend=leg).exists()
-    # Also allow access if user adopted a context that contains this legend
-    is_ctx_adopter = False
-    if not is_owner and not is_adopter:
-        adopted_ctx_ids = list(UserContextAdoption.objects.filter(user=request.user).values_list('context_id', flat=True))
-        if adopted_ctx_ids:
-            is_ctx_adopter = LegendContextPlacement.objects.filter(
-                context_id__in=adopted_ctx_ids, legend=leg
-            ).exists()
-    if not is_owner and not is_adopter and not is_ctx_adopter:
+    # Access check: user must own the context the legend belongs to
+    if leg.context and leg.context.owner != request.user:
+        return Response({"detail": "Forbidden"}, status=403)
+    elif not leg.context and leg.owner != request.user:
         return Response({"detail": "Forbidden"}, status=403)
     types = LegendType.objects.filter(legend=leg)
     return Response({"types": LegendTypeSerializer(types, many=True).data})

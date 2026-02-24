@@ -332,6 +332,7 @@ class DemoDate(models.Model):
 
 class Legend(models.Model):
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="legends")
+    context = models.ForeignKey('Context', on_delete=models.CASCADE, related_name="legends", null=True, blank=True)
     name = models.CharField(max_length=200, default="General")
     created_at = models.DateTimeField(auto_now_add=True)
 

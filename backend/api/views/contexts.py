@@ -8,7 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 
-from ..models import Category, Context, CategoryContextPlacement, Legend, LegendContextPlacement, UserContextAdoption
+from ..models import Category, Context, CategoryContextPlacement, Legend, UserContextAdoption
 from .serializers import ContextSerializer
 
 
@@ -30,8 +30,7 @@ def get_all_contexts(request):
         d["adopted"] = False
         cat_placements = CategoryContextPlacement.objects.filter(context=ctx).order_by("order_index")
         d["category_ids"] = [p.category_id for p in cat_placements]
-        leg_placements = LegendContextPlacement.objects.filter(context=ctx).order_by("order_index")
-        d["legend_ids"] = [p.legend_id for p in leg_placements]
+        d["legend_ids"] = list(Legend.objects.filter(context=ctx).values_list('id', flat=True))
         data.append(d)
 
     for ctx in adopted:
@@ -39,8 +38,7 @@ def get_all_contexts(request):
         d["adopted"] = True
         cat_placements = CategoryContextPlacement.objects.filter(context=ctx).order_by("order_index")
         d["category_ids"] = [p.category_id for p in cat_placements]
-        leg_placements = LegendContextPlacement.objects.filter(context=ctx).order_by("order_index")
-        d["legend_ids"] = [p.legend_id for p in leg_placements]
+        d["legend_ids"] = list(Legend.objects.filter(context=ctx).values_list('id', flat=True))
         data.append(d)
 
     return Response(data)
@@ -83,8 +81,7 @@ def update_context(request, context_id):
     d = ContextSerializer(ctx).data
     placements = CategoryContextPlacement.objects.filter(context=ctx).order_by("order_index")
     d["category_ids"] = [p.category_id for p in placements]
-    leg_placements = LegendContextPlacement.objects.filter(context=ctx).order_by("order_index")
-    d["legend_ids"] = [p.legend_id for p in leg_placements]
+    d["legend_ids"] = list(Legend.objects.filter(context=ctx).values_list('id', flat=True))
     return Response(d)
 
 
@@ -247,46 +244,6 @@ def safe_context_order(request):
 
 
 # ─────────────────────────────────────────────
-#  LEGEND ↔ CONTEXT PLACEMENT
-# ─────────────────────────────────────────────
-
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def assign_legend_to_context(request):
-    """Place a legend into a context."""
-    legend_id = request.data.get("legend_id")
-    context_id = request.data.get("context_id")
-    try:
-        legend = Legend.objects.get(pk=legend_id, owner=request.user)
-        ctx = Context.objects.get(pk=context_id, owner=request.user)
-    except (Legend.DoesNotExist, Context.DoesNotExist):
-        return Response({"error": "Not found"}, status=404)
-
-    placement, created = LegendContextPlacement.objects.get_or_create(
-        legend=legend, context=ctx,
-        defaults={"order_index": LegendContextPlacement.objects.filter(context=ctx).count()},
-    )
-    return Response({"status": "assigned", "created": created})
-
-
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def remove_legend_from_context(request):
-    """Remove a legend from a context."""
-    legend_id = request.data.get("legend_id")
-    context_id = request.data.get("context_id")
-    try:
-        placement = LegendContextPlacement.objects.get(
-            legend_id=legend_id,
-            context_id=context_id,
-            context__owner=request.user,
-        )
-    except LegendContextPlacement.DoesNotExist:
-        return Response({"error": "Not found"}, status=404)
-    placement.delete()
-    return Response({"status": "removed"})
-
-
 # ─────────────────────────────────────────────
 #  PUBLIC / ADOPTION
 # ─────────────────────────────────────────────

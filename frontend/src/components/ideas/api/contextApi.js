@@ -42,14 +42,6 @@ export async function assignCategoryToContextApi(categoryId, contextId) {
   });
 }
 
-export async function assignLegendToContextApi(legendId, contextId) {
-  await authFetch(`${API}/user/contexts/assign_legend/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ legend_id: legendId, context_id: contextId }),
-  });
-}
-
 export async function setContextPositionApi(contextId, x, y) {
   await authFetch(`${API}/user/contexts/set_position/`, {
     method: "POST",

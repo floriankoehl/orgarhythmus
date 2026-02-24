@@ -170,14 +170,13 @@ urlpatterns = [
     path("user/filter-presets/", views.get_filter_presets, name="get_filter_presets"),
     path("user/filter-presets/save/", views.save_filter_presets, name="save_filter_presets"),
 
-    # Legends (user-scoped)
-    path("user/legends/", views.get_user_legends, name="get_user_legends"),
-    path("user/legends/create/", views.create_legend, name="create_legend"),
-    path("user/legends/public/", views.get_all_public_legends, name="get_all_public_legends"),
+    # Legends (context-scoped)
+    path("user/contexts/<int:context_id>/legends/", views.get_context_legends, name="get_context_legends"),
+    path("user/contexts/<int:context_id>/legends/create/", views.create_legend, name="create_legend"),
+
+    # Per-legend endpoints (legend already belongs to a context)
     path("user/legends/<int:legend_id>/", views.update_legend, name="update_legend"),
     path("user/legends/<int:legend_id>/delete/", views.delete_legend, name="delete_legend"),
-    path("user/legends/<int:legend_id>/adopt/", views.adopt_legend, name="adopt_legend"),
-    path("user/legends/<int:legend_id>/drop/", views.drop_legend, name="drop_legend"),
 
     # Legend types
     path("user/legends/<int:legend_id>/types/", views.get_legend_types, name="get_legend_types"),
@@ -212,8 +211,6 @@ urlpatterns = [
     path("user/contexts/assign_category/", views.assign_category_to_context, name="assign_category_to_context"),
     path("user/contexts/remove_category/", views.remove_category_from_context, name="remove_category_from_context"),
     path("user/contexts/safe_order/", views.safe_context_order, name="safe_context_order"),
-    path("user/contexts/assign_legend/", views.assign_legend_to_context, name="assign_legend_to_context"),
-    path("user/contexts/remove_legend/", views.remove_legend_from_context, name="remove_legend_from_context"),
     path("user/contexts/toggle_public/", views.toggle_public_context, name="toggle_public_context"),
 
     # Context adoption

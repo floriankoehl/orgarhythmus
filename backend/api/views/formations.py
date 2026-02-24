@@ -166,14 +166,12 @@ def get_default_context(request):
     ctx = Context.objects.filter(owner=request.user, is_default=True).first()
     if not ctx:
         return Response({"context": None})
-    from .contexts import get_all_contexts  # noqa – reuse serialization
-    from ..models import CategoryContextPlacement, LegendContextPlacement
+    from ..models import CategoryContextPlacement, Legend
     from .serializers import ContextSerializer
     d = ContextSerializer(ctx).data
     d["adopted"] = False
     d["is_default"] = ctx.is_default
     cat_placements = CategoryContextPlacement.objects.filter(context=ctx).order_by("order_index")
     d["category_ids"] = [p.category_id for p in cat_placements]
-    leg_placements = LegendContextPlacement.objects.filter(context=ctx).order_by("order_index")
-    d["legend_ids"] = [p.legend_id for p in leg_placements]
+    d["legend_ids"] = list(Legend.objects.filter(context=ctx).values_list('id', flat=True))
     return Response({"context": d})

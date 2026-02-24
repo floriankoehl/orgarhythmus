@@ -31,7 +31,7 @@ import useIdeaBinKeyboard from "./hooks/useIdeaBinKeyboard";
 
 // Extracted API helpers
 import { authFetch, API } from "./api/authFetch";
-import { fetchContextsApi, saveContextFilterStateApi, setContextColorApi, assignLegendToContextApi, fetchFilterPresetsApi, saveFilterPresetsApi } from "./api/contextApi";
+import { fetchContextsApi, saveContextFilterStateApi, setContextColorApi, fetchFilterPresetsApi, saveFilterPresetsApi } from "./api/contextApi";
 
 // ───────────────────── Constants ─────────────────────
 const CATEGORY_THRESHOLD = 560; // show categories when wider than this
@@ -68,8 +68,7 @@ export default function IdeaBin() {
   // ───── Confirm modal ─────
   const [confirmModal, setConfirmModal] = useState(null);
 
-  // ───── Legends ─────
-  const dims = useLegends();
+  // ───── Legends (context-scoped) — state only, hook call is below after activeContext ─────
   const [legendPanelCollapsed, setLegendPanelCollapsed] = useState(true);
   const [showCreateLegend, setShowCreateLegend] = useState(false);
   const [newLegendName, setNewLegendName] = useState("");
@@ -95,6 +94,9 @@ export default function IdeaBin() {
 
   // ───── Active context (entered context mode) ─────
   const [activeContext, setActiveContext] = useState(null); // null or {id, name, color, category_ids, legend_ids}
+
+  // ───── Legends (context-scoped) ─────
+  const dims = useLegends(activeContext?.id);
   const [showContextColorPicker, setShowContextColorPicker] = useState(false);
   const [contextsList, setContextsList] = useState([]); // [{id, name, color, category_ids, legend_ids}, ...]
   const [showContextSelector, setShowContextSelector] = useState(false);
@@ -365,13 +367,16 @@ export default function IdeaBin() {
   }, [categories, categoryContainerRef]);
 
   // ── Enter / exit context mode ──
-  const saveContextFilterState = async (contextId, filters, combineMode, stacked, stackMode) => {
+  const saveContextFilterState = async (contextId) => {
     try {
       await saveContextFilterStateApi(contextId, {
-        legend_filters: filters,
-        filter_combine_mode: combineMode,
-        stacked_filters: stacked || [],
-        stack_combine_mode: stackMode || "or",
+        legend_filters: legendFilters,
+        filter_combine_mode: filterCombineMode,
+        stacked_filters: stackedFilters || [],
+        stack_combine_mode: stackCombineMode || "or",
+        global_type_filter: globalTypeFilter || [],
+        active_legend_id: dims.activeLegendId || null,
+        legend_panel_collapsed: legendPanelCollapsed,
       });
     } catch (e) { console.error("Failed to save context filter state", e); }
   };
@@ -379,7 +384,7 @@ export default function IdeaBin() {
     // ctx = {id, name, color, category_ids, legend_ids, filter_state}
     // Save current context's filter state before switching
     if (activeContext) {
-      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode, stackedFilters, stackCombineMode);
+      saveContextFilterState(activeContext.id);
     }
     // Re-fetch fresh context data to get latest category_ids and legend_ids
     try {
@@ -391,13 +396,19 @@ export default function IdeaBin() {
     } catch (e) { /* fall back to the passed ctx */ }
     setActiveContext(ctx);
     setViewMode("ideas");
-    // Restore filter state from the entered context
+    // Restore full filter + legend state from the entered context
     if (ctx.filter_state) {
       setLegendFilters(ctx.filter_state.legend_filters || []);
       setFilterCombineMode(ctx.filter_state.filter_combine_mode || "and");
       setStackedFilters(ctx.filter_state.stacked_filters || []);
       setStackCombineMode(ctx.filter_state.stack_combine_mode || "or");
-      setGlobalTypeFilter([]);
+      setGlobalTypeFilter(ctx.filter_state.global_type_filter || []);
+      if (ctx.filter_state.active_legend_id !== undefined) {
+        dims.setActiveLegendId(ctx.filter_state.active_legend_id);
+      }
+      if (ctx.filter_state.legend_panel_collapsed !== undefined) {
+        setLegendPanelCollapsed(ctx.filter_state.legend_panel_collapsed);
+      }
     } else {
       setLegendFilters([]);
       setFilterCombineMode("and");
@@ -412,7 +423,7 @@ export default function IdeaBin() {
   const exitContext = () => {
     // Save current context's filter state before exiting
     if (activeContext) {
-      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode, stackedFilters, stackCombineMode);
+      saveContextFilterState(activeContext.id);
     }
     setActiveContext(null);
     setLegendFilters([]);
@@ -551,10 +562,10 @@ export default function IdeaBin() {
   useEffect(() => {
     if (!activeContext) return;
     const timer = setTimeout(() => {
-      saveContextFilterState(activeContext.id, legendFilters, filterCombineMode, stackedFilters, stackCombineMode);
+      saveContextFilterState(activeContext.id);
     }, 600);
     return () => clearTimeout(timer);
-  }, [legendFilters, filterCombineMode, stackedFilters, stackCombineMode]);
+  }, [legendFilters, filterCombineMode, stackedFilters, stackCombineMode, globalTypeFilter, dims.activeLegendId, legendPanelCollapsed]);
 
   // ── Auto-save filter presets at user level ──
   const presetsLoadedRef = useRef(false);
@@ -864,11 +875,6 @@ export default function IdeaBin() {
     return true;
   });
   const unassignedCount = unassignedOrder.length;
-
-  // Filtered legends for legend panel when inside a context
-  const filteredLegends = activeContext
-    ? dims.legends.filter(l => (activeContext.legend_ids || []).includes(l.id))
-    : dims.legends;
 
   // ── Advanced idea filter (multi-legend, stackable, AND/OR, include/exclude) ──
   const hasLegendFilters = legendFilters.length > 0 || stackedFilters.length > 0;
@@ -1650,7 +1656,7 @@ export default function IdeaBin() {
                 showCreateType={showCreateType} setShowCreateType={setShowCreateType}
                 newTypeColor={newTypeColor} setNewTypeColor={setNewTypeColor}
                 newTypeName={newTypeName} setNewTypeName={setNewTypeName}
-                legendsList={activeContext ? filteredLegends : undefined}
+                legendsList={dims.legends}
                 createCategoryFromFilter={createCategoryFromFilter}
                 batchRemoveLegendType={batchRemoveLegendType}
                 activeContext={activeContext}
@@ -1667,16 +1673,7 @@ export default function IdeaBin() {
                 stackFilterPreset={stackFilterPreset}
                 deleteFilterPreset={deleteFilterPreset}
                 renameFilterPreset={renameFilterPreset}
-                onLegendCreated={activeContext ? async () => {
-                  // After legend creation, assign the newest legend to the active context
-                  const latest = dims.legends[dims.legends.length - 1];
-                  if (latest) {
-                    try {
-                      await assignLegendToContextApi(latest.id, activeContext.id);
-                      setActiveContext(prev => prev ? { ...prev, legend_ids: [...(prev.legend_ids || []), latest.id] } : prev);
-                    } catch (err) { console.error("Auto-assign legend to context failed", err); }
-                  }
-                } : undefined}
+                onLegendCreated={undefined}
               />
             </div>
 
