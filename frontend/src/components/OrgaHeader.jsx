@@ -260,7 +260,7 @@ export default function OrgaHeader() {
 
             <div className="flex justify-between gap-2">
               <NavLink
-                to="/my-ideas"
+                to="/mobile-ideas"
                 onClick={() => setIsOpen(false)}
                 className={({ isActive }) => getLinkClasses(isActive)}
               >

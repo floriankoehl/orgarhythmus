@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
-import { Lightbulb, Layers, Filter, Plus, X, ChevronDown, ChevronUp, Trash2, Pencil, Check, LogIn, FolderPlus, Save } from "lucide-react";
+import { Lightbulb, Layers, Filter, Plus, X, ChevronDown, ChevronUp, Trash2, Pencil, Check, LogIn, FolderPlus, Save, Tag, Palette, Download, Upload } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { useAuth } from "../../auth/AuthContext";
 import { useLegends } from "../../components/ideas/useLegends";
+import { exportIdeabinApi, importIdeabinApi } from "../../components/ideas/api/exportApi";
 
 // ─── Auth fetch helper ───
 function authFetch(url, options = {}) {
@@ -22,7 +23,8 @@ function authFetch(url, options = {}) {
 export default function MobileIdeaBin() {
   const { user } = useAuth();
   const API = `${BASE_URL}/api`;
-  const dims = useLegends();
+  const [activeContext, setActiveContext] = useState(null);
+  const dims = useLegends(activeContext?.id);
 
   // ── Tab state ──
   const [activeTab, setActiveTab] = useState("ideas"); // "ideas" | "contexts"
@@ -44,6 +46,7 @@ export default function MobileIdeaBin() {
   // ── Edit state ──
   const [editingIdeaId, setEditingIdeaId] = useState(null);
   const [editingIdeaTitle, setEditingIdeaTitle] = useState("");
+  const [editingIdeaDescription, setEditingIdeaDescription] = useState("");
 
   // ── List filter ──
   const [listFilter, setListFilter] = useState("all");
@@ -51,7 +54,6 @@ export default function MobileIdeaBin() {
 
   // ── Context state ──
   const [contexts, setContexts] = useState({});
-  const [activeContext, setActiveContext] = useState(null);
   const [newContextName, setNewContextName] = useState("");
   const [showContextForm, setShowContextForm] = useState(false);
   const [editingContextId, setEditingContextId] = useState(null);
@@ -68,6 +70,13 @@ export default function MobileIdeaBin() {
   const [showSavePreset, setShowSavePreset] = useState(false);
   const [presetName, setPresetName] = useState("");
   const [appliedPresetName, setAppliedPresetName] = useState("");
+
+  // ── Legend management ──
+  const [showCreateLegend, setShowCreateLegend] = useState(false);
+  const [newLegendName, setNewLegendName] = useState("");
+  const [showCreateType, setShowCreateType] = useState(false);
+  const [newTypeName, setNewTypeName] = useState("");
+  const [newTypeColor, setNewTypeColor] = useState("#6366f1");
 
   // ── Expanded idea cards ──
   const [expandedIdeas, setExpandedIdeas] = useState({});
@@ -192,6 +201,7 @@ export default function MobileIdeaBin() {
     });
     setEditingIdeaId(null);
     setEditingIdeaTitle("");
+    setEditingIdeaDescription("");
   };
 
   const assign_idea_to_category = async (placementId, categoryId) => {
@@ -201,6 +211,60 @@ export default function MobileIdeaBin() {
       body: JSON.stringify({ placement_id: placementId, category_id: categoryId }),
     });
     fetch_all_ideas();
+  };
+
+  const update_idea_description_api = async (ideaId, description) => {
+    await authFetch(`${API}/user/ideas/update_description/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: ideaId, description }),
+    });
+    setIdeas(prev => {
+      const updated = { ...prev };
+      for (const [pid, p] of Object.entries(updated)) {
+        if (p.idea_id === ideaId) {
+          updated[pid] = { ...p, description };
+        }
+      }
+      return updated;
+    });
+  };
+
+  const assign_idea_legend_type_api = async (ideaId, legendId, typeId) => {
+    await authFetch(`${API}/user/ideas/assign_legend_type/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idea_id: ideaId, legend_id: legendId, legend_type_id: typeId }),
+    });
+    fetch_all_ideas();
+  };
+
+  const handleExportBackup = async () => {
+    try {
+      const blob = await exportIdeabinApi(activeContext?.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ideabin_backup_${activeContext ? activeContext.name : "global"}_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) { console.error("Export failed", err); }
+  };
+
+  const handleImportBackup = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!window.confirm(`Import backup from "${file.name}"? This will REPLACE all current data${activeContext ? ` in context "${activeContext.name}"` : ""}.`)) {
+      e.target.value = "";
+      return;
+    }
+    try {
+      await importIdeabinApi(file, activeContext?.id);
+      await fetch_categories();
+      await fetch_all_ideas();
+      await fetch_contexts();
+    } catch (err) { console.error("Import failed", err); }
+    e.target.value = "";
   };
 
   // ── Context API ──
@@ -394,6 +458,9 @@ export default function MobileIdeaBin() {
 
   // Active non-archived categories
   const activeCategories = Object.values(categories).filter(c => !c.archived);
+  const visibleCategories = activeContext
+    ? activeCategories.filter(c => (activeContext.category_ids || []).includes(c.id))
+    : activeCategories;
 
   // ── Toggle type for filter modal ──
   const toggleTypeForLegend = (legendId, typeId) => {
@@ -461,6 +528,13 @@ export default function MobileIdeaBin() {
         >
           <Layers size={16} />
           <span className="flex-1 truncate">{activeContext.name}</span>
+          <button onClick={handleExportBackup} className="p-1 rounded hover:bg-white/20" title="Export backup">
+            <Download size={15} />
+          </button>
+          <label className="p-1 rounded hover:bg-white/20 cursor-pointer" title="Import backup">
+            <Upload size={15} />
+            <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
+          </label>
           <button onClick={exitContext} className="p-1 rounded hover:bg-white/20">
             <X size={16} />
           </button>
@@ -491,6 +565,18 @@ export default function MobileIdeaBin() {
           <Layers size={16} />
           Contexts
         </button>
+        {/* Global export/import (when no context) */}
+        {!activeContext && (
+          <div className="flex items-center gap-1 px-2">
+            <button onClick={handleExportBackup} className="p-1.5 text-gray-400 hover:text-indigo-600 rounded" title="Export backup">
+              <Download size={16} />
+            </button>
+            <label className="p-1.5 text-gray-400 hover:text-indigo-600 rounded cursor-pointer" title="Import backup">
+              <Upload size={16} />
+              <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
+            </label>
+          </div>
+        )}
       </div>
 
       {/* ═══════ IDEAS TAB ═══════ */}
@@ -534,7 +620,9 @@ export default function MobileIdeaBin() {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
                       if (editingIdeaId) {
+                        const idea = ideas[editingIdeaId];
                         update_idea_title_api(editingIdeaId, editingIdeaTitle);
+                        if (idea) update_idea_description_api(idea.idea_id, editingIdeaDescription);
                       } else {
                         create_idea();
                       }
@@ -574,7 +662,7 @@ export default function MobileIdeaBin() {
                         >
                           No category (unassigned)
                         </div>
-                        {activeCategories.map(cat => (
+                        {visibleCategories.map(cat => (
                           <div
                             key={cat.id}
                             onClick={() => { setSelectedCategoryId(cat.id); setShowCategoryPicker(false); }}
@@ -590,18 +678,33 @@ export default function MobileIdeaBin() {
                   )}
                 </div>
 
+                {/* Description field (edit mode) */}
+                {editingIdeaId && (
+                  <textarea
+                    value={editingIdeaDescription}
+                    onChange={(e) => setEditingIdeaDescription(e.target.value)}
+                    placeholder="Description (optional)..."
+                    rows={3}
+                    className="w-full text-sm px-3 py-2 border border-gray-300 rounded-lg outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 bg-white resize-none"
+                  />
+                )}
+
                 {/* Form buttons */}
                 <div className="flex gap-2">
                   {editingIdeaId ? (
                     <>
                       <button
-                        onClick={() => update_idea_title_api(editingIdeaId, editingIdeaTitle)}
+                        onClick={() => {
+                          const idea = ideas[editingIdeaId];
+                          update_idea_title_api(editingIdeaId, editingIdeaTitle);
+                          if (idea) update_idea_description_api(idea.idea_id, editingIdeaDescription);
+                        }}
                         className="flex-1 py-2 bg-blue-500 text-white rounded-lg text-sm font-semibold hover:bg-blue-600 transition-colors"
                       >
                         Update
                       </button>
                       <button
-                        onClick={() => { setEditingIdeaId(null); setEditingIdeaTitle(""); }}
+                        onClick={() => { setEditingIdeaId(null); setEditingIdeaTitle(""); setEditingIdeaDescription(""); }}
                         className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-300 transition-colors"
                       >
                         Cancel
@@ -718,13 +821,18 @@ export default function MobileIdeaBin() {
                     key={idea.id}
                     idea={idea}
                     categories={categories}
-                    activeCategories={activeCategories}
+                    activeCategories={visibleCategories}
                     expanded={!!expandedIdeas[idea.id]}
                     onToggleExpand={() => setExpandedIdeas(prev => ({ ...prev, [idea.id]: !prev[idea.id] }))}
+                    activeLegendId={dims.activeLegendId}
+                    legendTypes={dims.legendTypes}
+                    onAssignLegendType={(ideaId, legendId, typeId) => assign_idea_legend_type_api(ideaId, legendId, typeId)}
+                    onUpdateDescription={(ideaId, desc) => update_idea_description_api(ideaId, desc)}
                     onEdit={() => {
                       setFormMode("idea");
                       setEditingIdeaId(idea.id);
                       setEditingIdeaTitle(idea.title);
+                      setEditingIdeaDescription(idea.description || "");
                       setSelectedCategoryId(idea.category || "");
                       window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
@@ -759,20 +867,120 @@ export default function MobileIdeaBin() {
 
             {showFilterPanel && (
               <div className="px-3 pb-3 max-h-[40vh] overflow-y-auto">
-                {/* Legend selector */}
-                {displayLegends.length > 0 && (
-                  <div className="mb-2">
+                {/* Legend selector + management */}
+                <div className="mb-2">
+                  <div className="flex items-center gap-1 mb-1">
                     <select
                       value={dims.activeLegendId || ""}
                       onChange={(e) => dims.setActiveLegendId(e.target.value ? parseInt(e.target.value) : null)}
-                      className="w-full text-sm px-2 py-1.5 border border-gray-300 rounded-lg outline-none bg-white"
+                      className="flex-1 text-sm px-2 py-1.5 border border-gray-300 rounded-lg outline-none bg-white"
                     >
+                      {displayLegends.length === 0 && <option value="">No legends</option>}
                       {displayLegends.map(d => (
                         <option key={d.id} value={d.id}>{d.name}</option>
                       ))}
                     </select>
+                    {activeContext && (
+                      <button
+                        onClick={() => setShowCreateLegend(!showCreateLegend)}
+                        className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100"
+                        title="Create legend"
+                      >
+                        <Plus size={14} />
+                      </button>
+                    )}
                   </div>
-                )}
+
+                  {/* Create legend form */}
+                  {showCreateLegend && activeContext && (
+                    <div className="flex gap-1 mb-2">
+                      <input
+                        autoFocus
+                        value={newLegendName}
+                        onChange={(e) => setNewLegendName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && newLegendName.trim()) {
+                            dims.create_legend(newLegendName.trim());
+                            setNewLegendName("");
+                            setShowCreateLegend(false);
+                          }
+                        }}
+                        placeholder="Legend name..."
+                        className="flex-1 text-xs px-2 py-1 border border-gray-300 rounded outline-none focus:border-indigo-400"
+                      />
+                      <button
+                        onClick={() => {
+                          if (newLegendName.trim()) {
+                            dims.create_legend(newLegendName.trim());
+                            setNewLegendName("");
+                            setShowCreateLegend(false);
+                          }
+                        }}
+                        className="px-2 py-1 bg-indigo-500 text-white rounded text-xs"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Create type under active legend */}
+                  {dims.activeLegendId && activeContext && (
+                    <div className="mb-2">
+                      {showCreateType ? (
+                        <div className="flex gap-1 items-center">
+                          <input
+                            type="color"
+                            value={newTypeColor}
+                            onChange={(e) => setNewTypeColor(e.target.value)}
+                            className="w-7 h-7 rounded cursor-pointer border-0 p-0"
+                          />
+                          <input
+                            autoFocus
+                            value={newTypeName}
+                            onChange={(e) => setNewTypeName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && newTypeName.trim()) {
+                                dims.create_type(newTypeName.trim(), newTypeColor);
+                                setNewTypeName("");
+                                setNewTypeColor("#6366f1");
+                                setShowCreateType(false);
+                              }
+                            }}
+                            placeholder="Type name..."
+                            className="flex-1 text-xs px-2 py-1 border border-gray-300 rounded outline-none focus:border-indigo-400"
+                          />
+                          <button
+                            onClick={() => {
+                              if (newTypeName.trim()) {
+                                dims.create_type(newTypeName.trim(), newTypeColor);
+                                setNewTypeName("");
+                                setNewTypeColor("#6366f1");
+                                setShowCreateType(false);
+                              }
+                            }}
+                            className="px-2 py-1 bg-green-500 text-white rounded text-xs"
+                          >
+                            Add
+                          </button>
+                          <button
+                            onClick={() => setShowCreateType(false)}
+                            className="p-1 text-gray-400 hover:text-gray-600"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setShowCreateType(true)}
+                          className="text-xs text-green-600 hover:text-green-700 font-medium flex items-center gap-1"
+                        >
+                          <Palette size={11} />
+                          Add type to &ldquo;{displayLegends.find(l => l.id === dims.activeLegendId)?.name || "legend"}&rdquo;
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {/* Quick type filter pills */}
                 {dims.activeLegendId && (
@@ -1167,8 +1375,10 @@ export default function MobileIdeaBin() {
 // ═══════════════════════════════════════════════
 // ═══════════  IDEA CARD  ════════════════════════
 // ═══════════════════════════════════════════════
-function IdeaCard({ idea, categories, activeCategories, expanded, onToggleExpand, onEdit, onDelete, onAssignCategory }) {
+function IdeaCard({ idea, categories, activeCategories, expanded, onToggleExpand, onEdit, onDelete, onAssignCategory, activeLegendId, legendTypes, onAssignLegendType, onUpdateDescription }) {
   const [showCatDropdown, setShowCatDropdown] = useState(false);
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [localDesc, setLocalDesc] = useState(idea.description || "");
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -1205,6 +1415,82 @@ function IdeaCard({ idea, categories, activeCategories, expanded, onToggleExpand
                   📂 {c.name}
                 </span>
               ))}
+            </div>
+          )}
+
+          {/* Description */}
+          {editingDesc ? (
+            <div className="space-y-1">
+              <textarea
+                autoFocus
+                value={localDesc}
+                onChange={(e) => setLocalDesc(e.target.value)}
+                rows={3}
+                placeholder="Add a description..."
+                className="w-full text-xs px-2 py-1.5 border border-gray-300 rounded-lg outline-none focus:border-blue-400 resize-none bg-white"
+              />
+              <div className="flex gap-1">
+                <button
+                  onClick={() => { onUpdateDescription(idea.idea_id, localDesc); setEditingDesc(false); }}
+                  className="px-2 py-1 bg-blue-500 text-white rounded text-xs font-medium"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={() => { setLocalDesc(idea.description || ""); setEditingDesc(false); }}
+                  className="px-2 py-1 bg-gray-200 text-gray-600 rounded text-xs"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setEditingDesc(true)}
+              className="text-left w-full"
+            >
+              {idea.description ? (
+                <p className="text-xs text-gray-500 italic line-clamp-3">{idea.description}</p>
+              ) : (
+                <p className="text-xs text-gray-300 italic">Tap to add description...</p>
+              )}
+            </button>
+          )}
+
+          {/* Legend type assignment */}
+          {activeLegendId && legendTypes && Object.keys(legendTypes).length > 0 && (
+            <div>
+              <span className="text-xs font-semibold text-gray-500 mb-1 block">
+                <Tag size={11} className="inline mr-1" />
+                Legend Type
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {Object.values(legendTypes).map(lt => {
+                  const currentType = idea.legend_types?.[String(activeLegendId)];
+                  const isAssigned = currentType?.legend_type_id === lt.id;
+                  return (
+                    <button
+                      key={lt.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAssignLegendType(idea.idea_id, activeLegendId, isAssigned ? null : lt.id);
+                      }}
+                      className={`px-2 py-1 rounded-full text-xs font-medium transition-all flex items-center gap-1 ${
+                        isAssigned
+                          ? "text-white shadow-sm ring-2 ring-offset-1"
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                      style={isAssigned ? { backgroundColor: lt.color, ringColor: lt.color } : {}}
+                    >
+                      <span
+                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: lt.color }}
+                      />
+                      {lt.name}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
