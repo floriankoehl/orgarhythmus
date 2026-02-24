@@ -10,10 +10,13 @@ import {
   deleteFormationApi,
   toggleDefaultFormationApi,
   loadDefaultFormationApi,
+  getDefaultContextApi,
+  toggleDefaultContextApi,
 } from "../api/formationApi";
 import {
   setContextPositionApi,
   setContextAreaApi,
+  fetchContextsApi,
 } from "../api/contextApi";
 import {
   setPositionCategory,
@@ -22,10 +25,12 @@ import {
 
 /**
  * Manages formation save/load/delete/rename/default logic.
+ * Formations are now scoped to a Context — each context has its own set of formations.
  *
- * deps — an object containing all the state getters & setters the formation
- * system needs to read from / write to. We thread them through to avoid
- * circular imports while keeping the hook self-contained.
+ * On initial load:
+ *  1. Fetch the user's default context (if any)
+ *  2. Enter that context
+ *  3. Load its default formation (if any)
  */
 export default function useIdeaBinFormations(deps) {
   const {
@@ -44,6 +49,8 @@ export default function useIdeaBinFormations(deps) {
     setActiveContext, setMinimizedCategories, setCollapsedIdeas,
     setSelectedCategoryIds, setShowMetaList, setDockedCategories,
     setCategories,
+    // context entry ref (from IdeaBin — a React ref that gets assigned after enterContext is defined)
+    enterContext: enterContextRef,
   } = deps;
 
   const [formations, setFormations] = useState([]);
@@ -52,19 +59,27 @@ export default function useIdeaBinFormations(deps) {
   const [editingFormationId, setEditingFormationId] = useState(null);
   const [editingFormationName, setEditingFormationName] = useState("");
 
-  const fetch_formations = useCallback(async () => {
+  // ── Fetch formations for the currently active context ──
+  const fetch_formations = useCallback(async (contextId) => {
+    const ctxId = contextId ?? activeContext?.id;
+    if (!ctxId) { setFormations([]); return; }
     try {
-      const list = await fetchFormationsApi();
+      const list = await fetchFormationsApi(ctxId);
       setFormations(list);
-    } catch (err) { console.error("Fetch formations failed", err); }
-  }, []);
+    } catch (err) { console.error("Fetch formations failed", err); setFormations([]); }
+  }, [activeContext]);
 
-  useEffect(() => { fetch_formations(); }, []);
+  // Re-fetch formations when context switches
+  useEffect(() => {
+    fetch_formations();
+  }, [activeContext?.id]);
 
-  /** Collect all saveable visual state into a single JSON-serialisable object. */
+  /** Collect all saveable visual state into a single JSON-serialisable object.
+   *  Note: active_context is NOT stored — the formation belongs to a context,
+   *  so the context is the parent container, not part of the formation state. */
   const collectFormationState = useCallback(() => {
     const state = {
-      version: 1,
+      version: 2,
       window_pos: windowPos,
       window_size: windowSize,
       is_maximized: isMaximized,
@@ -79,7 +94,6 @@ export default function useIdeaBinFormations(deps) {
       global_type_filter: globalTypeFilter,
       legend_filters: legendFilters,
       filter_combine_mode: filterCombineMode,
-      active_context: activeContext,
       minimized_categories: minimizedCategories,
       collapsed_ideas: collapsedIdeas,
       selected_category_ids: [...selectedCategoryIds],
@@ -98,7 +112,7 @@ export default function useIdeaBinFormations(deps) {
     return state;
   }, [windowPos, windowSize, isMaximized, viewMode, sidebarWidth, sidebarHeadlineOnly,
       showSidebarMeta, listFilter, showArchive, dims.activeLegendId, legendPanelCollapsed,
-      globalTypeFilter, legendFilters, filterCombineMode, activeContext,
+      globalTypeFilter, legendFilters, filterCombineMode,
       minimizedCategories, collapsedIdeas, selectedCategoryIds,
       showMetaList, dockedCategories, categories]);
 
@@ -120,6 +134,7 @@ export default function useIdeaBinFormations(deps) {
     if (state.global_type_filter) setGlobalTypeFilter(state.global_type_filter);
     if (state.legend_filters) setLegendFilters(state.legend_filters);
     if (state.filter_combine_mode) setFilterCombineMode(state.filter_combine_mode);
+    // Legacy: if a v1 formation stored active_context, apply it
     if (state.active_context !== undefined) setActiveContext(state.active_context);
     if (state.minimized_categories) setMinimizedCategories(state.minimized_categories);
     if (state.collapsed_ideas) setCollapsedIdeas(state.collapsed_ideas);
@@ -167,14 +182,15 @@ export default function useIdeaBinFormations(deps) {
   }, [categories, dims]);
 
   const save_formation = useCallback(async (name) => {
+    if (!activeContext?.id) return;
     const state = collectFormationState();
     try {
-      await saveFormationApi(name, state);
+      await saveFormationApi(activeContext.id, name, state);
       setFormationName("");
       fetch_formations();
       playSound('ideaCategoryCreate');
     } catch (err) { console.error("Save formation failed", err); }
-  }, [collectFormationState, fetch_formations]);
+  }, [collectFormationState, fetch_formations, activeContext]);
 
   const update_formation_state = useCallback(async (formationId) => {
     const state = collectFormationState();
@@ -213,18 +229,46 @@ export default function useIdeaBinFormations(deps) {
     } catch (err) { console.error("Toggle default formation failed", err); }
   }, []);
 
-  // Auto-load default formation on first mount
-  const defaultFormationLoaded = useRef(false);
+  // ── Default context toggle ──
+  const toggle_default_context = useCallback(async (contextId) => {
+    try {
+      return await toggleDefaultContextApi(contextId);
+    } catch (err) { console.error("Toggle default context failed", err); }
+  }, []);
+
+  // ── Auto-load default context + its default formation on first mount ──
+  const defaultLoaded = useRef(false);
   useEffect(() => {
-    if (defaultFormationLoaded.current) return;
-    defaultFormationLoaded.current = true;
+    if (defaultLoaded.current) return;
+    defaultLoaded.current = true;
     (async () => {
       try {
-        const data = await loadDefaultFormationApi();
-        if (data?.formation?.state) {
-          await applyFormationState(data.formation.state);
+        const data = await getDefaultContextApi();
+        if (data?.context) {
+          // Enter the default context
+          const ctx = {
+            id: data.context.id,
+            name: data.context.name,
+            color: data.context.color || null,
+            is_default: data.context.is_default || false,
+            category_ids: data.context.category_ids || [],
+            legend_ids: data.context.legend_ids || [],
+            filter_state: data.context.filter_state || null,
+          };
+          if (enterContextRef?.current) {
+            await enterContextRef.current(ctx);
+          } else {
+            setActiveContext(ctx);
+          }
+          // Load default formation for this context
+          try {
+            const fData = await loadDefaultFormationApi(ctx.id);
+            if (fData?.formation?.state) {
+              await applyFormationState(fData.formation.state);
+            }
+          } catch (err) { console.error("Load default formation failed", err); }
         }
-      } catch (err) { console.error("Load default formation failed", err); }
+      } catch (err) { console.error("Load default context failed", err); }
     })();
   }, []);
 
@@ -244,5 +288,6 @@ export default function useIdeaBinFormations(deps) {
     load_formation,
     delete_formation,
     toggle_default_formation,
+    toggle_default_context,
   };
 }

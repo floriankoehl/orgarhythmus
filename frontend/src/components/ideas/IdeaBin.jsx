@@ -274,6 +274,9 @@ export default function IdeaBin() {
     undo, redo,
   });
 
+  // Ref so the formations hook can call enterContext (defined below)
+  const enterContextRef = useRef(null);
+
   // ── Formations hook ──
   const {
     formations,
@@ -288,6 +291,7 @@ export default function IdeaBin() {
     load_formation,
     delete_formation,
     toggle_default_formation,
+    toggle_default_context,
   } = useIdeaBinFormations({
     windowPos, windowSize, isMaximized, viewMode, sidebarWidth,
     sidebarHeadlineOnly, showSidebarMeta, listFilter, showArchive,
@@ -302,6 +306,7 @@ export default function IdeaBin() {
     setActiveContext, setMinimizedCategories, setCollapsedIdeas,
     setSelectedCategoryIds, setShowMetaList, setDockedCategories,
     setCategories,
+    enterContext: enterContextRef,
   });
 
   // ═══════════════════════════════════════════════════════
@@ -336,6 +341,28 @@ export default function IdeaBin() {
       setContextsList(list);
     } catch (e) { console.error("Failed to fetch contexts list", e); }
   };
+
+  // ── Scroll canvas to show all context categories ──
+  const scrollCanvasToContextCategories = useCallback((categoryIds) => {
+    const container = categoryContainerRef.current;
+    if (!container || !categoryIds?.length) return;
+
+    // Compute bounding box of all context categories
+    let minX = Infinity, minY = Infinity;
+    for (const catId of categoryIds) {
+      const cat = categories[catId];
+      if (!cat || cat.archived) continue;
+      if (cat.x < minX) minX = cat.x;
+      if (cat.y < minY) minY = cat.y;
+    }
+
+    if (minX === Infinity) return; // no visible categories
+
+    // Scroll so the top-left of the bounding box is near the top-left of the container,
+    // with a small margin
+    container.scrollLeft = Math.max(0, minX - 12);
+    container.scrollTop = Math.max(0, minY - 12);
+  }, [categories, categoryContainerRef]);
 
   // ── Enter / exit context mode ──
   const saveContextFilterState = async (contextId, filters, combineMode, stacked, stackMode) => {
@@ -379,6 +406,9 @@ export default function IdeaBin() {
       setGlobalTypeFilter([]);
     }
   };
+  // Keep ref in sync so the formations hook can call enterContext
+  enterContextRef.current = enterContext;
+
   const exitContext = () => {
     // Save current context's filter state before exiting
     if (activeContext) {
@@ -473,6 +503,16 @@ export default function IdeaBin() {
       fetchFilterPresetsApi().then(p => setFilterPresets(p)).catch(() => {});
     }
   }, [isOpen]);
+
+  // ── When active context changes, scroll canvas to show all its categories ──
+  useEffect(() => {
+    if (!activeContext?.category_ids?.length) return;
+    // Small delay to ensure React has rendered the filtered categories
+    const timer = setTimeout(() => {
+      scrollCanvasToContextCategories(activeContext.category_ids);
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [activeContext?.id]);
 
   // ── Live filter: periodically refetch categories that have live mode on ──
   useEffect(() => {
@@ -1027,19 +1067,37 @@ export default function IdeaBin() {
                         All (no context)
                       </button>
                       {contextsList.map(ctx => (
-                        <button
+                        <div
                           key={ctx.id}
-                          onClick={() => { enterContext(ctx); setShowContextSelector(false); }}
                           className={`w-full text-left px-3 py-1.5 text-[11px] transition-colors flex items-center gap-2 ${
                             activeContext?.id === ctx.id ? "bg-amber-100 text-amber-800 font-medium" : "text-gray-700 hover:bg-gray-50"
                           }`}
                         >
+                          {/* Default-context star toggle */}
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const result = await toggle_default_context(ctx.id);
+                              if (result) {
+                                setContextsList(prev => prev.map(c => ({ ...c, is_default: c.id === ctx.id ? result.is_default : false })));
+                              }
+                            }}
+                            className="flex-shrink-0"
+                            title={ctx.is_default ? "Remove as default context" : "Set as default context"}
+                          >
+                            <Star size={10} className={ctx.is_default ? "fill-amber-400 text-amber-400" : "text-gray-300 hover:text-amber-400"} />
+                          </button>
                           <span
                             className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-gray-200"
                             style={{ backgroundColor: ctx.color || "#94a3b8" }}
                           />
-                          <span className="truncate">{ctx.name}</span>
-                        </button>
+                          <button
+                            className="truncate flex-1 text-left"
+                            onClick={() => { enterContext(ctx); setShowContextSelector(false); }}
+                          >
+                            {ctx.name}
+                          </button>
+                        </div>
                       ))}
                       {contextsList.length === 0 && (
                         <div className="px-3 py-1.5 text-[10px] text-gray-400 italic">No contexts yet</div>
@@ -1138,8 +1196,11 @@ export default function IdeaBin() {
                       className="absolute right-0 top-full mt-1 z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[220px] max-h-[340px] overflow-y-auto"
                       onMouseDown={(e) => e.stopPropagation()}
                     >
-                      <div className="px-3 pb-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Formations</div>
+                      <div className="px-3 pb-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Formations{activeContext ? ` — ${activeContext.name}` : ""}</div>
                       {/* Save new */}
+                      {!activeContext ? (
+                        <div className="px-3 py-1.5 text-[10px] text-gray-400 italic">Enter a context to manage formations</div>
+                      ) : (
                       <div className="px-2 pb-1.5 flex items-center gap-1">
                         <input
                           type="text"
@@ -1158,6 +1219,7 @@ export default function IdeaBin() {
                           <Save size={12} />
                         </button>
                       </div>
+                      )}
                       {formations.length === 0 && (
                         <div className="px-3 py-2 text-[10px] text-gray-400 italic">No saved formations yet</div>
                       )}

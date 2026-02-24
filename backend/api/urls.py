@@ -221,10 +221,14 @@ urlpatterns = [
     path("contexts/<int:context_id>/adopt/", views.adopt_context, name="adopt_context"),
     path("contexts/<int:context_id>/drop/", views.drop_context, name="drop_context"),
 
-    # Formations (saved IdeaBin layouts)
-    path("user/formations/", views.list_formations, name="list_formations"),
-    path("user/formations/create/", views.create_formation, name="create_formation"),
-    path("user/formations/default/", views.get_default_formation, name="get_default_formation"),
+    # Default context
+    path("user/contexts/default/", views.get_default_context, name="get_default_context"),
+    path("user/contexts/<int:context_id>/set-default/", views.set_default_context, name="set_default_context"),
+
+    # Formations (saved IdeaBin layouts — scoped to a context)
+    path("user/contexts/<int:context_id>/formations/", views.list_formations, name="list_formations"),
+    path("user/contexts/<int:context_id>/formations/create/", views.create_formation, name="create_formation"),
+    path("user/contexts/<int:context_id>/formations/default/", views.get_default_formation, name="get_default_formation"),
     path("user/formations/<int:formation_id>/", views.get_formation, name="get_formation"),
     path("user/formations/<int:formation_id>/update/", views.update_formation, name="update_formation"),
     path("user/formations/<int:formation_id>/delete/", views.delete_formation, name="delete_formation"),

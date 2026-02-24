@@ -1,13 +1,13 @@
 import { authFetch, API } from "./authFetch";
 
-export async function fetchFormationsApi() {
-  const res = await authFetch(`${API}/user/formations/`);
+export async function fetchFormationsApi(contextId) {
+  const res = await authFetch(`${API}/user/contexts/${contextId}/formations/`);
   const data = await res.json();
   return data?.formations || [];
 }
 
-export async function saveFormationApi(name, state) {
-  await authFetch(`${API}/user/formations/create/`, {
+export async function saveFormationApi(contextId, name, state) {
+  await authFetch(`${API}/user/contexts/${contextId}/formations/create/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, state }),
@@ -47,7 +47,22 @@ export async function toggleDefaultFormationApi(formationId) {
   return res.json();
 }
 
-export async function loadDefaultFormationApi() {
-  const res = await authFetch(`${API}/user/formations/default/`);
+export async function loadDefaultFormationApi(contextId) {
+  const res = await authFetch(`${API}/user/contexts/${contextId}/formations/default/`);
+  return res.json();
+}
+
+// ── Default context ──
+
+export async function getDefaultContextApi() {
+  const res = await authFetch(`${API}/user/contexts/default/`);
+  return res.json();
+}
+
+export async function toggleDefaultContextApi(contextId) {
+  const res = await authFetch(`${API}/user/contexts/${contextId}/set-default/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
   return res.json();
 }

@@ -4,18 +4,24 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 
-from ..models import Formation
+from ..models import Formation, Context
 
 
 # ═══════════════════════════════════════════════════════
-#  FORMATION CRUD
+#  FORMATION CRUD  (scoped to a context)
 # ═══════════════════════════════════════════════════════
+
+def _ensure_context_access(request, context_id):
+    """Return the context if the user owns it; 404 otherwise."""
+    return get_object_or_404(Context, id=context_id, owner=request.user)
+
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def list_formations(request):
-    """List all formations for the current user (lightweight — no full state blob)."""
-    formations = Formation.objects.filter(owner=request.user)
+def list_formations(request, context_id):
+    """List all formations for a given context (lightweight — no full state blob)."""
+    ctx = _ensure_context_access(request, context_id)
+    formations = Formation.objects.filter(context=ctx)
     data = [
         {
             "id": f.id,
@@ -31,11 +37,12 @@ def list_formations(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-def create_formation(request):
-    """Create a new formation with the given name and state."""
+def create_formation(request, context_id):
+    """Create a new formation within a context."""
+    ctx = _ensure_context_access(request, context_id)
     name = request.data.get("name", "").strip() or "Unnamed Formation"
     state = request.data.get("state", {})
-    f = Formation.objects.create(owner=request.user, name=name, state=state)
+    f = Formation.objects.create(owner=request.user, context=ctx, name=name, state=state)
     return Response({
         "id": f.id,
         "name": f.name,
@@ -94,15 +101,14 @@ def delete_formation(request, formation_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def set_default_formation(request, formation_id):
-    """Toggle a formation as the default. Only one can be default at a time."""
+    """Toggle a formation as the default within its context. Only one per context."""
     f = get_object_or_404(Formation, id=formation_id, owner=request.user)
     if f.is_default:
-        # Un-default it
         f.is_default = False
         f.save()
     else:
-        # Clear any existing default, then set this one
-        Formation.objects.filter(owner=request.user, is_default=True).update(is_default=False)
+        # Clear any existing default in the same context
+        Formation.objects.filter(context=f.context, is_default=True).update(is_default=False)
         f.is_default = True
         f.save()
     return Response({
@@ -114,9 +120,10 @@ def set_default_formation(request, formation_id):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def get_default_formation(request):
-    """Get the default formation (if any) with full state."""
-    f = Formation.objects.filter(owner=request.user, is_default=True).first()
+def get_default_formation(request, context_id):
+    """Get the default formation for a context (if any) with full state."""
+    ctx = _ensure_context_access(request, context_id)
+    f = Formation.objects.filter(context=ctx, is_default=True).first()
     if not f:
         return Response({"formation": None})
     return Response({
@@ -127,3 +134,46 @@ def get_default_formation(request):
             "state": f.state,
         }
     })
+
+
+# ═══════════════════════════════════════════════════════
+#  DEFAULT CONTEXT
+# ═══════════════════════════════════════════════════════
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def set_default_context(request, context_id):
+    """Toggle a context as the user's default. Only one can be default at a time."""
+    ctx = _ensure_context_access(request, context_id)
+    if ctx.is_default:
+        ctx.is_default = False
+        ctx.save()
+    else:
+        Context.objects.filter(owner=request.user, is_default=True).update(is_default=False)
+        ctx.is_default = True
+        ctx.save()
+    return Response({
+        "id": ctx.id,
+        "name": ctx.name,
+        "is_default": ctx.is_default,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_default_context(request):
+    """Get the user's default context (if any)."""
+    ctx = Context.objects.filter(owner=request.user, is_default=True).first()
+    if not ctx:
+        return Response({"context": None})
+    from .contexts import get_all_contexts  # noqa – reuse serialization
+    from ..models import CategoryContextPlacement, LegendContextPlacement
+    from .serializers import ContextSerializer
+    d = ContextSerializer(ctx).data
+    d["adopted"] = False
+    d["is_default"] = ctx.is_default
+    cat_placements = CategoryContextPlacement.objects.filter(context=ctx).order_by("order_index")
+    d["category_ids"] = [p.category_id for p in cat_placements]
+    leg_placements = LegendContextPlacement.objects.filter(context=ctx).order_by("order_index")
+    d["legend_ids"] = [p.legend_id for p in leg_placements]
+    return Response({"context": d})

@@ -487,8 +487,8 @@ export default function IdeaBinCategoryCanvas({
 
             {/* ── Floating feed / live / conflict indicator strip ── */}
             {(catData.filter_config || liveCategoryIds.has(catKey)) && (
-              <div className="absolute -top-5 left-1 right-1 flex items-center gap-1 z-10 pointer-events-none">
-                {/* Feed badge */}
+              <div className="absolute left-1 right-1 flex items-center gap-1 z-10 pointer-events-none" style={{ bottom: '100%', marginBottom: 2 }}>
+                {/* Feed badge (when not live) */}
                 {catData.filter_config && !liveCategoryIds.has(catKey) && (
                   <span className="pointer-events-auto flex items-center gap-0.5 text-[9px] font-bold text-blue-700 bg-blue-100 border border-blue-300 rounded-full px-1.5 py-0 shadow-sm uppercase tracking-wide leading-[16px]">
                     <Rss size={9} className="flex-shrink-0" />
@@ -506,7 +506,16 @@ export default function IdeaBinCategoryCanvas({
                     Live
                   </span>
                 )}
-                {/* C&R conflict indicator — beside live badge */}
+                {/* Applied filter name */}
+                {catData.filter_config?.name && (
+                  <span
+                    className="pointer-events-auto text-[8px] font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-1.5 py-0 shadow-sm truncate leading-[16px]"
+                    title={catData.filter_config.name}
+                  >
+                    {catData.filter_config.name}
+                  </span>
+                )}
+                {/* C&R conflict indicator */}
                 {liveCategoryIds.has(catKey) && catData.filter_config?.collect_and_remove && (() => {
                   const conflict = crConflictsByCat[catKey] || detectCRConflicts(catKey, ideas);
                   if (!conflict) return null;
@@ -594,11 +603,6 @@ export default function IdeaBinCategoryCanvas({
                   )}
                   {catData.is_public && !isAdopted && (
                     <Globe size={9} className="text-emerald-600 flex-shrink-0" title="Public category" />
-                  )}
-                  {catData.filter_config?.name && (
-                    <span className="text-[8px] font-medium text-blue-600 bg-blue-50 rounded px-1 py-0.5 flex-shrink-0 truncate max-w-[80px]" title={catData.filter_config.name}>
-                      {catData.filter_config.name}
-                    </span>
                   )}
                 </span>
               )}

@@ -413,6 +413,7 @@ class Context(models.Model):
     height = models.IntegerField(default=200)
     z_index = models.IntegerField(default=0)
     is_public = models.BooleanField(default=False)
+    is_default = models.BooleanField(default=False)
     color = models.CharField(max_length=20, null=True, blank=True)  # e.g. "#f59e0b"
     filter_state = models.JSONField(null=True, blank=True, default=None)  # {legend_filters: [...], filter_combine_mode: "and"|"or"}
     created_at = models.DateTimeField(auto_now_add=True)
@@ -734,6 +735,7 @@ class Formation(models.Model):
     }
     """
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="formations")
+    context = models.ForeignKey('Context', on_delete=models.CASCADE, related_name="formations", null=True, blank=True)
     name = models.CharField(max_length=200)
     state = models.JSONField(default=dict)
     is_default = models.BooleanField(default=False)

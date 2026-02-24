@@ -8,6 +8,7 @@ export async function fetchContextsApi() {
     id: ctx.id,
     name: ctx.name,
     color: ctx.color || null,
+    is_default: ctx.is_default || false,
     category_ids: ctx.category_ids || [],
     legend_ids: ctx.legend_ids || [],
     filter_state: ctx.filter_state || null,
