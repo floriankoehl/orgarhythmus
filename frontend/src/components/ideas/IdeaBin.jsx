@@ -233,6 +233,8 @@ export default function IdeaBin() {
     setCrConflictData,
     resolveCRConflicts,
     detectCRConflicts,
+    crConflictsByCat,
+    runConflictScan,
   } = useIdeaBinCategories({ activeContext, setActiveContext, fetchAllIdeas: fetch_all_ideas, selectedCategoryIds });
 
   // ── Drag hook ──
@@ -479,9 +481,11 @@ export default function IdeaBin() {
       for (const catKey of liveCategoryIds) {
         refetchCategoryByFilter(catKey, ideas);
       }
+      // Re-scan for C&R conflicts every tick
+      runConflictScan(ideas);
     }, 5000); // every 5 seconds
     return () => clearInterval(interval);
-  }, [liveCategoryIds, ideas, refetchCategoryByFilter]);
+  }, [liveCategoryIds, ideas, refetchCategoryByFilter, runConflictScan]);
 
   // ── Refresh activeContext when switching back to ideas view ──
   // (picks up category/legend changes made in the Contexts view)
@@ -1275,8 +1279,7 @@ export default function IdeaBin() {
             {crConflictData && (
               <CollectConflictModal
                 conflictData={crConflictData}
-                ideas={ideas}
-                onResolve={(resolution) => resolveCRConflicts(resolution, ideas)}
+                onResolve={(resolution) => resolveCRConflicts(resolution)}
                 onCancel={() => setCrConflictData(null)}
               />
             )}
@@ -1691,6 +1694,8 @@ export default function IdeaBin() {
                 liveCategoryIds={liveCategoryIds}
                 setCategoryFilterConfig={setCategoryFilterConfig}
                 detectCRConflicts={detectCRConflicts}
+                setCrConflictData={setCrConflictData}
+                crConflictsByCat={crConflictsByCat}
                 legendFilters={legendFilters}
                 filterCombineMode={filterCombineMode}
                 filterPresets={filterPresets}

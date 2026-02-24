@@ -20,7 +20,7 @@ import {
   assignCategoryToContextApi,
 } from "../api/contextApi";
 import {
-  removeIdeaFromCategoryApi,
+  assignIdeaLegendTypeApi,
 } from "../api/ideaApi";
 
 export default function useIdeaBinCategories({ activeContext, setActiveContext, fetchAllIdeas, selectedCategoryIds }) {
@@ -241,11 +241,17 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
 
   // ── C&R conflict detection state ──
   const [crConflictData, setCrConflictData] = useState(null);
+  const [crConflictsByCat, setCrConflictsByCat] = useState({});
 
   /**
    * Detect ideas that would be matched by BOTH the trigger category's filter
    * AND another LIVE + C&R category's filter.
-   * Returns null if no conflicts, otherwise an object with overlapping ideas.
+   *
+   * For each overlapping idea, identifies the specific legend‑type assignments
+   * that cause the idea to match each filter, so the user can remove the
+   * conflicting type to resolve the overlap.
+   *
+   * Returns null if no conflicts.
    */
   const detectCRConflicts = useCallback((triggerCatKey, ideas) => {
     const triggerCat = categories[triggerCatKey];
@@ -271,29 +277,92 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
     const otherFilters = otherLiveCR.map(({ catKey: k, cat: c }) => ({
       catKey: k,
       catName: c.name,
+      fc: c.filter_config,
       filter: buildMatchFilter(c.filter_config),
     }));
 
-    // Find overlapping ideas (matched by trigger AND at least one other)
+    /**
+     * For a given filter_config and idea, return the list of
+     * { legendId, legendTypeId, typeName, typeColor, typeIcon }
+     * assignments on the idea that cause it to match this filter.
+     */
+    const getCausingTypes = (fc, idea) => {
+      const causing = [];
+      const lf = fc.legend_filters || [];
+      const gtf = fc.global_type_filter || [];
+      const activeLegendId = fc.active_legend_id;
+
+      for (const f of lf) {
+        const legId = String(f.legendId);
+        const dt = idea.legend_types?.[legId];
+        if (!dt) continue;
+        const typeId = dt.legend_type_id;
+        if (f.mode === "include" || !f.mode) {
+          if (f.typeIds.includes(typeId)) {
+            causing.push({
+              legendId: legId,
+              legendTypeId: typeId,
+              typeName: dt.name,
+              typeColor: dt.color,
+              typeIcon: dt.icon,
+            });
+          }
+        }
+        // exclude mode: the idea matches because it does NOT have the excluded types.
+        // Removing a type won't help — skip.
+      }
+
+      if (lf.length === 0 && gtf.length > 0) {
+        const dimId = String(activeLegendId || "");
+        const dt = idea.legend_types?.[dimId];
+        if (dt && gtf.includes(dt.legend_type_id)) {
+          causing.push({
+            legendId: dimId,
+            legendTypeId: dt.legend_type_id,
+            typeName: dt.name,
+            typeColor: dt.color,
+            typeIcon: dt.icon,
+          });
+        }
+      }
+      return causing;
+    };
+
+    // Find overlapping ideas
     const seen = new Set();
-    const overlapping = []; // { idea, matchingCats: [{ catKey, catName }] }
+    const overlapping = [];
     for (const p of Object.values(ideas)) {
       if (!p.idea_id || seen.has(p.idea_id)) continue;
       seen.add(p.idea_id);
       if (!triggerFilter(p)) continue;
-      const matching = otherFilters.filter(({ filter }) => filter(p));
-      if (matching.length > 0) {
-        overlapping.push({
-          idea: p,
-          matchingCats: [
-            { catKey: triggerCatKey, catName: triggerCat.name },
-            ...matching.map(m => ({ catKey: m.catKey, catName: m.catName })),
-          ],
-          // Default: keep in whichever category currently holds it, or the trigger
-          selectedCatKey: p.category === parseInt(triggerCatKey) ? triggerCatKey
-            : (matching.find(m => p.category === parseInt(m.catKey))?.catKey || triggerCatKey),
-        });
+      const matchingOthers = otherFilters.filter(({ filter }) => filter(p));
+      if (matchingOthers.length === 0) continue;
+
+      // Gather conflicting types per category
+      const allCats = [
+        { catKey: triggerCatKey, catName: triggerCat.name, fc: triggerFc },
+        ...matchingOthers.map(m => ({ catKey: m.catKey, catName: m.catName, fc: m.fc })),
+      ];
+      const conflictingTypes = []; // { legendId, legendTypeId, typeName, typeColor, typeIcon, causedBy: [{ catKey, catName }] }
+      const typeMap = new Map(); // legendId|typeId → entry
+      for (const cat of allCats) {
+        const causing = getCausingTypes(cat.fc, p);
+        for (const ct of causing) {
+          const key = `${ct.legendId}|${ct.legendTypeId}`;
+          if (!typeMap.has(key)) {
+            const entry = { ...ct, causedBy: [] };
+            typeMap.set(key, entry);
+            conflictingTypes.push(entry);
+          }
+          typeMap.get(key).causedBy.push({ catKey: cat.catKey, catName: cat.catName });
+        }
       }
+
+      overlapping.push({
+        idea: p,
+        conflictingTypes,
+        matchingCats: allCats.map(c => ({ catKey: c.catKey, catName: c.catName })),
+      });
     }
     if (overlapping.length === 0) return null;
 
@@ -303,6 +372,21 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
       overlappingIdeas: overlapping,
     };
   }, [categories, liveCategoryIds, buildMatchFilter]);
+
+  /**
+   * Scan ALL live C&R categories for conflicts and store results
+   * in crConflictsByCat so indicators stay up-to-date.
+   */
+  const runConflictScan = useCallback((ideas) => {
+    const result = {};
+    for (const catKey of liveCategoryIds) {
+      const cat = categories[catKey];
+      if (!cat?.filter_config?.collect_and_remove) continue;
+      const conflict = detectCRConflicts(catKey, ideas);
+      if (conflict) result[catKey] = conflict;
+    }
+    setCrConflictsByCat(result);
+  }, [liveCategoryIds, categories, detectCRConflicts]);
 
   /**
    * Request to toggle a category LIVE.
@@ -325,41 +409,28 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
   }, [liveCategoryIds, detectCRConflicts, toggleLiveCategory]);
 
   /**
-   * Resolve C&R conflicts by removing conflicting ideas from the
-   * categories the user did NOT select them for, then go LIVE.
+   * Resolve C&R conflicts by removing the legend‑type assignments the user
+   * selected, then go LIVE on the trigger category.
    *
-   * @param {Object} resolution - { triggerCatKey, decisions: { [ideaId]: selectedCatKey } }
-   * @param {Object} ideas - current ideas object
+   * @param {Object} resolution - { triggerCatKey, removals: [{ ideaId, legendId }] }
    */
-  const resolveCRConflicts = useCallback(async (resolution, ideas) => {
-    const { triggerCatKey, decisions } = resolution;
+  const resolveCRConflicts = useCallback(async (resolution) => {
+    const { triggerCatKey, removals } = resolution;
 
-    // For each decided idea, find placements in conflicting categories
-    // that were NOT selected and remove them
-    for (const [ideaIdStr, selectedCatKey] of Object.entries(decisions)) {
-      const ideaId = parseInt(ideaIdStr);
-      // Find all placements for this idea
-      for (const p of Object.values(ideas)) {
-        if (p.idea_id !== ideaId) continue;
-        if (!p.category) continue;
-        // If this placement is in a category that is NOT the selected one
-        // and IS one of the conflicting C&R categories, remove it
-        if (String(p.category) !== String(selectedCatKey)) {
-          const otherCat = categories[p.category];
-          if (otherCat?.filter_config?.collect_and_remove) {
-            try {
-              await removeIdeaFromCategoryApi(p.placement_id);
-            } catch (err) { console.error("Failed to remove conflicting placement:", err); }
-          }
-        }
-      }
+    // Remove the selected legend‑type assignments
+    for (const { ideaId, legendId } of removals) {
+      try {
+        await assignIdeaLegendTypeApi(ideaId, legendId, null);
+      } catch (err) { console.error("Failed to remove conflicting legend type:", err); }
     }
+
+    // Refresh ideas so filters re‑evaluate correctly
+    await fetchAllIdeas();
 
     // Now toggle LIVE on the trigger category
     toggleLiveCategory(triggerCatKey);
     setCrConflictData(null);
-    await fetchAllIdeas();
-  }, [categories, toggleLiveCategory, fetchAllIdeas]);
+  }, [toggleLiveCategory, fetchAllIdeas]);
 
   // ── Set/update filter config on existing category ──
   const setCategoryFilterConfig = useCallback(async (catKey, filterState) => {
@@ -597,5 +668,7 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
     setCrConflictData,
     resolveCRConflicts,
     detectCRConflicts,
+    crConflictsByCat,
+    runConflictScan,
   };
 }

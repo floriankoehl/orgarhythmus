@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
-import { Copy, Settings, Globe, Lock, UserRound, LinkIcon, PanelTopDashed, Pencil, Type, X, RotateCcw, ArrowDownUp, BookOpenText, Rss, ListOrdered, Filter } from "lucide-react";
+import { Copy, Settings, Globe, Lock, UserRound, LinkIcon, PanelTopDashed, Pencil, Type, X, RotateCcw, ArrowDownUp, BookOpenText, Rss, ListOrdered, Filter, AlertTriangle } from "lucide-react";
 import FeedFilterPanel from "./FeedFilterPanel";
 
 /**
@@ -64,6 +64,8 @@ export default function IdeaBinCategoryCanvas({
   liveCategoryIds,
   setCategoryFilterConfig,
   detectCRConflicts,
+  setCrConflictData,
+  crConflictsByCat,
   legendFilters,
   filterCombineMode,
   filterPresets,
@@ -482,6 +484,46 @@ export default function IdeaBinCategoryCanvas({
                 </span>
               </div>
             )}
+
+            {/* ── Floating feed / live / conflict indicator strip ── */}
+            {(catData.filter_config || liveCategoryIds.has(catKey)) && (
+              <div className="absolute -top-5 left-1 right-1 flex items-center gap-1 z-10 pointer-events-none">
+                {/* Feed badge */}
+                {catData.filter_config && !liveCategoryIds.has(catKey) && (
+                  <span className="pointer-events-auto flex items-center gap-0.5 text-[9px] font-bold text-blue-700 bg-blue-100 border border-blue-300 rounded-full px-1.5 py-0 shadow-sm uppercase tracking-wide leading-[16px]">
+                    <Rss size={9} className="flex-shrink-0" />
+                    Feed
+                  </span>
+                )}
+                {/* Live badge */}
+                {liveCategoryIds.has(catKey) && (
+                  <span
+                    className="pointer-events-auto flex items-center gap-0.5 text-[9px] font-bold text-green-800 bg-green-100 border border-green-400 rounded-full px-1.5 py-0 shadow-sm uppercase tracking-wide leading-[16px] animate-pulse cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); openFeedFilter(catKey); }}
+                    title="Live mode active — click to open feed settings"
+                  >
+                    <Rss size={9} className="flex-shrink-0" />
+                    Live
+                  </span>
+                )}
+                {/* C&R conflict indicator — beside live badge */}
+                {liveCategoryIds.has(catKey) && catData.filter_config?.collect_and_remove && (() => {
+                  const conflict = crConflictsByCat[catKey] || detectCRConflicts(catKey, ideas);
+                  if (!conflict) return null;
+                  return (
+                    <span
+                      className="pointer-events-auto flex items-center gap-0.5 text-[9px] font-bold text-red-700 bg-red-100 border border-red-400 rounded-full px-1.5 py-0 shadow-sm leading-[16px] animate-pulse cursor-pointer"
+                      onClick={(e) => { e.stopPropagation(); setCrConflictData(conflict); }}
+                      title={`${conflict.overlappingIdeas.length} idea(s) conflict with other C&R categories — click to resolve`}
+                    >
+                      <AlertTriangle size={9} className="flex-shrink-0" />
+                      {conflict.overlappingIdeas.length}
+                    </span>
+                  );
+                })()}
+              </div>
+            )}
+
             {/* Category header */}
             <div
               onMouseDown={(e) => {
@@ -541,9 +583,6 @@ export default function IdeaBinCategoryCanvas({
                 />
               ) : (
                 <span className={`font-semibold text-[11px] truncate flex items-center gap-1 ${hasConstantFilter ? "text-blue-800" : ""}`}>
-                  {hasConstantFilter && (
-                    <span className="text-[8px] font-bold text-blue-600 bg-blue-100 border border-blue-300 rounded px-1 py-0.5 flex-shrink-0 uppercase tracking-wide">Feed</span>
-                  )}
                   {catData.name}
                   {headlineModeCategoryId === catKey && (
                     <span className="text-[8px] font-medium text-purple-600 bg-purple-100 rounded px-1 py-0.5 flex-shrink-0">HEADLINE</span>
@@ -600,11 +639,9 @@ export default function IdeaBinCategoryCanvas({
                       openFeedFilter(catKey);
                     }}
                     className={`cursor-pointer ${
-                      liveCategoryIds.has(catKey)
-                        ? "text-green-500 animate-pulse"
-                        : catData.filter_config
-                          ? "text-blue-500"
-                          : "text-gray-400 hover:text-indigo-600"
+                      catData.filter_config
+                        ? "text-blue-500 hover:text-blue-700"
+                        : "text-gray-400 hover:text-indigo-600"
                     }`}
                     title="Feed Filter"
                   />
