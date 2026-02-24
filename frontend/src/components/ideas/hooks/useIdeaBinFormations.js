@@ -69,9 +69,26 @@ export default function useIdeaBinFormations(deps) {
     } catch (err) { console.error("Fetch formations failed", err); setFormations([]); }
   }, [activeContext]);
 
-  // Re-fetch formations when context switches
+  // Re-fetch formations + load default formation when context switches
+  const contextSwitchRef = useRef(false);
   useEffect(() => {
-    fetch_formations();
+    const ctxId = activeContext?.id;
+    fetch_formations(ctxId);
+    // Skip auto-loading default formation on the very first mount
+    // (the defaultLoaded effect handles that case)
+    if (!contextSwitchRef.current) {
+      contextSwitchRef.current = true;
+      return;
+    }
+    if (!ctxId) return;
+    (async () => {
+      try {
+        const fData = await loadDefaultFormationApi(ctxId);
+        if (fData?.formation?.state) {
+          await applyFormationState(fData.formation.state);
+        }
+      } catch (err) { /* no default formation — that's fine */ }
+    })();
   }, [activeContext?.id]);
 
   /** Collect all saveable visual state into a single JSON-serialisable object.
