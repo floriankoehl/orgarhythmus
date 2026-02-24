@@ -40,7 +40,7 @@ export default function useIdeaBinFormations(deps) {
     dims, legendPanelCollapsed, globalTypeFilter, legendFilters,
     filterCombineMode, activeContext, minimizedCategories,
     collapsedIdeas, selectedCategoryIds, showMetaList, dockedCategories,
-    categories, contextViewRef,
+    categories, contextViewRef, formHeight,
     // write
     setWindowPos, setWindowSize, setIsMaximized, setViewMode,
     setSidebarWidth, setSidebarHeadlineOnly, setShowSidebarMeta,
@@ -48,7 +48,7 @@ export default function useIdeaBinFormations(deps) {
     setGlobalTypeFilter, setLegendFilters, setFilterCombineMode,
     setActiveContext, setMinimizedCategories, setCollapsedIdeas,
     setSelectedCategoryIds, setShowMetaList, setDockedCategories,
-    setCategories,
+    setCategories, setFormHeight,
     // context entry ref (from IdeaBin — a React ref that gets assigned after enterContext is defined)
     enterContext: enterContextRef,
   } = deps;
@@ -105,6 +105,7 @@ export default function useIdeaBinFormations(deps) {
       sidebar_headline_only: sidebarHeadlineOnly,
       show_sidebar_meta: showSidebarMeta,
       list_filter: listFilter,
+      form_height: formHeight,
       show_archive: showArchive,
       active_legend_id: dims.activeLegendId,
       legend_panel_collapsed: legendPanelCollapsed,
@@ -131,7 +132,7 @@ export default function useIdeaBinFormations(deps) {
       showSidebarMeta, listFilter, showArchive, dims.activeLegendId, legendPanelCollapsed,
       globalTypeFilter, legendFilters, filterCombineMode,
       minimizedCategories, collapsedIdeas, selectedCategoryIds,
-      showMetaList, dockedCategories, categories]);
+      showMetaList, dockedCategories, categories, formHeight]);
 
   /** Apply a formation state object — restores all visual settings. */
   const applyFormationState = useCallback(async (state) => {
@@ -145,6 +146,7 @@ export default function useIdeaBinFormations(deps) {
     if (state.sidebar_headline_only !== undefined) setSidebarHeadlineOnly(state.sidebar_headline_only);
     if (state.show_sidebar_meta !== undefined) setShowSidebarMeta(state.show_sidebar_meta);
     if (state.list_filter !== undefined) setListFilter(state.list_filter);
+    if (state.form_height !== undefined) setFormHeight(state.form_height);
     if (state.show_archive !== undefined) setShowArchive(state.show_archive);
     if (state.active_legend_id !== undefined) dims.setActiveLegendId(state.active_legend_id);
     if (state.legend_panel_collapsed !== undefined) setLegendPanelCollapsed(state.legend_panel_collapsed);

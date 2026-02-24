@@ -34,11 +34,15 @@ import useIdeaBinKeyboard from "./hooks/useIdeaBinKeyboard";
 import { authFetch, API } from "./api/authFetch";
 import { fetchContextsApi, saveContextFilterStateApi, setContextColorApi, fetchFilterPresetsApi, saveFilterPresetsApi } from "./api/contextApi";
 import { mergeIdeasApi } from "./api/ideaApi";
+import { exportIdeabinApi, importIdeabinApi } from "./api/exportApi";
 
 // ───────────────────── Constants ─────────────────────
 const CATEGORY_THRESHOLD = 560; // show categories when wider than this
 const MIN_SIDEBAR_W = 180;
-const MAX_SIDEBAR_W = 400;
+const MAX_SIDEBAR_W = 600;
+const MIN_FORM_H = 80;
+const MAX_FORM_H = 600;
+const DEFAULT_FORM_H = 180;
 
 // ═══════════════════════════════════════════════════════════
 // ═══════════════════  IDEA BIN COMPONENT  ═════════════════
@@ -136,6 +140,7 @@ export default function IdeaBin() {
   const [showSidebarMeta, setShowSidebarMeta] = useState(false);   // show meta info in sidebar
   const [sidebarHeadlineOnly, setSidebarHeadlineOnly] = useState(false); // collapse all in sidebar
   const [showListSettings, setShowListSettings] = useState(false); // settings dropdown
+  const [formHeight, setFormHeight] = useState(DEFAULT_FORM_H); // vertical splitter height
 
   // ───── Sidebar resize ─────
   const [sidebarWidth, setSidebarWidth] = useState(240);
@@ -334,14 +339,14 @@ export default function IdeaBin() {
     dims, legendPanelCollapsed, globalTypeFilter, legendFilters,
     filterCombineMode, activeContext, minimizedCategories,
     collapsedIdeas, selectedCategoryIds, showMetaList, dockedCategories,
-    categories, contextViewRef,
+    categories, contextViewRef, formHeight,
     setWindowPos, setWindowSize, setIsMaximized, setViewMode,
     setSidebarWidth, setSidebarHeadlineOnly, setShowSidebarMeta,
     setListFilter, setShowArchive, setLegendPanelCollapsed,
     setGlobalTypeFilter, setLegendFilters, setFilterCombineMode,
     setActiveContext, setMinimizedCategories, setCollapsedIdeas,
     setSelectedCategoryIds, setShowMetaList, setDockedCategories,
-    setCategories,
+    setCategories, setFormHeight,
     enterContext: enterContextRef,
   });
 
@@ -533,6 +538,55 @@ export default function IdeaBin() {
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   }, [paintType, assign_idea_legend_type, dims, setSelectedIdeaIds, setPaintType]);
+
+  // ═══════════════════════════════════════════════════════
+  // ═══════════  EXPORT BACKUP  ═══════════════════════════
+  // ═══════════════════════════════════════════════════════
+
+  const handleExportBackup = useCallback(async () => {
+    try {
+      const data = await exportIdeabinApi(activeContext?.id ?? null);
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const filename = `ideabin_backup_${ts}.json`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Export failed", e);
+    }
+  }, [activeContext?.id]);
+
+  // ═══════════════════════════════════════════════════════
+  // ═══════════  IMPORT BACKUP  ═══════════════════════════
+  // ═══════════════════════════════════════════════════════
+
+  const handleImportBackup = useCallback(async (file) => {
+    const label = activeContext ? `context "${activeContext.name}"` : "ALL IdeaBin data";
+    if (!window.confirm(
+      `This will replace ${label} with the contents of "${file.name}".\n\nThis cannot be undone. Continue?`
+    )) return;
+
+    try {
+      const result = await importIdeabinApi(file, activeContext?.id ?? null);
+      window.alert(result.message || "Import successful!");
+      // Refresh everything
+      fetch_categories();
+      fetch_all_ideas();
+      fetch_contexts_for_selector();
+      fetch_formations();
+      fetchFilterPresetsApi().then(p => setFilterPresets(p)).catch(() => {});
+    } catch (e) {
+      console.error("Import failed", e);
+      window.alert(`Import failed: ${e.message}`);
+    }
+  }, [activeContext?.id, activeContext?.name, fetch_categories, fetch_all_ideas]);
 
   // ═══════════════════════════════════════════════════════
   // ═══════════  EFFECTS  ═════════════════════════════════
@@ -1581,6 +1635,8 @@ export default function IdeaBin() {
             fetch_all_ideas={fetch_all_ideas}
             selectedIdeaCount={selectedIdeaIds.size}
             onMergeClick={handleMergeClick}
+            onExportBackup={handleExportBackup}
+            onImportBackup={handleImportBackup}
           />
 
           {/* ── Content area ── */}
@@ -1654,7 +1710,8 @@ export default function IdeaBin() {
               {/* ── Input form ── */}
               <div
                 ref={editFormRef}
-                className="p-2 bg-gray-50 border-b border-gray-200 flex-shrink-0"
+                className="p-2 bg-gray-50 flex-shrink-0 flex flex-col"
+                style={{ height: formHeight, overflow: "hidden" }}
                 onMouseDown={(e) => {
                   e.stopPropagation();
                 }}
@@ -1864,7 +1921,7 @@ export default function IdeaBin() {
                   };
                   return (
                     <div
-                      className="mt-1 rounded border border-gray-300 bg-white px-2.5 py-2 min-h-[56px] cursor-default transition-colors"
+                      className="mt-1 rounded border border-gray-300 bg-white px-2.5 py-2 min-h-[56px] cursor-default transition-colors flex-1 overflow-y-auto"
                       style={{ fontSize: 11, lineHeight: "20px" }}
                       tabIndex={0}
                       onKeyDown={(e) => {
@@ -1957,11 +2014,10 @@ export default function IdeaBin() {
                     variant="outlined"
                     multiline
                     minRows={2}
-                    maxRows={editingIdeaId ? 10 : 6}
                     fullWidth
                     sx={{
-                      backgroundColor: "white", borderRadius: 1, marginTop: 0.5,
-                      "& .MuiInputBase-root": { resize: "vertical", overflow: "auto", maxHeight: 300, alignItems: "flex-start" },
+                      backgroundColor: "white", borderRadius: 1, marginTop: 0.5, flex: 1, display: "flex",
+                      "& .MuiInputBase-root": { flex: 1, overflow: "auto", alignItems: "flex-start" },
                       "& .MuiInputBase-input": { fontSize: 11, caretColor: "#1f2937", color: "#6b7280" },
                       "& .MuiInputLabel-root": { fontSize: 11 },
                       "& .MuiInputLabel-shrink": { fontSize: 12 },
@@ -2000,6 +2056,24 @@ export default function IdeaBin() {
                   )}
                 </div>
               </div>
+
+              {/* ── Vertical splitter between form and list ── */}
+              <div
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const startY = e.clientY;
+                  const startH = formHeight;
+                  const onMove = (ev) => {
+                    const newH = Math.min(MAX_FORM_H, Math.max(MIN_FORM_H, startH + (ev.clientY - startY)));
+                    setFormHeight(newH);
+                  };
+                  const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+                  document.addEventListener("mousemove", onMove);
+                  document.addEventListener("mouseup", onUp);
+                }}
+                className="h-1.5 flex-shrink-0 bg-gray-200 hover:bg-blue-400 cursor-row-resize transition-colors duration-150"
+              />
 
               {/* ── Ideas list (switchable) ── */}
               <div
@@ -2060,6 +2134,10 @@ export default function IdeaBin() {
                               <span className="w-3 text-center">{showSidebarMeta ? "✓" : ""}</span>
                               Show meta info
                             </button>
+                            <div className="border-t border-gray-100 my-1" />
+                            <div className="px-3 py-1.5 text-[9px] text-gray-400 italic">
+                              Current list view ({listFilter === "all" ? "All Ideas" : listFilter === "unassigned" ? "Unassigned" : categories[listFilter]?.name || "Category"}) will be saved with formations.
+                            </div>
                           </div>
                         </>
                       )}
@@ -2194,22 +2272,46 @@ export default function IdeaBin() {
 
             {/* ── Sidebar resize handle ── */}
             {showCategories && (
-              <div
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  const startX = e.clientX;
-                  const startW = sidebarWidth;
-                  const onMove = (ev) => {
-                    const newW = Math.min(MAX_SIDEBAR_W, Math.max(MIN_SIDEBAR_W, startW + (ev.clientX - startX)));
-                    setSidebarWidth(newW);
-                  };
-                  const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
-                  document.addEventListener("mousemove", onMove);
-                  document.addEventListener("mouseup", onUp);
-                }}
-                className="w-1.5 flex-shrink-0 bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors duration-150"
-              />
+              <div className="relative flex-shrink-0" style={{ width: 6 }}>
+                {/* Corner anchor — controls both form height AND sidebar width */}
+                <div
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const startX = e.clientX;
+                    const startY = e.clientY;
+                    const startW = sidebarWidth;
+                    const startH = formHeight;
+                    const onMove = (ev) => {
+                      setSidebarWidth(Math.min(MAX_SIDEBAR_W, Math.max(MIN_SIDEBAR_W, startW + (ev.clientX - startX))));
+                      setFormHeight(Math.min(MAX_FORM_H, Math.max(MIN_FORM_H, startH + (ev.clientY - startY))));
+                    };
+                    const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+                    document.addEventListener("mousemove", onMove);
+                    document.addEventListener("mouseup", onUp);
+                  }}
+                  className="absolute bg-gray-300 hover:bg-blue-500 transition-colors duration-150 z-10 rounded-sm"
+                  style={{ width: 10, height: 10, left: -2, top: formHeight - 2, cursor: "nwse-resize" }}
+                  title="Drag to resize form and sidebar"
+                />
+                {/* Normal horizontal resize strip */}
+                <div
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const startX = e.clientX;
+                    const startW = sidebarWidth;
+                    const onMove = (ev) => {
+                      const newW = Math.min(MAX_SIDEBAR_W, Math.max(MIN_SIDEBAR_W, startW + (ev.clientX - startX)));
+                      setSidebarWidth(newW);
+                    };
+                    const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+                    document.addEventListener("mousemove", onMove);
+                    document.addEventListener("mouseup", onUp);
+                  }}
+                  className="w-full h-full bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors duration-150"
+                />
+              </div>
             )}
 
             {/* ── RIGHT: Category canvas (only when wide enough) ── */}

@@ -231,6 +231,10 @@ urlpatterns = [
     path("user/formations/<int:formation_id>/update/", views.update_formation, name="update_formation"),
     path("user/formations/<int:formation_id>/delete/", views.delete_formation, name="delete_formation"),
     path("user/formations/<int:formation_id>/set-default/", views.set_default_formation, name="set_default_formation"),
+
+    # IdeaBin backup export
+    path("ideabin/export/", views.export_ideabin, name="export_ideabin"),
+    path("ideabin/import/", views.import_ideabin, name="import_ideabin"),
 ]
 
 

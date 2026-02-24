@@ -157,6 +157,24 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
         }
         break;
       }
+      case 'delete_idea': {
+        if (direction === 'undo') {
+          // Recreate the deleted idea
+          await createIdeaApi(move.title || "", move.description || "", move.categoryId || null);
+          await fetch_all_ideas();
+        } else {
+          // Redo = delete again (find by title+description match since ID changed)
+          // We just refetch — the idea was already deleted on first pass
+          // For redo after undo, we need to find the recreated idea
+          const currentIdeas = Object.values(ideas);
+          const match = currentIdeas.find(i => i.title === (move.title || "") && i.description === (move.description || ""));
+          if (match) {
+            await deleteIdeaApi(match.id);
+          }
+          await fetch_all_ideas();
+        }
+        break;
+      }
     }
   };
 
@@ -197,10 +215,21 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
   }, [ideaName, newIdeaDescription, selectedCategoryIds, fetch_all_ideas]);
 
   const delete_idea = useCallback(async (id) => {
+    // Save idea data for undo before deleting
+    const idea = ideas[id];
+    if (idea) {
+      pushMove({
+        type: 'delete_idea',
+        ideaId: idea.idea_id || id,
+        title: idea.title || "",
+        description: idea.description || "",
+        categoryId: idea.category || null,
+      });
+    }
     await deleteIdeaApi(id);
     playSound('ideaDelete');
     fetch_all_ideas();
-  }, [fetch_all_ideas]);
+  }, [ideas, pushMove, fetch_all_ideas]);
 
   const update_idea_title_api = useCallback(async (placementId, title, description = null) => {
     const idea = ideas[placementId];
