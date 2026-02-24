@@ -60,8 +60,10 @@ export default function IdeaBinCategoryCanvas({
   setSelectedIdeaIds,
   refetchCategoryByFilter,
   toggleLiveCategory,
+  requestToggleLive,
   liveCategoryIds,
   setCategoryFilterConfig,
+  detectCRConflicts,
   legendFilters,
   filterCombineMode,
   filterPresets,
@@ -615,9 +617,12 @@ export default function IdeaBinCategoryCanvas({
                       setCategoryFilterConfig={setCategoryFilterConfig}
                       refetchCategoryByFilter={refetchCategoryByFilter}
                       toggleLiveCategory={toggleLiveCategory}
+                      requestToggleLive={requestToggleLive}
                       liveCategoryIds={liveCategoryIds}
                       ideas={ideas}
                       filterPresets={filterPresets}
+                      categories={categories}
+                      detectCRConflicts={detectCRConflicts}
                       onClose={() => setFeedFilterOpen(null)}
                     />
                   )}

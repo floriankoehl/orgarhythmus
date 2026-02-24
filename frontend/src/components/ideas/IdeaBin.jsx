@@ -11,6 +11,7 @@ import { playSound } from "../../assets/sound_registry";
 import { useLegends } from "./useLegends";
 import { renderLegendTypeIcon } from "./legendTypeIcons";
 import IdeaBinConfirmModal from "./IdeaBinConfirmModal";
+import CollectConflictModal from "./CollectConflictModal";
 import useIdeaBinWindow from "./useIdeaBinWindow";
 import IdeaBinTransformModal from "./IdeaBinTransformModal";
 import IdeaBinLegendPanel from "./IdeaBinLegendPanel";
@@ -225,8 +226,13 @@ export default function IdeaBin() {
     handleCategoryResize,
     refetchCategoryByFilter,
     toggleLiveCategory,
+    requestToggleLive,
     liveCategoryIds,
     setCategoryFilterConfig,
+    crConflictData,
+    setCrConflictData,
+    resolveCRConflicts,
+    detectCRConflicts,
   } = useIdeaBinCategories({ activeContext, setActiveContext, fetchAllIdeas: fetch_all_ideas, selectedCategoryIds });
 
   // ── Drag hook ──
@@ -1265,6 +1271,16 @@ export default function IdeaBin() {
               <IdeaBinConfirmModal message={confirmModal.message} onConfirm={confirmModal.onConfirm} onCancel={confirmModal.onCancel} confirmLabel={confirmModal.confirmLabel} confirmColor={confirmModal.confirmColor} middleLabel={confirmModal.middleLabel} middleColor={confirmModal.middleColor} onMiddle={confirmModal.onMiddle} />
             )}
 
+            {/* C&R conflict resolution modal */}
+            {crConflictData && (
+              <CollectConflictModal
+                conflictData={crConflictData}
+                ideas={ideas}
+                onResolve={(resolution) => resolveCRConflicts(resolution, ideas)}
+                onCancel={() => setCrConflictData(null)}
+              />
+            )}
+
             {/* ── Meta Ideas list overlay ── */}
             {showMetaList && (
               <>
@@ -1671,8 +1687,10 @@ export default function IdeaBin() {
                 setSelectedIdeaIds={setSelectedIdeaIds}
                 refetchCategoryByFilter={refetchCategoryByFilter}
                 toggleLiveCategory={toggleLiveCategory}
+                requestToggleLive={requestToggleLive}
                 liveCategoryIds={liveCategoryIds}
                 setCategoryFilterConfig={setCategoryFilterConfig}
+                detectCRConflicts={detectCRConflicts}
                 legendFilters={legendFilters}
                 filterCombineMode={filterCombineMode}
                 filterPresets={filterPresets}

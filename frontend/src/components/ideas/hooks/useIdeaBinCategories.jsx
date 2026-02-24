@@ -19,6 +19,9 @@ import {
 import {
   assignCategoryToContextApi,
 } from "../api/contextApi";
+import {
+  removeIdeaFromCategoryApi,
+} from "../api/ideaApi";
 
 export default function useIdeaBinCategories({ activeContext, setActiveContext, fetchAllIdeas, selectedCategoryIds }) {
   const [categories, setCategories] = useState({});
@@ -164,13 +167,9 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
     } catch (err) { console.error("Create category from filter failed:", err); }
   }, [activeContext, setActiveContext, fetch_categories, fetchAllIdeas]);
 
-  // ── Refetch: re-run a category's stored filter and sync ideas ──
-  const refetchCategoryByFilter = useCallback(async (catKey, ideas) => {
-    const cat = categories[catKey];
-    if (!cat?.filter_config) return;
-    const fc = cat.filter_config;
-    // Rebuild the filter function from stored config
-    const matchFilter = (idea) => {
+  // ── Build a match-filter function from a stored filter_config ──
+  const buildMatchFilter = useCallback((fc) => {
+    return (idea) => {
       if (!idea) return false;
       const lf = fc.legend_filters || [];
       const gtf = fc.global_type_filter || [];
@@ -199,6 +198,14 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
       }
       return true;
     };
+  }, []);
+
+  // ── Refetch: re-run a category's stored filter and sync ideas ──
+  const refetchCategoryByFilter = useCallback(async (catKey, ideas) => {
+    const cat = categories[catKey];
+    if (!cat?.filter_config) return;
+    const fc = cat.filter_config;
+    const matchFilter = buildMatchFilter(fc);
     // Find matching ideas
     const seen = new Set();
     const matchedIdeaIds = [];
@@ -212,7 +219,7 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
       await syncCategoryIdeas(parseInt(catKey), matchedIdeaIds, true, collectAndRemove);
       await fetchAllIdeas();
     } catch (err) { console.error("Refetch category failed:", err); }
-  }, [categories, fetchAllIdeas]);
+  }, [categories, fetchAllIdeas, buildMatchFilter]);
 
   // ── Live toggle ──
   const toggleLiveCategory = useCallback((catKey) => {
@@ -231,6 +238,128 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
       return next;
     });
   }, []);
+
+  // ── C&R conflict detection state ──
+  const [crConflictData, setCrConflictData] = useState(null);
+
+  /**
+   * Detect ideas that would be matched by BOTH the trigger category's filter
+   * AND another LIVE + C&R category's filter.
+   * Returns null if no conflicts, otherwise an object with overlapping ideas.
+   */
+  const detectCRConflicts = useCallback((triggerCatKey, ideas) => {
+    const triggerCat = categories[triggerCatKey];
+    if (!triggerCat?.filter_config) return null;
+    const triggerFc = triggerCat.filter_config;
+    if (!triggerFc.collect_and_remove) return null;
+
+    // Find other LIVE + C&R categories
+    const otherLiveCR = [];
+    for (const otherKey of liveCategoryIds) {
+      if (String(otherKey) === String(triggerCatKey)) continue;
+      const other = categories[otherKey];
+      if (other?.filter_config?.collect_and_remove) {
+        otherLiveCR.push({ catKey: otherKey, cat: other });
+      }
+    }
+    if (otherLiveCR.length === 0) return null;
+
+    // Build filter for trigger category
+    const triggerFilter = buildMatchFilter(triggerFc);
+
+    // Build filters for each competing category
+    const otherFilters = otherLiveCR.map(({ catKey: k, cat: c }) => ({
+      catKey: k,
+      catName: c.name,
+      filter: buildMatchFilter(c.filter_config),
+    }));
+
+    // Find overlapping ideas (matched by trigger AND at least one other)
+    const seen = new Set();
+    const overlapping = []; // { idea, matchingCats: [{ catKey, catName }] }
+    for (const p of Object.values(ideas)) {
+      if (!p.idea_id || seen.has(p.idea_id)) continue;
+      seen.add(p.idea_id);
+      if (!triggerFilter(p)) continue;
+      const matching = otherFilters.filter(({ filter }) => filter(p));
+      if (matching.length > 0) {
+        overlapping.push({
+          idea: p,
+          matchingCats: [
+            { catKey: triggerCatKey, catName: triggerCat.name },
+            ...matching.map(m => ({ catKey: m.catKey, catName: m.catName })),
+          ],
+          // Default: keep in whichever category currently holds it, or the trigger
+          selectedCatKey: p.category === parseInt(triggerCatKey) ? triggerCatKey
+            : (matching.find(m => p.category === parseInt(m.catKey))?.catKey || triggerCatKey),
+        });
+      }
+    }
+    if (overlapping.length === 0) return null;
+
+    return {
+      triggerCatKey,
+      triggerCatName: triggerCat.name,
+      overlappingIdeas: overlapping,
+    };
+  }, [categories, liveCategoryIds, buildMatchFilter]);
+
+  /**
+   * Request to toggle a category LIVE.
+   * If turning ON and it's C&R, checks for conflicts first.
+   * If conflicts exist, sets crConflictData instead of toggling.
+   */
+  const requestToggleLive = useCallback((catKey, ideas) => {
+    // Turning OFF — always safe
+    if (liveCategoryIds.has(catKey)) {
+      toggleLiveCategory(catKey);
+      return;
+    }
+    // Turning ON — check for C&R conflicts
+    const conflicts = detectCRConflicts(catKey, ideas);
+    if (conflicts) {
+      setCrConflictData(conflicts);
+    } else {
+      toggleLiveCategory(catKey);
+    }
+  }, [liveCategoryIds, detectCRConflicts, toggleLiveCategory]);
+
+  /**
+   * Resolve C&R conflicts by removing conflicting ideas from the
+   * categories the user did NOT select them for, then go LIVE.
+   *
+   * @param {Object} resolution - { triggerCatKey, decisions: { [ideaId]: selectedCatKey } }
+   * @param {Object} ideas - current ideas object
+   */
+  const resolveCRConflicts = useCallback(async (resolution, ideas) => {
+    const { triggerCatKey, decisions } = resolution;
+
+    // For each decided idea, find placements in conflicting categories
+    // that were NOT selected and remove them
+    for (const [ideaIdStr, selectedCatKey] of Object.entries(decisions)) {
+      const ideaId = parseInt(ideaIdStr);
+      // Find all placements for this idea
+      for (const p of Object.values(ideas)) {
+        if (p.idea_id !== ideaId) continue;
+        if (!p.category) continue;
+        // If this placement is in a category that is NOT the selected one
+        // and IS one of the conflicting C&R categories, remove it
+        if (String(p.category) !== String(selectedCatKey)) {
+          const otherCat = categories[p.category];
+          if (otherCat?.filter_config?.collect_and_remove) {
+            try {
+              await removeIdeaFromCategoryApi(p.placement_id);
+            } catch (err) { console.error("Failed to remove conflicting placement:", err); }
+          }
+        }
+      }
+    }
+
+    // Now toggle LIVE on the trigger category
+    toggleLiveCategory(triggerCatKey);
+    setCrConflictData(null);
+    await fetchAllIdeas();
+  }, [categories, toggleLiveCategory, fetchAllIdeas]);
 
   // ── Set/update filter config on existing category ──
   const setCategoryFilterConfig = useCallback(async (catKey, filterState) => {
@@ -461,7 +590,12 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
     handleCategoryResize,
     refetchCategoryByFilter,
     toggleLiveCategory,
+    requestToggleLive,
     liveCategoryIds,
     setCategoryFilterConfig,
+    crConflictData,
+    setCrConflictData,
+    resolveCRConflicts,
+    detectCRConflicts,
   };
 }

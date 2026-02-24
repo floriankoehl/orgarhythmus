@@ -21,9 +21,12 @@ export default function FeedFilterPanel({
   setCategoryFilterConfig,
   refetchCategoryByFilter,
   toggleLiveCategory,
+  requestToggleLive,
   liveCategoryIds,
   ideas,
   filterPresets,
+  categories,
+  detectCRConflicts,
   onClose,
 }) {
   const fc = catData.filter_config;
@@ -112,7 +115,14 @@ export default function FeedFilterPanel({
             )}
             {fc && (
               <button
-                onClick={() => toggleLiveCategory(catKey)}
+                onClick={() => {
+                  // Use conflict-aware toggle when turning ON a C&R category
+                  if (!isLive && isCollectMode && requestToggleLive) {
+                    requestToggleLive(catKey, ideas);
+                  } else {
+                    toggleLiveCategory(catKey);
+                  }
+                }}
                 className={`w-full text-left px-2 py-1.5 text-[11px] rounded flex items-center gap-2 transition-colors ${
                   isLive
                     ? "text-green-700 bg-green-50 hover:bg-green-100"
@@ -159,6 +169,22 @@ export default function FeedFilterPanel({
                     Detach matched ideas from other categories
                   </div>
                 )}
+                {isCollectMode && isLive && categories && (() => {
+                  const otherLiveCR = [];
+                  for (const otherKey of liveCategoryIds) {
+                    if (String(otherKey) === String(catKey)) continue;
+                    const other = categories[otherKey];
+                    if (other?.filter_config?.collect_and_remove) {
+                      otherLiveCR.push(other.name);
+                    }
+                  }
+                  if (otherLiveCR.length === 0) return null;
+                  return (
+                    <div className="text-[9px] text-orange-600 px-2 mt-0.5 leading-snug bg-orange-50 rounded py-1">
+                      ⚠ Other live C&R: {otherLiveCR.join(", ")}. Ideas in those categories are protected.
+                    </div>
+                  );
+                })()}
                 {/* Confirmation modal */}
                 {showCollectConfirm && (
                   <>

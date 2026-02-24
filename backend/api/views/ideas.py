@@ -1033,12 +1033,23 @@ def sync_category_ideas(request):
                 category=category, idea__owner=request.user, idea_id__in=to_remove
             ).delete()[0]
 
-    # Collect & remove: detach matched ideas from all OTHER categories
+    # Collect & remove: detach matched ideas from other categories,
+    # BUT protect categories that also have collect_and_remove enabled
+    # (prevents ping-pong between competing C&R categories).
     if collect_and_remove and new_ids:
-        detached = IdeaPlacement.objects.filter(
+        protected_cat_ids = set()
+        for other_cat in Category.objects.filter(owner=request.user).exclude(id=category.id):
+            fc = other_cat.filter_config
+            if isinstance(fc, dict) and fc.get('collect_and_remove'):
+                protected_cat_ids.add(other_cat.id)
+
+        detach_qs = IdeaPlacement.objects.filter(
             idea_id__in=new_ids,
             idea__owner=request.user,
-        ).exclude(category=category).delete()[0]
+        ).exclude(category=category)
+        if protected_cat_ids:
+            detach_qs = detach_qs.exclude(category_id__in=protected_cat_ids)
+        detached = detach_qs.delete()[0]
 
     return Response({"added": added, "removed": removed, "detached": detached})
 
