@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
-import { Settings, Globe, Plus, Layers, Tag, Lock, LinkIcon, LogIn } from "lucide-react";
+import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from "react";
+import { Settings, Globe, Plus, Layers, Tag, Lock, LinkIcon, LogIn, Crosshair } from "lucide-react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import { BASE_URL } from "../../config/api";
 
@@ -37,7 +37,14 @@ export default forwardRef(function IdeaBinContextView({
   const [contextLegOrders, setContextLegOrders] = useState({}); // {[ctxId]: [legId, ...]}
 
   // ── Sidebar mode ──
-  const [sidebarMode, setSidebarMode] = useState("categories"); // "categories" | "legends"
+  // (legends sidebar removed — only categories now)
+
+  // ── Draw-to-create context mode ──
+  const [drawContextMode, setDrawContextMode] = useState(false);
+  const drawModeRef = useRef(false);
+  useEffect(() => { drawModeRef.current = drawContextMode; }, [drawContextMode]);
+  const [marquee, setMarquee] = useState(null);
+  const marqueeRef = useRef(null);
 
   // ── Category creation (inside this view) ──
   const [displayCategoryForm, setDisplayCategoryForm] = useState(false);
@@ -55,19 +62,15 @@ export default forwardRef(function IdeaBinContextView({
   // ── Expose formation-relevant state to parent via ref ──
   useImperativeHandle(ref, () => ({
     getFormationState: () => ({
-      sidebar_mode: sidebarMode,
       minimized_contexts: minimizedContexts,
       context_positions: Object.fromEntries(
         Object.entries(contexts).map(([id, ctx]) => [id, { x: ctx.x, y: ctx.y, width: ctx.width, height: ctx.height, z_index: ctx.z_index }])
       ),
     }),
     applyFormationState: (s) => {
-      if (s.sidebar_mode) setSidebarMode(s.sidebar_mode);
       if (s.minimized_contexts) setMinimizedContexts(s.minimized_contexts);
-      // Context positions are restored via API (set_context_position / set_context_area)
-      // so they persist across reloads — handled by the parent calling the APIs
     },
-  }), [sidebarMode, minimizedContexts, contexts]);
+  }), [minimizedContexts, contexts]);
 
   // ── Drag state ──
   const [draggingItem, setDraggingItem] = useState(null); // {itemId, type: "category"|"legend", x, y}
@@ -120,6 +123,24 @@ export default forwardRef(function IdeaBinContextView({
       setDisplayContextForm(false);
     } catch (e) {
       console.error("Failed to create context", e);
+    }
+  }
+
+  async function create_context_at({ x, y, width, height }) {
+    try {
+      const res = await authFetch(`${BASE_URL}/api/user/contexts/create/`, {
+        method: "POST",
+        body: JSON.stringify({ name: "New Context", x, y, width: Math.max(120, width), height: Math.max(60, height) }),
+      });
+      if (!res.ok) return null;
+      const ctx = await res.json();
+      setContexts(prev => ({ ...prev, [ctx.id]: ctx }));
+      setContextCatOrders(prev => ({ ...prev, [ctx.id]: [] }));
+      setContextLegOrders(prev => ({ ...prev, [ctx.id]: [] }));
+      return ctx.id;
+    } catch (e) {
+      console.error("Failed to create context at position", e);
+      return null;
     }
   }
 
@@ -392,6 +413,60 @@ export default forwardRef(function IdeaBinContextView({
     document.addEventListener("mouseup", onUp);
   }
 
+  // ── Draw-to-create marquee handler ──
+  const handleCanvasMarqueeStart = useCallback((e) => {
+    if (e.target.closest('[data-context-card]')) return;
+    if (e.button !== 0) return;
+    if (!drawModeRef.current) return;
+    const rect = contextContainerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const scrollLeft = contextContainerRef.current.scrollLeft;
+    const scrollTop = contextContainerRef.current.scrollTop;
+    const startX = e.clientX - rect.left + scrollLeft;
+    const startY = e.clientY - rect.top + scrollTop;
+    setMarquee({ startX, startY, currentX: startX, currentY: startY });
+    marqueeRef.current = { startX, startY };
+    let lastX = startX;
+    let lastY = startY;
+
+    const handleMouseMove = (moveE) => {
+      const cx = moveE.clientX - rect.left + contextContainerRef.current.scrollLeft;
+      const cy = moveE.clientY - rect.top + contextContainerRef.current.scrollTop;
+      lastX = cx;
+      lastY = cy;
+      setMarquee(prev => prev ? { ...prev, currentX: cx, currentY: cy } : null);
+    };
+    const handleMouseUp = () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      setMarquee(null);
+
+      const mx1 = Math.min(startX, lastX);
+      const my1 = Math.min(startY, lastY);
+      const mx2 = Math.max(startX, lastX);
+      const my2 = Math.max(startY, lastY);
+      const area = (mx2 - mx1) * (my2 - my1);
+      if (area < 100) return;
+
+      const w = mx2 - mx1;
+      const h = my2 - my1;
+      if (w >= 80 && h >= 50) {
+        create_context_at({ x: Math.round(mx1), y: Math.round(my1 - 36), width: Math.round(w), height: Math.round(h) })
+          .then((newCtxId) => {
+            if (newCtxId) {
+              setEditingContextId(String(newCtxId));
+              setEditingContextName("New Context");
+              setDrawContextMode(false);
+              setDisplayContextForm(false);
+            }
+          })
+          .catch(err => console.error("Draw-to-create context failed:", err));
+      }
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, []);
+
   // ── Computed ──
   const allPlacedCategoryIds = new Set();
   Object.values(contextCatOrders).forEach(ids => ids.forEach(id => allPlacedCategoryIds.add(id)));
@@ -420,44 +495,20 @@ export default forwardRef(function IdeaBinContextView({
         className="flex flex-col flex-shrink-0 bg-white"
         style={{ width: showCanvas ? sidebarWidth : "100%" }}
       >
-        {/* Mode switcher header */}
+        {/* Sidebar header */}
         <div className="p-2 bg-gray-50 border-b border-gray-200 flex-shrink-0">
           <div className="flex items-center gap-1 mb-1">
-            <div className="flex items-center bg-teal-600/10 rounded-full p-0.5 flex-1">
-              <button
-                onClick={() => setSidebarMode("categories")}
-                className={`flex-1 px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors flex items-center justify-center gap-0.5 ${
-                  sidebarMode === "categories"
-                    ? "bg-white text-teal-800 shadow-sm"
-                    : "text-teal-700 hover:text-teal-900"
-                }`}
-              >
-                <Layers size={10} />
-                Categories
-              </button>
-              <button
-                onClick={() => setSidebarMode("legends")}
-                className={`flex-1 px-2 py-0.5 text-[10px] font-medium rounded-full transition-colors flex items-center justify-center gap-0.5 ${
-                  sidebarMode === "legends"
-                    ? "bg-white text-teal-800 shadow-sm"
-                    : "text-teal-700 hover:text-teal-900"
-                }`}
-              >
-                <Tag size={10} />
-                Legends
-              </button>
-            </div>
+            <Layers size={12} className="text-teal-600" />
+            <span className="text-[11px] font-semibold text-teal-800">Categories</span>
           </div>
           <p className="text-[10px] text-gray-400">
-            Drag {sidebarMode} into contexts on the right
+            Drag categories into contexts on the right
           </p>
         </div>
 
         {/* Sidebar content */}
         <div className="flex-1 overflow-y-auto p-1.5">
 
-          {/* ═══ CATEGORIES MODE ═══ */}
-          {sidebarMode === "categories" && (
             <>
               {/* Create category button / form */}
               <div className="mb-2">
@@ -556,67 +607,6 @@ export default forwardRef(function IdeaBinContextView({
                 </p>
               )}
             </>
-          )}
-
-          {/* ═══ LEGENDS MODE ═══ */}
-          {sidebarMode === "legends" && (
-            <>
-              {/* Unplaced legends */}
-              {unplacedLegends.length > 0 && (
-                <div className="mb-2">
-                  <div className="text-[10px] font-semibold text-gray-400 mb-1 px-1">
-                    Unassigned ({unplacedLegends.length})
-                  </div>
-                  {unplacedLegends.map(leg => (
-                    <div
-                      key={leg.id}
-                      onMouseDown={(e) => handleItemDragFromSidebar(e, leg.id, "legend")}
-                      className="flex items-center gap-1.5 px-2 py-1.5 mb-0.5 rounded cursor-grab active:cursor-grabbing
-                        bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-colors text-[11px]"
-                    >
-                      <Tag size={10} className="text-indigo-400 flex-shrink-0" />
-                      <span className="truncate font-medium text-gray-700">{leg.name}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Placed legends */}
-              {placedLegends.length > 0 && (
-                <div>
-                  <div className="text-[10px] font-semibold text-gray-400 mb-1 px-1">
-                    In Contexts ({placedLegends.length})
-                  </div>
-                  {placedLegends.map(leg => {
-                    const inContexts = Object.entries(contextLegOrders)
-                      .filter(([, ids]) => ids.includes(leg.id))
-                      .map(([ctxId]) => contexts[ctxId]?.name)
-                      .filter(Boolean);
-                    return (
-                      <div
-                        key={leg.id}
-                        onMouseDown={(e) => handleItemDragFromSidebar(e, leg.id, "legend")}
-                        className="flex items-center gap-1.5 px-2 py-1.5 mb-0.5 rounded cursor-grab active:cursor-grabbing
-                          bg-violet-50 border border-violet-200 hover:bg-violet-100 transition-colors text-[11px]"
-                      >
-                        <Tag size={10} className="text-violet-400 flex-shrink-0" />
-                        <span className="truncate font-medium text-gray-700 flex-1">{leg.name}</span>
-                        <span className="text-[9px] text-violet-600 truncate max-w-[80px]">
-                          {inContexts.join(", ")}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {allLegends.length === 0 && (
-                <p className="text-[10px] text-gray-400 text-center py-4">
-                  No legends yet. Create them in the Ideas view sidebar.
-                </p>
-              )}
-            </>
-          )}
         </div>
       </div>
 
@@ -625,8 +615,18 @@ export default forwardRef(function IdeaBinContextView({
         <>
           <div
             ref={contextContainerRef}
-            className="flex-1 relative overflow-auto bg-gray-50"
+            className={`flex-1 relative overflow-auto bg-gray-50 ${drawContextMode ? "cursor-crosshair" : ""}`}
+            onMouseDown={handleCanvasMarqueeStart}
           >
+            {/* Draw mode hint */}
+            {drawContextMode && (
+              <div className="absolute inset-0 border-2 border-dashed border-teal-400/40 pointer-events-none z-[5]">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-teal-100/80 text-teal-700 px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap select-none">
+                  Draw a rectangle to create a context
+                </div>
+              </div>
+            )}
+
             {/* Toolbar */}
             <div className="sticky top-0 z-30 flex items-center gap-2 p-2 bg-gray-50/90 backdrop-blur-sm border-b border-gray-200">
               {displayContextForm ? (
@@ -650,14 +650,42 @@ export default forwardRef(function IdeaBinContextView({
                   </button>
                 </div>
               ) : (
-                <button
-                  onClick={() => setDisplayContextForm(true)}
-                  className="text-[10px] px-2 py-1 bg-teal-100 text-teal-800 border border-teal-300 rounded hover:bg-teal-200 font-medium"
-                >
-                  + Context
-                </button>
+                <>
+                  <button
+                    onClick={() => setDisplayContextForm(true)}
+                    className="text-[10px] px-2 py-1 bg-teal-100 text-teal-800 border border-teal-300 rounded hover:bg-teal-200 font-medium"
+                  >
+                    + Context
+                  </button>
+                  <button
+                    onClick={() => setDrawContextMode(prev => !prev)}
+                    className={`text-[10px] px-2 py-1 rounded font-medium flex items-center gap-1 transition-colors ${
+                      drawContextMode
+                        ? "bg-teal-500 text-white border border-teal-600"
+                        : "bg-gray-100 text-gray-600 border border-gray-300 hover:bg-gray-200"
+                    }`}
+                    title={drawContextMode ? "Exit draw mode (Esc)" : "Draw context on canvas"}
+                  >
+                    <Crosshair size={11} />
+                    {drawContextMode ? "Drawing..." : "Draw"}
+                  </button>
+                </>
               )}
             </div>
+
+            {/* Draw marquee rectangle */}
+            {marquee && (() => {
+              const mx = Math.min(marquee.startX, marquee.currentX);
+              const my = Math.min(marquee.startY, marquee.currentY);
+              const mw = Math.abs(marquee.currentX - marquee.startX);
+              const mh = Math.abs(marquee.currentY - marquee.startY);
+              return (
+                <div
+                  style={{ position: "absolute", left: mx, top: my, width: mw, height: mh, zIndex: 50 }}
+                  className="border-2 border-dashed border-teal-500 bg-teal-200/20 pointer-events-none rounded"
+                />
+              );
+            })()}
 
             {/* Context cards */}
             {activeContexts.map(([ctxKey, ctxData]) => {
@@ -681,6 +709,7 @@ export default forwardRef(function IdeaBinContextView({
                     transition: "background-color 150ms ease",
                   }}
                   className="absolute shadow-lg rounded p-1.5 flex flex-col"
+                  data-context-card
                   onMouseDown={() => bring_to_front_context(ctxKey)}
                 >
                   {/* Context header */}

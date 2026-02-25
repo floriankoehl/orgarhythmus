@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 
-import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings, Layers, Save, FolderOpen, Trash2, Pencil, Check, Palette, ChevronDown, Star, Paintbrush, RotateCcw, ArrowDownUp, BookOpenText, Type } from "lucide-react";
+import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings, Layers, Save, FolderOpen, Trash2, Pencil, Check, Palette, ChevronDown, Star, Paintbrush, RotateCcw, ArrowDownUp, BookOpenText, Type, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { BASE_URL } from "../../config/api";
 import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
@@ -39,7 +39,7 @@ import { exportIdeabinApi, importIdeabinApi } from "./api/exportApi";
 // ───────────────────── Constants ─────────────────────
 const CATEGORY_THRESHOLD = 560; // show categories when wider than this
 const MIN_SIDEBAR_W = 180;
-const MAX_SIDEBAR_W = 600;
+const COLLAPSED_STRIP_W = 28;
 const MIN_FORM_H = 80;
 const MAX_FORM_H = 600;
 const DEFAULT_FORM_H = 180;
@@ -144,6 +144,8 @@ export default function IdeaBin() {
 
   // ───── Sidebar resize ─────
   const [sidebarWidth, setSidebarWidth] = useState(240);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
 
   // ───── Archive ─────
   const [showArchive, setShowArchive] = useState(false);
@@ -186,6 +188,10 @@ export default function IdeaBin() {
   const editFormRef = useRef(null);
 
   const showCategories = windowSize.w >= CATEGORY_THRESHOLD;
+  // Dynamic max sidebar width: leave at least COLLAPSED_STRIP_W + 6 (resize handle) for the right side when not collapsed
+  const maxSidebarW = rightCollapsed
+    ? windowSize.w - COLLAPSED_STRIP_W
+    : windowSize.w - COLLAPSED_STRIP_W - 6;
 
   // ═══════════════════════════════════════════════════════
   // ═══════════  HOOKS  ═══════════════════════════════════
@@ -303,7 +309,7 @@ export default function IdeaBin() {
     selectedIdeaIds, setSelectedIdeaIds, ideas, categories,
     headlineModeCategoryId, setHeadlineModeCategoryId,
     headlineModeIdeaId, setHeadlineModeIdeaId,
-    delete_idea, remove_idea_from_category, toggle_archive_idea,
+    delete_idea, delete_category, remove_idea_from_category, toggle_archive_idea,
     setConfirmModal,
     paintType, setPaintType,
     // Ctrl+A / Ctrl+Shift+A deps
@@ -1701,10 +1707,24 @@ export default function IdeaBin() {
             {/* ══════ IDEAS MODE ══════ */}
             {viewMode === "ideas" && (
             <>
-            {/* ── LEFT: Sidebar (always visible) ── */}
+            {/* ── LEFT: Collapsed strip when sidebar is hidden ── */}
+            {leftCollapsed && showCategories && (
+              <div className="flex flex-col items-center flex-shrink-0 bg-gray-50 border-r border-gray-200" style={{ width: COLLAPSED_STRIP_W }}>
+                <button
+                  onClick={() => setLeftCollapsed(false)}
+                  className="mt-2 p-1 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors"
+                  title="Expand idea panel"
+                >
+                  <PanelLeftOpen size={16} />
+                </button>
+              </div>
+            )}
+
+            {/* ── LEFT: Sidebar (visible when not collapsed, or when categories not shown) ── */}
+            {(!leftCollapsed || !showCategories) && (
             <div
               className="flex flex-col flex-shrink-0 bg-white"
-              style={{ width: showCategories ? sidebarWidth : "100%" }}
+              style={{ width: showCategories ? (rightCollapsed ? windowSize.w - COLLAPSED_STRIP_W : sidebarWidth) : "100%" }}
               onMouseDown={() => setSidebarFocused(true)}
             >
               {/* ── Input form ── */}
@@ -2269,10 +2289,27 @@ export default function IdeaBin() {
                 onLegendCreated={undefined}
               />
             </div>
+            )}
 
             {/* ── Sidebar resize handle ── */}
-            {showCategories && (
+            {showCategories && !leftCollapsed && !rightCollapsed && (
               <div className="relative flex-shrink-0" style={{ width: 6 }}>
+                {/* Collapse left panel button */}
+                <button
+                  onClick={() => setLeftCollapsed(true)}
+                  className="absolute -left-3 top-1/2 -translate-y-1/2 z-20 bg-white border border-gray-300 rounded-full w-5 h-5 flex items-center justify-center shadow-sm hover:bg-gray-100 hover:border-gray-400 transition-colors"
+                  title="Collapse idea panel"
+                >
+                  <PanelLeftClose size={11} />
+                </button>
+                {/* Collapse right panel button */}
+                <button
+                  onClick={() => setRightCollapsed(true)}
+                  className="absolute -right-3 top-1/2 -translate-y-[calc(50%+14px)] z-20 bg-white border border-gray-300 rounded-full w-5 h-5 flex items-center justify-center shadow-sm hover:bg-gray-100 hover:border-gray-400 transition-colors"
+                  title="Collapse category canvas"
+                >
+                  <PanelRightClose size={11} />
+                </button>
                 {/* Corner anchor — controls both form height AND sidebar width */}
                 <div
                   onMouseDown={(e) => {
@@ -2283,7 +2320,7 @@ export default function IdeaBin() {
                     const startW = sidebarWidth;
                     const startH = formHeight;
                     const onMove = (ev) => {
-                      setSidebarWidth(Math.min(MAX_SIDEBAR_W, Math.max(MIN_SIDEBAR_W, startW + (ev.clientX - startX))));
+                      setSidebarWidth(Math.min(maxSidebarW, Math.max(MIN_SIDEBAR_W, startW + (ev.clientX - startX))));
                       setFormHeight(Math.min(MAX_FORM_H, Math.max(MIN_FORM_H, startH + (ev.clientY - startY))));
                     };
                     const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
@@ -2302,7 +2339,7 @@ export default function IdeaBin() {
                     const startX = e.clientX;
                     const startW = sidebarWidth;
                     const onMove = (ev) => {
-                      const newW = Math.min(MAX_SIDEBAR_W, Math.max(MIN_SIDEBAR_W, startW + (ev.clientX - startX)));
+                      const newW = Math.min(maxSidebarW, Math.max(MIN_SIDEBAR_W, startW + (ev.clientX - startX)));
                       setSidebarWidth(newW);
                     };
                     const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
@@ -2314,8 +2351,21 @@ export default function IdeaBin() {
               </div>
             )}
 
-            {/* ── RIGHT: Category canvas (only when wide enough) ── */}
-            {showCategories && (
+            {/* ── RIGHT: Collapsed strip when category canvas is hidden ── */}
+            {showCategories && rightCollapsed && !leftCollapsed && (
+              <div className="flex flex-col items-center flex-shrink-0 bg-gray-50 border-l border-gray-200" style={{ width: COLLAPSED_STRIP_W }}>
+                <button
+                  onClick={() => setRightCollapsed(false)}
+                  className="mt-2 p-1 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors"
+                  title="Expand category canvas"
+                >
+                  <PanelRightOpen size={16} />
+                </button>
+              </div>
+            )}
+
+            {/* ── RIGHT: Category canvas (only when wide enough and not collapsed) ── */}
+            {showCategories && !rightCollapsed && (
               <IdeaBinCategoryCanvas
                 onCanvasMouseDown={() => setSidebarFocused(false)}
                 categoryContainerRef={categoryContainerRef}

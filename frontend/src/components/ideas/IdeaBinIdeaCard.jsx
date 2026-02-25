@@ -58,7 +58,7 @@ export default function IdeaBinIdeaCard({
     ? (collapsedIdeas[collapseKey] ?? false)   // overlay: expanded by default
     : sidebarHeadlineOnly
     ? (collapsedIdeas[collapseKey] ?? true)     // headline-only mode: collapsed by default
-    : (collapsedIdeas[collapseKey] ?? !isAllView); // normal: unassigned/category collapsed, "all" expanded
+    : (collapsedIdeas[collapseKey] ?? false);   // normal / show-full-ideas: expanded by default
   const isWiggling = wigglingIdeaId && idea.idea_id === wigglingIdeaId && !isAllView && !isMetaView;
   const isInAdoptedCategory = source.type === "category" && categories?.[source.id]?.adopted;
   const isOwnIdea = idea.owner === currentUserId;
@@ -97,11 +97,15 @@ export default function IdeaBinIdeaCard({
       // Full title — never truncate, allow line-break
       return <span className="font-semibold text-[11px]">{idea.title}</span>;
     }
-    // No title — show first few words of desc with "..."
+    // No title — show description as headline
     if (idea.description) {
-      const words = idea.description.split(/\s+/);
-      const preview = words.length > 5 ? words.slice(0, 5).join(" ") + "..." : words.join(" ");
-      return <span className="font-semibold text-[11px] text-gray-400 italic">{preview}</span>;
+      // Only truncate when in headline-only mode; otherwise show full description
+      if (sidebarHeadlineOnly) {
+        const words = idea.description.split(/\s+/);
+        const preview = words.length > 5 ? words.slice(0, 5).join(" ") + "..." : words.join(" ");
+        return <span className="font-semibold text-[11px] text-gray-400 italic">{preview}</span>;
+      }
+      return <span className="font-semibold text-[11px] text-gray-400 italic whitespace-pre-wrap">{idea.description}</span>;
     }
     return <span className="font-semibold text-[11px] text-gray-400 italic">Untitled</span>;
   };

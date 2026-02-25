@@ -552,7 +552,7 @@ class Idea(models.Model):
     Deleting the Idea cascade-deletes every placement.
     """
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="owned_ideas", null=True, blank=True)
-    title = models.CharField(max_length=500)
+    title = models.CharField(max_length=500, blank=True, default="")
     description = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     archived = models.BooleanField(default=False)

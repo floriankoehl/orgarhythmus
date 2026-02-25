@@ -14,7 +14,7 @@ export default function useIdeaBinKeyboard(deps) {
     selectedIdeaIds, setSelectedIdeaIds, ideas, categories,
     headlineModeCategoryId, setHeadlineModeCategoryId,
     headlineModeIdeaId, setHeadlineModeIdeaId,
-    delete_idea, remove_idea_from_category, toggle_archive_idea,
+    delete_idea, delete_category, remove_idea_from_category, toggle_archive_idea,
     setConfirmModal,
     paintType, setPaintType,
     // Ctrl+A / Ctrl+Shift+A deps
@@ -116,6 +116,31 @@ export default function useIdeaBinKeyboard(deps) {
     const tag = document.activeElement?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA") return;
     if (e.key !== "Delete" && e.key !== "Backspace") return;
+
+    // ── Delete selected categories ──
+    if (selectedIdeaIds.size === 0 && selectedCategoryIds.size > 0) {
+      e.preventDefault();
+      const catIds = [...selectedCategoryIds];
+      const catNames = catIds.map(id => categories[id]?.name || "Category").join(", ");
+      const count = catIds.length;
+      setConfirmModal({
+        message: count === 1
+          ? `Delete category "${catNames}"? Ideas inside will become unassigned.`
+          : `Delete ${count} categories (${catNames})? Ideas inside will become unassigned.`,
+        confirmLabel: "Delete",
+        confirmColor: "bg-red-500 hover:bg-red-600",
+        onConfirm: async () => {
+          for (const id of catIds) {
+            await delete_category(id);
+          }
+          setSelectedCategoryIds(new Set());
+          setConfirmModal(null);
+        },
+        onCancel: () => setConfirmModal(null),
+      });
+      return;
+    }
+
     if (selectedIdeaIds.size === 0) return;
     e.preventDefault();
 
@@ -167,7 +192,7 @@ export default function useIdeaBinKeyboard(deps) {
         onCancel: () => setConfirmModal(null),
       });
     }
-  }, [selectedIdeaIds, ideas, toggle_archive_idea, remove_idea_from_category, setConfirmModal, setSelectedIdeaIds]);
+  }, [selectedIdeaIds, selectedCategoryIds, categories, ideas, toggle_archive_idea, remove_idea_from_category, delete_category, setConfirmModal, setSelectedIdeaIds, setSelectedCategoryIds]);
 
   // ── Delete key – unassign / archive selected ideas ──
   useEffect(() => {

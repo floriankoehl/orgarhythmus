@@ -179,7 +179,7 @@ export default function IdeaBinCategoryCanvas({
         const w = mx2 - mx1;
         const h = my2 - my1;
         if (w >= 80 && h >= 50) {
-          create_category_at({ x: Math.round(mx1), y: Math.round(my1), width: Math.round(w), height: Math.round(h) })
+          create_category_at({ x: Math.round(mx1), y: Math.round(my1 - 36), width: Math.round(w), height: Math.round(h) })
             .then((newCatId) => {
               if (newCatId) {
                 // Put the new category into edit mode so user can name it
