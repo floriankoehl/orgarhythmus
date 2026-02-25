@@ -11,6 +11,7 @@ export async function fetchContextsApi() {
     is_default: ctx.is_default || false,
     category_ids: ctx.category_ids || [],
     legend_ids: ctx.legend_ids || [],
+    idea_ids: ctx.idea_ids || [],
     filter_state: ctx.filter_state || null,
   }));
 }
@@ -72,5 +73,31 @@ export async function saveFilterPresetsApi(presets) {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ filter_presets: presets }),
+  });
+}
+
+/* ── Context ↔ Idea endpoints ── */
+
+export async function assignIdeaToContextApi(ideaId, contextId) {
+  await authFetch(`${API}/user/contexts/assign_idea/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ idea_id: ideaId, context_id: contextId }),
+  });
+}
+
+export async function removeIdeaFromContextApi(ideaId, contextId) {
+  await authFetch(`${API}/user/contexts/remove_idea/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ idea_id: ideaId, context_id: contextId }),
+  });
+}
+
+export async function saveContextIdeaOrderApi(contextId, ideaIds) {
+  await authFetch(`${API}/user/contexts/save_idea_order/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ context_id: contextId, idea_ids: ideaIds }),
   });
 }

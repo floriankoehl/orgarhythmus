@@ -203,6 +203,9 @@ from .contexts import (
     get_all_public_contexts,
     adopt_context,
     drop_context,
+    assign_idea_to_context,
+    remove_idea_from_context,
+    save_context_idea_order,
 )
 
 from .formations import (

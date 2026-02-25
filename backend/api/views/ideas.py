@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..models import Category, Context, Idea, IdeaPlacement, IdeaLegendType, IdeaUpvote, IdeaComment, LegendType, Legend, UserCategoryAdoption, UserContextAdoption, CategoryContextPlacement
+from ..models import Category, Context, Idea, IdeaPlacement, IdeaLegendType, IdeaUpvote, IdeaComment, LegendType, Legend, UserCategoryAdoption, UserContextAdoption, CategoryContextPlacement, IdeaContextPlacement
 from .serializers import IdeaSerializer, IdeaPlacementSerializer, CategorySerializer, LegendTypeSerializer, LegendSerializer
 
 
@@ -32,6 +32,18 @@ def _get_accessible_category(user, category_id):
     return None
 
 
+def _get_accessible_context(user, context_id):
+    """Return a Context the user either owns or has adopted. Returns None when not accessible."""
+    ctx = Context.objects.filter(id=context_id).first()
+    if ctx is None:
+        return None
+    if ctx.owner == user:
+        return ctx
+    if UserContextAdoption.objects.filter(user=user, context=ctx).exists():
+        return ctx
+    return None
+
+
 # ═══════════════════════════════════════════════════════
 #  IDEA ENDPOINTS  (user-scoped)
 # ═══════════════════════════════════════════════════════
@@ -43,6 +55,7 @@ def create_idea(request):
     title = request.data.get("idea_name", "").strip()
     description = request.data.get("description", "")
     category_id = request.data.get("category_id")  # optional — place into category
+    context_id = request.data.get("context_id")    # optional — link to context
     if not title and not description.strip():
         return Response({"error": "Title or description is required"}, status=400)
 
@@ -67,11 +80,27 @@ def create_idea(request):
         category=category,
         order_index=next_order,
     )
-    ctx = {'request': request}
+
+    # If created inside a context, auto-link idea to context
+    context_placement = None
+    if context_id:
+        target_ctx = _get_accessible_context(request.user, context_id)
+        if target_ctx:
+            cp_max = IdeaContextPlacement.objects.filter(context=target_ctx).aggregate(
+                Max('order_index')
+            )['order_index__max']
+            cp_next = (cp_max + 1) if cp_max is not None else 0
+            context_placement = IdeaContextPlacement.objects.create(
+                idea=idea,
+                context=target_ctx,
+                order_index=cp_next,
+            )
+
+    ser_ctx = {'request': request}
     return Response({
         "created": True,
-        "idea": IdeaSerializer(idea, context=ctx).data,
-        "placement": IdeaPlacementSerializer(placement, context=ctx).data,
+        "idea": IdeaSerializer(idea, context=ser_ctx).data,
+        "placement": IdeaPlacementSerializer(placement, context=ser_ctx).data,
     })
 
 
@@ -241,10 +270,52 @@ def get_all_ideas(request):
                     .values_list('id', flat=True)
                 )
 
+    # ── Context-linked ideas ──
+    # For all contexts the user owns or has adopted, build context → [idea_ids] mapping
+    # and include other users' ideas that are linked to those contexts.
+    own_ctx_ids = list(Context.objects.filter(owner=request.user).values_list('id', flat=True))
+    all_ctx_ids = list(set(own_ctx_ids + adopted_ctx_ids))
+    context_idea_orders = {}
+    if all_ctx_ids:
+        for ctx_id in all_ctx_ids:
+            idea_ids = list(
+                IdeaContextPlacement.objects.filter(context_id=ctx_id)
+                .order_by('order_index')
+                .values_list('idea_id', flat=True)
+            )
+            if idea_ids:
+                context_idea_orders[ctx_id] = idea_ids
+
+        # Include placements for other users' ideas linked to user's contexts
+        # that aren't already in the response
+        already_included_idea_ids = set(p['idea']['id'] for p in all_placements_serialized)
+        all_context_idea_ids = set()
+        for ids in context_idea_orders.values():
+            all_context_idea_ids.update(ids)
+        missing_idea_ids = all_context_idea_ids - already_included_idea_ids
+        if missing_idea_ids:
+            # Get an unassigned placement per missing idea so the frontend has idea data
+            extra_placements = (
+                IdeaPlacement.objects.filter(idea_id__in=missing_idea_ids, idea__archived=False)
+                .select_related('idea', 'idea__owner', 'category')
+                .prefetch_related('idea__legend_types__legend_type', 'idea__legend_types__legend')
+                .order_by('idea_id', 'order_index')
+            )
+            # Deduplicate: one placement per idea (prefer unassigned, i.e. category=null)
+            seen_idea_ids = set()
+            deduped = []
+            for ep in extra_placements:
+                if ep.idea_id not in seen_idea_ids:
+                    seen_idea_ids.add(ep.idea_id)
+                    deduped.append(ep)
+            extra_data = IdeaPlacementSerializer(deduped, many=True, context=ctx).data
+            all_placements_serialized += extra_data
+
     return Response({
         "data": all_placements_serialized,
         "order": unassigned_order,
         "category_orders": category_orders,
+        "context_idea_orders": context_idea_orders,
     })
 
 

@@ -470,6 +470,29 @@ class LegendContextPlacement(models.Model):
 
 
 # ═══════════════════════════════════════════════
+#  IDEA ↔ CONTEXT PLACEMENT  (idea directly in a context)
+# ═══════════════════════════════════════════════
+
+class IdeaContextPlacement(models.Model):
+    """
+    Links an Idea directly to a Context.
+    Created automatically when a user creates an idea while inside a context.
+    Enables 'context-unassigned' ideas – ideas dumped into a context but not yet
+    placed in any category within it.
+    """
+    idea = models.ForeignKey('Idea', on_delete=models.CASCADE, related_name='context_placements')
+    context = models.ForeignKey(Context, on_delete=models.CASCADE, related_name='idea_placements')
+    order_index = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ["order_index"]
+        unique_together = ["idea", "context"]
+
+    def __str__(self):
+        return f"{self.idea.title} → ctx:{self.context.name}"
+
+
+# ═══════════════════════════════════════════════
 #  DEPENDENCY VIEW (saved frontend state)
 # ═══════════════════════════════════════════════
 

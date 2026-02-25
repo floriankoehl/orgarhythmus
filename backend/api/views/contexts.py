@@ -8,7 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 
-from ..models import Category, Context, CategoryContextPlacement, Legend, UserContextAdoption
+from ..models import Category, Context, CategoryContextPlacement, Legend, UserContextAdoption, IdeaContextPlacement, Idea
 from .serializers import ContextSerializer
 
 
@@ -31,6 +31,7 @@ def get_all_contexts(request):
         cat_placements = CategoryContextPlacement.objects.filter(context=ctx).order_by("order_index")
         d["category_ids"] = [p.category_id for p in cat_placements]
         d["legend_ids"] = list(Legend.objects.filter(context=ctx).values_list('id', flat=True))
+        d["idea_ids"] = list(IdeaContextPlacement.objects.filter(context=ctx).order_by("order_index").values_list('idea_id', flat=True))
         data.append(d)
 
     for ctx in adopted:
@@ -39,6 +40,7 @@ def get_all_contexts(request):
         cat_placements = CategoryContextPlacement.objects.filter(context=ctx).order_by("order_index")
         d["category_ids"] = [p.category_id for p in cat_placements]
         d["legend_ids"] = list(Legend.objects.filter(context=ctx).values_list('id', flat=True))
+        d["idea_ids"] = list(IdeaContextPlacement.objects.filter(context=ctx).order_by("order_index").values_list('idea_id', flat=True))
         data.append(d)
 
     return Response(data)
@@ -289,3 +291,66 @@ def drop_context(request, context_id):
     """Drop (unadopt) a context."""
     UserContextAdoption.objects.filter(user=request.user, context_id=context_id).delete()
     return Response({"dropped": True})
+
+
+# ─────────────────────────────────────────────
+#  IDEA ↔ CONTEXT PLACEMENT
+# ─────────────────────────────────────────────
+
+def _get_accessible_context(user, context_id):
+    """Return a Context the user owns or has adopted. None if not accessible."""
+    ctx = Context.objects.filter(id=context_id).first()
+    if ctx is None:
+        return None
+    if ctx.owner == user:
+        return ctx
+    if UserContextAdoption.objects.filter(user=user, context=ctx).exists():
+        return ctx
+    return None
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def assign_idea_to_context(request):
+    """Link an existing idea to a context. Creates an IdeaContextPlacement."""
+    idea_id = request.data.get("idea_id")
+    context_id = request.data.get("context_id")
+    idea = Idea.objects.filter(id=idea_id, owner=request.user).first()
+    if not idea:
+        return Response({"error": "Idea not found"}, status=404)
+    ctx = _get_accessible_context(request.user, context_id)
+    if not ctx:
+        return Response({"error": "Context not found"}, status=404)
+    placement, created = IdeaContextPlacement.objects.get_or_create(
+        idea=idea, context=ctx,
+        defaults={"order_index": IdeaContextPlacement.objects.filter(context=ctx).count()},
+    )
+    return Response({"status": "assigned", "created": created})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def remove_idea_from_context(request):
+    """Remove an idea from a context. Deletes the IdeaContextPlacement."""
+    idea_id = request.data.get("idea_id")
+    context_id = request.data.get("context_id")
+    deleted, _ = IdeaContextPlacement.objects.filter(
+        idea_id=idea_id, idea__owner=request.user, context_id=context_id
+    ).delete()
+    if not deleted:
+        return Response({"error": "Not found"}, status=404)
+    return Response({"status": "removed"})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def save_context_idea_order(request):
+    """Save the order of ideas within a context."""
+    context_id = request.data.get("context_id")
+    idea_ids = request.data.get("idea_ids", [])
+    ctx = _get_accessible_context(request.user, context_id)
+    if not ctx:
+        return Response({"error": "Context not found"}, status=404)
+    for idx, idea_id in enumerate(idea_ids):
+        IdeaContextPlacement.objects.filter(context=ctx, idea_id=idea_id).update(order_index=idx)
+    return Response({"status": "ok"})

@@ -27,10 +27,11 @@ import {
   mergeIdeasApi,
 } from "../api/ideaApi";
 
-export default function useIdeaBinIdeas({ selectedCategoryIds }) {
+export default function useIdeaBinIdeas({ selectedCategoryIds, activeContext }) {
   const [ideas, setIdeas] = useState({});
   const [unassignedOrder, setUnassignedOrder] = useState([]);
   const [categoryOrders, setCategoryOrders] = useState({});
+  const [contextIdeaOrders, setContextIdeaOrders] = useState({});
   const [ideaName, setIdeaName] = useState("");
   const [newIdeaDescription, setNewIdeaDescription] = useState("");
 
@@ -80,10 +81,11 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
 
   const fetch_all_ideas = useCallback(async () => {
     try {
-      const { ideas: obj, order, categoryOrders: catOrders } = await fetchAllIdeasApi();
+      const { ideas: obj, order, categoryOrders: catOrders, contextIdeaOrders: ctxIdeaOrders } = await fetchAllIdeasApi();
       setIdeas(obj);
       setUnassignedOrder(order);
       setCategoryOrders(catOrders);
+      setContextIdeaOrders(ctxIdeaOrders);
     } catch (err) { console.error("IdeaBin: fetch ideas failed", err); }
   }, []);
 
@@ -206,13 +208,14 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
     await createIdeaApi(
       title.trim(),
       desc.trim(),
-      catId
+      catId,
+      activeContext?.id || null
     );
     setIdeaName("");
     setNewIdeaDescription("");
     playSound('ideaCreate');
     fetch_all_ideas();
-  }, [ideaName, newIdeaDescription, selectedCategoryIds, fetch_all_ideas]);
+  }, [ideaName, newIdeaDescription, selectedCategoryIds, activeContext, fetch_all_ideas]);
 
   const delete_idea = useCallback(async (id) => {
     // Save idea data for undo before deleting
@@ -554,5 +557,6 @@ export default function useIdeaBinIdeas({ selectedCategoryIds }) {
     redo,
     historyCount,
     pushMove,
+    contextIdeaOrders,
   };
 }

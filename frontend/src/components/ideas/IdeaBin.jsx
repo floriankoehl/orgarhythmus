@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import TextField from "@mui/material/TextField";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
@@ -241,7 +241,8 @@ export default function IdeaBin() {
     redo,
     historyCount,
     pushMove,
-  } = useIdeaBinIdeas({ selectedCategoryIds });
+    contextIdeaOrders,
+  } = useIdeaBinIdeas({ selectedCategoryIds, activeContext });
 
   // ── Categories hook ──
   const {
@@ -426,7 +427,7 @@ export default function IdeaBin() {
     } catch (e) { console.error("Failed to save context filter state", e); }
   };
   const enterContext = async (ctx) => {
-    // ctx = {id, name, color, category_ids, legend_ids, filter_state}
+    // ctx = {id, name, color, category_ids, legend_ids, idea_ids, filter_state}
     // Save current context's filter state before switching
     if (activeContext) {
       saveContextFilterState(activeContext.id);
@@ -1180,6 +1181,22 @@ export default function IdeaBin() {
   });
   const unassignedCount = unassignedOrder.length;
 
+  // ── Context-aware unassigned: when inside a context, show ideas linked to the
+  //    context that are NOT placed in any category within the context. ──
+  const effectiveUnassignedOrder = useMemo(() => {
+    if (!activeContext) return unassignedOrder;
+    const ctxIdeaIds = new Set(contextIdeaOrders[activeContext.id] || []);
+    if (ctxIdeaIds.size === 0) return [];
+    const ctxCatIds = new Set((activeContext.category_ids || []).map(Number));
+    // Find all placements for context-linked ideas that are in no context category
+    const matching = Object.values(ideas)
+      .filter(p => p && ctxIdeaIds.has(p.idea_id) && (p.category == null || !ctxCatIds.has(Number(p.category))))
+      .sort((a, b) => a.order_index - b.order_index)
+      .map(p => p.id);
+    return matching;
+  }, [activeContext, contextIdeaOrders, ideas, unassignedOrder]);
+  const effectiveUnassignedCount = effectiveUnassignedOrder.length;
+
   // ── Advanced idea filter (multi-legend, stackable, AND/OR, include/exclude) ──
   const hasLegendFilters = legendFilters.length > 0 || stackedFilters.length > 0;
 
@@ -1294,9 +1311,9 @@ export default function IdeaBin() {
           title="Open Idea Bin"
         >
           <Lightbulb size={22} className="text-white drop-shadow" />
-          {unassignedCount > 0 && (
+          {effectiveUnassignedCount > 0 && (
             <span className="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow border border-white">
-              {unassignedCount > 9 ? "9+" : unassignedCount}
+              {effectiveUnassignedCount > 9 ? "9+" : effectiveUnassignedCount}
             </span>
           )}
         </div>
@@ -1456,7 +1473,7 @@ export default function IdeaBin() {
                 </div>
               )}
 
-              {unassignedCount > 0 && viewMode === "ideas" && (
+              {effectiveUnassignedCount > 0 && viewMode === "ideas" && (
                 <span
                   className="text-[10px] px-1.5 rounded-full font-medium"
                   style={{
@@ -1464,7 +1481,7 @@ export default function IdeaBin() {
                     color: activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 70%, #333)` : "#92400e",
                   }}
                 >
-                  {unassignedCount}
+                  {effectiveUnassignedCount}
                 </span>
               )}
             </div>
@@ -2118,7 +2135,7 @@ export default function IdeaBin() {
                       {listFilter === "all"
                         ? `All Ideas (${metaIdeaList.length})`
                         : listFilter === "unassigned"
-                        ? `Unassigned (${unassignedCount})`
+                        ? `Unassigned (${effectiveUnassignedCount})`
                         : `${categories[listFilter]?.name || "Category"} (${(categoryOrders[listFilter] || []).length})`
                       }
                       <span className="text-[9px]">▼</span>
@@ -2177,7 +2194,7 @@ export default function IdeaBin() {
                           onClick={() => { setListFilter("unassigned"); setShowListFilterDropdown(false); }}
                           className={`px-2.5 py-1.5 text-[11px] cursor-pointer transition-colors ${listFilter === "unassigned" ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-50 text-gray-700"}`}
                         >
-                          Unassigned ({unassignedCount})
+                          Unassigned ({effectiveUnassignedCount})
                         </div>
                         {Object.entries(categories).map(([catKey, catData]) => {
                           const isFed = !!catData.filter_config;
@@ -2211,7 +2228,7 @@ export default function IdeaBin() {
                           : renderIdeaItem(idea.id, idx, { type: "all" })
                       )
                   : listFilter === "unassigned"
-                  ? unassignedOrder
+                  ? effectiveUnassignedOrder
                       .filter(ideaId => passesAllFilters(ideas[ideaId]))
                       .map((ideaId, idx) =>
                         headlineModeIdeaId === ideaId

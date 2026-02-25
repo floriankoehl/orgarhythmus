@@ -213,6 +213,9 @@ urlpatterns = [
     path("user/contexts/remove_category/", views.remove_category_from_context, name="remove_category_from_context"),
     path("user/contexts/safe_order/", views.safe_context_order, name="safe_context_order"),
     path("user/contexts/toggle_public/", views.toggle_public_context, name="toggle_public_context"),
+    path("user/contexts/assign_idea/", views.assign_idea_to_context, name="assign_idea_to_context"),
+    path("user/contexts/remove_idea/", views.remove_idea_from_context, name="remove_idea_from_context"),
+    path("user/contexts/save_idea_order/", views.save_context_idea_order, name="save_context_idea_order"),
 
     # Context adoption
     path("contexts/public/", views.get_all_public_contexts, name="get_all_public_contexts"),

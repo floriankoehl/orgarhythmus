@@ -26,10 +26,10 @@ export async function fetchAllIdeas() {
       order_index: p.order_index,
     };
   }
-  return { ideas: obj, order: data?.order || [], categoryOrders: data?.category_orders || {} };
+  return { ideas: obj, order: data?.order || [], categoryOrders: data?.category_orders || {}, contextIdeaOrders: data?.context_idea_orders || {} };
 }
 
-export async function createIdeaApi(ideaName, description, categoryId) {
+export async function createIdeaApi(ideaName, description, categoryId, contextId) {
   await authFetch(`${API}/user/ideas/create/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -37,6 +37,7 @@ export async function createIdeaApi(ideaName, description, categoryId) {
       idea_name: ideaName,
       description: description || "",
       ...(categoryId ? { category_id: parseInt(categoryId) } : {}),
+      ...(contextId ? { context_id: parseInt(contextId) } : {}),
     }),
   });
 }
