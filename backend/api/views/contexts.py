@@ -8,7 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 
-from ..models import Category, Context, CategoryContextPlacement, Legend, UserContextAdoption, IdeaContextPlacement, Idea
+from ..models import Category, Context, CategoryContextPlacement, Legend, UserContextAdoption, IdeaContextPlacement, Idea, ProjectContextPlacement, Project
 from .serializers import ContextSerializer
 
 
@@ -32,6 +32,7 @@ def get_all_contexts(request):
         d["category_ids"] = [p.category_id for p in cat_placements]
         d["legend_ids"] = list(Legend.objects.filter(context=ctx).values_list('id', flat=True))
         d["idea_ids"] = list(IdeaContextPlacement.objects.filter(context=ctx).order_by("order_index").values_list('idea_id', flat=True))
+        d["project_ids"] = list(ProjectContextPlacement.objects.filter(context=ctx).values_list('project_id', flat=True))
         data.append(d)
 
     for ctx in adopted:
@@ -41,6 +42,7 @@ def get_all_contexts(request):
         d["category_ids"] = [p.category_id for p in cat_placements]
         d["legend_ids"] = list(Legend.objects.filter(context=ctx).values_list('id', flat=True))
         d["idea_ids"] = list(IdeaContextPlacement.objects.filter(context=ctx).order_by("order_index").values_list('idea_id', flat=True))
+        d["project_ids"] = list(ProjectContextPlacement.objects.filter(context=ctx).values_list('project_id', flat=True))
         data.append(d)
 
     return Response(data)
@@ -354,3 +356,59 @@ def save_context_idea_order(request):
     for idx, idea_id in enumerate(idea_ids):
         IdeaContextPlacement.objects.filter(context=ctx, idea_id=idea_id).update(order_index=idx)
     return Response({"status": "ok"})
+
+
+# ─────────────────────────────────────────────
+#  PROJECT ↔ CONTEXT PLACEMENT
+# ─────────────────────────────────────────────
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def assign_project_to_context(request):
+    """Link a project to a context."""
+    project_id = request.data.get("project_id")
+    context_id = request.data.get("context_id")
+    from django.db.models import Q
+    project = Project.objects.filter(
+        Q(owner=request.user) | Q(members=request.user), pk=project_id
+    ).first()
+    if not project:
+        return Response({"error": "Project not found"}, status=404)
+    ctx = _get_accessible_context(request.user, context_id)
+    if not ctx:
+        return Response({"error": "Context not found"}, status=404)
+    placement, created = ProjectContextPlacement.objects.get_or_create(
+        project=project, context=ctx,
+    )
+    return Response({"status": "assigned", "created": created})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def remove_project_from_context(request):
+    """Remove a project from a context."""
+    project_id = request.data.get("project_id")
+    context_id = request.data.get("context_id")
+    deleted, _ = ProjectContextPlacement.objects.filter(
+        project_id=project_id, context_id=context_id,
+    ).delete()
+    if not deleted:
+        return Response({"error": "Not found"}, status=404)
+    return Response({"status": "removed"})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_context_projects(request, context_id):
+    """Return projects linked to a context that the current user is a member of."""
+    from django.db.models import Q
+    ctx = _get_accessible_context(request.user, context_id)
+    if not ctx:
+        return Response({"error": "Context not found"}, status=404)
+    project_ids = ProjectContextPlacement.objects.filter(context=ctx).values_list('project_id', flat=True)
+    projects = Project.objects.filter(
+        Q(owner=request.user) | Q(members=request.user),
+        pk__in=project_ids,
+    ).distinct()
+    data = [{"id": p.id, "name": p.name} for p in projects]
+    return Response(data)

@@ -14,7 +14,7 @@ const DEFAULT_H = 460;
 export default function useIdeaBinWindow(headlineInputRef) {
   const [isOpen, setIsOpen] = useState(false);
   const [windowPos, setWindowPos] = useState({ x: 0, y: 0 });
-  const [windowSize, setWindowSize] = useState({ w: window.innerWidth, h: window.innerHeight });
+  const [windowSize, setWindowSize] = useState({ w: window.innerWidth - 16, h: window.innerHeight - 68 });
   const [iconPos, setIconPos] = useState(() => ({
     x: 8,
     y: 8,
@@ -56,8 +56,8 @@ export default function useIdeaBinWindow(headlineInputRef) {
       setPreMaxState(null);
     } else {
       setPreMaxState({ pos: { ...windowPos }, size: { ...windowSize } });
-      setWindowPos({ x: 8, y: 60 });
-      setWindowSize({ w: window.innerWidth - 16, h: window.innerHeight - 68 });
+      setWindowPos({ x: 4, y: 60 });
+      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - 68 });
       setIsMaximized(true);
     }
   }, [isMaximized, preMaxState, windowPos, windowSize]);
@@ -66,8 +66,8 @@ export default function useIdeaBinWindow(headlineInputRef) {
   useEffect(() => {
     if (!isMaximized) return;
     const onResize = () => {
-      setWindowPos({ x: 8, y: 60 });
-      setWindowSize({ w: window.innerWidth - 16, h: window.innerHeight - 68 });
+      setWindowPos({ x: 4, y: 60 });
+      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - 68 });
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);

@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
-import { Copy, Settings, Globe, Lock, UserRound, LinkIcon, PanelTopDashed, Pencil, Type, X, RotateCcw, ArrowDownUp, BookOpenText, Rss, ListOrdered, Filter, AlertTriangle } from "lucide-react";
+import { Copy, Settings, Globe, Lock, UserRound, LinkIcon, PanelTopDashed, Pencil, Type, X, RotateCcw, ArrowDownUp, BookOpenText, Rss, ListOrdered, Filter, AlertTriangle, PanelRightClose, Users } from "lucide-react";
 import FeedFilterPanel from "./FeedFilterPanel";
 
 /**
@@ -11,6 +11,8 @@ import FeedFilterPanel from "./FeedFilterPanel";
  */
 export default function IdeaBinCategoryCanvas({
   onCanvasMouseDown,
+  onCollapseRight,
+  showCollapseRight,
   categoryContainerRef,
   displayCategoryForm, setDisplayCategoryForm,
   newCategoryName, setNewCategoryName,
@@ -77,6 +79,7 @@ export default function IdeaBinCategoryCanvas({
   batch_assign_idea_legend_type,
   showOrderNumbers,
   setShowOrderNumbers,
+  onReformCategory,
 }) {
   // Local state for headline-mode draft headlines (keyed by ideaId)
   const [draftHeadlines, setDraftHeadlines] = useState({});
@@ -359,7 +362,17 @@ export default function IdeaBinCategoryCanvas({
       })()}
       {/* Toolbar */}
       <div className="sticky top-0 z-30 bg-gray-50/90 backdrop-blur-sm border-b border-gray-200">
-        <div className="flex items-center gap-2 p-2">
+        <div className="flex items-center gap-2 p-2" style={{ paddingLeft: showCollapseRight ? 28 : undefined }}>
+          {/* Collapse category panel button — top-left corner */}
+          {showCollapseRight && (
+            <button
+              onClick={onCollapseRight}
+              className="absolute top-1.5 left-0 z-30 bg-white border border-gray-300 rounded-r px-1 py-1 flex items-center justify-center shadow-sm hover:bg-gray-100 hover:border-gray-400 transition-colors"
+              title="Collapse category canvas"
+            >
+              <PanelRightClose size={12} className="text-gray-500" />
+            </button>
+          )}
           {archivedCategories.length > 0 && (
             <div className="relative flex-shrink-0">
               <button
@@ -908,6 +921,20 @@ export default function IdeaBinCategoryCanvas({
                           <DeleteForeverIcon style={{ fontSize: 13 }} />
                           Delete category
                         </button>
+                        {/* Reform to Team */}
+                        {onReformCategory && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCategorySettingsOpen(null);
+                              onReformCategory(catKey, catData);
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-[11px] text-indigo-600 hover:bg-indigo-50 flex items-center gap-2"
+                          >
+                            <Users size={11} />
+                            Reform to Team
+                          </button>
+                        )}
                         {/* Rename */}
                         <button
                           onClick={(e) => {

@@ -206,6 +206,9 @@ from .contexts import (
     assign_idea_to_context,
     remove_idea_from_context,
     save_context_idea_order,
+    assign_project_to_context,
+    remove_project_from_context,
+    get_context_projects,
 )
 
 from .formations import (

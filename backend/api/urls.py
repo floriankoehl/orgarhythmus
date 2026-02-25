@@ -217,6 +217,11 @@ urlpatterns = [
     path("user/contexts/remove_idea/", views.remove_idea_from_context, name="remove_idea_from_context"),
     path("user/contexts/save_idea_order/", views.save_context_idea_order, name="save_context_idea_order"),
 
+    # Project ↔ Context linking
+    path("user/contexts/assign_project/", views.assign_project_to_context, name="assign_project_to_context"),
+    path("user/contexts/remove_project/", views.remove_project_from_context, name="remove_project_from_context"),
+    path("user/contexts/<int:context_id>/projects/", views.get_context_projects, name="get_context_projects"),
+
     # Context adoption
     path("contexts/public/", views.get_all_public_contexts, name="get_all_public_contexts"),
     path("contexts/<int:context_id>/adopt/", views.adopt_context, name="adopt_context"),

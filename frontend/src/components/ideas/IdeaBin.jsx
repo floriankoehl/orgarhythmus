@@ -5,7 +5,7 @@ import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 
 import { Lightbulb, Minus, Maximize2, Minimize2, Copy, List, X, Settings, Layers, Save, FolderOpen, Trash2, Pencil, Check, Palette, ChevronDown, Star, Paintbrush, RotateCcw, ArrowDownUp, BookOpenText, Type, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { BASE_URL } from "../../config/api";
-import { createTaskForProject, fetchTeamsForProject } from "../../api/org_API";
+import { createTaskForProject, createTeamForProject, fetchTeamsForProject, fetch_all_projects } from "../../api/org_API";
 import { add_milestone, fetch_project_tasks, delete_task, delete_team, delete_milestone } from "../../api/dependencies_api";
 import { playSound } from "../../assets/sound_registry";
 import { useLegends } from "./useLegends";
@@ -15,6 +15,7 @@ import CollectConflictModal from "./CollectConflictModal";
 import IdeaBinMergeModal from "./IdeaBinMergeModal";
 import useIdeaBinWindow from "./useIdeaBinWindow";
 import IdeaBinTransformModal from "./IdeaBinTransformModal";
+import IdeaBinReformCategoryModal from "./IdeaBinReformCategoryModal";
 import IdeaBinLegendPanel from "./IdeaBinLegendPanel";
 import IdeaBinDragGhosts from "./IdeaBinDragGhosts";
 import IdeaBinIdeaCard from "./IdeaBinIdeaCard";
@@ -32,8 +33,8 @@ import useIdeaBinKeyboard from "./hooks/useIdeaBinKeyboard";
 
 // Extracted API helpers
 import { authFetch, API } from "./api/authFetch";
-import { fetchContextsApi, saveContextFilterStateApi, setContextColorApi, fetchFilterPresetsApi, saveFilterPresetsApi } from "./api/contextApi";
-import { mergeIdeasApi } from "./api/ideaApi";
+import { fetchContextsApi, saveContextFilterStateApi, setContextColorApi, fetchFilterPresetsApi, saveFilterPresetsApi, fetchContextProjectsApi } from "./api/contextApi";
+import { mergeIdeasApi, batchSetArchiveApi } from "./api/ideaApi";
 import { exportIdeabinApi, importIdeabinApi } from "./api/exportApi";
 
 // ───────────────────── Constants ─────────────────────
@@ -172,6 +173,10 @@ export default function IdeaBin() {
   const [projectTeams, setProjectTeams] = useState([]);
   const [projectTasks, setProjectTasks] = useState([]);
   const [transformLoading, setTransformLoading] = useState(false);
+
+  // ───── Reform category → team modal ─────
+  const [reformCategoryModal, setReformCategoryModal] = useState(null); // { categoryId, catData, step }
+  const [reformLoading, setReformLoading] = useState(false);
 
   // Refs
   const IdeaListRef = useRef(null);
@@ -1005,6 +1010,95 @@ export default function IdeaBin() {
     }
   };
 
+  // ───── Reform category → team logic ─────
+  const openReformCategory = async (catKey, catData) => {
+    if (projectId) {
+      // Inside a project page → auto-select this project
+      setReformCategoryModal({
+        categoryId: catKey, catData, step: 'confirm',
+        autoProjectId: projectId, selectedProjectId: null, projects: null,
+      });
+    } else if (activeContext) {
+      // Inside a context but NOT a project → fetch projects linked to context
+      try {
+        const ctxProjects = await fetchContextProjectsApi(activeContext.id);
+        setReformCategoryModal({
+          categoryId: catKey, catData, step: 'confirm',
+          autoProjectId: null, selectedProjectId: null, projects: ctxProjects,
+        });
+      } catch {
+        setReformCategoryModal({
+          categoryId: catKey, catData, step: 'confirm',
+          autoProjectId: null, selectedProjectId: null, projects: [],
+        });
+      }
+    } else {
+      // No context → show all projects the user is in
+      try {
+        const allProjects = await fetch_all_projects();
+        const mapped = (allProjects || []).map(p => ({ id: p.id, name: p.name }));
+        setReformCategoryModal({
+          categoryId: catKey, catData, step: 'confirm',
+          autoProjectId: null, selectedProjectId: null, projects: mapped,
+        });
+      } catch {
+        setReformCategoryModal({
+          categoryId: catKey, catData, step: 'confirm',
+          autoProjectId: null, selectedProjectId: null, projects: [],
+        });
+      }
+    }
+  };
+
+  const closeReformCategory = () => {
+    setReformCategoryModal(null);
+    setReformLoading(false);
+  };
+
+  const executeReformCategory = async ({ takeIdeas, deleteAndArchive }) => {
+    if (!reformCategoryModal) return;
+    const { categoryId, catData, autoProjectId, selectedProjectId } = reformCategoryModal;
+    const targetProjectId = autoProjectId || selectedProjectId;
+    if (!targetProjectId) return;
+    setReformLoading(true);
+    try {
+      // 1. Create the team
+      const team = await createTeamForProject(targetProjectId, { name: catData.name });
+
+      // 2. If taking ideas → create a task per idea, assigned to the new team
+      if (takeIdeas) {
+        const ideaIds = categoryOrders[categoryId] || [];
+        for (const ideaId of ideaIds) {
+          const idea = ideas[ideaId];
+          if (idea) {
+            await createTaskForProject(targetProjectId, {
+              name: idea.title || "Untitled",
+              description: idea.description || "",
+              team_id: team.id,
+            });
+          }
+        }
+      }
+
+      // 3. If deleting category & archiving ideas
+      if (deleteAndArchive) {
+        const ideaIds = categoryOrders[categoryId] || [];
+        if (ideaIds.length > 0) {
+          await batchSetArchiveApi(ideaIds, true);
+        }
+        await delete_category(categoryId);
+      }
+
+      playSound('ideaTransform');
+      closeReformCategory();
+      // Refresh ideas so archived / removed items disappear
+      await fetch_all_ideas();
+    } catch (err) {
+      console.error("Reform category to team failed:", err);
+      setReformLoading(false);
+    }
+  };
+
   // ═══════════════════════════════════════════════════════
   // ═══════════  RENDER HELPERS  ══════════════════════════
   // ═══════════════════════════════════════════════════════
@@ -1196,6 +1290,45 @@ export default function IdeaBin() {
     return matching;
   }, [activeContext, contextIdeaOrders, ideas, unassignedOrder]);
   const effectiveUnassignedCount = effectiveUnassignedOrder.length;
+
+  // ── Context-aware "All Ideas" list: when inside a context, show ideas
+  //    that relate to this context in ANY way:
+  //    1) directly linked via IdeaContextPlacement (context-unassigned), OR
+  //    2) placed in a category that belongs to this context. ──
+  const effectiveMetaIdeaList = useMemo(() => {
+    if (!activeContext) return metaIdeaList;
+    // 1) ideas linked directly to the context
+    const ctxIdeaIds = new Set(contextIdeaOrders[activeContext.id] || []);
+    // 2) ideas sitting in any of the context's categories
+    const ctxCatIds = new Set((activeContext.category_ids || []).map(String));
+    for (const p of Object.values(ideas)) {
+      if (p && p.idea_id && p.category != null && ctxCatIds.has(String(p.category))) {
+        ctxIdeaIds.add(p.idea_id);
+      }
+    }
+    if (ctxIdeaIds.size === 0) return [];
+    return metaIdeaList.filter(p => ctxIdeaIds.has(p.idea_id));
+  }, [activeContext, contextIdeaOrders, metaIdeaList, ideas]);
+
+  // ── Context-aware category orders: when inside a context, filter each
+  //    category's idea list to only include context-linked ideas. ──
+  const effectiveCategoryOrders = useMemo(() => {
+    if (!activeContext) return categoryOrders;
+    const ctxIdeaIds = new Set(contextIdeaOrders[activeContext.id] || []);
+    if (ctxIdeaIds.size === 0) {
+      const empty = {};
+      for (const k of Object.keys(categoryOrders)) empty[k] = [];
+      return empty;
+    }
+    const filtered = {};
+    for (const [catKey, order] of Object.entries(categoryOrders)) {
+      filtered[catKey] = order.filter(ideaId => {
+        const p = ideas[ideaId];
+        return p && ctxIdeaIds.has(p.idea_id);
+      });
+    }
+    return filtered;
+  }, [activeContext, contextIdeaOrders, categoryOrders, ideas]);
 
   // ── Advanced idea filter (multi-legend, stackable, AND/OR, include/exclude) ──
   const hasLegendFilters = legendFilters.length > 0 || stackedFilters.length > 0;
@@ -1696,19 +1829,28 @@ export default function IdeaBin() {
                 <div className="absolute inset-2 bg-white rounded-lg shadow-2xl z-[49] flex flex-col overflow-hidden border border-gray-200">
                   <div className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 text-white">
                     <span className="text-sm font-semibold flex items-center gap-1.5">
-                      <List size={14} /> All Ideas ({metaIdeaList.length})
+                      <List size={14} /> All Ideas ({effectiveMetaIdeaList.length})
                     </span>
                     <button onClick={() => setShowMetaList(false)} className="text-white/80 hover:text-white text-sm font-bold">✕</button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
-                    {metaIdeaList.length === 0 && (
+                    {effectiveMetaIdeaList.length === 0 && (
                       <p className="text-xs text-gray-400 text-center py-4">No ideas yet</p>
                     )}
-                    {metaIdeaList.map((idea, idx) => renderIdeaItem(idea.id, idx, { type: "meta" }))}
+                    {effectiveMetaIdeaList.map((idea, idx) => renderIdeaItem(idea.id, idx, { type: "meta" }))}
                   </div>
                 </div>
               </>
             )}
+
+            {/* Reform category → team modal overlay */}
+            <IdeaBinReformCategoryModal
+              reformModal={reformCategoryModal}
+              setReformModal={setReformCategoryModal}
+              onClose={closeReformCategory}
+              onExecute={executeReformCategory}
+              reformLoading={reformLoading}
+            />
 
             {/* Transform modal overlay */}
             <IdeaBinTransformModal
@@ -1740,10 +1882,20 @@ export default function IdeaBin() {
             {/* ── LEFT: Sidebar (visible when not collapsed, or when categories not shown) ── */}
             {(!leftCollapsed || !showCategories) && (
             <div
-              className="flex flex-col flex-shrink-0 bg-white"
-              style={{ width: showCategories ? (rightCollapsed ? windowSize.w - COLLAPSED_STRIP_W : sidebarWidth) : "100%" }}
+              className="flex flex-col flex-shrink-0 bg-white relative"
+              style={{ width: showCategories ? (rightCollapsed ? `calc(100% - ${COLLAPSED_STRIP_W}px)` : sidebarWidth) : "100%" }}
               onMouseDown={() => setSidebarFocused(true)}
             >
+              {/* Collapse idea panel button — top-right corner */}
+              {showCategories && !rightCollapsed && (
+                <button
+                  onClick={() => setLeftCollapsed(true)}
+                  className="absolute top-1.5 right-0 z-30 bg-white border border-gray-300 rounded-l px-1 py-1 flex items-center justify-center shadow-sm hover:bg-gray-100 hover:border-gray-400 transition-colors"
+                  title="Collapse idea panel"
+                >
+                  <PanelLeftClose size={12} className="text-gray-500" />
+                </button>
+              )}
               {/* ── Input form ── */}
               <div
                 ref={editFormRef}
@@ -2133,10 +2285,10 @@ export default function IdeaBin() {
                       className="flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors"
                     >
                       {listFilter === "all"
-                        ? `All Ideas (${metaIdeaList.length})`
+                        ? `All Ideas (${effectiveMetaIdeaList.length})`
                         : listFilter === "unassigned"
                         ? `Unassigned (${effectiveUnassignedCount})`
-                        : `${categories[listFilter]?.name || "Category"} (${(categoryOrders[listFilter] || []).length})`
+                        : `${categories[listFilter]?.name || "Category"} (${(effectiveCategoryOrders[listFilter] || []).length})`
                       }
                       <span className="text-[9px]">▼</span>
                     </button>
@@ -2188,7 +2340,7 @@ export default function IdeaBin() {
                           onClick={() => { setListFilter("all"); setShowListFilterDropdown(false); }}
                           className={`px-2.5 py-1.5 text-[11px] cursor-pointer transition-colors ${listFilter === "all" ? "bg-amber-100 text-amber-800 font-medium" : "hover:bg-gray-50 text-gray-700"}`}
                         >
-                          All Ideas ({metaIdeaList.length})
+                          All Ideas ({effectiveMetaIdeaList.length})
                         </div>
                         <div
                           onClick={() => { setListFilter("unassigned"); setShowListFilterDropdown(false); }}
@@ -2210,7 +2362,7 @@ export default function IdeaBin() {
                             >
                               {catData.archived && <span className="text-[9px] text-gray-400">📦</span>}
                               {isFed && <span className="text-[8px] font-bold text-blue-500 border border-blue-300 rounded px-0.5 flex-shrink-0">FEED</span>}
-                              {catData.name} ({(categoryOrders[catKey] || []).length})
+                              {catData.name} ({(effectiveCategoryOrders[catKey] || []).length})
                             </div>
                           );
                         })}
@@ -2220,7 +2372,7 @@ export default function IdeaBin() {
                 </div>
                 {/* Idea items for current filter */}
                 {listFilter === "all"
-                  ? metaIdeaList
+                  ? effectiveMetaIdeaList
                       .filter(idea => passesAllFilters(idea))
                       .map((idea, idx) =>
                         headlineModeIdeaId === idea.id
@@ -2235,7 +2387,7 @@ export default function IdeaBin() {
                           ? renderSidebarTitleBuilder(ideaId)
                           : renderIdeaItem(ideaId, idx, { type: "unassigned" })
                       )
-                  : (categoryOrders[listFilter] || [])
+                  : (effectiveCategoryOrders[listFilter] || [])
                       .filter(ideaId => passesAllFilters(ideas[ideaId]))
                       .map((ideaId, idx) =>
                         headlineModeIdeaId === ideaId
@@ -2311,22 +2463,6 @@ export default function IdeaBin() {
             {/* ── Sidebar resize handle ── */}
             {showCategories && !leftCollapsed && !rightCollapsed && (
               <div className="relative flex-shrink-0" style={{ width: 6 }}>
-                {/* Collapse left panel button */}
-                <button
-                  onClick={() => setLeftCollapsed(true)}
-                  className="absolute -left-3 top-1/2 -translate-y-1/2 z-20 bg-white border border-gray-300 rounded-full w-5 h-5 flex items-center justify-center shadow-sm hover:bg-gray-100 hover:border-gray-400 transition-colors"
-                  title="Collapse idea panel"
-                >
-                  <PanelLeftClose size={11} />
-                </button>
-                {/* Collapse right panel button */}
-                <button
-                  onClick={() => setRightCollapsed(true)}
-                  className="absolute -right-3 top-1/2 -translate-y-[calc(50%+14px)] z-20 bg-white border border-gray-300 rounded-full w-5 h-5 flex items-center justify-center shadow-sm hover:bg-gray-100 hover:border-gray-400 transition-colors"
-                  title="Collapse category canvas"
-                >
-                  <PanelRightClose size={11} />
-                </button>
                 {/* Corner anchor — controls both form height AND sidebar width */}
                 <div
                   onMouseDown={(e) => {
@@ -2370,7 +2506,7 @@ export default function IdeaBin() {
 
             {/* ── RIGHT: Collapsed strip when category canvas is hidden ── */}
             {showCategories && rightCollapsed && !leftCollapsed && (
-              <div className="flex flex-col items-center flex-shrink-0 bg-gray-50 border-l border-gray-200" style={{ width: COLLAPSED_STRIP_W }}>
+              <div className="flex flex-col items-center flex-shrink-0 bg-gray-50 border-l border-gray-200" style={{ width: COLLAPSED_STRIP_W, minWidth: COLLAPSED_STRIP_W, maxWidth: COLLAPSED_STRIP_W }}>
                 <button
                   onClick={() => setRightCollapsed(false)}
                   className="mt-2 p-1 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors"
@@ -2385,6 +2521,8 @@ export default function IdeaBin() {
             {showCategories && !rightCollapsed && (
               <IdeaBinCategoryCanvas
                 onCanvasMouseDown={() => setSidebarFocused(false)}
+                onCollapseRight={() => setRightCollapsed(true)}
+                showCollapseRight={!leftCollapsed}
                 categoryContainerRef={categoryContainerRef}
                 displayCategoryForm={displayCategoryForm} setDisplayCategoryForm={setDisplayCategoryForm}
                 newCategoryName={newCategoryName} setNewCategoryName={setNewCategoryName}
@@ -2451,6 +2589,7 @@ export default function IdeaBin() {
                 batch_assign_idea_legend_type={batch_assign_idea_legend_type}
                 showOrderNumbers={showOrderNumbers}
                 setShowOrderNumbers={setShowOrderNumbers}
+                onReformCategory={openReformCategory}
               />
             )}
             </>

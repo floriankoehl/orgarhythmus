@@ -470,6 +470,26 @@ class LegendContextPlacement(models.Model):
 
 
 # ═══════════════════════════════════════════════
+#  PROJECT ↔ CONTEXT PLACEMENT
+# ═══════════════════════════════════════════════
+
+class ProjectContextPlacement(models.Model):
+    """
+    Links a Project to a Context.
+    Enables the 'reform category → team' flow to auto-select the project
+    when the user is inside a context but not on a project page.
+    """
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='context_placements')
+    context = models.ForeignKey(Context, on_delete=models.CASCADE, related_name='project_placements')
+
+    class Meta:
+        unique_together = ["project", "context"]
+
+    def __str__(self):
+        return f"{self.project.name} → ctx:{self.context.name}"
+
+
+# ═══════════════════════════════════════════════
 #  IDEA ↔ CONTEXT PLACEMENT  (idea directly in a context)
 # ═══════════════════════════════════════════════
 

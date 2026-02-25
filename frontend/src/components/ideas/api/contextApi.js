@@ -12,6 +12,7 @@ export async function fetchContextsApi() {
     category_ids: ctx.category_ids || [],
     legend_ids: ctx.legend_ids || [],
     idea_ids: ctx.idea_ids || [],
+    project_ids: ctx.project_ids || [],
     filter_state: ctx.filter_state || null,
   }));
 }
@@ -100,4 +101,28 @@ export async function saveContextIdeaOrderApi(contextId, ideaIds) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ context_id: contextId, idea_ids: ideaIds }),
   });
+}
+
+/* ── Context ↔ Project endpoints ── */
+
+export async function assignProjectToContextApi(projectId, contextId) {
+  await authFetch(`${API}/user/contexts/assign_project/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_id: projectId, context_id: contextId }),
+  });
+}
+
+export async function removeProjectFromContextApi(projectId, contextId) {
+  await authFetch(`${API}/user/contexts/remove_project/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_id: projectId, context_id: contextId }),
+  });
+}
+
+export async function fetchContextProjectsApi(contextId) {
+  const res = await authFetch(`${API}/user/contexts/${contextId}/projects/`);
+  if (!res.ok) return [];
+  return res.json();
 }
