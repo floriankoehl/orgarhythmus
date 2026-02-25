@@ -9,10 +9,16 @@ export async function fetchContextsApi() {
     name: ctx.name,
     color: ctx.color || null,
     is_default: ctx.is_default || false,
+    is_public: ctx.is_public || false,
+    adopted: ctx.adopted || false,
+    owner_username: ctx.owner_username || null,
+    owner_id: ctx.owner_id || null,
     category_ids: ctx.category_ids || [],
     legend_ids: ctx.legend_ids || [],
     idea_ids: ctx.idea_ids || [],
     project_ids: ctx.project_ids || [],
+    included_projects: ctx.included_projects || [],
+    contributing_users: ctx.contributing_users || [],
     filter_state: ctx.filter_state || null,
   }));
 }
@@ -123,6 +129,23 @@ export async function removeProjectFromContextApi(projectId, contextId) {
 
 export async function fetchContextProjectsApi(contextId) {
   const res = await authFetch(`${API}/user/contexts/${contextId}/projects/`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+/* ── Public contexts browsing ── */
+
+export async function fetchAllPublicContextsApi() {
+  const res = await authFetch(`${API}/contexts/public/`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.contexts || [];
+}
+
+/* ── Project's linked contexts ── */
+
+export async function fetchProjectContextsApi(projectId) {
+  const res = await authFetch(`${API}/projects/${projectId}/contexts/`);
   if (!res.ok) return [];
   return res.json();
 }

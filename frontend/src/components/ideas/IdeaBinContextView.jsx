@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from "react";
-import { Settings, Globe, Plus, Layers, Tag, Lock, LinkIcon, LogIn, Crosshair } from "lucide-react";
+import { Settings, Globe, Plus, Layers, Tag, Lock, LinkIcon, LogIn, Crosshair, Users as UsersIcon, Folder as FolderIcon } from "lucide-react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import { BASE_URL } from "../../config/api";
 
@@ -937,6 +937,29 @@ export default forwardRef(function IdeaBinContextView({
                       <p className="text-[10px] text-gray-400 text-center py-3">
                         {ctxData.adopted ? "No categories or legends" : "Drag categories or legends here"}
                       </p>
+                    )}
+
+                    {/* Contributors footer — projects & users */}
+                    {((ctxData.included_projects && ctxData.included_projects.length > 0) ||
+                      (ctxData.contributing_users && ctxData.contributing_users.length > 1)) && (
+                      <div className="mt-auto pt-1 border-t border-gray-300/30">
+                        {ctxData.included_projects && ctxData.included_projects.length > 0 && (
+                          <div className="flex items-center gap-1 px-1 py-0.5">
+                            <FolderIcon size={8} className="text-gray-400 flex-shrink-0" />
+                            <span className="text-[8px] text-gray-400 truncate" title={ctxData.included_projects.map(p => p.name).join(", ")}>
+                              {ctxData.included_projects.map(p => p.name).join(", ")}
+                            </span>
+                          </div>
+                        )}
+                        {ctxData.contributing_users && ctxData.contributing_users.length > 1 && (
+                          <div className="flex items-center gap-1 px-1 py-0.5">
+                            <UsersIcon size={8} className="text-gray-400 flex-shrink-0" />
+                            <span className="text-[8px] text-gray-400 truncate" title={ctxData.contributing_users.map(u => u.username).join(", ")}>
+                              {ctxData.contributing_users.map(u => u.username).join(", ")}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
 

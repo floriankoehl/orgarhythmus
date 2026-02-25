@@ -221,6 +221,7 @@ urlpatterns = [
     path("user/contexts/assign_project/", views.assign_project_to_context, name="assign_project_to_context"),
     path("user/contexts/remove_project/", views.remove_project_from_context, name="remove_project_from_context"),
     path("user/contexts/<int:context_id>/projects/", views.get_context_projects, name="get_context_projects"),
+    path("projects/<int:project_id>/contexts/", views.get_project_contexts, name="get_project_contexts"),
 
     # Context adoption
     path("contexts/public/", views.get_all_public_contexts, name="get_all_public_contexts"),

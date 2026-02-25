@@ -24,6 +24,19 @@ def get_all_contexts(request):
     adopted_ids = list(UserContextAdoption.objects.filter(user=request.user).values_list('context_id', flat=True))
     adopted = Context.objects.filter(id__in=adopted_ids).select_related('owner')
 
+    all_ctx_ids = [ctx.id for ctx in owned] + [ctx.id for ctx in adopted]
+
+    # Pre-fetch contributor info
+    project_placements = ProjectContextPlacement.objects.filter(context_id__in=all_ctx_ids).select_related('project')
+    ctx_projects = {}
+    for pp in project_placements:
+        ctx_projects.setdefault(pp.context_id, []).append({"id": pp.project.id, "name": pp.project.name})
+
+    adoptions = UserContextAdoption.objects.filter(context_id__in=all_ctx_ids).select_related('user')
+    ctx_adopters = {}
+    for a in adoptions:
+        ctx_adopters.setdefault(a.context_id, []).append({"id": a.user.id, "username": a.user.username})
+
     data = []
     for ctx in owned:
         d = ContextSerializer(ctx).data
@@ -33,6 +46,12 @@ def get_all_contexts(request):
         d["legend_ids"] = list(Legend.objects.filter(context=ctx).values_list('id', flat=True))
         d["idea_ids"] = list(IdeaContextPlacement.objects.filter(context=ctx).order_by("order_index").values_list('idea_id', flat=True))
         d["project_ids"] = list(ProjectContextPlacement.objects.filter(context=ctx).values_list('project_id', flat=True))
+        d["included_projects"] = ctx_projects.get(ctx.id, [])
+        d["contributing_users"] = [
+            {"id": ctx.owner_id, "username": ctx.owner.username, "is_owner": True}
+        ] + [
+            {**u, "is_owner": False} for u in ctx_adopters.get(ctx.id, [])
+        ]
         data.append(d)
 
     for ctx in adopted:
@@ -43,6 +62,12 @@ def get_all_contexts(request):
         d["legend_ids"] = list(Legend.objects.filter(context=ctx).values_list('id', flat=True))
         d["idea_ids"] = list(IdeaContextPlacement.objects.filter(context=ctx).order_by("order_index").values_list('idea_id', flat=True))
         d["project_ids"] = list(ProjectContextPlacement.objects.filter(context=ctx).values_list('project_id', flat=True))
+        d["included_projects"] = ctx_projects.get(ctx.id, [])
+        d["contributing_users"] = [
+            {"id": ctx.owner_id, "username": ctx.owner.username, "is_owner": True}
+        ] + [
+            {**u, "is_owner": False} for u in ctx_adopters.get(ctx.id, [])
+        ]
         data.append(d)
 
     return Response(data)
@@ -266,13 +291,37 @@ def toggle_public_context(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_all_public_contexts(request):
-    """Get all public contexts from all users, with adoption status."""
+    """Get all public contexts from all users, with adoption status and contributor info."""
     ctxs = Context.objects.filter(is_public=True).select_related('owner')
     adopted_ids = set(UserContextAdoption.objects.filter(user=request.user).values_list('context_id', flat=True))
+
+    # Pre-fetch contributor info for all public contexts
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    ctx_ids = [ctx.id for ctx in ctxs]
+
+    # Projects linked to each context
+    project_placements = ProjectContextPlacement.objects.filter(context_id__in=ctx_ids).select_related('project')
+    ctx_projects = {}
+    for pp in project_placements:
+        ctx_projects.setdefault(pp.context_id, []).append({"id": pp.project.id, "name": pp.project.name})
+
+    # Users who adopted each context
+    adoptions = UserContextAdoption.objects.filter(context_id__in=ctx_ids).select_related('user')
+    ctx_adopters = {}
+    for a in adoptions:
+        ctx_adopters.setdefault(a.context_id, []).append({"id": a.user.id, "username": a.user.username})
+
     data = ContextSerializer(ctxs, many=True).data
     for c in data:
         c['is_adopted'] = c['id'] in adopted_ids
         c['is_own'] = c['owner_id'] == request.user.id
+        c['included_projects'] = ctx_projects.get(c['id'], [])
+        c['contributing_users'] = [
+            {"id": c['owner_id'], "username": c['owner_username'], "is_owner": True}
+        ] + [
+            {**u, "is_owner": False} for u in ctx_adopters.get(c['id'], [])
+        ]
     return Response({"contexts": data})
 
 
@@ -411,4 +460,20 @@ def get_context_projects(request, context_id):
         pk__in=project_ids,
     ).distinct()
     data = [{"id": p.id, "name": p.name} for p in projects]
+    return Response(data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_project_contexts(request, project_id):
+    """Return public contexts that a specific project is linked to."""
+    from django.db.models import Q
+    project = Project.objects.filter(
+        Q(owner=request.user) | Q(members=request.user), pk=project_id
+    ).first()
+    if not project:
+        return Response({"error": "Project not found"}, status=404)
+    context_ids = ProjectContextPlacement.objects.filter(project=project).values_list('context_id', flat=True)
+    linked_contexts = Context.objects.filter(pk__in=context_ids).select_related('owner')
+    data = ContextSerializer(linked_contexts, many=True).data
     return Response(data)

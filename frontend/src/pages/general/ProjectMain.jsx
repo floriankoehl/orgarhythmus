@@ -1,6 +1,6 @@
 // projects/pages/ProjectMain.jsx
 import { useLoaderData, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Folder,
   Calendar,
@@ -20,6 +20,11 @@ import {
   TrendingUp,
   Target,
   Zap,
+  Globe,
+  Link2,
+  Unlink,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   fetch_project_detail,
@@ -28,6 +33,12 @@ import {
   delete_project,
   update_project_api,
 } from '../../api/org_API.js';
+import {
+  fetchAllPublicContextsApi,
+  fetchProjectContextsApi,
+  assignProjectToContextApi,
+  removeProjectFromContextApi,
+} from '../../components/ideas/api/contextApi.js';
 import Button from '@mui/material/Button';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -204,6 +215,56 @@ export default function ProjectMain() {
   const [hideEmptyDays, setHideEmptyDays] = useState(false);
   const [showAllTeams, setShowAllTeams] = useState(false);
   const [showAllTasks, setShowAllTasks] = useState(false);
+
+  // ── Context inclusion state ──
+  const [contextSectionOpen, setContextSectionOpen] = useState(false);
+  const [publicContexts, setPublicContexts] = useState([]);
+  const [linkedContextIds, setLinkedContextIds] = useState(new Set());
+  const [loadingContexts, setLoadingContexts] = useState(false);
+  const [togglingContext, setTogglingContext] = useState(null);
+
+  const loadContextData = useCallback(async () => {
+    setLoadingContexts(true);
+    try {
+      const [pubCtxs, linkedCtxs] = await Promise.all([
+        fetchAllPublicContextsApi(),
+        fetchProjectContextsApi(initialProject.id),
+      ]);
+      setPublicContexts(pubCtxs);
+      setLinkedContextIds(new Set(linkedCtxs.map((c) => c.id)));
+    } catch (err) {
+      console.error('Failed to load contexts:', err);
+    } finally {
+      setLoadingContexts(false);
+    }
+  }, [initialProject.id]);
+
+  useEffect(() => {
+    if (contextSectionOpen && publicContexts.length === 0) {
+      loadContextData();
+    }
+  }, [contextSectionOpen, loadContextData]);
+
+  async function handleToggleContextInclusion(contextId) {
+    setTogglingContext(contextId);
+    try {
+      if (linkedContextIds.has(contextId)) {
+        await removeProjectFromContextApi(initialProject.id, contextId);
+        setLinkedContextIds((prev) => {
+          const next = new Set(prev);
+          next.delete(contextId);
+          return next;
+        });
+      } else {
+        await assignProjectToContextApi(initialProject.id, contextId);
+        setLinkedContextIds((prev) => new Set(prev).add(contextId));
+      }
+    } catch (err) {
+      console.error('Failed to toggle context inclusion:', err);
+    } finally {
+      setTogglingContext(null);
+    }
+  }
 
   // Add state for the current dates
   const [startDate, setStartDate] = useState(initialProject.start_date);
@@ -566,6 +627,114 @@ export default function ProjectMain() {
 
         {/* Stats Section */}
         <ProjectStats tasks={loaded_tasks} teams={loaded_teams} />
+
+        {/* Include to Context Section */}
+        <section className="rounded-2xl border border-slate-200 bg-white/90 shadow-sm backdrop-blur-sm">
+          <button
+            onClick={() => setContextSectionOpen((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 p-6"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100">
+                <Globe size={20} className="text-emerald-600" />
+              </div>
+              <div className="text-left">
+                <h2 className="text-lg font-semibold text-slate-900">Include to Context</h2>
+                <p className="text-xs text-slate-500">
+                  Link this project to public contexts to contribute
+                  {linkedContextIds.size > 0 && (
+                    <span className="ml-1.5 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                      {linkedContextIds.size} linked
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+            {contextSectionOpen ? (
+              <ChevronUp size={18} className="text-slate-400" />
+            ) : (
+              <ChevronDown size={18} className="text-slate-400" />
+            )}
+          </button>
+
+          {contextSectionOpen && (
+            <div className="border-t border-slate-100 px-6 pb-6">
+              {loadingContexts ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
+                  <span className="ml-2 text-sm text-slate-500">Loading contexts...</span>
+                </div>
+              ) : publicContexts.length === 0 ? (
+                <p className="py-6 text-center text-sm text-slate-400">
+                  No public contexts available yet.
+                </p>
+              ) : (
+                <div className="mt-4 space-y-2">
+                  {publicContexts.map((ctx) => {
+                    const isLinked = linkedContextIds.has(ctx.id);
+                    const isToggling = togglingContext === ctx.id;
+                    return (
+                      <div
+                        key={ctx.id}
+                        className={`flex items-center justify-between rounded-lg border p-3 transition-all ${
+                          isLinked
+                            ? 'border-emerald-300 bg-emerald-50/50'
+                            : 'border-slate-200 bg-slate-50/50 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <div
+                            className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${
+                              isLinked ? 'bg-emerald-200' : 'bg-slate-200'
+                            }`}
+                          >
+                            <Globe
+                              size={14}
+                              className={isLinked ? 'text-emerald-700' : 'text-slate-500'}
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate text-sm font-medium text-slate-900">
+                                {ctx.name}
+                              </span>
+                              {ctx.is_own && (
+                                <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-medium text-blue-600">
+                                  yours
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-slate-400">
+                              by {ctx.owner_username}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleToggleContextInclusion(ctx.id)}
+                          disabled={isToggling}
+                          className={`flex flex-shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+                            isLinked
+                              ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                              : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                          }`}
+                        >
+                          {isToggling ? (
+                            <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                          ) : isLinked ? (
+                            <Unlink size={12} />
+                          ) : (
+                            <Link2 size={12} />
+                          )}
+                          {isLinked ? 'Remove' : 'Include'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
 
         {/* Timeline Link */}
         <section className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm backdrop-blur-sm">

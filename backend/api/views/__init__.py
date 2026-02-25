@@ -209,6 +209,7 @@ from .contexts import (
     assign_project_to_context,
     remove_project_from_context,
     get_context_projects,
+    get_project_contexts,
 )
 
 from .formations import (
