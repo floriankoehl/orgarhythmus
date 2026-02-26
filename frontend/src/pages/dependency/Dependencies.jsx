@@ -55,9 +55,11 @@ import DependencyModals from '../../components/dependencies/DependencyModals';
 import DependencyCanvas from '../../components/dependencies/DependencyCanvas';
 import DependencyWarningToast from '../../components/dependencies/DependencyWarningToast';
 import SafetyCheckPanel from '../../components/dependencies/SafetyCheckPanel';
+import DependencyTaskSelectionBar from '../../components/dependencies/DependencyTaskSelectionBar';
 import { useSafetyCheck } from './useSafetyCheck';
 import { DependencyProvider, useDependency } from './DependencyContext.jsx';
 import { playSound, setMuted } from '../../assets/sound_registry';
+import { bulk_import_dependencies } from '../../api/dependencies_api';
 
 export default function Dependencies() {
   return (
@@ -69,7 +71,7 @@ export default function Dependencies() {
 
 function DependenciesContent() {
 
-  const { projectId, teamContainerRef, pushAction } = useDependency();
+  const { projectId, teamContainerRef, pushAction, selectedTasks, setSelectedTasks } = useDependency();
   const navigate = useNavigate();
 
   // Secret shortcut: press 0 + 9 together to open 3D view
@@ -1152,6 +1154,15 @@ function DependenciesContent() {
     document.addEventListener("mouseup", onUp);
   }, [refactorMode, milestones, tasks, connections, projectId, setMilestones, setTasks, pushAction, validateMilestoneMove, showBlockingFeedback, addWarning, autoSelectBlocking, setSelectedMilestones, setSelectedConnections, setWeakDepModal]);
 
+  // __ Bulk import dependencies handler __
+  const handleBulkImportDependencies = useCallback(async (jsonString) => {
+    const result = await bulk_import_dependencies(projectId, jsonString);
+    // Refresh all data after import
+    setReloadData(true);
+    setSelectedTasks(new Set());
+    return result;
+  }, [projectId, setReloadData, setSelectedTasks]);
+
   // __ Build structured props for DependencyCanvas __
   const layout = {
     isTeamVisible,
@@ -1607,6 +1618,14 @@ function DependenciesContent() {
           handlers={handlers}
         />
       </div>
+
+      {/* Task multi-select action bar */}
+      <DependencyTaskSelectionBar
+        selectedTasks={selectedTasks}
+        setSelectedTasks={setSelectedTasks}
+        tasks={tasks}
+        onImport={handleBulkImportDependencies}
+      />
 
       {/* Refactor mode: floating ghost card */}
       {refactorGhost && (

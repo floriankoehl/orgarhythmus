@@ -97,6 +97,18 @@ export async function move_milestone_task(projectId, milestone_id, new_task_id) 
     return answer
 }
 
+export async function bulk_import_dependencies(projectId, dependenciesJson) {
+    const res = await authFetch(`/api/projects/${projectId}/bulk_import_dependencies/`, {
+        method: "POST",
+        body: dependenciesJson,
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to import dependencies');
+    }
+    return await res.json();
+}
+
 export async function delete_milestone(projectId, milestone_id){
     const res = await authFetch(`/api/projects/${projectId}/delete_milestones/`, {
         method: "DELETE",

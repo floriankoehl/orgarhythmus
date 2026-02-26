@@ -1,5 +1,6 @@
 import DependencyMilestoneLayer from './DependencyMilestoneLayer';
 import DependencyTeamList from './DependencyTeamList';
+import { useDependency } from '../../pages/dependency/DependencyContext.jsx';
 import {
   getConnectionPath,
   getStraightPath,
@@ -146,6 +147,8 @@ export default function DependencyCanvas({
     onUncollapseDays,
   } = handlers;
 
+  // Task multi-select from context
+  const { selectedTasks, setSelectedTasks } = useDependency();
 
   const hasPhases = phases.length > 0;
   const globalPhases = phases.filter(p => p.team == null);
@@ -708,6 +711,9 @@ export default function DependencyCanvas({
             handlePhaseDrag={handlePhaseDrag}
             totalDaysWidth={totalDaysWidth}
             collapsePhaseRange={collapsePhaseRange}
+            // Task multi-select
+            selectedTasks={selectedTasks}
+            setSelectedTasks={setSelectedTasks}
           />
 
           {/* SVG Layer for Connections - ABOVE day grid */}

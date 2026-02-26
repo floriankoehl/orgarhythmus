@@ -125,6 +125,7 @@ urlpatterns = [
     path("projects/<int:project_id>/change_duration/", views.change_duration),
     path("projects/<int:project_id>/rename_milestone/", views.rename_milestone),
     path("projects/<int:project_id>/move_milestone_task/", views.move_milestone_task),
+    path("projects/<int:project_id>/bulk_import_dependencies/", views.bulk_import_dependencies),
 
     # Dependencies
     path("projects/<int:project_id>/get_all_dependencies/", views.get_all_dependencies),

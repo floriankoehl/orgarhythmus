@@ -83,6 +83,9 @@ export default function DependencyTeamList({
   handlePhaseDrag,
   totalDaysWidth,
   collapsePhaseRange,
+  // Task multi-select
+  selectedTasks = new Set(),
+  setSelectedTasks,
 }) {
   const navigate = useNavigate();
   const { projectId } = useParams();
@@ -399,6 +402,8 @@ export default function DependencyTeamList({
                       const isSmall = taskDisplaySettings[task_key]?.size === 'small';
                       const visibleTaskIndex = visibleTasks.indexOf(task_key);
                       const isLastVisible = visibleTaskIndex === visibleTasks.length - 1;
+                      const taskIdNum = typeof task_key === 'string' ? parseInt(task_key, 10) : task_key;
+                      const isTaskSelected = selectedTasks.has(taskIdNum);
                       
                       return (
                         <div
@@ -407,7 +412,7 @@ export default function DependencyTeamList({
                           data-dep-team-id={team_key}
                           data-dep-team-name={team.name}
                           data-dep-team-color={teamColor}
-                          className="border-l border-slate-200 flex w-full items-center hover:bg-slate-50/50 transition-colors"
+                          className={`border-l border-slate-200 flex w-full items-center transition-colors ${isTaskSelected ? 'bg-blue-50 ring-1 ring-inset ring-blue-400' : 'hover:bg-slate-50/50'}`}
                           style={{
                             height: `${taskHeight}px`,
                             width: `${TASKWIDTH}px`,
@@ -442,17 +447,31 @@ export default function DependencyTeamList({
                             <DragIndicatorIcon style={{ fontSize: isSmall ? 12 : 14 }} />
                           </div>
 
-                          {/* Task Name (click to navigate) */}
+                          {/* Task Name (click to navigate, Ctrl+click to select) */}
                           <div
                             className={`flex-1 h-full flex items-center min-w-0 cursor-pointer`}
                             onClick={(e) => {
                               e.stopPropagation();
+                              if (e.ctrlKey || e.metaKey) {
+                                // Ctrl+Click: toggle task selection
+                                if (setSelectedTasks) {
+                                  setSelectedTasks(prev => {
+                                    const next = new Set(prev);
+                                    const id = typeof task_key === 'string' ? parseInt(task_key, 10) : task_key;
+                                    if (next.has(id)) next.delete(id);
+                                    else next.add(id);
+                                    return next;
+                                  });
+                                  playSound('click');
+                                }
+                                return;
+                              }
                               navigate(`/projects/${projectId}/tasks/${task_key}`);
                             }}
                           >
                             <span
-                              className={`truncate hover:text-blue-600 hover:underline transition-colors text-slate-600 ${isSmall ? 'text-xs' : 'text-sm'}`}
-                              title={`Go to ${tasks[task_key]?.name} detail page`}
+                              className={`truncate hover:text-blue-600 hover:underline transition-colors ${isTaskSelected ? 'text-blue-700 font-semibold' : 'text-slate-600'} ${isSmall ? 'text-xs' : 'text-sm'}`}
+                              title={`${tasks[task_key]?.name} — Click to open, Ctrl+Click to select`}
                             >
                               {tasks[task_key]?.name}
                             </span>

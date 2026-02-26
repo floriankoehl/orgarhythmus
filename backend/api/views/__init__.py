@@ -70,6 +70,7 @@ from .milestones import (
     change_duration,
     rename_milestone,
     move_milestone_task,
+    bulk_import_dependencies,
 )
 
 from .dependencies import (

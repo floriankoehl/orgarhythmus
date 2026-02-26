@@ -42,6 +42,9 @@ export function DependencyProvider({ children }) {
   // Clipboard for copy/paste milestones
   const [clipboard, setClipboard] = useState(null); // { milestones: [...], connections: [...] }
 
+  // Task multi-select (Ctrl+Click) for bulk export/import
+  const [selectedTasks, setSelectedTasks] = useState(new Set());
+
   // ── Undo/Redo History ──
   // Use refs for the stacks to avoid stale closures in event handlers
   const historyRef = useRef([]);   // undo stack: [{ undo: async fn, redo: async fn, description: string }]
@@ -115,6 +118,8 @@ export function DependencyProvider({ children }) {
     setEditingMilestoneName,
     clipboard,
     setClipboard,
+    selectedTasks,
+    setSelectedTasks,
     // Undo/Redo
     pushAction,
     undo,
