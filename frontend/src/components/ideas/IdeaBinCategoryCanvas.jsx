@@ -656,7 +656,7 @@ export default function IdeaBinCategoryCanvas({
                     : isAdopted ? "rgba(165,180,252,0.3)" : "rgba(253,216,53,0.4)",
               }}
             >
-              {editingCategoryId === catKey && !isAdopted ? (
+              {editingCategoryId === catKey ? (
                 <input
                   autoFocus
                   value={editingCategoryName}
@@ -733,7 +733,7 @@ export default function IdeaBinCategoryCanvas({
                     <FeedFilterPanel
                       catKey={catKey}
                       catData={catData}
-                      isOwner={!isAdopted}
+                      isOwner={!isAdopted || !!catData.from_adopted_context}
                       dims={dims}
                       setCategoryFilterConfig={setCategoryFilterConfig}
                       refetchCategoryByFilter={refetchCategoryByFilter}
@@ -748,8 +748,8 @@ export default function IdeaBinCategoryCanvas({
                     />
                   )}
                 </div>
-                {isAdopted ? (
-                  /* Adopted category: settings with unadopt */
+                {isAdopted && !catData.from_adopted_context ? (
+                  /* Directly adopted category: limited settings with unadopt */
                   <div className="relative">
                     <Settings
                       size={12}

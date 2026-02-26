@@ -571,10 +571,16 @@ class UserShortcuts(models.Model):
     Stores a user's custom keyboard shortcuts as a JSON dict.
     Each key is an action identifier, value is the single letter key.
     All shortcuts use the Q+W chord prefix automatically.
+    Also stores the user's default context preference (per-user, not global).
     """
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="shortcuts")
     shortcuts = models.JSONField(default=dict, blank=True)
     filter_presets = models.JSONField(default=list, blank=True)  # [{name, legend_filters, filter_combine_mode, ...}]
+    default_context = models.ForeignKey(
+        'Context', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+        help_text="The user's chosen default context (auto-loaded on open).",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

@@ -8,8 +8,37 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 
-from ..models import Category, Context, CategoryContextPlacement, Legend, UserContextAdoption, IdeaContextPlacement, Idea, ProjectContextPlacement, Project
+from ..models import Category, Context, CategoryContextPlacement, Legend, UserContextAdoption, UserCategoryAdoption, IdeaContextPlacement, Idea, ProjectContextPlacement, Project, UserShortcuts
 from .serializers import ContextSerializer
+
+
+def _get_member_context(user, context_id):
+    """Return a Context if the user is the owner or has adopted it.
+    Returns None when the user has no access."""
+    ctx = Context.objects.filter(pk=context_id).first()
+    if ctx is None:
+        return None
+    if ctx.owner == user:
+        return ctx
+    if UserContextAdoption.objects.filter(user=user, context=ctx).exists():
+        return ctx
+    return None
+
+
+def _get_member_category(user, category_id):
+    """Return a Category the user owns, has adopted, or can access via an
+    adopted context.  Returns None when not accessible."""
+    cat = Category.objects.filter(pk=category_id).first()
+    if cat is None:
+        return None
+    if cat.owner == user:
+        return cat
+    if UserCategoryAdoption.objects.filter(user=user, category=cat).exists():
+        return cat
+    adopted_ctx_ids = UserContextAdoption.objects.filter(user=user).values_list('context_id', flat=True)
+    if CategoryContextPlacement.objects.filter(category=cat, context_id__in=adopted_ctx_ids).exists():
+        return cat
+    return None
 
 
 # ─────────────────────────────────────────────
@@ -26,6 +55,10 @@ def get_all_contexts(request):
 
     all_ctx_ids = [ctx.id for ctx in owned] + [ctx.id for ctx in adopted]
 
+    # Determine which context is the user's default (per-user, from UserShortcuts)
+    prefs = UserShortcuts.objects.filter(user=request.user).first()
+    user_default_ctx_id = prefs.default_context_id if prefs else None
+
     # Pre-fetch contributor info
     project_placements = ProjectContextPlacement.objects.filter(context_id__in=all_ctx_ids).select_related('project')
     ctx_projects = {}
@@ -41,6 +74,7 @@ def get_all_contexts(request):
     for ctx in owned:
         d = ContextSerializer(ctx).data
         d["adopted"] = False
+        d["is_default"] = (ctx.id == user_default_ctx_id)
         cat_placements = CategoryContextPlacement.objects.filter(context=ctx).order_by("order_index")
         d["category_ids"] = [p.category_id for p in cat_placements]
         d["legend_ids"] = list(Legend.objects.filter(context=ctx).values_list('id', flat=True))
@@ -57,6 +91,7 @@ def get_all_contexts(request):
     for ctx in adopted:
         d = ContextSerializer(ctx).data
         d["adopted"] = True
+        d["is_default"] = (ctx.id == user_default_ctx_id)
         cat_placements = CategoryContextPlacement.objects.filter(context=ctx).order_by("order_index")
         d["category_ids"] = [p.category_id for p in cat_placements]
         d["legend_ids"] = list(Legend.objects.filter(context=ctx).values_list('id', flat=True))
@@ -97,10 +132,9 @@ def create_context(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def update_context(request, context_id):
-    """Update context name, position, or size."""
-    try:
-        ctx = Context.objects.get(pk=context_id, owner=request.user)
-    except Context.DoesNotExist:
+    """Update context name, position, or size.  Any context member (owner or adopter) can update."""
+    ctx = _get_member_context(request.user, context_id)
+    if not ctx:
         return Response({"error": "Not found"}, status=404)
 
     for field in ("name", "x", "y", "width", "height", "z_index", "color"):
@@ -129,11 +163,10 @@ def delete_context(request, context_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def set_context_position(request):
-    """Update x, y position of a context."""
+    """Update x, y position of a context.  Any context member can update."""
     ctx_id = request.data.get("context_id")
-    try:
-        ctx = Context.objects.get(pk=ctx_id, owner=request.user)
-    except Context.DoesNotExist:
+    ctx = _get_member_context(request.user, ctx_id)
+    if not ctx:
         return Response({"error": "Not found"}, status=404)
     ctx.x = request.data.get("x", ctx.x)
     ctx.y = request.data.get("y", ctx.y)
@@ -144,11 +177,10 @@ def set_context_position(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def set_context_area(request):
-    """Update width, height of a context."""
+    """Update width, height of a context.  Any context member can update."""
     ctx_id = request.data.get("context_id")
-    try:
-        ctx = Context.objects.get(pk=ctx_id, owner=request.user)
-    except Context.DoesNotExist:
+    ctx = _get_member_context(request.user, ctx_id)
+    if not ctx:
         return Response({"error": "Not found"}, status=404)
     ctx.width = request.data.get("width", ctx.width)
     ctx.height = request.data.get("height", ctx.height)
@@ -159,11 +191,10 @@ def set_context_area(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def bring_to_front_context(request):
-    """Set z_index to max+1 among user's contexts."""
+    """Set z_index to max+1 among user's contexts.  Any context member can update."""
     ctx_id = request.data.get("context_id")
-    try:
-        ctx = Context.objects.get(pk=ctx_id, owner=request.user)
-    except Context.DoesNotExist:
+    ctx = _get_member_context(request.user, ctx_id)
+    if not ctx:
         return Response({"error": "Not found"}, status=404)
     max_z = Context.objects.filter(owner=request.user).order_by("-z_index").values_list("z_index", flat=True).first() or 0
     ctx.z_index = max_z + 1
@@ -174,12 +205,11 @@ def bring_to_front_context(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def set_context_color(request):
-    """Set the color of a context."""
+    """Set the color of a context.  Any context member can change the color globally."""
     ctx_id = request.data.get("context_id")
     color = request.data.get("color")  # hex string or null
-    try:
-        ctx = Context.objects.get(pk=ctx_id, owner=request.user)
-    except Context.DoesNotExist:
+    ctx = _get_member_context(request.user, ctx_id)
+    if not ctx:
         return Response({"error": "Not found"}, status=404)
     ctx.color = color if color else None
     ctx.save()
@@ -189,12 +219,11 @@ def set_context_color(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def set_context_filter_state(request):
-    """Save filter settings (legendFilters + filterCombineMode) on a context."""
+    """Save filter settings (legendFilters + filterCombineMode) on a context.  Any context member can update."""
     ctx_id = request.data.get("context_id")
     filter_state = request.data.get("filter_state")  # dict or null
-    try:
-        ctx = Context.objects.get(pk=ctx_id, owner=request.user)
-    except Context.DoesNotExist:
+    ctx = _get_member_context(request.user, ctx_id)
+    if not ctx:
         return Response({"error": "Not found"}, status=404)
     ctx.filter_state = filter_state
     ctx.save()
@@ -208,13 +237,12 @@ def set_context_filter_state(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def assign_category_to_context(request):
-    """Place a category into a context. Creates a CategoryContextPlacement."""
+    """Place a category into a context.  Any context member can assign accessible categories."""
     category_id = request.data.get("category_id")
     context_id = request.data.get("context_id")
-    try:
-        cat = Category.objects.get(pk=category_id, owner=request.user)
-        ctx = Context.objects.get(pk=context_id, owner=request.user)
-    except (Category.DoesNotExist, Context.DoesNotExist):
+    cat = _get_member_category(request.user, category_id)
+    ctx = _get_member_context(request.user, context_id)
+    if not cat or not ctx:
         return Response({"error": "Not found"}, status=404)
 
     placement, created = CategoryContextPlacement.objects.get_or_create(
@@ -227,14 +255,16 @@ def assign_category_to_context(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def remove_category_from_context(request):
-    """Remove a category from a context."""
+    """Remove a category from a context.  Any context member can remove."""
     category_id = request.data.get("category_id")
     context_id = request.data.get("context_id")
+    ctx = _get_member_context(request.user, context_id)
+    if not ctx:
+        return Response({"error": "Not found"}, status=404)
     try:
         placement = CategoryContextPlacement.objects.get(
             category_id=category_id,
-            context_id=context_id,
-            context__owner=request.user,
+            context=ctx,
         )
     except CategoryContextPlacement.DoesNotExist:
         return Response({"error": "Not found"}, status=404)
@@ -245,14 +275,13 @@ def remove_category_from_context(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def rename_context(request):
-    """Rename a context."""
+    """Rename a context.  Any context member can rename."""
     ctx_id = request.data.get("context_id")
     name = request.data.get("name", "").strip()
     if not name:
         return Response({"error": "Name required"}, status=400)
-    try:
-        ctx = Context.objects.get(pk=ctx_id, owner=request.user)
-    except Context.DoesNotExist:
+    ctx = _get_member_context(request.user, ctx_id)
+    if not ctx:
         return Response({"error": "Not found"}, status=404)
     ctx.name = name
     ctx.save()
@@ -262,12 +291,15 @@ def rename_context(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def safe_context_order(request):
-    """Save the order of categories within contexts."""
+    """Save the order of categories within contexts.  Any context member can reorder."""
     context_orders = request.data.get("context_orders", {})
     for ctx_id, cat_ids in context_orders.items():
+        ctx = _get_member_context(request.user, int(ctx_id))
+        if not ctx:
+            continue
         for idx, cat_id in enumerate(cat_ids):
             CategoryContextPlacement.objects.filter(
-                context_id=ctx_id, category_id=cat_id, context__owner=request.user
+                context=ctx, category_id=cat_id
             ).update(order_index=idx)
     return Response({"status": "ok"})
 
@@ -348,30 +380,30 @@ def drop_context(request, context_id):
 #  IDEA ↔ CONTEXT PLACEMENT
 # ─────────────────────────────────────────────
 
-def _get_accessible_context(user, context_id):
-    """Return a Context the user owns or has adopted. None if not accessible."""
-    ctx = Context.objects.filter(id=context_id).first()
-    if ctx is None:
-        return None
-    if ctx.owner == user:
-        return ctx
-    if UserContextAdoption.objects.filter(user=user, context=ctx).exists():
-        return ctx
-    return None
+# Re-use the module-level _get_member_context for context membership checks.
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def assign_idea_to_context(request):
-    """Link an existing idea to a context. Creates an IdeaContextPlacement."""
+    """Link an existing idea to a context.  Any context member can assign
+    ideas they own or ideas already visible in the context."""
     idea_id = request.data.get("idea_id")
     context_id = request.data.get("context_id")
-    idea = Idea.objects.filter(id=idea_id, owner=request.user).first()
-    if not idea:
-        return Response({"error": "Idea not found"}, status=404)
-    ctx = _get_accessible_context(request.user, context_id)
+    ctx = _get_member_context(request.user, context_id)
     if not ctx:
         return Response({"error": "Context not found"}, status=404)
+    # Allow own ideas OR ideas already linked to one of the user's contexts
+    idea = Idea.objects.filter(id=idea_id).first()
+    if not idea:
+        return Response({"error": "Idea not found"}, status=404)
+    if idea.owner != request.user:
+        # Check idea is in a context the user is member of
+        user_ctx_ids = list(Context.objects.filter(owner=request.user).values_list('id', flat=True))
+        adopted_ctx_ids = list(UserContextAdoption.objects.filter(user=request.user).values_list('context_id', flat=True))
+        all_ctx_ids = set(user_ctx_ids + adopted_ctx_ids)
+        if not IdeaContextPlacement.objects.filter(idea=idea, context_id__in=all_ctx_ids).exists():
+            return Response({"error": "Idea not found"}, status=404)
     placement, created = IdeaContextPlacement.objects.get_or_create(
         idea=idea, context=ctx,
         defaults={"order_index": IdeaContextPlacement.objects.filter(context=ctx).count()},
@@ -382,11 +414,14 @@ def assign_idea_to_context(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def remove_idea_from_context(request):
-    """Remove an idea from a context. Deletes the IdeaContextPlacement."""
+    """Remove an idea from a context.  Any context member can remove."""
     idea_id = request.data.get("idea_id")
     context_id = request.data.get("context_id")
+    ctx = _get_member_context(request.user, context_id)
+    if not ctx:
+        return Response({"error": "Not found"}, status=404)
     deleted, _ = IdeaContextPlacement.objects.filter(
-        idea_id=idea_id, idea__owner=request.user, context_id=context_id
+        idea_id=idea_id, context=ctx
     ).delete()
     if not deleted:
         return Response({"error": "Not found"}, status=404)
@@ -399,7 +434,7 @@ def save_context_idea_order(request):
     """Save the order of ideas within a context."""
     context_id = request.data.get("context_id")
     idea_ids = request.data.get("idea_ids", [])
-    ctx = _get_accessible_context(request.user, context_id)
+    ctx = _get_member_context(request.user, context_id)
     if not ctx:
         return Response({"error": "Context not found"}, status=404)
     for idx, idea_id in enumerate(idea_ids):
@@ -423,7 +458,7 @@ def assign_project_to_context(request):
     ).first()
     if not project:
         return Response({"error": "Project not found"}, status=404)
-    ctx = _get_accessible_context(request.user, context_id)
+    ctx = _get_member_context(request.user, context_id)
     if not ctx:
         return Response({"error": "Context not found"}, status=404)
     placement, created = ProjectContextPlacement.objects.get_or_create(
@@ -451,7 +486,7 @@ def remove_project_from_context(request):
 def get_context_projects(request, context_id):
     """Return projects linked to a context that the current user is a member of."""
     from django.db.models import Q
-    ctx = _get_accessible_context(request.user, context_id)
+    ctx = _get_member_context(request.user, context_id)
     if not ctx:
         return Response({"error": "Context not found"}, status=404)
     project_ids = ProjectContextPlacement.objects.filter(context=ctx).values_list('project_id', flat=True)

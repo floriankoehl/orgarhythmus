@@ -25,9 +25,11 @@ def _get_accessible_category(user, category_id):
         return cat
     if UserCategoryAdoption.objects.filter(user=user, category=cat).exists():
         return cat
-    # Check if category belongs to any context the user has adopted
+    # Check if category belongs to any context the user owns or has adopted
+    own_ctx_ids = Context.objects.filter(owner=user).values_list('id', flat=True)
     adopted_ctx_ids = UserContextAdoption.objects.filter(user=user).values_list('context_id', flat=True)
-    if CategoryContextPlacement.objects.filter(category=cat, context_id__in=adopted_ctx_ids).exists():
+    all_ctx_ids = set(own_ctx_ids) | set(adopted_ctx_ids)
+    if CategoryContextPlacement.objects.filter(category=cat, context_id__in=all_ctx_ids).exists():
         return cat
     return None
 
@@ -41,6 +43,48 @@ def _get_accessible_context(user, context_id):
         return ctx
     if UserContextAdoption.objects.filter(user=user, context=ctx).exists():
         return ctx
+    return None
+
+
+def _get_accessible_idea(user, idea_id):
+    """Return an Idea the user owns or can access via a shared context.
+    Returns None when the user has no access."""
+    idea = Idea.objects.filter(id=idea_id).first()
+    if idea is None:
+        return None
+    if idea.owner == user:
+        return idea
+    # Check if the idea is linked to any context the user is a member of
+    own_ctx_ids = list(Context.objects.filter(owner=user).values_list('id', flat=True))
+    adopted_ctx_ids = list(UserContextAdoption.objects.filter(user=user).values_list('context_id', flat=True))
+    all_ctx_ids = set(own_ctx_ids + adopted_ctx_ids)
+    if IdeaContextPlacement.objects.filter(idea=idea, context_id__in=all_ctx_ids).exists():
+        return idea
+    # Check if the idea is in a category accessible via context
+    idea_cat_ids = IdeaPlacement.objects.filter(idea=idea).values_list('category_id', flat=True)
+    if CategoryContextPlacement.objects.filter(category_id__in=idea_cat_ids, context_id__in=all_ctx_ids).exists():
+        return idea
+    return None
+
+
+def _get_accessible_placement(user, placement_id):
+    """Return an IdeaPlacement the user owns or can access via a shared context.
+    Returns None when the user has no access."""
+    placement = IdeaPlacement.objects.filter(id=placement_id).select_related('idea').first()
+    if placement is None:
+        return None
+    if placement.idea.owner == user:
+        return placement
+    # Check via context membership
+    idea = placement.idea
+    own_ctx_ids = list(Context.objects.filter(owner=user).values_list('id', flat=True))
+    adopted_ctx_ids = list(UserContextAdoption.objects.filter(user=user).values_list('context_id', flat=True))
+    all_ctx_ids = set(own_ctx_ids + adopted_ctx_ids)
+    if IdeaContextPlacement.objects.filter(idea=idea, context_id__in=all_ctx_ids).exists():
+        return placement
+    idea_cat_ids = IdeaPlacement.objects.filter(idea=idea).values_list('category_id', flat=True)
+    if CategoryContextPlacement.objects.filter(category_id__in=idea_cat_ids, context_id__in=all_ctx_ids).exists():
+        return placement
     return None
 
 
@@ -107,9 +151,10 @@ def create_idea(request):
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def delete_idea(request):
-    """Delete a single placement.  If it's the last placement, the meta idea is also deleted."""
+    """Delete a single placement.  If it's the last placement, the meta idea is also deleted.
+    Allowed for the idea owner or any context member with access."""
     placement_id = request.data.get("id")
-    placement = IdeaPlacement.objects.filter(id=placement_id, idea__owner=request.user).first()
+    placement = _get_accessible_placement(request.user, placement_id)
     if not placement:
         return Response({"deleted": False, "error": "Not found"}, status=404)
 
@@ -126,20 +171,26 @@ def delete_idea(request):
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def delete_meta_idea(request):
-    """Delete a meta idea and ALL its placements (cascade)."""
+    """Delete a meta idea and ALL its placements (cascade).
+    Allowed for the idea owner or any context member with access."""
     idea_id = request.data.get("id")
-    Idea.objects.filter(id=idea_id, owner=request.user).delete()
+    idea = _get_accessible_idea(request.user, idea_id)
+    if idea:
+        idea.delete()
     return Response({"deleted": True})
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def copy_idea_to_category(request):
-    """Copy an existing idea into a (possibly different) category — creates a new placement."""
+    """Copy an existing idea into a (possibly different) category — creates a new placement.
+    Allowed for the idea owner or any context member with access."""
     idea_id = request.data.get("idea_id")
     category_id = request.data.get("category_id")  # None for unassigned
 
-    idea = get_object_or_404(Idea, id=idea_id, owner=request.user)
+    idea = _get_accessible_idea(request.user, idea_id)
+    if not idea:
+        return Response({"error": "Idea not found"}, status=404)
 
     category = None
     if category_id:
@@ -151,7 +202,7 @@ def copy_idea_to_category(request):
     if IdeaPlacement.objects.filter(idea=idea, category=category).exists():
         return Response({"created": False, "error": "Idea already in this category"}, status=400)
 
-    max_order = IdeaPlacement.objects.filter(idea__owner=request.user, category=category).aggregate(
+    max_order = IdeaPlacement.objects.filter(category=category).aggregate(
         Max('order_index')
     )['order_index__max']
     next_order = (max_order + 1) if max_order is not None else 0
@@ -181,18 +232,24 @@ def safe_order(request):
             updates["category_id"] = category_id
         else:
             updates["category"] = None
-        IdeaPlacement.objects.filter(id=placement_id, idea__owner=request.user).update(**updates)
+        # Allow update if user owns the idea or has access via context
+        placement = _get_accessible_placement(request.user, placement_id)
+        if placement:
+            IdeaPlacement.objects.filter(id=placement_id).update(**updates)
     return Response({"successful": True})
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def assign_idea_to_category(request):
-    """Move a placement to a different category."""
+    """Move a placement to a different category.
+    Allowed for the idea owner or any context member with access."""
     placement_id = request.data.get("placement_id") or request.data.get("idea_id")
     category_id = request.data.get("category_id")  # None to unassign
 
-    placement = get_object_or_404(IdeaPlacement, id=placement_id, idea__owner=request.user)
+    placement = _get_accessible_placement(request.user, placement_id)
+    if not placement:
+        return Response({"error": "Not found"}, status=404)
 
     if category_id is not None:
         category = _get_accessible_category(request.user, category_id)
@@ -203,7 +260,7 @@ def assign_idea_to_category(request):
             placement.delete()
             return Response({"updated": True, "merged": True})
         placement.category = category
-        max_order = IdeaPlacement.objects.filter(idea__owner=request.user, category=category).aggregate(
+        max_order = IdeaPlacement.objects.filter(category=category).aggregate(
             db_models.Max('order_index')
         )['order_index__max']
         placement.order_index = (max_order + 1) if max_order is not None else 0
@@ -223,9 +280,19 @@ def get_all_ideas(request):
     """Return all idea placements for the current user, grouped by category.
     Also includes placements from adopted categories (read-only)."""
     # Own placements (exclude archived ideas)
-    placements = IdeaPlacement.objects.filter(idea__owner=request.user, idea__archived=False).select_related('idea', 'idea__owner', 'category').prefetch_related('idea__legend_types__legend_type', 'idea__legend_types__legend')
+    _select = ('idea', 'idea__owner', 'category')
+    _prefetch = ('idea__legend_types__legend_type', 'idea__legend_types__legend')
+    placements = IdeaPlacement.objects.filter(idea__owner=request.user, idea__archived=False).select_related(*_select).prefetch_related(*_prefetch)
     ctx = {'request': request}
     all_placements_serialized = IdeaPlacementSerializer(placements, many=True, context=ctx).data
+
+    # Also include other users' ideas placed in categories owned by current user
+    owned_cat_ids = list(Category.objects.filter(owner=request.user).values_list('id', flat=True))
+    if owned_cat_ids:
+        others_in_owned = IdeaPlacement.objects.filter(
+            category_id__in=owned_cat_ids, idea__archived=False
+        ).exclude(idea__owner=request.user).select_related(*_select).prefetch_related(*_prefetch)
+        all_placements_serialized += IdeaPlacementSerializer(others_in_owned, many=True, context=ctx).data
 
     unassigned_order = list(
         IdeaPlacement.objects.filter(idea__owner=request.user, idea__archived=False, category__isnull=True)
@@ -233,9 +300,9 @@ def get_all_ideas(request):
         .values_list('id', flat=True)
     )
     category_orders = {}
-    for cat in Category.objects.filter(owner=request.user):
-        category_orders[cat.id] = list(
-            IdeaPlacement.objects.filter(idea__owner=request.user, idea__archived=False, category=cat)
+    for cat_id in owned_cat_ids:
+        category_orders[cat_id] = list(
+            IdeaPlacement.objects.filter(idea__archived=False, category_id=cat_id)
             .order_by('order_index')
             .values_list('id', flat=True)
         )
@@ -243,7 +310,7 @@ def get_all_ideas(request):
     # Adopted category placements
     adopted_cat_ids = list(UserCategoryAdoption.objects.filter(user=request.user).values_list('category_id', flat=True))
     if adopted_cat_ids:
-        adopted_placements = IdeaPlacement.objects.filter(category_id__in=adopted_cat_ids).select_related('idea', 'idea__owner', 'category').prefetch_related('idea__legend_types__legend_type', 'idea__legend_types__legend')
+        adopted_placements = IdeaPlacement.objects.filter(category_id__in=adopted_cat_ids).select_related(*_select).prefetch_related(*_prefetch)
         adopted_data = IdeaPlacementSerializer(adopted_placements, many=True, context=ctx).data
         all_placements_serialized += adopted_data
         for cat_id in adopted_cat_ids:
@@ -253,14 +320,16 @@ def get_all_ideas(request):
                 .values_list('id', flat=True)
             )
 
-    # Categories from adopted contexts
+    # Categories from adopted contexts + own contexts (other users' categories placed there)
     adopted_ctx_ids = list(UserContextAdoption.objects.filter(user=request.user).values_list('context_id', flat=True))
-    if adopted_ctx_ids:
-        ctx_cat_ids = list(CategoryContextPlacement.objects.filter(context_id__in=adopted_ctx_ids).values_list('category_id', flat=True))
-        already_included = set(Category.objects.filter(owner=request.user).values_list('id', flat=True)) | set(adopted_cat_ids)
+    own_ctx_ids_for_cats = list(Context.objects.filter(owner=request.user).values_list('id', flat=True))
+    all_member_ctx_ids = list(set(adopted_ctx_ids + own_ctx_ids_for_cats))
+    if all_member_ctx_ids:
+        ctx_cat_ids = list(CategoryContextPlacement.objects.filter(context_id__in=all_member_ctx_ids).values_list('category_id', flat=True))
+        already_included = set(owned_cat_ids) | set(adopted_cat_ids)
         new_ctx_cat_ids = [cid for cid in ctx_cat_ids if cid not in already_included]
         if new_ctx_cat_ids:
-            ctx_placements = IdeaPlacement.objects.filter(category_id__in=new_ctx_cat_ids).select_related('idea', 'idea__owner', 'category').prefetch_related('idea__legend_types__legend_type', 'idea__legend_types__legend')
+            ctx_placements = IdeaPlacement.objects.filter(category_id__in=new_ctx_cat_ids).select_related(*_select).prefetch_related(*_prefetch)
             ctx_data = IdeaPlacementSerializer(ctx_placements, many=True, context=ctx).data
             all_placements_serialized += ctx_data
             for cat_id in new_ctx_cat_ids:
@@ -333,7 +402,10 @@ def get_all_categories(request):
 
     # Categories accessible via adopted contexts
     adopted_ctx_ids = list(UserContextAdoption.objects.filter(user=request.user).values_list('context_id', flat=True))
-    ctx_cat_ids = list(CategoryContextPlacement.objects.filter(context_id__in=adopted_ctx_ids).values_list('category_id', flat=True))
+    # Also include categories from the user's OWN contexts (other users may add categories there)
+    own_ctx_ids = list(Context.objects.filter(owner=request.user).values_list('id', flat=True))
+    all_member_ctx_ids = list(set(adopted_ctx_ids + own_ctx_ids))
+    ctx_cat_ids = list(CategoryContextPlacement.objects.filter(context_id__in=all_member_ctx_ids).values_list('category_id', flat=True))
     owned_id_set = set(owned.values_list('id', flat=True))
     adopted_id_set = set(adopted_ids)
     new_ctx_cat_ids = [cid for cid in ctx_cat_ids if cid not in owned_id_set and cid not in adopted_id_set]
@@ -386,7 +458,9 @@ def create_category(request):
 @permission_classes([IsAuthenticated])
 def set_position_category(request):
     category_id = request.data.get("id")
-    category = get_object_or_404(Category, id=category_id, owner=request.user)
+    category = _get_accessible_category(request.user, category_id)
+    if not category:
+        return Response({"error": "Not found"}, status=404)
     new_position = request.data.get("position")
     category.x = new_position["x"]
     category.y = new_position["y"]
@@ -398,7 +472,9 @@ def set_position_category(request):
 @permission_classes([IsAuthenticated])
 def set_area_category(request):
     category_id = request.data.get("id")
-    category = get_object_or_404(Category, id=category_id, owner=request.user)
+    category = _get_accessible_category(request.user, category_id)
+    if not category:
+        return Response({"error": "Not found"}, status=404)
     category.width = request.data.get("width", category.width)
     category.height = request.data.get("height", category.height)
     category.save()
@@ -409,8 +485,12 @@ def set_area_category(request):
 @permission_classes([IsAuthenticated])
 def delete_category(request):
     category_id = request.data.get("id")
-    IdeaPlacement.objects.filter(category_id=category_id, idea__owner=request.user).update(category=None)
-    Category.objects.filter(id=category_id, owner=request.user).delete()
+    cat = _get_accessible_category(request.user, category_id)
+    if not cat:
+        return Response({"error": "Not found"}, status=404)
+    # Unassign placements before deleting
+    IdeaPlacement.objects.filter(category=cat).update(category=None)
+    cat.delete()
     return Response({"deleted": True})
 
 
@@ -430,14 +510,12 @@ def merge_categories(request):
 
     # Max order in target to append after existing ideas
     max_order = IdeaPlacement.objects.filter(
-        idea__owner=request.user, category=target
+        category=target
     ).aggregate(db_models.Max('order_index'))['order_index__max']
     next_order = (max_order + 1) if max_order is not None else 0
 
     # Move all placements from source → target
-    source_placements = IdeaPlacement.objects.filter(
-        category=source, idea__owner=request.user
-    )
+    source_placements = IdeaPlacement.objects.filter(category=source)
     for p in source_placements:
         # If idea already has a placement in target, delete duplicate
         if IdeaPlacement.objects.filter(idea=p.idea, category=target).exists():
@@ -448,8 +526,9 @@ def merge_categories(request):
             p.save()
             next_order += 1
 
-    # Delete source category (only if user owns it)
-    Category.objects.filter(id=source_id, owner=request.user).delete()
+    # Delete source category if user has access
+    if source.owner == request.user or _get_accessible_category(request.user, source_id):
+        source.delete()
     return Response({"merged": True})
 
 
@@ -457,8 +536,12 @@ def merge_categories(request):
 @permission_classes([IsAuthenticated])
 def bring_to_front_category(request):
     category_id = request.data.get("id")
+    cat = _get_accessible_category(request.user, category_id)
+    if not cat:
+        return Response({"error": "Not found"}, status=404)
     max_z = Category.objects.filter(owner=request.user).aggregate(db_models.Max('z_index'))['z_index__max'] or 0
-    Category.objects.filter(id=category_id, owner=request.user).update(z_index=max_z + 1)
+    cat.z_index = max_z + 1
+    cat.save(update_fields=['z_index'])
     return Response({"updated": True})
 
 
@@ -469,7 +552,11 @@ def rename_category(request):
     new_name = request.data.get("name", "").strip()
     if not new_name:
         return Response({"error": "Name is required"}, status=400)
-    Category.objects.filter(id=category_id, owner=request.user).update(name=new_name)
+    cat = _get_accessible_category(request.user, category_id)
+    if not cat:
+        return Response({"error": "Not found"}, status=404)
+    cat.name = new_name
+    cat.save(update_fields=['name'])
     return Response({"updated": True})
 
 
@@ -478,9 +565,9 @@ def rename_category(request):
 def update_idea_title(request):
     idea_id = request.data.get("id")
     new_title = request.data.get("title", "").strip()
-    idea = Idea.objects.filter(id=idea_id, owner=request.user).first()
+    idea = _get_accessible_idea(request.user, idea_id)
     if not idea:
-        placement = IdeaPlacement.objects.filter(id=idea_id, idea__owner=request.user).first()
+        placement = _get_accessible_placement(request.user, idea_id)
         if placement:
             idea = placement.idea
     if not new_title and idea and not idea.description.strip():
@@ -496,9 +583,9 @@ def update_idea_title(request):
 def update_idea_description(request):
     idea_id = request.data.get("id")
     new_description = request.data.get("description", "")
-    idea = Idea.objects.filter(id=idea_id, owner=request.user).first()
+    idea = _get_accessible_idea(request.user, idea_id)
     if not idea:
-        placement = IdeaPlacement.objects.filter(id=idea_id, idea__owner=request.user).first()
+        placement = _get_accessible_placement(request.user, idea_id)
         if placement:
             idea = placement.idea
     if idea:
@@ -511,7 +598,9 @@ def update_idea_description(request):
 @permission_classes([IsAuthenticated])
 def toggle_archive_category(request):
     category_id = request.data.get("id")
-    category = get_object_or_404(Category, id=category_id, owner=request.user)
+    category = _get_accessible_category(request.user, category_id)
+    if not category:
+        return Response({"error": "Not found"}, status=404)
     category.archived = not category.archived
     category.save()
     return Response({"archived": category.archived})
@@ -521,7 +610,9 @@ def toggle_archive_category(request):
 @permission_classes([IsAuthenticated])
 def toggle_public_category(request):
     category_id = request.data.get("id")
-    category = get_object_or_404(Category, id=category_id, owner=request.user)
+    category = _get_accessible_category(request.user, category_id)
+    if not category:
+        return Response({"error": "Not found"}, status=404)
     category.is_public = not category.is_public
     category.save()
     return Response({"is_public": category.is_public})
@@ -539,9 +630,9 @@ def assign_idea_legend_type(request):
     legend_id = request.data.get("legend_id")
     legend_type_id = request.data.get("legend_type_id")  # None to unassign
 
-    idea = Idea.objects.filter(id=idea_id, owner=request.user).first()
+    idea = _get_accessible_idea(request.user, idea_id)
     if not idea:
-        placement = IdeaPlacement.objects.filter(id=idea_id, idea__owner=request.user).first()
+        placement = _get_accessible_placement(request.user, idea_id)
         if placement:
             idea = placement.idea
     if not idea:
@@ -565,9 +656,10 @@ def assign_idea_legend_type(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def remove_idea_from_category(request):
-    """Remove a specific placement (idea from a specific category)."""
+    """Remove a specific placement (idea from a specific category).
+    Allowed for the idea owner or any context member with access."""
     placement_id = request.data.get("placement_id")
-    placement = IdeaPlacement.objects.filter(id=placement_id, idea__owner=request.user).first()
+    placement = _get_accessible_placement(request.user, placement_id)
     if not placement:
         return Response({"error": "Not found"}, status=404)
 
@@ -586,7 +678,9 @@ def remove_idea_from_category(request):
 def remove_all_idea_categories(request):
     """Remove idea from ALL categories, keeping one unassigned placement."""
     idea_id = request.data.get("idea_id")
-    idea = get_object_or_404(Idea, id=idea_id, owner=request.user)
+    idea = _get_accessible_idea(request.user, idea_id)
+    if not idea:
+        return Response({"error": "Not found"}, status=404)
 
     IdeaPlacement.objects.filter(idea=idea).delete()
     IdeaPlacement.objects.create(idea=idea, category=None, order_index=0)
@@ -599,18 +693,35 @@ def remove_all_idea_categories(request):
 def remove_all_idea_legend_types(request):
     """Remove idea from ALL legend type assignments."""
     idea_id = request.data.get("idea_id")
-    idea = get_object_or_404(Idea, id=idea_id, owner=request.user)
+    idea = _get_accessible_idea(request.user, idea_id)
+    if not idea:
+        return Response({"error": "Not found"}, status=404)
     IdeaLegendType.objects.filter(idea=idea).delete()
 
     return Response({"removed": True})
 
-# ---- LEGEND ENDPOINTS (context-scoped) ----
+def _get_accessible_legend(user, legend_id):
+    """Return a Legend the user owns or can access via context membership."""
+    leg = Legend.objects.filter(id=legend_id).select_related('context').first()
+    if leg is None:
+        return None
+    if leg.owner == user:
+        return leg
+    if leg.context:
+        if leg.context.owner == user:
+            return leg
+        if UserContextAdoption.objects.filter(user=user, context=leg.context).exists():
+            return leg
+    return None
+
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_context_legends(request, context_id):
-    """Get all legends that belong to a specific context."""
-    ctx = get_object_or_404(Context, id=context_id, owner=request.user)
+    """Get all legends that belong to a specific context.  Any context member can view."""
+    ctx = _get_accessible_context(request.user, context_id)
+    if not ctx:
+        return Response({"error": "Not found"}, status=404)
     legends = Legend.objects.filter(context=ctx)
     return Response({"legends": LegendSerializer(legends, many=True).data})
 
@@ -618,8 +729,10 @@ def get_context_legends(request, context_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def create_legend(request, context_id):
-    """Create a new legend inside a context."""
-    ctx = get_object_or_404(Context, id=context_id, owner=request.user)
+    """Create a new legend inside a context.  Any context member can create."""
+    ctx = _get_accessible_context(request.user, context_id)
+    if not ctx:
+        return Response({"error": "Not found"}, status=404)
     name = request.data.get("name", "New Legend").strip()
     leg = Legend.objects.create(owner=request.user, context=ctx, name=name)
     return Response({"created": True, "legend": LegendSerializer(leg).data})
@@ -628,8 +741,10 @@ def create_legend(request, context_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def update_legend(request, legend_id):
-    """Update a legend's name."""
-    leg = get_object_or_404(Legend, id=legend_id, owner=request.user)
+    """Update a legend's name.  Any context member can update."""
+    leg = _get_accessible_legend(request.user, legend_id)
+    if not leg:
+        return Response({"error": "Not found"}, status=404)
     name = request.data.get("name", "").strip()
     if name:
         leg.name = name
@@ -640,8 +755,10 @@ def update_legend(request, legend_id):
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def delete_legend(request, legend_id):
-    """Delete a legend (and its types)."""
-    leg = get_object_or_404(Legend, id=legend_id, owner=request.user)
+    """Delete a legend (and its types).  Any context member can delete."""
+    leg = _get_accessible_legend(request.user, legend_id)
+    if not leg:
+        return Response({"error": "Not found"}, status=404)
     leg.delete()
     return Response({"deleted": True})
 
@@ -651,12 +768,9 @@ def delete_legend(request, legend_id):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_legend_types(request, legend_id):
-    """Get all types for a specific legend."""
-    leg = get_object_or_404(Legend, id=legend_id)
-    # Access check: user must own the context the legend belongs to
-    if leg.context and leg.context.owner != request.user:
-        return Response({"detail": "Forbidden"}, status=403)
-    elif not leg.context and leg.owner != request.user:
+    """Get all types for a specific legend.  Any context member can view."""
+    leg = _get_accessible_legend(request.user, legend_id)
+    if not leg:
         return Response({"detail": "Forbidden"}, status=403)
     types = LegendType.objects.filter(legend=leg)
     return Response({"types": LegendTypeSerializer(types, many=True).data})
@@ -665,8 +779,10 @@ def get_legend_types(request, legend_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def create_legend_type(request, legend_id):
-    """Create a type inside a specific legend."""
-    leg = get_object_or_404(Legend, id=legend_id, owner=request.user)
+    """Create a type inside a specific legend.  Any context member can create."""
+    leg = _get_accessible_legend(request.user, legend_id)
+    if not leg:
+        return Response({"error": "Not found"}, status=404)
     name = request.data.get("name", "New Type").strip()
     color = request.data.get("color", "#cccccc")
     icon = request.data.get("icon", None)
@@ -679,8 +795,10 @@ def create_legend_type(request, legend_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def update_legend_type(request, legend_id, type_id):
-    """Update a type inside a specific legend."""
-    leg = get_object_or_404(Legend, id=legend_id, owner=request.user)
+    """Update a type inside a specific legend.  Any context member can update."""
+    leg = _get_accessible_legend(request.user, legend_id)
+    if not leg:
+        return Response({"error": "Not found"}, status=404)
     lt = get_object_or_404(LegendType, id=type_id, legend=leg)
     if "name" in request.data:
         lt.name = request.data.get("name", "").strip()
@@ -695,8 +813,10 @@ def update_legend_type(request, legend_id, type_id):
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def delete_legend_type(request, legend_id, type_id):
-    """Delete a type inside a specific legend."""
-    leg = get_object_or_404(Legend, id=legend_id, owner=request.user)
+    """Delete a type inside a specific legend.  Any context member can delete."""
+    leg = _get_accessible_legend(request.user, legend_id)
+    if not leg:
+        return Response({"error": "Not found"}, status=404)
     LegendType.objects.filter(id=type_id, legend=leg).delete()
     return Response({"deleted": True})
 
@@ -941,7 +1061,7 @@ def create_category_with_ideas(request):
     # Copy ideas into the new category
     placed = 0
     for idx, idea_id in enumerate(idea_ids):
-        idea = Idea.objects.filter(id=idea_id, owner=request.user).first()
+        idea = _get_accessible_idea(request.user, idea_id)
         if not idea:
             continue
         if IdeaPlacement.objects.filter(idea=idea, category=category).exists():
@@ -952,7 +1072,7 @@ def create_category_with_ideas(request):
     # Auto-assign to context if provided
     if context_id:
         from ..models import Context
-        ctx = Context.objects.filter(id=context_id, owner=request.user).first()
+        ctx = _get_accessible_context(request.user, context_id)
         if ctx:
             CategoryContextPlacement.objects.get_or_create(category=category, context=ctx)
 
@@ -974,9 +1094,13 @@ def batch_remove_legend_type(request):
         return Response({"error": "legend_id required"}, status=400)
 
     legend = get_object_or_404(Legend, id=legend_id)
+    # Resolve accessible idea ids (owned or in adopted contexts)
+    accessible_ids = []
+    for iid in idea_ids:
+        if _get_accessible_idea(request.user, iid):
+            accessible_ids.append(iid)
     removed = IdeaLegendType.objects.filter(
-        idea__id__in=idea_ids,
-        idea__owner=request.user,
+        idea__id__in=accessible_ids,
         legend=legend,
     ).delete()[0]
 
@@ -995,7 +1119,8 @@ def batch_assign_legend_type(request):
         return Response({"error": "legend_id required"}, status=400)
 
     legend = get_object_or_404(Legend, id=legend_id)
-    ideas = Idea.objects.filter(id__in=idea_ids, owner=request.user)
+    # Resolve accessible ideas (owned or in adopted contexts)
+    ideas = [i for i in (_get_accessible_idea(request.user, iid) for iid in idea_ids) if i]
 
     if legend_type_id is not None:
         lt = get_object_or_404(LegendType, id=legend_type_id)
@@ -1025,10 +1150,12 @@ def sync_category_ideas(request):
     remove_old = request.data.get("remove_old", False)  # if True, remove ideas not in the new list
     collect_and_remove = request.data.get("collect_and_remove", False)
 
-    category = get_object_or_404(Category, id=category_id, owner=request.user)
+    category = _get_accessible_category(request.user, category_id)
+    if not category:
+        return Response({"error": "Not found"}, status=404)
 
     existing_idea_ids = set(IdeaPlacement.objects.filter(
-        category=category, idea__owner=request.user
+        category=category
     ).values_list('idea_id', flat=True))
 
     new_ids = set(idea_ids)
@@ -1038,13 +1165,13 @@ def sync_category_ideas(request):
 
     # Add new ones
     max_order = IdeaPlacement.objects.filter(
-        category=category, idea__owner=request.user
+        category=category
     ).aggregate(db_models.Max('order_index'))['order_index__max']
     next_order = (max_order + 1) if max_order is not None else 0
 
     newly_added_ids = []
     for idea_id in new_ids - existing_idea_ids:
-        idea = Idea.objects.filter(id=idea_id, owner=request.user).first()
+        idea = _get_accessible_idea(request.user, idea_id)
         if idea and not IdeaPlacement.objects.filter(idea=idea, category=category).exists():
             IdeaPlacement.objects.create(idea=idea, category=category, order_index=next_order)
             next_order += 1
@@ -1056,7 +1183,7 @@ def sync_category_ideas(request):
         to_remove = existing_idea_ids - new_ids
         if to_remove:
             removed = IdeaPlacement.objects.filter(
-                category=category, idea__owner=request.user, idea_id__in=to_remove
+                category=category, idea_id__in=to_remove
             ).delete()[0]
 
     # Collect & remove: detach matched ideas from other categories,
@@ -1064,14 +1191,17 @@ def sync_category_ideas(request):
     # (prevents ping-pong between competing C&R categories).
     if collect_and_remove and new_ids:
         protected_cat_ids = set()
-        for other_cat in Category.objects.filter(owner=request.user).exclude(id=category.id):
+        # Check user's own categories + adopted context categories
+        accessible_cat_ids = set(Category.objects.filter(owner=request.user).values_list('id', flat=True))
+        adopted_ctx_ids = UserContextAdoption.objects.filter(user=request.user).values_list('context_id', flat=True)
+        accessible_cat_ids |= set(CategoryContextPlacement.objects.filter(context_id__in=adopted_ctx_ids).values_list('category_id', flat=True))
+        for other_cat in Category.objects.filter(id__in=accessible_cat_ids).exclude(id=category.id):
             fc = other_cat.filter_config
             if isinstance(fc, dict) and fc.get('collect_and_remove'):
                 protected_cat_ids.add(other_cat.id)
 
         detach_qs = IdeaPlacement.objects.filter(
             idea_id__in=new_ids,
-            idea__owner=request.user,
         ).exclude(category=category)
         if protected_cat_ids:
             detach_qs = detach_qs.exclude(category_id__in=protected_cat_ids)
@@ -1098,13 +1228,20 @@ def merge_ideas(request):
     if not target_idea_id or not source_idea_ids:
         return Response({"error": "target_idea_id and source_idea_ids are required"}, status=400)
 
-    target = Idea.objects.filter(id=target_idea_id, owner=request.user).first()
+    target = _get_accessible_idea(request.user, target_idea_id)
     if not target:
         return Response({"error": "Target idea not found"}, status=404)
 
+    # Resolve accessible source ideas
+    sources = []
+    for sid in source_idea_ids:
+        src = _get_accessible_idea(request.user, sid)
+        if src and src.id != target.id:
+            sources.append(src)
+    # Prefetch relations for efficiency
+    source_ids = [s.id for s in sources]
     sources = list(
-        Idea.objects.filter(id__in=source_idea_ids, owner=request.user)
-        .exclude(id=target.id)
+        Idea.objects.filter(id__in=source_ids)
         .prefetch_related('legend_types', 'placements')
     )
     if not sources:
@@ -1168,7 +1305,9 @@ def update_category_filter_config(request):
     category_id = request.data.get("category_id")
     filter_config = request.data.get("filter_config")  # dict or None
 
-    category = get_object_or_404(Category, id=category_id, owner=request.user)
+    category = _get_accessible_category(request.user, category_id)
+    if not category:
+        return Response({"error": "Not found"}, status=404)
     category.filter_config = filter_config
     category.save(update_fields=["filter_config"])
     return Response({"updated": True, "filter_config": category.filter_config})

@@ -21,7 +21,7 @@ export default function IdeaBinDragGhosts({ dragging, externalGhost, draggingTyp
           className="fixed max-w-48 shadow-lg border border-gray-200 bg-white rounded text-gray-800 px-2 py-1 flex items-center text-[10px]"
         >
           <span className="whitespace-pre-wrap line-clamp-2">
-            {dragging.idea.title}
+            {dragging.idea.title || (dragging.idea.description ? dragging.idea.description.slice(0, 80) : "")}
           </span>
           {multiDragCount > 1 && (
             <span className="absolute -top-2 -right-2 bg-indigo-500 text-white text-[9px] font-bold rounded-full w-5 h-5 flex items-center justify-center shadow">
@@ -79,7 +79,7 @@ export default function IdeaBinDragGhosts({ dragging, externalGhost, draggingTyp
             }}
           >
             <div className="truncate">
-              {externalGhost.idea.title.split(/\s+/).slice(0, 5).join(" ")}
+              {(externalGhost.idea.title || externalGhost.idea.description || "").split(/\s+/).slice(0, 5).join(" ")}
             </div>
             {externalGhost.dayIndex !== null && externalGhost.dayIndex !== undefined && externalGhost.taskId ? (
               <div className="text-[10px] mt-0.5 opacity-80">

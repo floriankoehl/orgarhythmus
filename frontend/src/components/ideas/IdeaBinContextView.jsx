@@ -397,8 +397,8 @@ export default forwardRef(function IdeaBinContextView({
       if (hoverContextRef.current) {
         const targetCtxId = parseInt(hoverContextRef.current);
         const targetCtx = contexts[targetCtxId];
-        // Only allow dropping into owned contexts, not adopted ones
-        if (targetCtx && !targetCtx.adopted) {
+        // Allow dropping into any accessible context (owned or adopted)
+        if (targetCtx) {
           if (type === "category") {
             assign_category_to_context(itemId, targetCtxId);
           } else if (type === "legend") {
@@ -721,10 +721,8 @@ export default forwardRef(function IdeaBinContextView({
                     }}
                     onDoubleClick={(e) => {
                       e.stopPropagation();
-                      if (!ctxData.adopted) {
-                        setEditingContextId(ctxKey);
-                        setEditingContextName(ctxData.name);
-                      }
+                      setEditingContextId(ctxKey);
+                      setEditingContextName(ctxData.name);
                     }}
                     className={`flex justify-between items-center mb-0.5 flex-shrink-0 rounded-t px-1 py-0.5 cursor-grab active:cursor-grabbing border-b ${
                       ctxData.adopted
@@ -884,15 +882,13 @@ export default forwardRef(function IdeaBinContextView({
                                 <span className="truncate font-medium text-gray-700">{cat.name}</span>
                                 {cat.is_public && <Globe size={9} className="text-emerald-600 flex-shrink-0" />}
                               </div>
-                              {!ctxData.adopted && (
-                                <button
+                              <button
                                   onClick={() => remove_category_from_context(catId, parseInt(ctxKey))}
                                   className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                                   title="Remove from context"
                                 >
                                   ✕
                                 </button>
-                              )}
                             </div>
                           );
                         })}
@@ -918,15 +914,13 @@ export default forwardRef(function IdeaBinContextView({
                                 <Tag size={10} className="text-indigo-400 flex-shrink-0" />
                                 <span className="truncate font-medium text-gray-700">{leg.name}</span>
                               </div>
-                              {!ctxData.adopted && (
-                                <button
+                              <button
                                   onClick={() => remove_legend_from_context(legId, parseInt(ctxKey))}
                                   className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                                   title="Remove from context"
                                 >
                                   ✕
                                 </button>
-                              )}
                             </div>
                           );
                         })}
@@ -935,7 +929,7 @@ export default forwardRef(function IdeaBinContextView({
 
                     {catIds.length === 0 && legIds.length === 0 && (
                       <p className="text-[10px] text-gray-400 text-center py-3">
-                        {ctxData.adopted ? "No categories or legends" : "Drag categories or legends here"}
+                        Drag categories or legends here
                       </p>
                     )}
 
