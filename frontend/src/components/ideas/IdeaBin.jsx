@@ -16,6 +16,8 @@ import IdeaBinMergeModal from "./IdeaBinMergeModal";
 import useIdeaBinWindow from "./useIdeaBinWindow";
 import IdeaBinTransformModal from "./IdeaBinTransformModal";
 import IdeaBinReformCategoryModal from "./IdeaBinReformCategoryModal";
+import IdeaBinCategoryExportModal from "./IdeaBinCategoryExportModal";
+import IdeaBinCategoryImportModal from "./IdeaBinCategoryImportModal";
 import IdeaBinLegendPanel from "./IdeaBinLegendPanel";
 import IdeaBinDragGhosts from "./IdeaBinDragGhosts";
 import IdeaBinIdeaCard from "./IdeaBinIdeaCard";
@@ -35,7 +37,7 @@ import useIdeaBinKeyboard from "./hooks/useIdeaBinKeyboard";
 import { authFetch, API } from "./api/authFetch";
 import { fetchContextsApi, saveContextFilterStateApi, setContextColorApi, fetchFilterPresetsApi, saveFilterPresetsApi, fetchContextProjectsApi } from "./api/contextApi";
 import { mergeIdeasApi, batchSetArchiveApi } from "./api/ideaApi";
-import { exportIdeabinApi, importIdeabinApi } from "./api/exportApi";
+import { exportIdeabinApi, importIdeabinApi, exportCategoryApi, importCategoryApi } from "./api/exportApi";
 
 // ───────────────────── Constants ─────────────────────
 const CATEGORY_THRESHOLD = 560; // show categories when wider than this
@@ -177,6 +179,10 @@ export default function IdeaBin() {
   // ───── Reform category → team modal ─────
   const [reformCategoryModal, setReformCategoryModal] = useState(null); // { categoryId, catData, step }
   const [reformLoading, setReformLoading] = useState(false);
+
+  // ───── Category export / import modals ─────
+  const [categoryExportJson, setCategoryExportJson] = useState(null); // JSON object or null
+  const [showCategoryImport, setShowCategoryImport] = useState(false);
 
   // Refs
   const IdeaListRef = useRef(null);
@@ -599,6 +605,42 @@ export default function IdeaBin() {
       window.alert(`Import failed: ${e.message}`);
     }
   }, [activeContext?.id, activeContext?.name, fetch_categories, fetch_all_ideas]);
+
+  // ═══════════════════════════════════════════════════════
+  // ═══════════  CATEGORY EXPORT / IMPORT  ════════════════
+  // ═══════════════════════════════════════════════════════
+
+  const handleExportCategory = useCallback(async (categoryId) => {
+    try {
+      const data = await exportCategoryApi(categoryId);
+      setCategoryExportJson(data);
+    } catch (e) {
+      console.error("Category export failed", e);
+      window.alert(`Export failed: ${e.message}`);
+    }
+  }, []);
+
+  const handleImportCategory = useCallback(async (jsonData) => {
+    try {
+      const result = await importCategoryApi(jsonData, activeContext?.id ?? null);
+      setShowCategoryImport(false);
+
+      // Update activeContext.category_ids so the new category is visible immediately
+      if (activeContext && result.category_id) {
+        setActiveContext(prev => prev ? {
+          ...prev,
+          category_ids: [...(prev.category_ids || []), result.category_id],
+        } : prev);
+      }
+
+      // Refresh categories & ideas
+      await fetch_categories();
+      await fetch_all_ideas();
+      playSound?.("success");
+    } catch (e) {
+      throw e; // let the modal display the error
+    }
+  }, [activeContext, setActiveContext, fetch_categories, fetch_all_ideas]);
 
   // ═══════════════════════════════════════════════════════
   // ═══════════  EFFECTS  ═════════════════════════════════
@@ -1863,6 +1905,22 @@ export default function IdeaBin() {
               executeTransformToTask={executeTransformToTask} executeTransformToMilestone={executeTransformToMilestone}
             />
 
+            {/* Category export modal */}
+            {categoryExportJson && (
+              <IdeaBinCategoryExportModal
+                json={categoryExportJson}
+                onClose={() => setCategoryExportJson(null)}
+              />
+            )}
+
+            {/* Category import modal */}
+            {showCategoryImport && (
+              <IdeaBinCategoryImportModal
+                onImport={handleImportCategory}
+                onClose={() => setShowCategoryImport(false)}
+              />
+            )}
+
             {/* ══════ IDEAS MODE ══════ */}
             {viewMode === "ideas" && (
             <>
@@ -2590,6 +2648,8 @@ export default function IdeaBin() {
                 showOrderNumbers={showOrderNumbers}
                 setShowOrderNumbers={setShowOrderNumbers}
                 onReformCategory={openReformCategory}
+                onExportCategory={handleExportCategory}
+                onImportCategory={() => setShowCategoryImport(true)}
               />
             )}
             </>

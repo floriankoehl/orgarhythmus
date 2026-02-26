@@ -70,6 +70,8 @@ urlpatterns = [
     path("user/categories/merge/", views.merge_categories),
     path("user/categories/set_position/", views.set_position_category),
     path("user/categories/set_area/", views.set_area_category),
+    path("user/categories/<int:category_id>/export/", views.export_category, name="export_category"),
+    path("user/categories/import/", views.import_category, name="import_category"),
 
     path("user/ideas/all/", views.get_all_ideas),
     path("user/ideas/meta/", views.get_meta_ideas),

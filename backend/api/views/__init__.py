@@ -231,3 +231,8 @@ from .export import (
 from .import_backup import (
     import_ideabin,
 )
+
+from .category_transfer import (
+    export_category,
+    import_category,
+)

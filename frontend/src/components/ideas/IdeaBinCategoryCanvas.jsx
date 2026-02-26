@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
-import { Copy, Settings, Globe, Lock, UserRound, LinkIcon, PanelTopDashed, Pencil, Type, X, RotateCcw, ArrowDownUp, BookOpenText, Rss, ListOrdered, Filter, AlertTriangle, PanelRightClose, Users } from "lucide-react";
+import { Copy, Settings, Globe, Lock, UserRound, LinkIcon, PanelTopDashed, Pencil, Type, X, RotateCcw, ArrowDownUp, BookOpenText, Rss, ListOrdered, Filter, AlertTriangle, PanelRightClose, Users, Upload, Download } from "lucide-react";
 import FeedFilterPanel from "./FeedFilterPanel";
 
 /**
@@ -80,6 +80,8 @@ export default function IdeaBinCategoryCanvas({
   showOrderNumbers,
   setShowOrderNumbers,
   onReformCategory,
+  onExportCategory,
+  onImportCategory,
 }) {
   // Local state for headline-mode draft headlines (keyed by ideaId)
   const [draftHeadlines, setDraftHeadlines] = useState({});
@@ -413,6 +415,18 @@ export default function IdeaBinCategoryCanvas({
                 </>
               )}
             </div>
+          )}
+
+          {/* Import category from JSON */}
+          {onImportCategory && (
+            <button
+              onClick={onImportCategory}
+              className="text-[10px] px-2 py-1 bg-gray-100 border border-gray-300 rounded hover:bg-gray-200 flex items-center gap-1 flex-shrink-0"
+              title="Import category from JSON"
+            >
+              <Upload size={10} />
+              Import
+            </button>
           )}
 
           {/* ── Docked categories chips (inline with buttons) ── */}
@@ -988,6 +1002,36 @@ export default function IdeaBinCategoryCanvas({
                           <PanelTopDashed size={11} />
                           Dock to header
                         </button>
+                        {/* ── Separator ── */}
+                        <div className="border-t border-gray-100 my-0.5" />
+                        {/* Export category */}
+                        {onExportCategory && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCategorySettingsOpen(null);
+                              onExportCategory(catKey);
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                          >
+                            <Download size={11} />
+                            Export as JSON
+                          </button>
+                        )}
+                        {/* Import category */}
+                        {onImportCategory && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCategorySettingsOpen(null);
+                              onImportCategory();
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                          >
+                            <Upload size={11} />
+                            Import category
+                          </button>
+                        )}
                       </div>
                     </>
                   )}

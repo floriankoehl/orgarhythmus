@@ -41,3 +41,57 @@ export async function importIdeabinApi(file, contextId) {
   if (!res.ok) throw new Error(data.error || "Import failed");
   return data;
 }
+
+
+// ─── Category-level export / import ─────────────────────
+
+/**
+ * Export a single category + its ideas as simple JSON.
+ * @param {number} categoryId
+ * @returns {Promise<{ category_name: string, ideas: Array }>}
+ */
+export async function exportCategoryApi(categoryId) {
+  const res = await authFetch(`${API}/user/categories/${categoryId}/export/`);
+  if (!res.ok) throw new Error("Category export failed");
+  return res.json();
+}
+
+/**
+ * Import a category from JSON (creates a new category + ideas).
+ * @param {object|File} jsonOrFile  – parsed JSON object, or a File
+ * @param {number|null} contextId   – optional context to place the new category into
+ * @returns {Promise<{ status, message, category_id }>}
+ */
+export async function importCategoryApi(jsonOrFile, contextId) {
+  const url = contextId
+    ? `${API}/user/categories/import/?context_id=${contextId}`
+    : `${API}/user/categories/import/`;
+
+  // If it's a File, use multipart
+  if (jsonOrFile instanceof File) {
+    const form = new FormData();
+    form.append("file", jsonOrFile);
+
+    const token = localStorage.getItem("access_token");
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: form,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Import failed");
+    return data;
+  }
+
+  // Otherwise send as JSON body
+  const res = await authFetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(jsonOrFile),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Import failed");
+  return data;
+}
