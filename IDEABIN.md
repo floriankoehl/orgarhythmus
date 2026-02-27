@@ -196,7 +196,7 @@ A named workspace container that groups Categories and Legends. Has position/siz
 | `is_public` | BooleanField | False |
 | `is_default` | BooleanField | False |
 | `color` | CharField(20) | nullable — tints the IdeaBin chrome when active |
-| `filter_state` | JSONField | nullable — persists the user's last filter configuration within this context |
+| `filter_state` | JSONField | nullable — persists the context's filter configuration including legend filters, stacked filters, and saved filter presets |
 | `created_at` | DateTimeField | auto_now_add |
 
 ### 3.8 Placement Through-Models
@@ -305,7 +305,8 @@ frontend/src/components/ideas/
 ├── IdeaBinTransformModal.jsx           Transform idea → Task/Milestone (~190 lines)
 ├── IdeaBinReformCategoryModal.jsx      Reform category → Team (~220 lines)
 ├── IdeaBinCategoryExportModal.jsx      Export category as JSON (~100 lines)
-├── IdeaBinCategoryImportModal.jsx      Import category from JSON (~210 lines)
+├── IdeaBinCategoryImportModal.jsx      Import one or multiple categories from JSON (~260 lines)
+├── IdeaBinInsertIdeasModal.jsx          Insert ideas into existing category from JSON (~250 lines)
 ├── CollectConflictModal.jsx            Collect & Remove conflict resolver (~160 lines)
 ├── FeedFilterPanel.jsx                 Per-category feed filter (~260 lines)
 │
@@ -343,10 +344,10 @@ frontend/src/components/ideas/
 | **Ideas** | `ideas` (dict by placement ID), `unassignedOrder`, `categoryOrders`, `contextIdeaOrders`, undo/redo history | `useIdeaBinIdeas` |
 | **Categories** | `categories` (dict by ID), `dockedCategories`, `minimizedCategories`, `selectedCategoryIds` | `useIdeaBinCategories` |
 | **Legends** | `legends` (array), `activeLegendId`, `legendTypes`, `paintType` | `useLegends` |
-| **Filters** | `globalTypeFilter`, `legendFilters[]`, `stackedFilters[]`, `filterCombineMode`, `stackCombineMode`, `filterPresets` | IdeaBin.jsx directly |
+| **Filters** | `globalTypeFilter`, `legendFilters[]`, `stackedFilters[]`, `filterCombineMode`, `stackCombineMode`, `filterPresets` (context-scoped) | IdeaBin.jsx directly |
 | **View** | `viewMode` ("ideas" / "contexts"), `activeContext`, `contextsList` | IdeaBin.jsx |
 | **Sidebar** | `listFilter`, `sidebarWidth`, `leftCollapsed`, `rightCollapsed`, `sidebarFocused` | IdeaBin.jsx |
-| **Modals** | `confirmModal`, `showMergeModal`, `transformModal`, `reformCategoryModal`, `categoryExportJson`, `showCategoryImport` | IdeaBin.jsx |
+| **Modals** | `confirmModal`, `showMergeModal`, `transformModal`, `reformCategoryModal`, `categoryExportJson`, `showCategoryImport`, `insertIdeasTarget` | IdeaBin.jsx |
 | **Title Builder** | `headlineModeCategoryId`, `headlineModeIdeaId`, `sidebarDraftTitle`, `sidebarTitleOrderMode` | IdeaBin.jsx |
 | **Drag** | `dragging`, `dragData`, `ghostPos`, `externalGhost`, `hoverCategory` | `useIdeaBinDrag` |
 | **Formations** | `formations` (array), `activeFormation`, `formationState` | `useIdeaBinFormations` |
@@ -451,7 +452,7 @@ The bottom section of the sidebar. Manages the entire legend/filter system.
    - Combine rows with AND / OR
    - Stack filter groups with their own internal combine mode
    - Filter combine across stacks: AND / OR
-5. **Filter presets:** Save, load, rename, delete named filter configurations. Activate multiple presets additively (stacked)
+5. **Filter presets:** Context-scoped saved filter configurations. Save, load, rename, delete named presets. Each context has its own set of presets (stored in `filter_state.filter_presets`). Activate multiple presets additively (stacked)
 6. **Paint mode:** Click the brush icon on a type to enter paint mode — every idea you click gets that type assigned. Paint works on selections too (batch)
 7. **Create category from filter:** One-click to generate a new category containing all ideas matching the current filter
 8. **Idea counts:** Each type shows a count of matching ideas
@@ -496,7 +497,8 @@ A separate view mode with its own canvas. Manages Contexts as draggable/resizabl
 | `IdeaBinTransformModal` | Multi-step wizard: Idea → Task or Milestone in the dependency view |
 | `IdeaBinReformCategoryModal` | Multi-step wizard: Category → Project Team (optionally takes ideas as tasks) |
 | `IdeaBinCategoryExportModal` | Shows category JSON with Copy to Clipboard + Save as File |
-| `IdeaBinCategoryImportModal` | Two modes: Paste JSON or Upload File, then import as new category |
+| `IdeaBinCategoryImportModal` | Two modes: Paste JSON or Upload File, supports single and multi-category format |
+| `IdeaBinInsertIdeasModal` | Paste or upload JSON ideas to insert into an existing category |
 | `CollectConflictModal` | Resolve overlapping ideas when enabling Collect & Remove across multiple feed-filtered categories |
 
 ### 5.8 Supporting Components
@@ -674,7 +676,7 @@ All API functions live in `frontend/src/components/ideas/api/`. They use `authFe
 | `syncCategoryIdeas` | POST | `/user/categories/sync_ideas/` |
 | `updateCategoryFilterConfig` | POST | `/user/categories/update_filter_config/` |
 
-### 7.3 `contextApi.js` — 16 exports
+### 7.3 `contextApi.js` — 14 exports
 
 | Function | Method | Endpoint |
 |---|---|---|
@@ -684,8 +686,6 @@ All API functions live in `frontend/src/components/ideas/api/`. They use `authFe
 | `assignCategoryToContextApi` | POST | `/user/contexts/assign_category/` |
 | `setContextPositionApi` | POST | `/user/contexts/set_position/` |
 | `setContextAreaApi` | POST | `/user/contexts/set_area/` |
-| `fetchFilterPresetsApi` | GET | `/user/filter-presets/` |
-| `saveFilterPresetsApi` | PUT | `/user/filter-presets/save/` |
 | `assignIdeaToContextApi` | POST | `/user/contexts/assign_idea/` |
 | `removeIdeaFromContextApi` | POST | `/user/contexts/remove_idea/` |
 | `saveContextIdeaOrderApi` | POST | `/user/contexts/save_idea_order/` |
@@ -695,7 +695,7 @@ All API functions live in `frontend/src/components/ideas/api/`. They use `authFe
 | `fetchAllPublicContextsApi` | GET | `/contexts/public/` |
 | `fetchProjectContextsApi` | GET | `/projects/<id>/contexts/` |
 
-### 7.4 `exportApi.js` — 4 exports
+### 7.4 `exportApi.js` — 5 exports
 
 | Function | Method | Endpoint |
 |---|---|---|
@@ -703,6 +703,7 @@ All API functions live in `frontend/src/components/ideas/api/`. They use `authFe
 | `importIdeabinApi` | POST | `/ideabin/import/` |
 | `exportCategoryApi` | GET | `/user/categories/<id>/export/` |
 | `importCategoryApi` | POST | `/user/categories/import/` |
+| `insertIdeasIntoCategoryApi` | POST | `/user/categories/<id>/insert-ideas/` |
 
 ### 7.5 `formationApi.js` — 10 exports
 
@@ -778,12 +779,13 @@ Stack combine: OR
 
 Contexts are named workspaces. When a user "enters" a context:
 
-1. The current context's filter state is saved to the backend
+1. The current context's filter state (including filter presets) is saved to the backend
 2. The IdeaBin title bar tints to the context's colour
 3. All lists filter to only show:
    - Categories placed in this context (via `CategoryContextPlacement`)
    - Ideas placed in those categories, plus ideas directly linked (via `IdeaContextPlacement`)
    - Legends placed in this context (via `LegendContextPlacement`)
+   - Filter presets belonging to this context (stored in `filter_state.filter_presets`)
 4. If the context has a default formation, it auto-loads
 
 ### 8.5 Formations
@@ -852,6 +854,27 @@ The undo/redo system tracks actions at the idea level with a 20-entry stack. Sup
 ```
 Copy to clipboard (primary) or download as file. Import via paste or file upload — creates a new category.
 
+**Multi-category import:** The import modal also accepts a multi-category format:
+```json
+{
+  "categories": [
+    { "category_name": "Category A", "ideas": [ { "title": "..." } ] },
+    { "category_name": "Category B", "ideas": [ { "title": "..." } ] }
+  ]
+}
+```
+All categories are created in a single request. The response includes a `category_ids` array.
+
+**Insert ideas into existing category:** Each category's settings menu has an "Insert ideas (JSON)" button that opens a modal accepting:
+```json
+{
+  "ideas": [
+    { "title": "New Idea", "description": "..." }
+  ]
+}
+```
+Or a bare array: `[ { "title": "..." } ]`. Ideas are appended after the last existing idea.
+
 ### 8.12 Drag & Drop
 
 Four distinct drag subsystems:
@@ -915,7 +938,8 @@ All endpoints require JWT authentication (`Authorization: Bearer <token>`) and a
 | `user/categories/sync_ideas/` | POST | Sync category from idea ID list |
 | `user/categories/update_filter_config/` | POST | Set/clear feed filter |
 | `user/categories/<id>/export/` | GET | Export category as simple JSON |
-| `user/categories/import/` | POST | Import category from JSON |
+| `user/categories/import/` | POST | Import category (single or multi) from JSON |
+| `user/categories/<id>/insert-ideas/` | POST | Insert ideas into existing category |
 | `categories/public/` | GET | Browse public categories |
 | `categories/<id>/adopt/` | POST | Adopt a public category |
 | `categories/<id>/drop/` | DELETE | Drop adopted category |

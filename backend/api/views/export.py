@@ -300,14 +300,12 @@ def _export_global(user):
     legend_adoptions = UserLegendAdoption.objects.filter(user=user)
     context_adoptions = UserContextAdoption.objects.filter(user=user)
 
-    # user shortcuts / filter presets
+    # user shortcuts
     try:
         shortcuts_obj = UserShortcuts.objects.get(user=user)
         shortcuts = shortcuts_obj.shortcuts
-        filter_presets = shortcuts_obj.filter_presets
     except UserShortcuts.DoesNotExist:
         shortcuts = {}
-        filter_presets = []
 
     data = {
         "schema_version": 1,
@@ -362,7 +360,6 @@ def _export_global(user):
         },
 
         "shortcuts": shortcuts,
-        "filter_presets": filter_presets,
     }
 
     return JsonResponse(data, json_dumps_params={"indent": 2})

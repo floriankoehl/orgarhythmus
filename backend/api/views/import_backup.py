@@ -477,13 +477,25 @@ def _import_global(user, data):
                     is_default=fm.get("is_default", False),
                 )
 
-            # ── 9. Shortcuts + filter presets ──
+            # ── 9. Shortcuts ──
             shortcuts_data = data.get("shortcuts", {})
-            presets_data = data.get("filter_presets", [])
             obj, _ = UserShortcuts.objects.get_or_create(user=user)
             obj.shortcuts = shortcuts_data
-            obj.filter_presets = presets_data
             obj.save()
+
+            # ── 9b. Migrate legacy top-level filter_presets into the default context ──
+            legacy_presets = data.get("filter_presets", [])
+            if legacy_presets:
+                # Find the default context (or first context) and inject presets into its filter_state
+                default_ctx = Context.objects.filter(owner=user, is_default=True).first()
+                if not default_ctx:
+                    default_ctx = Context.objects.filter(owner=user).first()
+                if default_ctx:
+                    fs = default_ctx.filter_state or {}
+                    if not fs.get("filter_presets"):
+                        fs["filter_presets"] = legacy_presets
+                        default_ctx.filter_state = fs
+                        default_ctx.save()
 
         return JsonResponse({
             "status": "ok",

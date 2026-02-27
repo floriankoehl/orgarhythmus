@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
-import { Copy, Settings, Globe, Lock, UserRound, LinkIcon, PanelTopDashed, Pencil, Type, X, RotateCcw, ArrowDownUp, BookOpenText, Rss, ListOrdered, Filter, AlertTriangle, PanelRightClose, Users, Upload, Download } from "lucide-react";
+import { Copy, Settings, Globe, Lock, UserRound, LinkIcon, PanelTopDashed, Pencil, Type, X, RotateCcw, ArrowDownUp, BookOpenText, Rss, ListOrdered, Filter, AlertTriangle, PanelRightClose, Users, Upload, Download, ClipboardPaste } from "lucide-react";
 import FeedFilterPanel from "./FeedFilterPanel";
 
 /**
@@ -82,6 +82,7 @@ export default function IdeaBinCategoryCanvas({
   onReformCategory,
   onExportCategory,
   onImportCategory,
+  onInsertIdeas,
 }) {
   // Local state for headline-mode draft headlines (keyed by ideaId)
   const [draftHeadlines, setDraftHeadlines] = useState({});
@@ -1030,6 +1031,20 @@ export default function IdeaBinCategoryCanvas({
                           >
                             <Upload size={11} />
                             Import category
+                          </button>
+                        )}
+                        {/* Insert ideas into this category */}
+                        {onInsertIdeas && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCategorySettingsOpen(null);
+                              onInsertIdeas(catKey);
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                          >
+                            <ClipboardPaste size={11} />
+                            Insert ideas (JSON)
                           </button>
                         )}
                       </div>

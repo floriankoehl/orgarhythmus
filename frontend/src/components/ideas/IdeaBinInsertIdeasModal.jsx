@@ -2,25 +2,28 @@ import React, { useState, useRef, useCallback } from "react";
 import { X, Upload, ClipboardPaste, FileJson, Check } from "lucide-react";
 
 /**
- * Modal that lets the user import one or more categories from JSON.
+ * Modal that lets the user insert ideas into an existing category from JSON.
  * Two modes: paste text or upload a file.
  *
- * Supports two JSON formats:
- *   Single:  { "category_name": "...", "ideas": [...] }
- *   Multi:   { "categories": [ { "category_name": "...", "ideas": [...] }, ... ] }
+ * Expected JSON format:
+ *   { "ideas": [ { "title": "...", "description": "..." }, ... ] }
+ *
+ * Also accepts a bare array:
+ *   [ { "title": "...", "description": "..." }, ... ]
  *
  * Props:
- *   onImport(jsonObject)  – called with the parsed JSON when user confirms
+ *   categoryName          – name of the target category (shown in header)
+ *   onInsert(jsonObject)  – called with { ideas: [...] } when user confirms
  *   onClose               – close callback
  */
-export default function IdeaBinCategoryImportModal({ onImport, onClose }) {
+export default function IdeaBinInsertIdeasModal({ categoryName, onInsert, onClose }) {
   const [mode, setMode] = useState(null); // null = choose, "paste" | "file"
   const [pasteText, setPasteText] = useState("");
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const fileRef = useRef(null);
 
-  const parseAndImport = useCallback(async (raw) => {
+  const parseAndInsert = useCallback(async (raw) => {
     setError(null);
     let data;
     try {
@@ -30,40 +33,39 @@ export default function IdeaBinCategoryImportModal({ onImport, onClose }) {
       return;
     }
 
-    // Detect multi-category format
-    if (data.categories && Array.isArray(data.categories)) {
-      if (data.categories.length === 0) {
-        setError('"categories" list is empty.');
-        return;
-      }
-      // Validate each entry has at least a name or ideas
-      for (let i = 0; i < data.categories.length; i++) {
-        const entry = data.categories[i];
-        if (!entry || typeof entry !== "object") {
-          setError(`Category at index ${i} is not a valid object.`);
-          return;
-        }
-        if (!entry.category_name) entry.category_name = `Imported Category ${i + 1}`;
-        if (!entry.ideas || !Array.isArray(entry.ideas)) entry.ideas = [];
-      }
-    } else {
-      // Single-category format validation
-      if (!data.category_name && !data.ideas) {
-        setError('JSON must have "category_name" and/or "ideas" fields, or a "categories" array.');
-        return;
-      }
-      if (!data.category_name) data.category_name = "Imported Category";
-      if (!data.ideas || !Array.isArray(data.ideas)) data.ideas = [];
+    // Accept a bare array → wrap it
+    if (Array.isArray(data)) {
+      data = { ideas: data };
+    }
+
+    if (!data || typeof data !== "object") {
+      setError("Expected a JSON object or array.");
+      return;
+    }
+
+    // If the user pasted a category export (has category_name + ideas), extract ideas
+    if (data.category_name && data.ideas) {
+      data = { ideas: data.ideas };
+    }
+
+    if (!data.ideas || !Array.isArray(data.ideas)) {
+      setError('JSON must have an "ideas" array, or be a bare array of idea objects.');
+      return;
+    }
+
+    if (data.ideas.length === 0) {
+      setError('"ideas" list is empty.');
+      return;
     }
 
     setLoading(true);
     try {
-      await onImport(data);
+      await onInsert(data);
     } catch (e) {
-      setError(e.message || "Import failed.");
+      setError(e.message || "Insert failed.");
       setLoading(false);
     }
-  }, [onImport]);
+  }, [onInsert]);
 
   const handleFileSelect = useCallback(async (e) => {
     const file = e.target.files?.[0];
@@ -71,19 +73,19 @@ export default function IdeaBinCategoryImportModal({ onImport, onClose }) {
 
     try {
       const text = await file.text();
-      await parseAndImport(text);
+      await parseAndInsert(text);
     } catch {
       setError("Could not read file.");
     }
-  }, [parseAndImport]);
+  }, [parseAndInsert]);
 
   const handlePasteConfirm = useCallback(() => {
     if (!pasteText.trim()) {
       setError("Please paste some JSON first.");
       return;
     }
-    parseAndImport(pasteText.trim());
-  }, [pasteText, parseAndImport]);
+    parseAndInsert(pasteText.trim());
+  }, [pasteText, parseAndInsert]);
 
   return (
     <>
@@ -98,7 +100,7 @@ export default function IdeaBinCategoryImportModal({ onImport, onClose }) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-200">
           <span className="text-sm font-semibold text-gray-800">
-            Import Categories
+            Insert Ideas → {categoryName || "Category"}
           </span>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X size={16} />
@@ -112,7 +114,7 @@ export default function IdeaBinCategoryImportModal({ onImport, onClose }) {
           {mode === null && (
             <div className="flex flex-col gap-3">
               <p className="text-xs text-gray-500">
-                Create new categories from JSON. Choose how to provide the data:
+                Add ideas to <strong>{categoryName || "this category"}</strong> from JSON.
               </p>
               <button
                 onClick={() => { setMode("paste"); setError(null); }}
@@ -148,30 +150,22 @@ export default function IdeaBinCategoryImportModal({ onImport, onClose }) {
           {mode === "paste" && (
             <div className="flex flex-col gap-3">
               <p className="text-xs text-gray-500">
-                Paste your JSON below. Single or multiple categories:
+                Paste your JSON below. Accepted formats:
               </p>
               <pre className="text-[10px] bg-gray-50 rounded px-2 py-1.5 border border-gray-200 text-gray-500 overflow-x-auto">
-{`// Single category:
+{`// Object with "ideas" array:
 {
-  "category_name": "My Category",
   "ideas": [
-    { "title": "...", "description": "..." }
+    { "title": "Idea A", "description": "..." },
+    { "title": "Idea B", "description": "..." }
   ]
 }
 
-// Multiple categories:
-{
-  "categories": [
-    {
-      "category_name": "Category A",
-      "ideas": [ { "title": "..." } ]
-    },
-    {
-      "category_name": "Category B",
-      "ideas": [ { "title": "..." } ]
-    }
-  ]
-}`}
+// Or a bare array:
+[
+  { "title": "Idea A", "description": "..." },
+  { "title": "Idea B", "description": "..." }
+]`}
               </pre>
               <textarea
                 value={pasteText}
@@ -193,10 +187,10 @@ export default function IdeaBinCategoryImportModal({ onImport, onClose }) {
                   disabled={loading}
                   className="flex items-center gap-1.5 px-4 py-1.5 rounded text-xs text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {loading ? "Importing…" : (
+                  {loading ? "Inserting…" : (
                     <>
                       <Check size={12} />
-                      Convert & Import
+                      Insert Ideas
                     </>
                   )}
                 </button>
@@ -204,11 +198,11 @@ export default function IdeaBinCategoryImportModal({ onImport, onClose }) {
             </div>
           )}
 
-          {/* ── File mode (uploading) ── */}
+          {/* ── File mode ── */}
           {mode === "file" && (
             <div className="flex flex-col gap-3 items-center py-6">
               {loading ? (
-                <p className="text-sm text-gray-500">Importing…</p>
+                <p className="text-sm text-gray-500">Inserting…</p>
               ) : (
                 <>
                   <Upload size={32} className="text-gray-300" />
@@ -249,7 +243,7 @@ export default function IdeaBinCategoryImportModal({ onImport, onClose }) {
 
         {/* Footer hint */}
         <div className="px-4 pb-3 text-[10px] text-gray-400">
-          Import one or multiple categories at once. Each category will be created with its ideas.
+          Ideas will be appended to the end of "{categoryName || "this category"}".
         </div>
       </div>
     </>

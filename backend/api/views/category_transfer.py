@@ -1,15 +1,35 @@
 """
-Category-level JSON export & import.
+Category-level JSON export & import, plus idea insertion.
 
-GET  /api/user/categories/<id>/export/   → JSON with category + ideas
-POST /api/user/categories/import/        → create new category from JSON (body, file, or paste)
+GET  /api/user/categories/<id>/export/        → JSON with category + ideas
+POST /api/user/categories/import/             → create new category(ies) from JSON (body, file, or paste)
+POST /api/user/categories/<id>/insert-ideas/  → insert ideas into an existing category from JSON
 
 The JSON schema is intentionally simple so it can be copy-pasted,
 handed to an AI for refinement, and pasted back in.
 
-Schema:
+Single category schema:
 {
   "category_name": "...",
+  "ideas": [
+    { "title": "...", "description": "..." },
+    ...
+  ]
+}
+
+Multi-category schema:
+{
+  "categories": [
+    {
+      "category_name": "...",
+      "ideas": [ { "title": "...", "description": "..." }, ... ]
+    },
+    ...
+  ]
+}
+
+Idea insertion schema (for insert-ideas endpoint):
+{
   "ideas": [
     { "title": "...", "description": "..." },
     ...
@@ -94,20 +114,101 @@ def export_category(request, category_id):
 
 # ─── import ──────────────────────────────────────────────
 
+
+def _resolve_context(user, context_id):
+    """Resolve a context_id query param into a Context or None."""
+    if not context_id:
+        return None
+    try:
+        ctx = Context.objects.get(id=int(context_id))
+        if ctx.owner == user or UserContextAdoption.objects.filter(user=user, context=ctx).exists():
+            return ctx
+    except (Context.DoesNotExist, ValueError):
+        pass
+    return None
+
+
+def _import_single_category(user, cat_data, target_ctx):
+    """
+    Create one category + its ideas inside a transaction.
+    Returns (category_id, created_count).
+    """
+    category_name = cat_data.get("category_name", "").strip()
+    if not category_name:
+        category_name = "Imported Category"
+
+    ideas_list = cat_data.get("ideas", [])
+    if not isinstance(ideas_list, list):
+        ideas_list = []
+
+    cat = Category.objects.create(
+        owner=user,
+        name=category_name,
+    )
+
+    if target_ctx:
+        CategoryContextPlacement.objects.create(
+            category_id=cat.id,
+            context_id=target_ctx.id,
+            order_index=0,
+        )
+
+    created_count = 0
+    for idx, idea_data in enumerate(ideas_list):
+        if not isinstance(idea_data, dict):
+            continue
+
+        title = idea_data.get("title", "").strip()
+        description = idea_data.get("description", "").strip()
+
+        if not title and not description:
+            continue
+
+        idea = Idea.objects.create(
+            owner=user,
+            title=title,
+            description=description,
+        )
+
+        IdeaPlacement.objects.create(
+            idea=idea,
+            category=cat,
+            order_index=idx,
+        )
+
+        if target_ctx:
+            cp_max = IdeaContextPlacement.objects.filter(
+                context=target_ctx,
+            ).aggregate(Max("order_index"))["order_index__max"]
+            cp_next = (cp_max + 1) if cp_max is not None else 0
+            IdeaContextPlacement.objects.create(
+                idea=idea,
+                context=target_ctx,
+                order_index=cp_next,
+            )
+
+        created_count += 1
+
+    return cat.id, created_count
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def import_category(request):
     """
-    Create a new category from JSON.
+    Create new category(ies) from JSON.
 
     Accepts:
       - multipart file upload (field "file")
       - raw JSON body
 
-    The JSON must have:
-      { "category_name": "...", "ideas": [ { "title": "...", "description": "..." }, ... ] }
+    Single-category format:
+      { "category_name": "...", "ideas": [...] }
 
-    If a context_id query param is provided, the new category is placed in that context.
+    Multi-category format:
+      { "categories": [ { "category_name": "...", "ideas": [...] }, ... ] }
+
+    If a context_id query param is provided, the new categories are placed in that context.
     """
     user = request.user
 
@@ -119,7 +220,6 @@ def import_category(request):
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             return JsonResponse({"error": f"Invalid JSON file: {exc}"}, status=400)
     else:
-        # DRF has already parsed the body into request.data
         data = request.data
         if isinstance(data, str):
             try:
@@ -127,49 +227,112 @@ def import_category(request):
             except json.JSONDecodeError as exc:
                 return JsonResponse({"error": f"Invalid JSON: {exc}"}, status=400)
 
-    # Validate
     if not isinstance(data, dict):
         return JsonResponse({"error": "Expected a JSON object."}, status=400)
 
-    category_name = data.get("category_name", "").strip()
-    if not category_name:
-        return JsonResponse({"error": "Missing 'category_name'."}, status=400)
+    target_ctx = _resolve_context(user, request.query_params.get("context_id"))
+
+    # Detect multi-category vs single-category format
+    categories_list = data.get("categories")
+    if isinstance(categories_list, list):
+        # ── Multi-category import ──
+        if len(categories_list) == 0:
+            return JsonResponse({"error": "'categories' list is empty."}, status=400)
+
+        try:
+            with transaction.atomic():
+                results = []
+                total_ideas = 0
+                for cat_data in categories_list:
+                    if not isinstance(cat_data, dict):
+                        continue
+                    cat_id, count = _import_single_category(user, cat_data, target_ctx)
+                    results.append({"category_id": cat_id, "category_name": cat_data.get("category_name", ""), "ideas_created": count})
+                    total_ideas += count
+
+            return JsonResponse({
+                "status": "ok",
+                "message": f"Created {len(results)} categories with {total_ideas} ideas total.",
+                "categories": results,
+                "category_ids": [r["category_id"] for r in results],
+            })
+        except Exception as exc:
+            return JsonResponse({"error": f"Import failed: {exc}"}, status=500)
+
+    else:
+        # ── Single-category import (backward-compatible) ──
+        category_name = data.get("category_name", "").strip()
+        if not category_name:
+            return JsonResponse({"error": "Missing 'category_name'."}, status=400)
+
+        ideas_list = data.get("ideas", [])
+        if not isinstance(ideas_list, list):
+            return JsonResponse({"error": "'ideas' must be a list."}, status=400)
+
+        try:
+            with transaction.atomic():
+                cat_id, created_count = _import_single_category(user, data, target_ctx)
+
+            return JsonResponse({
+                "status": "ok",
+                "message": f"Created category \"{category_name}\" with {created_count} ideas.",
+                "category_id": cat_id,
+                "category_ids": [cat_id],
+            })
+        except Exception as exc:
+            return JsonResponse({"error": f"Import failed: {exc}"}, status=500)
+
+
+# ─── insert ideas into existing category ─────────────────
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def insert_ideas_into_category(request, category_id):
+    """
+    Insert ideas from JSON into an existing category.
+
+    Body:
+      { "ideas": [ { "title": "...", "description": "..." }, ... ] }
+
+    Ideas are appended after the last existing idea in the category.
+    If a context_id query param is provided, ideas are also linked to that context.
+    """
+    user = request.user
+
+    try:
+        cat = Category.objects.get(id=category_id, owner=user)
+    except Category.DoesNotExist:
+        return JsonResponse({"error": "Category not found."}, status=404)
+
+    data = request.data
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except json.JSONDecodeError as exc:
+            return JsonResponse({"error": f"Invalid JSON: {exc}"}, status=400)
+
+    if not isinstance(data, dict):
+        return JsonResponse({"error": "Expected a JSON object."}, status=400)
 
     ideas_list = data.get("ideas", [])
     if not isinstance(ideas_list, list):
         return JsonResponse({"error": "'ideas' must be a list."}, status=400)
 
-    context_id = request.query_params.get("context_id")
+    if len(ideas_list) == 0:
+        return JsonResponse({"error": "'ideas' list is empty."}, status=400)
 
-    # Resolve context (same check as normal category/idea creation)
-    target_ctx = None
-    if context_id:
-        try:
-            ctx = Context.objects.get(id=int(context_id))
-            if ctx.owner == user or UserContextAdoption.objects.filter(user=user, context=ctx).exists():
-                target_ctx = ctx
-        except (Context.DoesNotExist, ValueError):
-            pass
+    target_ctx = _resolve_context(user, request.query_params.get("context_id"))
+
+    # Find the current max order_index in this category
+    max_order = IdeaPlacement.objects.filter(
+        category=cat,
+    ).aggregate(Max("order_index"))["order_index__max"]
+    next_order = (max_order + 1) if max_order is not None else 0
 
     try:
         with transaction.atomic():
-            # Create category
-            cat = Category.objects.create(
-                owner=user,
-                name=category_name,
-            )
-
-            # If context provided, place category in that context
-            if target_ctx:
-                CategoryContextPlacement.objects.create(
-                    category_id=cat.id,
-                    context_id=target_ctx.id,
-                    order_index=0,
-                )
-
-            # Create ideas + placements
             created_count = 0
-            for idx, idea_data in enumerate(ideas_list):
+            for idea_data in ideas_list:
                 if not isinstance(idea_data, dict):
                     continue
 
@@ -177,7 +340,7 @@ def import_category(request):
                 description = idea_data.get("description", "").strip()
 
                 if not title and not description:
-                    continue  # skip empty
+                    continue
 
                 idea = Idea.objects.create(
                     owner=user,
@@ -188,10 +351,10 @@ def import_category(request):
                 IdeaPlacement.objects.create(
                     idea=idea,
                     category=cat,
-                    order_index=idx,
+                    order_index=next_order,
                 )
+                next_order += 1
 
-                # If inside a context, link idea to context as well
                 if target_ctx:
                     cp_max = IdeaContextPlacement.objects.filter(
                         context=target_ctx,
@@ -207,9 +370,10 @@ def import_category(request):
 
         return JsonResponse({
             "status": "ok",
-            "message": f"Created category \"{category_name}\" with {created_count} ideas.",
+            "message": f"Inserted {created_count} ideas into \"{cat.name}\".",
             "category_id": cat.id,
+            "ideas_created": created_count,
         })
 
     except Exception as exc:
-        return JsonResponse({"error": f"Import failed: {exc}"}, status=500)
+        return JsonResponse({"error": f"Insert failed: {exc}"}, status=500)

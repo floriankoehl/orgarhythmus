@@ -66,23 +66,6 @@ export async function setContextAreaApi(contextId, width, height) {
   });
 }
 
-/* ── User-level filter presets (stored on UserShortcuts, not per-context) ── */
-
-export async function fetchFilterPresetsApi() {
-  const res = await authFetch(`${API}/user/filter-presets/`);
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.filter_presets || [];
-}
-
-export async function saveFilterPresetsApi(presets) {
-  await authFetch(`${API}/user/filter-presets/save/`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ filter_presets: presets }),
-  });
-}
-
 /* ── Context ↔ Idea endpoints ── */
 
 export async function assignIdeaToContextApi(ideaId, contextId) {

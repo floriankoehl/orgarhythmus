@@ -236,4 +236,5 @@ from .import_backup import (
 from .category_transfer import (
     export_category,
     import_category,
+    insert_ideas_into_category,
 )

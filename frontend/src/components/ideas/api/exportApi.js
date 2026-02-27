@@ -95,3 +95,26 @@ export async function importCategoryApi(jsonOrFile, contextId) {
   if (!res.ok) throw new Error(data.error || "Import failed");
   return data;
 }
+
+
+/**
+ * Insert ideas into an existing category from JSON.
+ * @param {number} categoryId           – target category id
+ * @param {object} jsonData             – { ideas: [{ title, description }, ...] }
+ * @param {number|null} contextId       – optional context id for context-scoped placement
+ * @returns {Promise<{ status, message, category_id, ideas_created }>}
+ */
+export async function insertIdeasIntoCategoryApi(categoryId, jsonData, contextId) {
+  const url = contextId
+    ? `${API}/user/categories/${categoryId}/insert-ideas/?context_id=${contextId}`
+    : `${API}/user/categories/${categoryId}/insert-ideas/`;
+
+  const res = await authFetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(jsonData),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Insert failed");
+  return data;
+}

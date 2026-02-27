@@ -18,6 +18,7 @@ import IdeaBinTransformModal from "./IdeaBinTransformModal";
 import IdeaBinReformCategoryModal from "./IdeaBinReformCategoryModal";
 import IdeaBinCategoryExportModal from "./IdeaBinCategoryExportModal";
 import IdeaBinCategoryImportModal from "./IdeaBinCategoryImportModal";
+import IdeaBinInsertIdeasModal from "./IdeaBinInsertIdeasModal";
 import IdeaBinLegendPanel from "./IdeaBinLegendPanel";
 import IdeaBinDragGhosts from "./IdeaBinDragGhosts";
 import IdeaBinIdeaCard from "./IdeaBinIdeaCard";
@@ -35,9 +36,9 @@ import useIdeaBinKeyboard from "./hooks/useIdeaBinKeyboard";
 
 // Extracted API helpers
 import { authFetch, API } from "./api/authFetch";
-import { fetchContextsApi, saveContextFilterStateApi, setContextColorApi, fetchFilterPresetsApi, saveFilterPresetsApi, fetchContextProjectsApi } from "./api/contextApi";
+import { fetchContextsApi, saveContextFilterStateApi, setContextColorApi, fetchContextProjectsApi } from "./api/contextApi";
 import { mergeIdeasApi, batchSetArchiveApi } from "./api/ideaApi";
-import { exportIdeabinApi, importIdeabinApi, exportCategoryApi, importCategoryApi } from "./api/exportApi";
+import { exportIdeabinApi, importIdeabinApi, exportCategoryApi, importCategoryApi, insertIdeasIntoCategoryApi } from "./api/exportApi";
 
 // ───────────────────── Constants ─────────────────────
 const CATEGORY_THRESHOLD = 560; // show categories when wider than this
@@ -183,6 +184,7 @@ export default function IdeaBin() {
   // ───── Category export / import modals ─────
   const [categoryExportJson, setCategoryExportJson] = useState(null); // JSON object or null
   const [showCategoryImport, setShowCategoryImport] = useState(false);
+  const [insertIdeasTarget, setInsertIdeasTarget] = useState(null); // { id, name } or null
 
   // Refs
   const IdeaListRef = useRef(null);
@@ -434,6 +436,7 @@ export default function IdeaBin() {
         global_type_filter: globalTypeFilter || [],
         active_legend_id: dims.activeLegendId || null,
         legend_panel_collapsed: legendPanelCollapsed,
+        filter_presets: filterPresets || [],
       });
     } catch (e) { console.error("Failed to save context filter state", e); }
   };
@@ -460,6 +463,7 @@ export default function IdeaBin() {
       setStackedFilters(ctx.filter_state.stacked_filters || []);
       setStackCombineMode(ctx.filter_state.stack_combine_mode || "or");
       setGlobalTypeFilter(ctx.filter_state.global_type_filter || []);
+      setFilterPresets(ctx.filter_state.filter_presets || []);
       if (ctx.filter_state.active_legend_id !== undefined) {
         dims.setActiveLegendId(ctx.filter_state.active_legend_id);
       }
@@ -472,6 +476,7 @@ export default function IdeaBin() {
       setStackedFilters([]);
       setStackCombineMode("or");
       setGlobalTypeFilter([]);
+      setFilterPresets([]);
     }
   };
   // Keep ref in sync so the formations hook can call enterContext
@@ -488,6 +493,7 @@ export default function IdeaBin() {
     setStackedFilters([]);
     setStackCombineMode("or");
     setGlobalTypeFilter([]);
+    setFilterPresets([]);
   };
   const updateActiveContextColor = async (color) => {
     if (!activeContext) return;
@@ -599,7 +605,6 @@ export default function IdeaBin() {
       fetch_all_ideas();
       fetch_contexts_for_selector();
       fetch_formations();
-      fetchFilterPresetsApi().then(p => setFilterPresets(p)).catch(() => {});
     } catch (e) {
       console.error("Import failed", e);
       window.alert(`Import failed: ${e.message}`);
@@ -625,11 +630,12 @@ export default function IdeaBin() {
       const result = await importCategoryApi(jsonData, activeContext?.id ?? null);
       setShowCategoryImport(false);
 
-      // Update activeContext.category_ids so the new category is visible immediately
-      if (activeContext && result.category_id) {
+      // Update activeContext.category_ids so the new categories are visible immediately
+      const newIds = result.category_ids || (result.category_id ? [result.category_id] : []);
+      if (activeContext && newIds.length > 0) {
         setActiveContext(prev => prev ? {
           ...prev,
-          category_ids: [...(prev.category_ids || []), result.category_id],
+          category_ids: [...(prev.category_ids || []), ...newIds],
         } : prev);
       }
 
@@ -642,6 +648,19 @@ export default function IdeaBin() {
     }
   }, [activeContext, setActiveContext, fetch_categories, fetch_all_ideas]);
 
+  const handleInsertIdeas = useCallback(async (jsonData) => {
+    if (!insertIdeasTarget) return;
+    try {
+      await insertIdeasIntoCategoryApi(insertIdeasTarget.id, jsonData, activeContext?.id ?? null);
+      setInsertIdeasTarget(null);
+      await fetch_categories();
+      await fetch_all_ideas();
+      playSound?.("success");
+    } catch (e) {
+      throw e; // let the modal display the error
+    }
+  }, [insertIdeasTarget, activeContext, fetch_categories, fetch_all_ideas]);
+
   // ═══════════════════════════════════════════════════════
   // ═══════════  EFFECTS  ═════════════════════════════════
   // ═══════════════════════════════════════════════════════
@@ -652,8 +671,6 @@ export default function IdeaBin() {
       fetch_all_ideas();
       fetch_contexts_for_selector();
       fetch_formations();
-      // Load user-level filter presets
-      fetchFilterPresetsApi().then(p => setFilterPresets(p)).catch(() => {});
     }
   }, [isOpen]);
 
@@ -700,25 +717,17 @@ export default function IdeaBin() {
     }
   }, [viewMode]);
 
-  // ── Auto-save filter state when filters change while inside a context ──
+  // ── Auto-save filter state (including presets) when anything changes inside a context ──
+  const presetsLoadedRef = useRef(false);
   useEffect(() => {
     if (!activeContext) return;
+    // Skip the very first render to avoid overwriting freshly-loaded state
+    if (!presetsLoadedRef.current) { presetsLoadedRef.current = true; return; }
     const timer = setTimeout(() => {
       saveContextFilterState(activeContext.id);
     }, 600);
     return () => clearTimeout(timer);
-  }, [legendFilters, filterCombineMode, stackedFilters, stackCombineMode, globalTypeFilter, dims.activeLegendId, legendPanelCollapsed]);
-
-  // ── Auto-save filter presets at user level ──
-  const presetsLoadedRef = useRef(false);
-  useEffect(() => {
-    // Skip the initial render / load to avoid overwriting with empty array
-    if (!presetsLoadedRef.current) { presetsLoadedRef.current = true; return; }
-    const timer = setTimeout(() => {
-      saveFilterPresetsApi(filterPresets).catch(() => {});
-    }, 600);
-    return () => clearTimeout(timer);
-  }, [filterPresets]);
+  }, [legendFilters, filterCombineMode, stackedFilters, stackCombineMode, globalTypeFilter, dims.activeLegendId, legendPanelCollapsed, filterPresets]);
 
   // ── Sync sidebar draft title when headline mode changes ──
   useEffect(() => {
@@ -1921,6 +1930,15 @@ export default function IdeaBin() {
               />
             )}
 
+            {/* Insert ideas into category modal */}
+            {insertIdeasTarget && (
+              <IdeaBinInsertIdeasModal
+                categoryName={insertIdeasTarget.name}
+                onInsert={handleInsertIdeas}
+                onClose={() => setInsertIdeasTarget(null)}
+              />
+            )}
+
             {/* ══════ IDEAS MODE ══════ */}
             {viewMode === "ideas" && (
             <>
@@ -2650,6 +2668,10 @@ export default function IdeaBin() {
                 onReformCategory={openReformCategory}
                 onExportCategory={handleExportCategory}
                 onImportCategory={() => setShowCategoryImport(true)}
+                onInsertIdeas={(catKey) => {
+                  const cat = categories[catKey];
+                  setInsertIdeasTarget({ id: catKey, name: cat?.name || "Category" });
+                }}
               />
             )}
             </>
