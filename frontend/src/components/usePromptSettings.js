@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams } from 'react-router-dom';
 import { fetchPromptSettings, updatePromptSettings } from '../api/promptSettingsApi';
+import { fetch_project_detail } from '../api/org_API';
 
 /**
  * Expected-JSON format strings for each scenario.
@@ -145,7 +147,13 @@ export default function usePromptSettings() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const settingsRef = useRef(null);
+  const projectDescRef = useRef('');
 
+  // Extract projectId from URL (if inside a project route)
+  const params = useParams();
+  const projectId = params?.projectId;
+
+  // Fetch prompt settings
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -164,6 +172,21 @@ export default function usePromptSettings() {
     return () => { cancelled = true; };
   }, []);
 
+  // Fetch project description when inside a project
+  useEffect(() => {
+    if (!projectId) { projectDescRef.current = ''; return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const proj = await fetch_project_detail(projectId);
+        if (!cancelled) projectDescRef.current = proj?.description || '';
+      } catch {
+        if (!cancelled) projectDescRef.current = '';
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId]);
+
   const update = useCallback(async (patch) => {
     try {
       const data = await updatePromptSettings(patch);
@@ -179,11 +202,17 @@ export default function usePromptSettings() {
   /**
    * Build the full clipboard text by concatenating:
    *   1. System prompt            (if auto_add_system_prompt && system_prompt)
-   *   2. Expected JSON format     (if auto_add_json_format)
-   *   3. Scenario-specific prompt (if auto_add_scenario_prompt && scenario_prompts[key])
-   *   4. The actual JSON string
+   *   2. Project description      (if auto_add_project_description && provided)
+   *   3. Expected JSON format     (if auto_add_json_format)
+   *   4. Scenario-specific prompt (if auto_add_scenario_prompt && scenario_prompts[key])
+   *   5. The actual JSON string
+   *   6. End prompt               (if auto_add_end_prompt && end_prompt)
+   *
+   * @param {string} scenarioKey
+   * @param {string} jsonString
+   * @param {{ projectDescription?: string }} [opts]
    */
-  const buildClipboardText = useCallback((scenarioKey, jsonString) => {
+  const buildClipboardText = useCallback((scenarioKey, jsonString, opts = {}) => {
     const s = settingsRef.current;
     if (!s) return jsonString;
 
@@ -194,7 +223,18 @@ export default function usePromptSettings() {
       parts.push(s.system_prompt.trim());
     }
 
-    // 2. Expected JSON format
+    // 2. Project description
+    if (s.auto_add_project_description) {
+      const desc = opts.projectDescription?.trim() || projectDescRef.current?.trim();
+      if (desc) {
+        parts.push(
+          '--- Project Description ---\n' +
+          desc
+        );
+      }
+    }
+
+    // 3. Expected JSON format
     if (s.auto_add_json_format && EXPECTED_JSON_FORMATS[scenarioKey]) {
       parts.push(
         '--- Expected JSON format ---\n' +
@@ -202,7 +242,7 @@ export default function usePromptSettings() {
       );
     }
 
-    // 3. Scenario prompt
+    // 4. Scenario prompt
     if (
       s.auto_add_scenario_prompt &&
       s.scenario_prompts?.[scenarioKey]?.trim()
@@ -210,8 +250,13 @@ export default function usePromptSettings() {
       parts.push(s.scenario_prompts[scenarioKey].trim());
     }
 
-    // 4. Actual JSON
+    // 5. Actual JSON
     parts.push(jsonString);
+
+    // 6. End prompt
+    if (s.auto_add_end_prompt && s.end_prompt?.trim()) {
+      parts.push(s.end_prompt.trim());
+    }
 
     return parts.join('\n\n');
   }, []);

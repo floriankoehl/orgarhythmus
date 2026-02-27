@@ -875,7 +875,10 @@ class PromptSettings(models.Model):
     auto_add_system_prompt = models.BooleanField(default=False)
     auto_add_json_format = models.BooleanField(default=False)
     auto_add_scenario_prompt = models.BooleanField(default=False)
+    auto_add_project_description = models.BooleanField(default=False)
+    auto_add_end_prompt = models.BooleanField(default=False)
     system_prompt = models.TextField(blank=True, default="")
+    end_prompt = models.TextField(blank=True, default="")
     scenario_prompts = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 

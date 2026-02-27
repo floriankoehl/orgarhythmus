@@ -30,7 +30,10 @@ export default function Profile() {
         auto_add_system_prompt: promptSettings.auto_add_system_prompt,
         auto_add_json_format: promptSettings.auto_add_json_format,
         auto_add_scenario_prompt: promptSettings.auto_add_scenario_prompt,
+        auto_add_project_description: promptSettings.auto_add_project_description,
+        auto_add_end_prompt: promptSettings.auto_add_end_prompt,
         system_prompt: promptSettings.system_prompt || '',
+        end_prompt: promptSettings.end_prompt || '',
         scenario_prompts: { ...promptSettings.scenario_prompts },
       });
     }
@@ -40,7 +43,10 @@ export default function Profile() {
     promptDraft.auto_add_system_prompt !== promptSettings.auto_add_system_prompt ||
     promptDraft.auto_add_json_format !== promptSettings.auto_add_json_format ||
     promptDraft.auto_add_scenario_prompt !== promptSettings.auto_add_scenario_prompt ||
+    promptDraft.auto_add_project_description !== promptSettings.auto_add_project_description ||
+    promptDraft.auto_add_end_prompt !== promptSettings.auto_add_end_prompt ||
     promptDraft.system_prompt !== (promptSettings.system_prompt || '') ||
+    promptDraft.end_prompt !== (promptSettings.end_prompt || '') ||
     JSON.stringify(promptDraft.scenario_prompts) !== JSON.stringify(promptSettings.scenario_prompts)
   );
 
@@ -238,8 +244,10 @@ export default function Profile() {
                     </p>
                     {[
                       { key: 'auto_add_system_prompt', label: 'System Prompt', desc: 'Your global instruction (below) is prepended first.' },
+                      { key: 'auto_add_project_description', label: 'Project Description', desc: 'The current project\'s description is included after the system prompt (only when exporting inside a project that has one).' },
                       { key: 'auto_add_json_format', label: 'Expected JSON Format', desc: 'The expected JSON structure for the AI is shown before the data.' },
                       { key: 'auto_add_scenario_prompt', label: 'Scenario Prompt', desc: 'A scenario-specific instruction for each export type is added.' },
+                      { key: 'auto_add_end_prompt', label: 'End Prompt', desc: 'A wrap-up instruction is appended after the JSON data.' },
                     ].map(({ key, label, desc }) => (
                       <label key={key} className="flex items-start gap-3 cursor-pointer group">
                         <div className="pt-0.5">
@@ -319,6 +327,21 @@ export default function Profile() {
                         )}
                       </div>
                     ))}
+                  </div>
+
+                  {/* ── End Prompt ── */}
+                  <div className="flex flex-col gap-2">
+                    <h3 className="text-sm font-semibold text-slate-700">End Prompt</h3>
+                    <p className="text-xs text-slate-500">
+                      Appended after the actual JSON data. Use this to instruct the AI on output format (e.g. return a single code block you can copy-paste directly).
+                    </p>
+                    <textarea
+                      value={promptDraft.end_prompt}
+                      onChange={(e) => setPromptDraft((d) => ({ ...d, end_prompt: e.target.value }))}
+                      placeholder='e.g. Return ONLY a single fenced JSON code block so I can copy it in one click. No explanations.'
+                      className="w-full font-mono text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-3 resize-y focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
+                      style={{ minHeight: 80, maxHeight: 300 }}
+                    />
                   </div>
 
                   {/* ── Save button ── */}

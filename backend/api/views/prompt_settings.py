@@ -25,7 +25,10 @@ def get_prompt_settings(request):
         "auto_add_system_prompt": obj.auto_add_system_prompt,
         "auto_add_json_format": obj.auto_add_json_format,
         "auto_add_scenario_prompt": obj.auto_add_scenario_prompt,
+        "auto_add_project_description": obj.auto_add_project_description,
+        "auto_add_end_prompt": obj.auto_add_end_prompt,
         "system_prompt": obj.system_prompt,
+        "end_prompt": obj.end_prompt,
         "scenario_prompts": obj.scenario_prompts,
     })
 
@@ -42,12 +45,15 @@ def update_prompt_settings(request):
     """
     obj, _ = PromptSettings.objects.get_or_create(user=request.user)
 
-    for bool_field in ("auto_add_system_prompt", "auto_add_json_format", "auto_add_scenario_prompt"):
+    for bool_field in ("auto_add_system_prompt", "auto_add_json_format", "auto_add_scenario_prompt", "auto_add_project_description", "auto_add_end_prompt"):
         if bool_field in request.data:
             setattr(obj, bool_field, bool(request.data[bool_field]))
 
     if "system_prompt" in request.data:
         obj.system_prompt = str(request.data["system_prompt"])
+
+    if "end_prompt" in request.data:
+        obj.end_prompt = str(request.data["end_prompt"])
 
     if "scenario_prompts" in request.data:
         incoming = request.data["scenario_prompts"]
@@ -66,6 +72,9 @@ def update_prompt_settings(request):
         "auto_add_system_prompt": obj.auto_add_system_prompt,
         "auto_add_json_format": obj.auto_add_json_format,
         "auto_add_scenario_prompt": obj.auto_add_scenario_prompt,
+        "auto_add_project_description": obj.auto_add_project_description,
+        "auto_add_end_prompt": obj.auto_add_end_prompt,
         "system_prompt": obj.system_prompt,
+        "end_prompt": obj.end_prompt,
         "scenario_prompts": obj.scenario_prompts,
     })
