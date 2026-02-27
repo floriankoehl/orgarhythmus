@@ -16,6 +16,8 @@ import TaskEditPanel from "./TaskEditPanel";
 import TaskLegendPanel from "./TaskLegendPanel";
 import TaskConfirmModal from "./TaskConfirmModal";
 import TaskDragGhosts from "./TaskDragGhosts";
+import TaskExportModal from "./TaskExportModal";
+import TaskImportModal from "./TaskImportModal";
 
 // ── Layout constants (mirror IdeaBin) ──
 const MIN_SIDEBAR_W = 200;
@@ -110,6 +112,10 @@ export default function TaskStructure() {
   // ── Team editing state ──
   const [editingTeamId, setEditingTeamId] = useState(null);
   const [editingTeamName, setEditingTeamName] = useState("");
+
+  // ── Import / Export modals ──
+  const [exportModal, setExportModal] = useState(null);   // { json, title } or null
+  const [importModal, setImportModal] = useState(null);   // { scope, targetTeamId?, targetTeamName? } or null
 
   // ── Keyboard: "t" toggles task mode, Escape cancels draw mode ──
   useEffect(() => {
@@ -226,6 +232,135 @@ export default function TaskStructure() {
     document.addEventListener("mouseup", onUp);
   }, [sidebarWidth, windowSize.w]);
 
+  // ── Build export JSON for a given scope ──
+  const buildExportJson = useCallback((scope, teamIds) => {
+    const taskToJson = (t) => {
+      const obj = { name: t.name || "" };
+      if (t.description) obj.description = t.description;
+      if (t.priority) obj.priority = t.priority;
+      if (t.difficulty) obj.difficulty = t.difficulty;
+      if (t.asking) {
+        try { const arr = JSON.parse(t.asking); if (arr.length) obj.acceptance_criteria = arr; }
+        catch { if (t.asking) obj.acceptance_criteria = [t.asking]; }
+      }
+      if (t.hard_deadline) obj.hard_deadline = t.hard_deadline;
+      return obj;
+    };
+
+    const teamToJson = (tid) => {
+      const team = teams[tid];
+      if (!team) return null;
+      const ids = tasksByTeamMap[tid] || [];
+      return {
+        name: team.name || "Unnamed",
+        color: team.color || "#6366f1",
+        tasks: ids.map((id) => tasks[id]).filter(Boolean).map(taskToJson),
+      };
+    };
+
+    // Specific teams
+    if (teamIds && teamIds.length > 0) {
+      const teamsJson = teamIds.map(teamToJson).filter(Boolean);
+      if (teamsJson.length === 1) return teamsJson[0];
+      return { teams: teamsJson };
+    }
+
+    // Full project
+    const teamsJson = teamOrder.map(teamToJson).filter(Boolean);
+    const unassigned = taskOrder.map((id) => tasks[id]).filter(Boolean).map(taskToJson);
+    return { teams: teamsJson, unassigned_tasks: unassigned };
+  }, [tasks, teams, teamOrder, taskOrder, tasksByTeamMap]);
+
+  // ── Export handlers ──
+  const handleExportProject = useCallback(() => {
+    setExportModal({ json: buildExportJson("project"), title: "Export Project Structure" });
+  }, [buildExportJson]);
+
+  const handleExportSelectedTeams = useCallback(() => {
+    const ids = [...selectedTeamIds];
+    if (ids.length === 0) return;
+    const json = buildExportJson("teams", ids);
+    const title = ids.length === 1 && teams[ids[0]]
+      ? `Export Team — ${teams[ids[0]].name}`
+      : `Export ${ids.length} Teams`;
+    setExportModal({ json, title });
+  }, [buildExportJson, selectedTeamIds, teams]);
+
+  const handleExportSelectedTasks = useCallback(() => {
+    const ids = [...selectedTaskIds];
+    if (ids.length === 0) return;
+    const taskToJson = (t) => {
+      const obj = { name: t.name || "" };
+      if (t.description) obj.description = t.description;
+      if (t.priority) obj.priority = t.priority;
+      if (t.difficulty) obj.difficulty = t.difficulty;
+      if (t.asking) {
+        try { const arr = JSON.parse(t.asking); if (arr.length) obj.acceptance_criteria = arr; }
+        catch { if (t.asking) obj.acceptance_criteria = [t.asking]; }
+      }
+      return obj;
+    };
+    const tasksJson = ids.map((id) => tasks[id]).filter(Boolean).map(taskToJson);
+    setExportModal({ json: { tasks: tasksJson }, title: `Export ${ids.length} Task${ids.length > 1 ? "s" : ""}` });
+  }, [selectedTaskIds, tasks]);
+
+  // ── Import handlers ──
+  const handleOpenImportProject = useCallback(() => {
+    setImportModal({ scope: "project" });
+  }, []);
+
+  const handleOpenImportTeams = useCallback(() => {
+    setImportModal({ scope: "teams" });
+  }, []);
+
+  const handleOpenInsertTasks = useCallback((teamId, teamName) => {
+    setImportModal({ scope: "tasks", targetTeamId: teamId, targetTeamName: teamName });
+  }, []);
+
+  const handleImport = useCallback(async (data) => {
+    // data = { teams: [...], unassigned_tasks: [...] }
+    const importScope = importModal?.scope;
+    const targetTeamId = importModal?.targetTeamId;
+
+    // Create teams + their tasks
+    for (const teamData of (data.teams || [])) {
+      const created = await createTeam(teamData.name, teamData.color || "#6366f1");
+      if (created) {
+        for (const taskData of (teamData.tasks || [])) {
+          const payload = {
+            name: taskData.name || "Untitled",
+            description: taskData.description || "",
+            priority: taskData.priority || "",
+            difficulty: taskData.difficulty || "",
+            team_id: created.id,
+            asking: taskData.acceptance_criteria ? JSON.stringify(taskData.acceptance_criteria) : "[]",
+          };
+          if (taskData.hard_deadline) payload.hard_deadline = taskData.hard_deadline;
+          await createTask(payload);
+        }
+      }
+    }
+
+    // Create unassigned tasks (or tasks for a target team)
+    for (const taskData of (data.unassigned_tasks || [])) {
+      const payload = {
+        name: taskData.name || "Untitled",
+        description: taskData.description || "",
+        priority: taskData.priority || "",
+        difficulty: taskData.difficulty || "",
+        team_id: importScope === "tasks" && targetTeamId ? targetTeamId : null,
+        asking: taskData.acceptance_criteria ? JSON.stringify(taskData.acceptance_criteria) : "[]",
+      };
+      if (taskData.hard_deadline) payload.hard_deadline = taskData.hard_deadline;
+      await createTask(payload);
+    }
+
+    // Refetch everything
+    await fetchTasks();
+    await fetchTeams();
+    setImportModal(null);
+  }, [importModal, createTeam, createTask, fetchTasks, fetchTeams]);
+
   // ═════════════════════════════════════════════
   //  JSX
   // ═════════════════════════════════════════════
@@ -307,6 +442,13 @@ export default function TaskStructure() {
             setTaskMode={setTaskMode}
             drawTeamMode={drawTeamMode}
             setDrawTeamMode={setDrawTeamMode}
+            onExportProject={handleExportProject}
+            onImportProject={handleOpenImportProject}
+            onImportTeams={handleOpenImportTeams}
+            onExportSelectedTeams={handleExportSelectedTeams}
+            onExportSelectedTasks={handleExportSelectedTasks}
+            selectedTeamIds={selectedTeamIds}
+            selectedTaskIds={selectedTaskIds}
           />
 
           {/* ── Main content area ── */}
@@ -417,12 +559,37 @@ export default function TaskStructure() {
                 collapsedTeamIds={collapsedTeamIds}
                 onCollapseTeam={handleCollapseTeam}
                 onExpandTeam={handleExpandTeam}
+                onInsertTasks={handleOpenInsertTasks}
+                onExportTeam={(teamId) => {
+                  const json = buildExportJson("teams", [teamId]);
+                  const team = teams[teamId];
+                  setExportModal({ json, title: `Export Team — ${team?.name || "Team"}` });
+                }}
               />
             )}
           </div>
 
           {/* ── Confirm modal ── */}
           <TaskConfirmModal modal={confirmModal} />
+
+          {/* ── Export modal ── */}
+          {exportModal && (
+            <TaskExportModal
+              json={exportModal.json}
+              title={exportModal.title}
+              onClose={() => setExportModal(null)}
+            />
+          )}
+
+          {/* ── Import modal ── */}
+          {importModal && (
+            <TaskImportModal
+              scope={importModal.scope}
+              targetTeamName={importModal.targetTeamName}
+              onImport={handleImport}
+              onClose={() => setImportModal(null)}
+            />
+          )}
 
           {/* ── Loading overlay ── */}
           {(tasksLoading || teamsLoading) && (

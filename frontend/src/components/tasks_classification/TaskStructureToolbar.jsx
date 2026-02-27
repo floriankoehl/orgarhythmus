@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Plus, Save, Pencil, Trash2, Eye, Hand, Move } from "lucide-react";
+import { Plus, Save, Pencil, Trash2, Eye, Hand, Move, Download, Upload, MoreVertical, Copy, ClipboardPaste } from "lucide-react";
 
 /**
  * Toolbar strip between title bar and content area.
@@ -23,12 +23,24 @@ export default function TaskStructureToolbar({
   setTaskMode,
   drawTeamMode = false,
   setDrawTeamMode,
+  // import/export
+  onExportProject,
+  onImportProject,
+  onImportTeams,
+  onExportSelectedTeams,
+  onExportSelectedTasks,
+  selectedTeamIds,
+  selectedTaskIds,
 }) {
   const [showTeamForm, setShowTeamForm] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
   const [newTeamColor, setNewTeamColor] = useState("#6366f1");
   const [showSaveView, setShowSaveView] = useState(false);
   const [viewName, setViewName] = useState("");
+  const [showIoMenu, setShowIoMenu] = useState(false);
+
+  const hasSelectedTeams = selectedTeamIds?.size > 0;
+  const hasSelectedTasks = selectedTaskIds?.size > 0;
 
   const handleCreateTeam = () => {
     if (!newTeamName.trim()) return;
@@ -120,6 +132,72 @@ export default function TaskStructureToolbar({
         {taskMode ? <Move size={10} /> : <Hand size={10} />}
         {taskMode ? "Edit" : "Spectator"}
       </button>
+
+      {/* Separator */}
+      <div className="h-4 w-px bg-gray-300 mx-0.5" />
+
+      {/* ── Import / Export dropdown ── */}
+      <div className="relative">
+        <button
+          onClick={() => setShowIoMenu((p) => !p)}
+          className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border border-gray-200 text-gray-600 hover:bg-gray-100 font-medium"
+          title="Import / Export"
+        >
+          <Download size={10} />
+          I/O
+        </button>
+
+        {showIoMenu && (
+          <div
+            className="absolute right-0 top-full mt-0.5 bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[190px] z-50"
+            onMouseLeave={() => setShowIoMenu(false)}
+          >
+            {/* Export section */}
+            <div className="px-2 py-0.5 text-[9px] text-gray-400 font-semibold uppercase">Export</div>
+            <button
+              onClick={() => { onExportProject?.(); setShowIoMenu(false); }}
+              className="w-full text-left px-2.5 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+            >
+              <Download size={11} className="text-gray-400" /> Export All (Project)
+            </button>
+            {hasSelectedTeams && (
+              <button
+                onClick={() => { onExportSelectedTeams?.(); setShowIoMenu(false); }}
+                className="w-full text-left px-2.5 py-1.5 text-[11px] text-violet-700 hover:bg-violet-50 flex items-center gap-2"
+              >
+                <Copy size={11} className="text-violet-400" />
+                Export {selectedTeamIds.size} Selected Team{selectedTeamIds.size > 1 ? "s" : ""}
+              </button>
+            )}
+            {hasSelectedTasks && (
+              <button
+                onClick={() => { onExportSelectedTasks?.(); setShowIoMenu(false); }}
+                className="w-full text-left px-2.5 py-1.5 text-[11px] text-indigo-700 hover:bg-indigo-50 flex items-center gap-2"
+              >
+                <Copy size={11} className="text-indigo-400" />
+                Export {selectedTaskIds.size} Selected Task{selectedTaskIds.size > 1 ? "s" : ""}
+              </button>
+            )}
+
+            <div className="my-1 border-t border-gray-100" />
+
+            {/* Import section */}
+            <div className="px-2 py-0.5 text-[9px] text-gray-400 font-semibold uppercase">Import</div>
+            <button
+              onClick={() => { onImportProject?.(); setShowIoMenu(false); }}
+              className="w-full text-left px-2.5 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+            >
+              <Upload size={11} className="text-gray-400" /> Import Full Project
+            </button>
+            <button
+              onClick={() => { onImportTeams?.(); setShowIoMenu(false); }}
+              className="w-full text-left px-2.5 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+            >
+              <ClipboardPaste size={11} className="text-gray-400" /> Import Teams + Tasks
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Spacer */}
       <div className="flex-1" />

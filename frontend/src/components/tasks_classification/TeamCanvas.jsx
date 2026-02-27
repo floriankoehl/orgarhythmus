@@ -43,6 +43,8 @@ export default function TeamCanvas({
   collapsedTeamIds,
   onCollapseTeam,
   onExpandTeam,
+  onInsertTasks,
+  onExportTeam,
 }) {
   // ── Draw-to-create marquee state ──
   const [marquee, setMarquee] = useState(null); // { startX, startY, currentX, currentY }
@@ -260,6 +262,8 @@ export default function TeamCanvas({
               isTeamSelected={isTeamSelected}
               onCollapseTeam={onCollapseTeam}
               setSelectedTeamIds={setSelectedTeamIds}
+              onInsertTasks={onInsertTasks}
+              onExportTeam={onExportTeam}
             />
           );
         })}

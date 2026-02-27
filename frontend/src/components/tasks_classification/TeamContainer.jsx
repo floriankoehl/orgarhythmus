@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback } from "react";
-import { Pencil, Trash2, GripVertical, Minimize2, ChevronDown } from "lucide-react";
+import { Pencil, Trash2, GripVertical, Minimize2, ChevronDown, Upload, Download } from "lucide-react";
 import TaskCard from "./TaskCard";
 
 /**
@@ -40,6 +40,8 @@ export default function TeamContainer({
   isTeamSelected = false,
   onCollapseTeam,
   setSelectedTeamIds,
+  onInsertTasks,
+  onExportTeam,
 }) {
   const [minimized, setMinimized] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -247,6 +249,19 @@ export default function TeamContainer({
             className="w-full text-left px-2 py-1 text-[10px] text-red-600 hover:bg-red-50 flex items-center gap-1"
           >
             <Trash2 size={10} /> Delete
+          </button>
+          <div className="my-0.5 border-t border-gray-100" />
+          <button
+            onClick={() => { onInsertTasks?.(team.id, team.name); setShowSettings(false); }}
+            className="w-full text-left px-2 py-1 text-[10px] text-gray-700 hover:bg-gray-100 flex items-center gap-1"
+          >
+            <Upload size={10} /> Insert Tasks (JSON)
+          </button>
+          <button
+            onClick={() => { onExportTeam?.(team.id); setShowSettings(false); }}
+            className="w-full text-left px-2 py-1 text-[10px] text-gray-700 hover:bg-gray-100 flex items-center gap-1"
+          >
+            <Download size={10} /> Export Team
           </button>
         </div>
       )}
