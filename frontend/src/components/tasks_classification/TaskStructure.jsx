@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { LayoutGrid } from "lucide-react";
 
@@ -59,7 +59,7 @@ export default function TaskStructure() {
     teams, setTeams, teamOrder, setTeamOrder,
     teamPositions, setTeamPositions,
     loading: teamsLoading,
-    fetchTeams, createTeam, updateTeamApi, deleteTeam,
+    fetchTeams, createTeam, createTeamAt, updateTeamApi, deleteTeam,
     setTeamPosition, bringToFront,
     handleTeamDrag, handleTeamResize,
   } = useTaskTeams({ projectId });
@@ -91,9 +91,37 @@ export default function TaskStructure() {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_W);
   const [legendPanelCollapsed, setLegendPanelCollapsed] = useState(true);
 
+  // ── Mode state (spectator = default, task = drag enabled) ──
+  const [taskMode, setTaskMode] = useState(true);
+
+  // ── Draw-to-create team mode ──
+  const [drawTeamMode, setDrawTeamMode] = useState(false);
+
   // ── Team editing state ──
   const [editingTeamId, setEditingTeamId] = useState(null);
   const [editingTeamName, setEditingTeamName] = useState("");
+
+  // ── Keyboard: "t" toggles task mode, Escape cancels draw mode ──
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e) => {
+      // Ignore if user is typing in an input/textarea
+      const tag = e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable) return;
+      if (e.key === "t" || e.key === "T") {
+        e.preventDefault();
+        setTaskMode((prev) => !prev);
+      }
+      if (e.key === "Escape") {
+        if (drawTeamMode) {
+          e.preventDefault();
+          setDrawTeamMode(false);
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isOpen, drawTeamMode]);
 
   // ── Derived data ──
   const tasksByTeamMap = useMemo(() => tasksByTeam(), [tasksByTeam]);
@@ -245,6 +273,10 @@ export default function TaskStructure() {
             onCreateTask={onCreateTask}
             taskCount={Object.keys(tasks).length}
             teamCount={teamOrder.length}
+            taskMode={taskMode}
+            setTaskMode={setTaskMode}
+            drawTeamMode={drawTeamMode}
+            setDrawTeamMode={setDrawTeamMode}
           />
 
           {/* ── Main content area ── */}
@@ -269,6 +301,7 @@ export default function TaskStructure() {
                 setConfirmModal={setConfirmModal}
                 taskListRef={taskListRef}
                 sidebarWidth={isNarrow ? "100%" : sidebarWidth}
+                taskMode={taskMode}
               />
 
               {/* Legend panel */}
@@ -315,6 +348,10 @@ export default function TaskStructure() {
                 onDeleteTask={onDeleteTask}
                 setConfirmModal={setConfirmModal}
                 teamCanvasRef={teamCanvasRef}
+                taskMode={taskMode}
+                drawTeamMode={drawTeamMode}
+                setDrawTeamMode={setDrawTeamMode}
+                createTeamAt={createTeamAt}
               />
             )}
 

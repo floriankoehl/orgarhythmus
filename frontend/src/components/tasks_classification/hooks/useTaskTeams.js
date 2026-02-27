@@ -112,6 +112,35 @@ export default function useTaskTeams({ projectId }) {
     }
   }, [projectId]);
 
+  // ── Create team at a specific canvas position (for draw-to-create) ──
+  const createTeamAt = useCallback(async (name, color, pos) => {
+    if (!projectId) return null;
+    try {
+      const res = await createTeamForProject(projectId, { name, color: color || "#6366f1" });
+      const team = res.team || res;
+      setTeams((prev) => ({ ...prev, [team.id]: team }));
+      setTeamOrder((prev) => [...prev, team.id]);
+      setTeamPositions((prev) => {
+        const next = {
+          ...prev,
+          [team.id]: {
+            x: pos.x,
+            y: pos.y,
+            w: Math.max(180, pos.w || 240),
+            h: Math.max(120, pos.h || 300),
+            z: nextZ.current++,
+          },
+        };
+        saveCanvasState(projectId, next);
+        return next;
+      });
+      return team;
+    } catch (err) {
+      console.error("Failed to create team at position:", err);
+      return null;
+    }
+  }, [projectId]);
+
   // ── Delete team (tasks become unassigned) ──
   const deleteTeam = useCallback(async (teamId) => {
     if (!projectId) return;
@@ -214,6 +243,7 @@ export default function useTaskTeams({ projectId }) {
     loading,
     fetchTeams,
     createTeam,
+    createTeamAt,
     updateTeamApi,
     deleteTeam,
     setTeamPosition,

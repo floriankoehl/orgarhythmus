@@ -22,6 +22,8 @@ export default function TaskCard({
   onEditTask,
   onDeleteTask,
   setConfirmModal,
+  taskMode = false,        // when true, dragging is enabled
+  insideTeam = false,      // when true, hide team badge (already visible in container header)
 }) {
   const [showActions, setShowActions] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -95,20 +97,24 @@ export default function TaskCard({
         className={`group relative flex items-start gap-1.5 px-2 py-1.5 rounded-md cursor-pointer transition-all text-[11px]
           ${isSelected
             ? "bg-indigo-50 border border-indigo-300 shadow-sm"
-            : "hover:bg-gray-50 border border-transparent"
+            : insideTeam
+              ? "bg-white border border-gray-200 shadow-xs hover:border-gray-300"
+              : "hover:bg-gray-50 border border-transparent"
           }`}
         style={{
           borderLeftWidth: teamColor ? 3 : undefined,
           borderLeftColor: teamColor || undefined,
         }}
       >
-        {/* Drag handle */}
+        {/* Drag handle — only interactive in task mode */}
         <div
           onMouseDown={(e) => {
+            if (!taskMode) return;
             e.stopPropagation();
             handleTaskDrag(e, task, index, source);
           }}
-          className="mt-0.5 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500"
+          className={`mt-0.5 ${taskMode ? "cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500" : "text-gray-200 cursor-default"}`}
+          title={taskMode ? "Drag to reorder or assign" : "Switch to task mode (T) to drag"}
         >
           <GripVertical size={12} />
         </div>
@@ -120,7 +126,7 @@ export default function TaskCard({
             <span className="font-semibold text-gray-800 truncate">
               {task.name || "Untitled Task"}
             </span>
-            {team && (
+            {team && !insideTeam && (
               <span
                 className="text-[9px] px-1 py-0 rounded-full font-medium flex-shrink-0"
                 style={{

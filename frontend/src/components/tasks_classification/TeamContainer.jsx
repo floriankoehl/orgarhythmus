@@ -36,11 +36,12 @@ export default function TeamContainer({
   onEditTask,
   onDeleteTask,
   setConfirmModal,
+  taskMode = false,
 }) {
   const [minimized, setMinimized] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const isEditing = editingTeamId === team.id;
-  const isDropTarget = hoverTeamId === String(team.id);
+  const isDropTarget = hoverTeamId != null && String(hoverTeamId) === String(team.id);
   const teamColor = team.color || "#6366f1";
 
   const handleRename = () => {
@@ -176,7 +177,10 @@ export default function TeamContainer({
 
       {/* ── Task list inside container ── */}
       {!minimized && (
-        <div className="flex-1 overflow-y-auto px-1 py-0.5 bg-white">
+        <div
+          className="flex-1 overflow-y-auto px-1 py-0.5"
+          style={{ backgroundColor: `color-mix(in srgb, ${teamColor} 5%, white)` }}
+        >
           {taskIds.length === 0 ? (
             <div className="text-center text-[10px] text-gray-300 py-4 italic">
               Drop tasks here
@@ -188,6 +192,7 @@ export default function TeamContainer({
                 task={tasks[taskId]}
                 index={i}
                 source={{ type: "team", teamId: team.id }}
+                insideTeam
                 teams={teams}
                 dragging={dragging}
                 dragSource={dragSource}
@@ -199,6 +204,7 @@ export default function TeamContainer({
                 onEditTask={onEditTask}
                 onDeleteTask={onDeleteTask}
                 setConfirmModal={setConfirmModal}
+                taskMode={taskMode}
               />
             ))
           )}

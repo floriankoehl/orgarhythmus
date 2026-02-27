@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Plus, Save, Pencil, Trash2, Eye } from "lucide-react";
+import { Plus, Save, Pencil, Trash2, Eye, Hand, Move } from "lucide-react";
 
 /**
  * Toolbar strip between title bar and content area.
@@ -18,6 +18,11 @@ export default function TaskStructureToolbar({
   // counts
   taskCount,
   teamCount,
+  // modes
+  taskMode = false,
+  setTaskMode,
+  drawTeamMode = false,
+  setDrawTeamMode,
 }) {
   const [showTeamForm, setShowTeamForm] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
@@ -30,6 +35,7 @@ export default function TaskStructureToolbar({
     onCreateTeam(newTeamName.trim(), newTeamColor);
     setNewTeamName("");
     setShowTeamForm(false);
+    setDrawTeamMode?.(false);
   };
 
   const handleSaveView = () => {
@@ -40,7 +46,7 @@ export default function TaskStructureToolbar({
 
   return (
     <div className="flex items-center gap-2 px-3 py-1 flex-shrink-0 border-b border-gray-200 bg-gray-50/80">
-      {/* ── + Team ── */}
+      {/* ── + Team (form + draw-to-create) ── */}
       {showTeamForm ? (
         <div className="flex items-center gap-1">
           <input
@@ -56,7 +62,7 @@ export default function TaskStructureToolbar({
             onChange={(e) => setNewTeamName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") handleCreateTeam();
-              if (e.key === "Escape") { setShowTeamForm(false); setNewTeamName(""); }
+              if (e.key === "Escape") { setShowTeamForm(false); setNewTeamName(""); setDrawTeamMode?.(false); }
             }}
             placeholder="Team name…"
             className="text-[11px] border border-gray-300 rounded px-1.5 py-0.5 w-28 focus:outline-none focus:border-indigo-400"
@@ -67,8 +73,9 @@ export default function TaskStructureToolbar({
           >
             Add
           </button>
+          <span className="text-[10px] text-gray-400 italic">or draw on canvas</span>
           <button
-            onClick={() => { setShowTeamForm(false); setNewTeamName(""); }}
+            onClick={() => { setShowTeamForm(false); setNewTeamName(""); setDrawTeamMode?.(false); }}
             className="text-[10px] px-1 py-0.5 text-gray-500 hover:text-gray-700"
           >
             ✕
@@ -76,9 +83,13 @@ export default function TaskStructureToolbar({
         </div>
       ) : (
         <button
-          onClick={() => setShowTeamForm(true)}
-          className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 font-medium"
-          title="Create new team"
+          onClick={() => { setShowTeamForm(true); setDrawTeamMode?.(true); }}
+          className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border font-medium transition-colors ${
+            drawTeamMode
+              ? "bg-amber-100 text-amber-700 border-amber-300 animate-pulse"
+              : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200"
+          }`}
+          title="Create new team (type name or draw on canvas)"
         >
           <Plus size={10} /> Team
         </button>
@@ -91,6 +102,23 @@ export default function TaskStructureToolbar({
         title="Create new task"
       >
         <Plus size={10} /> Task
+      </button>
+
+      {/* Separator */}
+      <div className="h-4 w-px bg-gray-300 mx-0.5" />
+
+      {/* ── Task / Spectator mode toggle ── */}
+      <button
+        onClick={() => setTaskMode?.((prev) => !prev)}
+        className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border font-medium transition-colors ${
+          taskMode
+            ? "bg-violet-100 text-violet-700 border-violet-300"
+            : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
+        }`}
+        title={taskMode ? "Task mode — drag tasks enabled (T)" : "Spectator mode — drag tasks disabled (T)"}
+      >
+        {taskMode ? <Move size={10} /> : <Hand size={10} />}
+        {taskMode ? "Task" : "Spectator"}
       </button>
 
       {/* Spacer */}

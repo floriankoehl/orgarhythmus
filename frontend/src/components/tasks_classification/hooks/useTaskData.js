@@ -22,7 +22,7 @@ export default function useTaskData({ projectId }) {
     setLoading(true);
     try {
       const res = await fetchTasksForProject(projectId);
-      const list = res.tasks || [];
+      const list = Array.isArray(res) ? res : (res.tasks || res || []);
       const map = {};
       const order = [];
       for (const t of list) {

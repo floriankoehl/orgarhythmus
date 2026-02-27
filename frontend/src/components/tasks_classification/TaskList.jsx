@@ -26,6 +26,7 @@ export default function TaskList({
   setConfirmModal,
   taskListRef,
   sidebarWidth,
+  taskMode = false,
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAllTasks, setShowAllTasks] = useState(false);
@@ -107,6 +108,7 @@ export default function TaskList({
               onEditTask={onEditTask}
               onDeleteTask={onDeleteTask}
               setConfirmModal={setConfirmModal}
+              taskMode={taskMode}
             />
           ))
         )}
