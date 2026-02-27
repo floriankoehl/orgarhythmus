@@ -1,6 +1,7 @@
 // orgarhythmus/org_layouts/ProjectLayout.jsx
 import { Outlet, useParams } from "react-router-dom";
 import ProjectHeader from "../components/ProjectHeader"
+import TaskStructure from "../components/tasks_classification/TaskStructure";
 
 export default function ProjectLayout() {
   const { projectId } = useParams();
@@ -14,6 +15,9 @@ export default function ProjectLayout() {
       <main className="relative w-full flex justify-center">
         <Outlet />
       </main>
+
+      {/* Floating Task Structure — persists across all project subpages */}
+      <TaskStructure />
     </div>
   );
 }

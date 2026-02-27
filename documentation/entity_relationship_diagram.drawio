@@ -1,0 +1,434 @@
+<mxfile host="app.diagrams.net" agent="GitHub Copilot" version="24.0.0">
+  <diagram id="erd-orgarhythmus" name="Entity Relationship Diagram">
+    <mxGraphModel dx="2800" dy="2200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="3300" pageHeight="2400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ══════ DOMAIN LABELS ══════ -->
+        <mxCell id="domain_planning" value="PROJECT PLANNING DOMAIN" style="text;html=1;fontSize=20;fontStyle=1;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontColor=#1e3a5f;fontFamily=Inter;" vertex="1" parent="1">
+          <mxGeometry x="300" y="-30" width="500" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="domain_ideabin" value="IDEABIN DOMAIN" style="text;html=1;fontSize=20;fontStyle=1;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontColor=#5f1e3a;fontFamily=Inter;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="-30" width="500" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="domain_shared" value="SHARED / CROSS-DOMAIN" style="text;html=1;fontSize=20;fontStyle=1;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontColor=#2d5f1e;fontFamily=Inter;" vertex="1" parent="1">
+          <mxGeometry x="300" y="1110" width="500" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ══════ DOMAIN BACKGROUNDS ══════ -->
+        <mxCell id="bg_planning" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=25;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="20" y="10" width="1100" height="1050" as="geometry" />
+        </mxCell>
+        <mxCell id="bg_ideabin" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;opacity=25;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="10" width="1300" height="1350" as="geometry" />
+        </mxCell>
+        <mxCell id="bg_shared" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;opacity=25;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="20" y="1100" width="1100" height="350" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════════════════════════ -->
+        <!--  PROJECT PLANNING ENTITIES               -->
+        <!-- ════════════════════════════════════════ -->
+
+        <!-- PROJECT -->
+        <mxCell id="project_h" value="Project" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="60" y="50" width="220" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="project" value="id : PK&#xa;owner : FK → User&#xa;members : M2M → User&#xa;name : CharField&#xa;description : TextField&#xa;start_date : DateField&#xa;end_date : DateField&#xa;created_at : DateTime" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="project_h">
+          <mxGeometry y="26" width="220" height="184" as="geometry" />
+        </mxCell>
+
+        <!-- TEAM -->
+        <mxCell id="team_h" value="Team" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="60" y="320" width="220" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="team" value="id : PK&#xa;project : FK → Project&#xa;name : CharField&#xa;color : CharField&#xa;line_index : IntegerField&#xa;order_index : IntegerField&#xa;members : M2M → User" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="team_h">
+          <mxGeometry y="26" width="220" height="154" as="geometry" />
+        </mxCell>
+
+        <!-- TASK -->
+        <mxCell id="task_h" value="Task" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="60" y="560" width="250" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="task" value="id : PK&#xa;project : FK → Project&#xa;team : FK → Team (nullable)&#xa;name : CharField&#xa;description : TextField&#xa;difficulty : CharField&#xa;priority : CharField&#xa;asking : CharField&#xa;hard_deadline : IntegerField&#xa;team_index : IntegerField&#xa;order_index : IntegerField&#xa;assigned_members : M2M → User" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="task_h">
+          <mxGeometry y="26" width="250" height="254" as="geometry" />
+        </mxCell>
+
+        <!-- DAY -->
+        <mxCell id="day_h" value="Day" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="400" y="50" width="220" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="day" value="id : PK&#xa;project : FK → Project&#xa;date : DateField&#xa;day_index : IntegerField&#xa;purpose : CharField&#xa;purpose_teams : JSONField&#xa;description : TextField&#xa;is_blocked : BooleanField&#xa;color : CharField&#xa;unique: (project, date)" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="day_h">
+          <mxGeometry y="26" width="220" height="214" as="geometry" />
+        </mxCell>
+
+        <!-- MILESTONE -->
+        <mxCell id="milestone_h" value="Milestone" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="400" y="350" width="230" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="milestone" value="id : PK&#xa;project : FK → Project&#xa;task : FK → Task&#xa;name : CharField&#xa;description : TextField&#xa;start_index : IntegerField&#xa;duration : IntegerField" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="milestone_h">
+          <mxGeometry y="26" width="230" height="154" as="geometry" />
+        </mxCell>
+
+        <!-- DEPENDENCY -->
+        <mxCell id="dependency_h" value="Dependency" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="700" y="350" width="260" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="dependency" value="id : PK&#xa;source : FK → Milestone&#xa;target : FK → Milestone&#xa;weight : strong | weak | suggestion&#xa;reason : TextField" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="dependency_h">
+          <mxGeometry y="26" width="260" height="124" as="geometry" />
+        </mxCell>
+
+        <!-- PHASE -->
+        <mxCell id="phase_h" value="Phase" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="400" y="590" width="230" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="phase" value="id : PK&#xa;project : FK → Project&#xa;team : FK → Team (nullable)&#xa;name : CharField&#xa;start_index : IntegerField&#xa;duration : IntegerField&#xa;color : CharField&#xa;order_index : IntegerField" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="phase_h">
+          <mxGeometry y="26" width="230" height="184" as="geometry" />
+        </mxCell>
+
+        <!-- DEPENDENCY VIEW -->
+        <mxCell id="depview_h" value="DependencyView" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="700" y="50" width="230" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="depview" value="id : PK&#xa;project : FK → Project&#xa;created_by : FK → User&#xa;name : CharField&#xa;state : JSONField&#xa;is_default : BooleanField&#xa;unique: (project, name)" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="depview_h">
+          <mxGeometry y="26" width="230" height="174" as="geometry" />
+        </mxCell>
+
+        <!-- PROJECT SNAPSHOT -->
+        <mxCell id="snapshot_h" value="ProjectSnapshot" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="700" y="560" width="230" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="snapshot" value="id : PK&#xa;project : FK → Project&#xa;created_by : FK → User&#xa;name : CharField&#xa;description : TextField&#xa;data : JSONField" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="snapshot_h">
+          <mxGeometry y="26" width="230" height="144" as="geometry" />
+        </mxCell>
+
+        <!-- PROTO PERSONA -->
+        <mxCell id="protopersona_h" value="ProtoPersona" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#dae8fc;strokeColor=#6c8ebf;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="700" y="790" width="250" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="protopersona" value="id : PK&#xa;project : FK → Project&#xa;created_by : FK → User&#xa;name : CharField&#xa;color : CharField&#xa;x : FloatField&#xa;z : FloatField&#xa;milestones : M2M → Milestone&#xa;teams : M2M → Team&#xa;tasks : M2M → Task" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="protopersona_h">
+          <mxGeometry y="26" width="250" height="214" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════════════════════════ -->
+        <!--  IDEABIN ENTITIES                        -->
+        <!-- ════════════════════════════════════════ -->
+
+        <!-- CONTEXT -->
+        <mxCell id="context_h" value="Context" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#f8cecc;strokeColor=#b85450;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="50" width="220" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="context" value="id : PK&#xa;owner : FK → User&#xa;name : CharField&#xa;x : IntegerField&#xa;y : IntegerField&#xa;width : IntegerField&#xa;height : IntegerField&#xa;z_index : IntegerField&#xa;is_public : BooleanField&#xa;is_default : BooleanField&#xa;color : CharField&#xa;filter_state : JSONField" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="context_h">
+          <mxGeometry y="26" width="220" height="234" as="geometry" />
+        </mxCell>
+
+        <!-- CATEGORY -->
+        <mxCell id="category_h" value="Category" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#f8cecc;strokeColor=#b85450;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="50" width="220" height="240" as="geometry" />
+        </mxCell>
+        <mxCell id="category" value="id : PK&#xa;owner : FK → User&#xa;name : CharField&#xa;x : IntegerField&#xa;y : IntegerField&#xa;width : IntegerField&#xa;height : IntegerField&#xa;z_index : IntegerField&#xa;archived : BooleanField&#xa;is_public : BooleanField&#xa;filter_config : JSONField" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="category_h">
+          <mxGeometry y="26" width="220" height="214" as="geometry" />
+        </mxCell>
+
+        <!-- LEGEND -->
+        <mxCell id="legend_h" value="Legend" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#f8cecc;strokeColor=#b85450;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1920" y="50" width="200" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_ent" value="id : PK&#xa;owner : FK → User&#xa;context : FK → Context&#xa;name : CharField&#xa;created_at : DateTime" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="legend_h">
+          <mxGeometry y="26" width="200" height="104" as="geometry" />
+        </mxCell>
+
+        <!-- LEGEND TYPE -->
+        <mxCell id="legendtype_h" value="LegendType" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#f8cecc;strokeColor=#b85450;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="2200" y="50" width="210" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="legendtype" value="id : PK&#xa;legend : FK → Legend&#xa;name : CharField&#xa;color : CharField&#xa;icon : CharField&#xa;order_index : IntegerField" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="legendtype_h">
+          <mxGeometry y="26" width="210" height="144" as="geometry" />
+        </mxCell>
+
+        <!-- IDEA -->
+        <mxCell id="idea_h" value="Idea" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#f8cecc;strokeColor=#b85450;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="390" width="220" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="idea" value="id : PK&#xa;owner : FK → User&#xa;title : CharField&#xa;description : TextField&#xa;archived : BooleanField&#xa;created_at : DateTime" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="idea_h">
+          <mxGeometry y="26" width="220" height="144" as="geometry" />
+        </mxCell>
+
+        <!-- IDEA PLACEMENT -->
+        <mxCell id="ideaplacement_h" value="IdeaPlacement" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#f8cecc;strokeColor=#b85450;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="390" width="220" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="ideaplacement" value="id : PK&#xa;idea : FK → Idea&#xa;category : FK → Category&#xa;order_index : IntegerField&#xa;unique: (idea, category)" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="ideaplacement_h">
+          <mxGeometry y="26" width="220" height="124" as="geometry" />
+        </mxCell>
+
+        <!-- IDEA LEGEND TYPE -->
+        <mxCell id="idealegendtype_h" value="IdeaLegendType" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#f8cecc;strokeColor=#b85450;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1920" y="390" width="220" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="idealegendtype" value="id : PK&#xa;idea : FK → Idea&#xa;legend : FK → Legend&#xa;legend_type : FK → LegendType&#xa;unique: (idea, legend)" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="idealegendtype_h">
+          <mxGeometry y="26" width="220" height="124" as="geometry" />
+        </mxCell>
+
+        <!-- IDEA UPVOTE -->
+        <mxCell id="ideaupvote_h" value="IdeaUpvote" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#f8cecc;strokeColor=#b85450;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="610" width="200" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="ideaupvote" value="id : PK&#xa;user : FK → User&#xa;idea : FK → Idea&#xa;unique: (user, idea)" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="ideaupvote_h">
+          <mxGeometry y="26" width="200" height="84" as="geometry" />
+        </mxCell>
+
+        <!-- IDEA COMMENT -->
+        <mxCell id="ideacomment_h" value="IdeaComment" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#f8cecc;strokeColor=#b85450;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1500" y="610" width="200" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="ideacomment" value="id : PK&#xa;user : FK → User&#xa;idea : FK → Idea&#xa;text : TextField&#xa;created_at : DateTime" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="ideacomment_h">
+          <mxGeometry y="26" width="200" height="104" as="geometry" />
+        </mxCell>
+
+        <!-- FORMATION -->
+        <mxCell id="formation_h" value="Formation" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#f8cecc;strokeColor=#b85450;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="2200" y="390" width="210" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="formation" value="id : PK&#xa;owner : FK → User&#xa;context : FK → Context&#xa;name : CharField&#xa;state : JSONField&#xa;is_default : BooleanField" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="formation_h">
+          <mxGeometry y="26" width="210" height="144" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════════════════════════ -->
+        <!--  JUNCTION / PLACEMENT (purple)           -->
+        <!-- ════════════════════════════════════════ -->
+
+        <mxCell id="catctxplace_h" value="CategoryContextPlacement" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;arcSize=8;shadow=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1380" y="810" width="250" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="catctxplace" value="category : FK → Category&#xa;context : FK → Context&#xa;order_index : IntegerField&#xa;unique: (category, context)" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="catctxplace_h">
+          <mxGeometry y="26" width="250" height="104" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legctxplace_h" value="LegendContextPlacement" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;arcSize=8;shadow=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1700" y="810" width="240" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="legctxplace" value="legend : FK → Legend&#xa;context : FK → Context&#xa;order_index : IntegerField&#xa;unique: (legend, context)" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="legctxplace_h">
+          <mxGeometry y="26" width="240" height="104" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ideactxplace_h" value="IdeaContextPlacement" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;arcSize=8;shadow=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="2010" y="810" width="230" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="ideactxplace" value="idea : FK → Idea&#xa;context : FK → Context&#xa;order_index : IntegerField&#xa;unique: (idea, context)" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="ideactxplace_h">
+          <mxGeometry y="26" width="230" height="104" as="geometry" />
+        </mxCell>
+
+        <mxCell id="projctxplace_h" value="ProjectContextPlacement" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#e1d5e7;strokeColor=#9673a6;rounded=1;arcSize=8;shadow=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="1010" width="250" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="projctxplace" value="project : FK → Project&#xa;context : FK → Context&#xa;unique: (project, context)" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="projctxplace_h">
+          <mxGeometry y="26" width="250" height="84" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════════════════════════ -->
+        <!--  ADOPTION TABLES (yellow)                -->
+        <!-- ════════════════════════════════════════ -->
+
+        <mxCell id="usercatadopt_h" value="UserCategoryAdoption" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#fff2cc;strokeColor=#d6b656;rounded=1;arcSize=8;shadow=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1580" y="1010" width="230" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="usercatadopt" value="user : FK → User&#xa;category : FK → Category&#xa;unique: (user, category)" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="usercatadopt_h">
+          <mxGeometry y="26" width="230" height="84" as="geometry" />
+        </mxCell>
+
+        <mxCell id="userlegadopt_h" value="UserLegendAdoption" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#fff2cc;strokeColor=#d6b656;rounded=1;arcSize=8;shadow=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1870" y="1010" width="220" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="userlegadopt" value="user : FK → User&#xa;legend : FK → Legend&#xa;unique: (user, legend)" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="userlegadopt_h">
+          <mxGeometry y="26" width="220" height="84" as="geometry" />
+        </mxCell>
+
+        <mxCell id="userctxadopt_h" value="UserContextAdoption" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#fff2cc;strokeColor=#d6b656;rounded=1;arcSize=8;shadow=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="2150" y="1010" width="230" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="userctxadopt" value="user : FK → User&#xa;context : FK → Context&#xa;unique: (user, context)" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="userctxadopt_h">
+          <mxGeometry y="26" width="230" height="84" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════════════════════════ -->
+        <!--  SHARED / CROSS-DOMAIN                   -->
+        <!-- ════════════════════════════════════════ -->
+
+        <!-- USER -->
+        <mxCell id="user_h" value="User" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#fff2cc;strokeColor=#d6b656;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="440" y="1170" width="220" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="user" value="id : PK&#xa;username : CharField&#xa;email : EmailField&#xa;password : (hashed)" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="user_h">
+          <mxGeometry y="26" width="220" height="94" as="geometry" />
+        </mxCell>
+
+        <!-- NOTIFICATION -->
+        <mxCell id="notification_h" value="Notification" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#d5e8d4;strokeColor=#82b366;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1170" width="220" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="notification" value="id : PK&#xa;user : FK → User&#xa;action_type : CharField&#xa;title : CharField&#xa;message : TextField&#xa;related_task : FK → Task&#xa;related_user : FK → User&#xa;read : BooleanField&#xa;created_at : DateTime" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="notification_h">
+          <mxGeometry y="26" width="220" height="184" as="geometry" />
+        </mxCell>
+
+        <!-- USER SHORTCUTS -->
+        <mxCell id="usershortcuts_h" value="UserShortcuts" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#d5e8d4;strokeColor=#82b366;rounded=1;arcSize=8;shadow=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="740" y="1170" width="240" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="usershortcuts" value="user : OneToOne → User&#xa;shortcuts : JSONField&#xa;filter_presets : JSONField&#xa;default_context : FK → Context" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="usershortcuts_h">
+          <mxGeometry y="26" width="240" height="114" as="geometry" />
+        </mxCell>
+
+        <!-- ════════════════════════════════════════ -->
+        <!--  RELATIONSHIPS                           -->
+        <!-- ════════════════════════════════════════ -->
+
+        <!-- Project → Team -->
+        <mxCell id="e_proj_team" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#6c8ebf;strokeWidth=1.5;" edge="1" parent="1" source="project_h" target="team_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Project → Day -->
+        <mxCell id="e_proj_day" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#6c8ebf;strokeWidth=1.5;" edge="1" parent="1" source="project_h" target="day_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Project → DependencyView -->
+        <mxCell id="e_proj_depview" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#6c8ebf;strokeWidth=1.5;" edge="1" parent="1" source="project_h" target="depview_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Project → Snapshot -->
+        <mxCell id="e_proj_snapshot" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#6c8ebf;strokeWidth=1.5;" edge="1" parent="1" source="project_h" target="snapshot_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Team → Task (nullable) -->
+        <mxCell id="e_team_task" style="endArrow=ERmany;startArrow=ERzeroToOne;startFill=0;endFill=0;strokeColor=#6c8ebf;strokeWidth=1.5;dashed=1;" edge="1" parent="1" source="team_h" target="task_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Task → Milestone -->
+        <mxCell id="e_task_milestone" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#6c8ebf;strokeWidth=1.5;" edge="1" parent="1" source="task_h" target="milestone_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Milestone → Dependency -->
+        <mxCell id="e_ms_dep" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#6c8ebf;strokeWidth=1.5;" edge="1" parent="1" source="milestone_h" target="dependency_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Project → Phase -->
+        <mxCell id="e_proj_phase" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#6c8ebf;strokeWidth=1.5;" edge="1" parent="1" source="project_h" target="phase_h">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="170" y="530" />
+              <mxPoint x="510" y="530" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <!-- Team → Phase (nullable) -->
+        <mxCell id="e_team_phase" style="endArrow=ERmany;startArrow=ERzeroToOne;startFill=0;endFill=0;strokeColor=#6c8ebf;strokeWidth=1.5;dashed=1;" edge="1" parent="1" source="team_h" target="phase_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- Project → ProtoPersona -->
+        <mxCell id="e_proj_proto" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#6c8ebf;strokeWidth=1.5;" edge="1" parent="1" source="project_h" target="protopersona_h">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="170" y="900" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- IdeaBin relationships -->
+        <mxCell id="e_idea_place" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#b85450;strokeWidth=1.5;" edge="1" parent="1" source="idea_h" target="ideaplacement_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_cat_place" style="endArrow=ERmany;startArrow=ERzeroToOne;startFill=0;endFill=0;strokeColor=#b85450;strokeWidth=1.5;dashed=1;" edge="1" parent="1" source="category_h" target="ideaplacement_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_leg_type" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#b85450;strokeWidth=1.5;" edge="1" parent="1" source="legend_h" target="legendtype_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ctx_legend" style="endArrow=ERmany;startArrow=ERzeroToOne;startFill=0;endFill=0;strokeColor=#b85450;strokeWidth=1.5;dashed=1;" edge="1" parent="1" source="context_h" target="legend_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_idea_ilt" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#b85450;strokeWidth=1.5;" edge="1" parent="1" source="idea_h" target="idealegendtype_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_leg_ilt" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#b85450;strokeWidth=1.5;" edge="1" parent="1" source="legend_h" target="idealegendtype_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_lt_ilt" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#b85450;strokeWidth=1.5;" edge="1" parent="1" source="legendtype_h" target="idealegendtype_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_idea_upvote" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#b85450;strokeWidth=1.5;" edge="1" parent="1" source="idea_h" target="ideaupvote_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_idea_comment" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#b85450;strokeWidth=1.5;" edge="1" parent="1" source="idea_h" target="ideacomment_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ctx_formation" style="endArrow=ERmany;startArrow=ERzeroToOne;startFill=0;endFill=0;strokeColor=#b85450;strokeWidth=1.5;dashed=1;" edge="1" parent="1" source="context_h" target="formation_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Placement junctions -->
+        <mxCell id="e_cat_ccp" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#9673a6;strokeWidth=1.5;" edge="1" parent="1" source="category_h" target="catctxplace_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ctx_ccp" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#9673a6;strokeWidth=1.5;" edge="1" parent="1" source="context_h" target="catctxplace_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_leg_lcp" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#9673a6;strokeWidth=1.5;" edge="1" parent="1" source="legend_h" target="legctxplace_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ctx_lcp" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#9673a6;strokeWidth=1.5;" edge="1" parent="1" source="context_h" target="legctxplace_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_idea_icp" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#9673a6;strokeWidth=1.5;" edge="1" parent="1" source="idea_h" target="ideactxplace_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ctx_icp" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#9673a6;strokeWidth=1.5;" edge="1" parent="1" source="context_h" target="ideactxplace_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_proj_pcp" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#9673a6;strokeWidth=1.5;" edge="1" parent="1" source="project_h" target="projctxplace_h">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="170" y="1060" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_ctx_pcp" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#9673a6;strokeWidth=1.5;" edge="1" parent="1" source="context_h" target="projctxplace_h">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1710" y="1060" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Adoption junctions -->
+        <mxCell id="e_user_uca" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#d6b656;strokeWidth=1.5;" edge="1" parent="1" source="user_h" target="usercatadopt_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_user_ula" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#d6b656;strokeWidth=1.5;" edge="1" parent="1" source="user_h" target="userlegadopt_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_user_ucxa" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#d6b656;strokeWidth=1.5;" edge="1" parent="1" source="user_h" target="userctxadopt_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- User → Notification -->
+        <mxCell id="e_user_notif" style="endArrow=ERmany;startArrow=ERone;startFill=0;endFill=0;strokeColor=#82b366;strokeWidth=1.5;" edge="1" parent="1" source="user_h" target="notification_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <!-- User → UserShortcuts (1:1) -->
+        <mxCell id="e_user_shortcuts" style="endArrow=ERone;startArrow=ERone;startFill=0;endFill=0;strokeColor=#82b366;strokeWidth=1.5;" edge="1" parent="1" source="user_h" target="usershortcuts_h">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ══════ DIAGRAM KEY ══════ -->
+        <mxCell id="legend_key_h" value="Diagram Key" style="swimlane;fontStyle=1;align=center;startSize=26;html=1;collapsible=0;fillColor=#f5f5f5;strokeColor=#666666;rounded=0;shadow=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="2200" y="620" width="210" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_key" value="--- 1:N (required FK)&#xa;- - - 0/1:N (nullable FK)&#xa;Blue = Planning domain&#xa;Red = IdeaBin domain&#xa;Purple = Junction tables&#xa;Yellow = Adoption (sharing)&#xa;Green = Shared / cross-domain" style="text;align=left;verticalAlign=top;spacingLeft=6;spacingRight=4;overflow=hidden;rotatable=0;whiteSpace=wrap;fontSize=11;" vertex="1" parent="legend_key_h">
+          <mxGeometry y="26" width="210" height="144" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

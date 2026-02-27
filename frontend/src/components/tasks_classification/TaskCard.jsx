@@ -1,0 +1,200 @@
+import { useRef, useState } from "react";
+import { GripVertical, Users, Pencil, Trash2, MoreVertical, ChevronDown, ChevronRight } from "lucide-react";
+
+/**
+ * Individual task card rendered in the sidebar task list and within team containers.
+ *
+ * Mirrors IdeaBinIdeaCard: draggable, selectable, shows team color accent,
+ * priority/difficulty badges, and quick actions.
+ */
+export default function TaskCard({
+  task,
+  index,
+  source,               // { type: "unassigned" } | { type: "team", teamId }
+  teams,
+  dragging,
+  dragSource,
+  hoverIndex,
+  prevIndex,
+  handleTaskDrag,
+  selectedTaskIds,
+  setSelectedTaskIds,
+  onEditTask,
+  onDeleteTask,
+  setConfirmModal,
+}) {
+  const [showActions, setShowActions] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const moreRef = useRef(null);
+
+  if (!task) return null;
+
+  const team = task.team?.id ? teams[task.team.id] || task.team : task.team;
+  const teamColor = team?.color || null;
+  const isSelected = selectedTaskIds.has(task.id);
+  const isSource =
+    dragSource &&
+    dragSource.type === source.type &&
+    (source.type === "unassigned" || String(dragSource.teamId) === String(source.teamId));
+
+  const priorityColors = {
+    high: "bg-red-100 text-red-700",
+    medium: "bg-amber-100 text-amber-700",
+    low: "bg-green-100 text-green-700",
+  };
+
+  const difficultyColors = {
+    hard: "bg-purple-100 text-purple-700",
+    medium: "bg-blue-100 text-blue-700",
+    easy: "bg-teal-100 text-teal-700",
+  };
+
+  const handleClick = (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedTaskIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(task.id)) next.delete(task.id);
+        else next.add(task.id);
+        return next;
+      });
+    } else {
+      setSelectedTaskIds(new Set([task.id]));
+    }
+  };
+
+  const handleDelete = () => {
+    setConfirmModal({
+      message: (
+        <div>
+          <p className="text-sm font-medium mb-1">Delete task?</p>
+          <p className="text-xs text-gray-600">
+            Permanently delete <span className="font-semibold">"{task.name}"</span>
+          </p>
+        </div>
+      ),
+      confirmLabel: "Delete",
+      confirmColor: "bg-red-500 hover:bg-red-600",
+      onConfirm: () => { onDeleteTask(task.id); setConfirmModal(null); },
+      onCancel: () => setConfirmModal(null),
+    });
+  };
+
+  return (
+    <div data-task-item="true" data-task-id={task.id}>
+      {/* Drop indicator */}
+      <div
+        style={{
+          opacity: isSource && index === hoverIndex ? 1 : 0,
+          transition: "opacity 100ms ease",
+        }}
+        className="w-full h-0.5 my-[1px] rounded bg-indigo-400"
+      />
+
+      <div
+        onClick={handleClick}
+        className={`group relative flex items-start gap-1.5 px-2 py-1.5 rounded-md cursor-pointer transition-all text-[11px]
+          ${isSelected
+            ? "bg-indigo-50 border border-indigo-300 shadow-sm"
+            : "hover:bg-gray-50 border border-transparent"
+          }`}
+        style={{
+          borderLeftWidth: teamColor ? 3 : undefined,
+          borderLeftColor: teamColor || undefined,
+        }}
+      >
+        {/* Drag handle */}
+        <div
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            handleTaskDrag(e, task, index, source);
+          }}
+          className="mt-0.5 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500"
+        >
+          <GripVertical size={12} />
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          {/* Name + team */}
+          <div className="flex items-center gap-1">
+            <span className="font-semibold text-gray-800 truncate">
+              {task.name || "Untitled Task"}
+            </span>
+            {team && (
+              <span
+                className="text-[9px] px-1 py-0 rounded-full font-medium flex-shrink-0"
+                style={{
+                  backgroundColor: teamColor ? `color-mix(in srgb, ${teamColor} 15%, white)` : "#f3f4f6",
+                  color: teamColor || "#6b7280",
+                }}
+              >
+                {team.name || "Team"}
+              </span>
+            )}
+          </div>
+
+          {/* Description (collapsed/expanded) */}
+          {task.description && !collapsed && (
+            <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2 whitespace-pre-wrap">
+              {task.description}
+            </p>
+          )}
+
+          {/* Priority + Difficulty badges */}
+          <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+            {task.priority && (
+              <span className={`text-[9px] px-1 py-0 rounded font-medium ${priorityColors[task.priority?.toLowerCase()] || "bg-gray-100 text-gray-600"}`}>
+                {task.priority}
+              </span>
+            )}
+            {task.difficulty && (
+              <span className={`text-[9px] px-1 py-0 rounded font-medium ${difficultyColors[task.difficulty?.toLowerCase()] || "bg-gray-100 text-gray-600"}`}>
+                {task.difficulty}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Actions (visible on hover) */}
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity mt-0.5">
+          <button
+            onClick={(e) => { e.stopPropagation(); onEditTask(task.id); }}
+            className="p-0.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600"
+            title="Edit task"
+          >
+            <Pencil size={11} />
+          </button>
+          <button
+            ref={moreRef}
+            onClick={(e) => { e.stopPropagation(); setShowActions((p) => !p); }}
+            className="p-0.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600"
+            title="More actions"
+          >
+            <MoreVertical size={11} />
+          </button>
+        </div>
+
+        {/* Action dropdown */}
+        {showActions && (
+          <div
+            className="absolute right-1 top-full mt-0.5 bg-white rounded shadow-lg border border-gray-200 py-0.5 min-w-[100px] z-50"
+            onMouseLeave={() => setShowActions(false)}
+          >
+            <button
+              onClick={(e) => { e.stopPropagation(); onEditTask(task.id); setShowActions(false); }}
+              className="w-full text-left px-2 py-1 text-[10px] text-gray-700 hover:bg-gray-100 flex items-center gap-1"
+            >
+              <Pencil size={10} /> Edit
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleDelete(); setShowActions(false); }}
+              className="w-full text-left px-2 py-1 text-[10px] text-red-600 hover:bg-red-50 flex items-center gap-1"
+            >
+              <Trash2 size={10} /> Delete
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

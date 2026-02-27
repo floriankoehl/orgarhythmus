@@ -45,11 +45,13 @@ import { usePhaseManagement } from './usePhaseManagement';
 import { useViewManagement } from './useViewManagement';
 import { useSnapshotManagement } from './useSnapshotManagement';
 import { update_start_index, get_user_shortcuts, save_user_shortcuts, move_milestone_task } from '../../api/dependencies_api';
+import { updateTeam } from '../../api/org_API.js';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import VerticalAlignTopIcon from '@mui/icons-material/VerticalAlignTop';
+import PaletteIcon from '@mui/icons-material/Palette';
 import DependencyToolbar from '../../components/dependencies/DependencyToolbar';
 import DependencyModals from '../../components/dependencies/DependencyModals';
 import DependencyCanvas from '../../components/dependencies/DependencyCanvas';
@@ -60,6 +62,12 @@ import { useSafetyCheck } from './useSafetyCheck';
 import { DependencyProvider, useDependency } from './DependencyContext.jsx';
 import { playSound, setMuted } from '../../assets/sound_registry';
 import { bulk_import_dependencies } from '../../api/dependencies_api';
+
+const TEAM_COLORS = [
+  '#facc15', '#3b82f6', '#ef4444', '#22c55e',
+  '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4',
+  '#84cc16', '#f97316', '#64748b', '#e2e8f0',
+];
 
 export default function Dependencies() {
   return (
@@ -149,6 +157,7 @@ function DependenciesContent() {
 
   // Team settings dropdown
   const [openTeamSettings, setOpenTeamSettings] = useState(null);
+  const [teamColorPickerOpen, setTeamColorPickerOpen] = useState(false);
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [hoveredDayCell, setHoveredDayCell] = useState(null);
   const [isAddingMilestone, setIsAddingMilestone] = useState(false);
@@ -300,6 +309,21 @@ function DependenciesContent() {
     teamDisplaySettings,
     setTeamDisplaySettings,
   });
+
+  // Reset color picker when team settings dropdown closes or switches team
+  useEffect(() => { setTeamColorPickerOpen(false); }, [openTeamSettings]);
+
+  const handleTeamColorChange = useCallback(async (team_key, color) => {
+    setTeams(prev => ({
+      ...prev,
+      [team_key]: { ...prev[team_key], color },
+    }));
+    try {
+      await updateTeam(projectId, team_key, { color });
+    } catch (e) {
+      console.error('Failed to update team color', e);
+    }
+  }, [projectId, setTeams]);
 
   // __ collectViewState & applyViewState (must access all local state) __
   const collectViewState = useCallback(() => ({
@@ -1365,7 +1389,7 @@ function DependenciesContent() {
         const team_key = openTeamSettings;
         return (
           <div
-            className="fixed w-48 rounded-lg border border-slate-200 bg-white shadow-xl"
+            className="fixed w-52 rounded-lg border border-slate-200 bg-white shadow-xl"
             style={{ top: `${rect.bottom + 4}px`, left: `${rect.left}px`, zIndex: 9999 }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -1420,6 +1444,46 @@ function DependenciesContent() {
                     <><VisibilityOffIcon style={{ fontSize: 14 }} /><span>Hide team phases</span></>
                   )}
                 </button>
+              )}
+              <div className="border-t border-slate-100 my-1" />
+              {/* Change color */}
+              <button
+                onClick={(e) => { e.stopPropagation(); setTeamColorPickerOpen(prev => !prev); }}
+                className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 transition text-left"
+              >
+                <div
+                  className="w-3.5 h-3.5 rounded-full border border-slate-300 flex-shrink-0"
+                  style={{ backgroundColor: teams[team_key]?.color || '#94a3b8' }}
+                />
+                <span>Change color</span>
+                <PaletteIcon style={{ fontSize: 13, marginLeft: 'auto', opacity: 0.4 }} />
+              </button>
+              {teamColorPickerOpen && (
+                <div className="px-2 pb-1" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex flex-wrap gap-1 mb-1.5">
+                    {TEAM_COLORS.map(color => (
+                      <button
+                        key={color}
+                        onClick={() => handleTeamColorChange(team_key, color)}
+                        className="w-5 h-5 rounded-full transition hover:scale-110 flex-shrink-0"
+                        style={{
+                          backgroundColor: color,
+                          outline: (teams[team_key]?.color || '#94a3b8') === color ? '2px solid #1e293b' : '2px solid transparent',
+                          outlineOffset: '1px',
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="color"
+                      value={teams[team_key]?.color || '#94a3b8'}
+                      onChange={(e) => handleTeamColorChange(team_key, e.target.value)}
+                      className="w-7 h-7 rounded cursor-pointer border border-slate-200 p-0.5"
+                    />
+                    <span className="text-xs text-slate-400 font-mono">{teams[team_key]?.color || '#94a3b8'}</span>
+                  </div>
+                </div>
               )}
               <div className="border-t border-slate-100 my-1" />
               <button
