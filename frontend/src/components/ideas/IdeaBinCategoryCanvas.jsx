@@ -734,7 +734,7 @@ export default function IdeaBinCategoryCanvas({
                     <FeedFilterPanel
                       catKey={catKey}
                       catData={catData}
-                      isOwner={!isAdopted || !!catData.from_adopted_context}
+                      isOwner={true}
                       dims={dims}
                       setCategoryFilterConfig={setCategoryFilterConfig}
                       refetchCategoryByFilter={refetchCategoryByFilter}
@@ -749,103 +749,6 @@ export default function IdeaBinCategoryCanvas({
                     />
                   )}
                 </div>
-                {isAdopted && !catData.from_adopted_context ? (
-                  /* Directly adopted category: limited settings with unadopt */
-                  <div className="relative">
-                    <Settings
-                      size={12}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setCategorySettingsOpen(prev => prev === catKey ? null : catKey);
-                      }}
-                      className="cursor-pointer"
-                    style={{ color: contextColor ? `color-mix(in srgb, ${contextColor} 55%, #666)` : "#6366f1" }}
-                    />
-                    {categorySettingsOpen === catKey && (
-                      <>
-                        <div className="fixed inset-0 z-[60]" onClick={() => setCategorySettingsOpen(null)} />
-                        <div className="absolute right-0 top-full mt-1 bg-white rounded shadow-xl border border-gray-200 z-[61] min-w-[140px] py-1">
-                          {/* Collapse all ideas */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const allCollapsed = catIdeas.every(id => collapsedIdeas[id] ?? true);
-                              const newState = {};
-                              catIdeas.forEach(id => { newState[id] = allCollapsed ? false : true; });
-                              setCollapsedIdeas(prev => ({ ...prev, ...newState }));
-                              setCategorySettingsOpen(null);
-                            }}
-                            className="w-full text-left px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                          >
-                            <span style={{
-                              display: "inline-block", width: 0, height: 0, borderStyle: "solid",
-                              ...(catIdeas.every(id => collapsedIdeas[id] ?? true)
-                                ? { borderWidth: "4px 3px 0 3px", borderColor: "currentColor transparent transparent transparent" }
-                                : { borderWidth: "0 3px 4px 3px", borderColor: "transparent transparent currentColor transparent" })
-                            }} />
-                            {catIdeas.every(id => collapsedIdeas[id] ?? true) ? "Show full ideas" : "Show headlines only"}
-                          </button>
-                          {/* Unadopt */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCategorySettingsOpen(null);
-                              setConfirmModal({
-                                message: `Stop following "${catData.name}" from ${catData.owner_username}?`,
-                                onConfirm: () => { drop_adopted_category(catKey); setConfirmModal(null); },
-                                onCancel: () => setConfirmModal(null),
-                              });
-                            }}
-                            className="w-full text-left px-3 py-1.5 text-[11px] text-red-600 hover:bg-red-50 flex items-center gap-2"
-                          >
-                            <LinkIcon size={11} />
-                            Unadopt category
-                          </button>
-                          {/* Title Mode */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCategorySettingsOpen(null);
-                              if (headlineModeCategoryId === catKey) {
-                                setHeadlineModeCategoryId(null);
-                                setDraftHeadlines({});
-                              } else {
-                                const drafts = {};
-                                catIdeas.forEach(id => {
-                                  const idea = ideas[id];
-                                  if (idea) drafts[id] = idea.title || "";
-                                });
-                                setDraftHeadlines(drafts);
-                                setHeadlineModeCategoryId(catKey);
-                              }
-                            }}
-                            className={`w-full text-left px-3 py-1.5 text-[11px] flex items-center gap-2 ${
-                              headlineModeCategoryId === catKey
-                                ? "text-purple-700 bg-purple-50 hover:bg-purple-100"
-                                : "text-gray-700 hover:bg-gray-50"
-                            }`}
-                          >
-                            <Type size={11} />
-                            {headlineModeCategoryId === catKey ? "Exit Title Mode" : "Title Mode"}
-                          </button>
-                          {/* Dock to header */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCategorySettingsOpen(null);
-                              setDockedCategories(prev => [String(catKey), ...prev.filter(id => id !== String(catKey))]);
-                            }}
-                            className="w-full text-left px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                          >
-                            <PanelTopDashed size={11} />
-                            Dock to header
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  <>
                 {/* Archive */}
                 <ArchiveIcon
                   onClick={(e) => { e.stopPropagation(); toggle_archive_category(catKey); }}
@@ -936,6 +839,24 @@ export default function IdeaBinCategoryCanvas({
                           <DeleteForeverIcon style={{ fontSize: 13 }} />
                           Delete category
                         </button>
+                        {/* Unadopt (only for directly adopted categories) */}
+                        {isAdopted && !catData.from_adopted_context && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCategorySettingsOpen(null);
+                              setConfirmModal({
+                                message: `Stop following "${catData.name}" from ${catData.owner_username}?`,
+                                onConfirm: () => { drop_adopted_category(catKey); setConfirmModal(null); },
+                                onCancel: () => setConfirmModal(null),
+                              });
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-[11px] text-red-600 hover:bg-red-50 flex items-center gap-2"
+                          >
+                            <LinkIcon size={11} />
+                            Unadopt category
+                          </button>
+                        )}
                         {/* Reform to Team */}
                         {onReformCategory && (
                           <button
@@ -947,7 +868,9 @@ export default function IdeaBinCategoryCanvas({
                             className="w-full text-left px-3 py-1.5 text-[11px] text-indigo-600 hover:bg-indigo-50 flex items-center gap-2"
                           >
                             <Users size={11} />
-                            Reform to Team
+                            {(selectedCategoryIds.has(catKey) || selectedCategoryIds.has(String(catKey))) && selectedCategoryIds.size > 1
+                              ? `Reform ${selectedCategoryIds.size} to Teams`
+                              : "Reform to Team"}
                           </button>
                         )}
                         {/* Rename */}
@@ -1051,8 +974,6 @@ export default function IdeaBinCategoryCanvas({
                     </>
                   )}
                 </div>
-                  </>
-                )}
               </div>
             </div>
 

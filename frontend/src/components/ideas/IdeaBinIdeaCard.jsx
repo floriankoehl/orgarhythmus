@@ -172,7 +172,6 @@ export default function IdeaBinIdeaCard({
           }}
           onDoubleClick={(e) => {
             e.stopPropagation();
-            if (isForeignIdea) return;
             setEditingIdeaId(ideaId);
             setEditingIdeaTitle(idea.title);
             setEditingIdeaDescription(idea.description || "");
@@ -387,7 +386,32 @@ export default function IdeaBinIdeaCard({
                     onMouseDown={(e) => e.stopPropagation()}
                   >
                     {isForeignIdea ? (
-                      /* Foreign idea in adopted category: only Spinoff option */
+                      /* Foreign idea in adopted category: full actions + Spinoff */
+                      <>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingIdeaId(ideaId);
+                        setEditingIdeaTitle(idea.title);
+                        setEditingIdeaDescription(idea.description || "");
+                        setIdeaSettingsOpen(null);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      <EditIcon style={{ fontSize: 13 }} className="text-blue-500" />
+                      Edit
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openTransform(idea);
+                        setIdeaSettingsOpen(null);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      <Zap size={13} className="text-amber-500" />
+                      Make Task
+                    </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -399,6 +423,35 @@ export default function IdeaBinIdeaCard({
                         <GitBranchPlus size={13} className="text-indigo-500" />
                         Spinoff
                       </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIdeaSettingsOpen(null);
+                        const isMetaDel = isMetaView;
+                        setConfirmModal({
+                          message: (
+                            <div>
+                              <p className="mb-1 text-sm">{isMetaDel ? "Delete this idea and ALL its copies?" : "Delete this idea?"}</p>
+                              <p className="font-semibold text-xs">{idea.title}</p>
+                              {isMetaDel && idea.placement_count > 1 && (
+                                <p className="text-[10px] text-red-500 mt-1">{idea.placement_count} copies will be removed</p>
+                              )}
+                            </div>
+                          ),
+                          onConfirm: () => {
+                            if (isMetaDel) { delete_meta_idea(idea.idea_id); }
+                            else { delete_idea(idea.id); }
+                            setConfirmModal(null);
+                          },
+                          onCancel: () => setConfirmModal(null),
+                        });
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <DeleteForeverIcon style={{ fontSize: 13 }} />
+                      Delete
+                    </button>
+                      </>
                     ) : (
                       /* Own idea: full actions */
                       <>

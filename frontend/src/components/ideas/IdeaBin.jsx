@@ -36,7 +36,7 @@ import useIdeaBinKeyboard from "./hooks/useIdeaBinKeyboard";
 
 // Extracted API helpers
 import { authFetch, API } from "./api/authFetch";
-import { fetchContextsApi, saveContextFilterStateApi, setContextColorApi, fetchContextProjectsApi } from "./api/contextApi";
+import { fetchContextsApi, saveContextFilterStateApi, setContextColorApi } from "./api/contextApi";
 import { mergeIdeasApi, batchSetArchiveApi } from "./api/ideaApi";
 import { exportIdeabinApi, importIdeabinApi, exportCategoryApi, importCategoryApi, insertIdeasIntoCategoryApi } from "./api/exportApi";
 
@@ -178,7 +178,7 @@ export default function IdeaBin() {
   const [transformLoading, setTransformLoading] = useState(false);
 
   // ───── Reform category → team modal ─────
-  const [reformCategoryModal, setReformCategoryModal] = useState(null); // { categoryId, catData, step }
+  const [reformCategoryModal, setReformCategoryModal] = useState(null); // { categories: [{id,name}], step, autoProjectId, selectedProjectId, projects }
   const [reformLoading, setReformLoading] = useState(false);
 
   // ───── Category export / import modals ─────
@@ -1062,43 +1062,46 @@ export default function IdeaBin() {
   };
 
   // ───── Reform category → team logic ─────
+  // Accepts single (catKey, catData) or multi (when catKey is part of a multi-selection).
   const openReformCategory = async (catKey, catData) => {
+    // Build the list of categories to reform
+    const isInSelection = selectedCategoryIds.has(catKey) || selectedCategoryIds.has(String(catKey));
+    let catList;
+    if (isInSelection && selectedCategoryIds.size > 1) {
+      // Multi-category reform: include all selected categories
+      catList = [...selectedCategoryIds].map(id => {
+        const cat = categories[id];
+        return cat ? { id, name: cat.name } : null;
+      }).filter(Boolean);
+    } else {
+      // Single category
+      catList = [{ id: catKey, name: catData.name }];
+    }
+
+    // Fetch project list depending on context
+    let autoProjectId = null;
+    let projects = null;
+
     if (projectId) {
       // Inside a project page → auto-select this project
-      setReformCategoryModal({
-        categoryId: catKey, catData, step: 'confirm',
-        autoProjectId: projectId, selectedProjectId: null, projects: null,
-      });
-    } else if (activeContext) {
-      // Inside a context but NOT a project → fetch projects linked to context
-      try {
-        const ctxProjects = await fetchContextProjectsApi(activeContext.id);
-        setReformCategoryModal({
-          categoryId: catKey, catData, step: 'confirm',
-          autoProjectId: null, selectedProjectId: null, projects: ctxProjects,
-        });
-      } catch {
-        setReformCategoryModal({
-          categoryId: catKey, catData, step: 'confirm',
-          autoProjectId: null, selectedProjectId: null, projects: [],
-        });
-      }
+      autoProjectId = projectId;
     } else {
-      // No context → show all projects the user is in
+      // Fetch all projects the user is a member of (always show full list)
       try {
         const allProjects = await fetch_all_projects();
-        const mapped = (allProjects || []).map(p => ({ id: p.id, name: p.name }));
-        setReformCategoryModal({
-          categoryId: catKey, catData, step: 'confirm',
-          autoProjectId: null, selectedProjectId: null, projects: mapped,
-        });
+        projects = (allProjects || []).map(p => ({ id: p.id, name: p.name }));
       } catch {
-        setReformCategoryModal({
-          categoryId: catKey, catData, step: 'confirm',
-          autoProjectId: null, selectedProjectId: null, projects: [],
-        });
+        projects = [];
       }
     }
+
+    setReformCategoryModal({
+      categories: catList,
+      step: 'confirm',
+      autoProjectId,
+      selectedProjectId: null,
+      projects,
+    });
   };
 
   const closeReformCategory = () => {
@@ -1108,36 +1111,39 @@ export default function IdeaBin() {
 
   const executeReformCategory = async ({ takeIdeas, deleteAndArchive }) => {
     if (!reformCategoryModal) return;
-    const { categoryId, catData, autoProjectId, selectedProjectId } = reformCategoryModal;
+    const { categories: catList, autoProjectId, selectedProjectId } = reformCategoryModal;
     const targetProjectId = autoProjectId || selectedProjectId;
     if (!targetProjectId) return;
+    if (!catList || catList.length === 0) return;
     setReformLoading(true);
     try {
-      // 1. Create the team
-      const team = await createTeamForProject(targetProjectId, { name: catData.name });
+      for (const cat of catList) {
+        // 1. Create a team per category
+        const team = await createTeamForProject(targetProjectId, { name: cat.name });
 
-      // 2. If taking ideas → create a task per idea, assigned to the new team
-      if (takeIdeas) {
-        const ideaIds = categoryOrders[categoryId] || [];
-        for (const ideaId of ideaIds) {
-          const idea = ideas[ideaId];
-          if (idea) {
-            await createTaskForProject(targetProjectId, {
-              name: idea.title || "Untitled",
-              description: idea.description || "",
-              team_id: team.id,
-            });
+        // 2. If taking ideas → create a task per idea, assigned to the new team
+        if (takeIdeas) {
+          const ideaIds = categoryOrders[cat.id] || [];
+          for (const ideaId of ideaIds) {
+            const idea = ideas[ideaId];
+            if (idea) {
+              await createTaskForProject(targetProjectId, {
+                name: idea.title || "Untitled",
+                description: idea.description || "",
+                team_id: team.id,
+              });
+            }
           }
         }
-      }
 
-      // 3. If deleting category & archiving ideas
-      if (deleteAndArchive) {
-        const ideaIds = categoryOrders[categoryId] || [];
-        if (ideaIds.length > 0) {
-          await batchSetArchiveApi(ideaIds, true);
+        // 3. If deleting category & archiving ideas
+        if (deleteAndArchive) {
+          const ideaIds = categoryOrders[cat.id] || [];
+          if (ideaIds.length > 0) {
+            await batchSetArchiveApi(ideaIds, true);
+          }
+          await delete_category(cat.id);
         }
-        await delete_category(categoryId);
       }
 
       playSound('ideaTransform');

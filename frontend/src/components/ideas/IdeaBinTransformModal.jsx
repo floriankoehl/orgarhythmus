@@ -17,9 +17,9 @@ export default function IdeaBinTransformModal({
 
   return (
     <>
-      <div className="absolute inset-0 bg-black/30 z-[50] rounded-b-lg" onClick={closeTransform} />
+      <div className="absolute inset-0 bg-black/30 z-[9998] rounded-b-lg" onClick={closeTransform} />
       <div
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-2xl z-[51] min-w-[260px] max-w-[90%] overflow-hidden"
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-2xl z-[9999] min-w-[260px] max-w-[90%] overflow-hidden"
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* Header */}

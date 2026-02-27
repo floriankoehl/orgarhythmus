@@ -55,6 +55,7 @@ from ..models import (
     LegendType,
     UserContextAdoption,
 )
+from .ideas import _get_accessible_category
 
 
 # ─── export ──────────────────────────────────────────────
@@ -65,9 +66,8 @@ def export_category(request, category_id):
     """Return a simple JSON blob for one category and its ideas."""
     user = request.user
 
-    try:
-        cat = Category.objects.get(id=category_id, owner=user)
-    except Category.DoesNotExist:
+    cat = _get_accessible_category(user, category_id)
+    if not cat:
         return JsonResponse({"error": "Category not found."}, status=404)
 
     # Gather ideas placed in this category (ordered)
@@ -299,9 +299,8 @@ def insert_ideas_into_category(request, category_id):
     """
     user = request.user
 
-    try:
-        cat = Category.objects.get(id=category_id, owner=user)
-    except Category.DoesNotExist:
+    cat = _get_accessible_category(user, category_id)
+    if not cat:
         return JsonResponse({"error": "Category not found."}, status=404)
 
     data = request.data
