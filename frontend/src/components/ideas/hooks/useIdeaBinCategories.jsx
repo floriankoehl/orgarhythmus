@@ -23,7 +23,7 @@ import {
   assignIdeaLegendTypeApi,
 } from "../api/ideaApi";
 
-export default function useIdeaBinCategories({ activeContext, setActiveContext, fetchAllIdeas, selectedCategoryIds, categoryOrders }) {
+export default function useIdeaBinCategories({ activeContext, setActiveContext, fetchAllIdeas, selectedCategoryIds, categoryOrders, ideas }) {
   const [categories, setCategories] = useState({});
   const [displayCategoryForm, setDisplayCategoryForm] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -485,21 +485,41 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
     let lastDx = 0, lastDy = 0;
     let overTaskStructure = false;
 
+    // Pipeline ghost (DOM element that floats above both windows)
+    let pipelineGhost = null;
+    const pipelineActive = document.querySelector("[data-pipeline-active]");
+    if (pipelineActive && !isMulti) {
+      pipelineGhost = document.createElement("div");
+      pipelineGhost.style.cssText = `position:fixed;z-index:100000;pointer-events:none;padding:6px 14px;border-radius:8px;background:rgba(16,185,129,0.92);color:#fff;font-size:13px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.25);transform:translate(12px,12px);`;
+      pipelineGhost.textContent = `📂 ${cat.name}`;
+      pipelineGhost.style.left = `${startX}px`;
+      pipelineGhost.style.top = `${startY}px`;
+      document.body.appendChild(pipelineGhost);
+    }
+
     const onMove = (ev) => {
+      // Update pipeline ghost position
+      if (pipelineGhost) {
+        pipelineGhost.style.left = `${ev.clientX}px`;
+        pipelineGhost.style.top = `${ev.clientY}px`;
+      }
       lastDx = ev.clientX - startX;
       lastDy = ev.clientY - startY;
 
-      setCategories(prev => {
-        const next = { ...prev };
-        for (const k of movingKeys) {
-          const sp = startPositions[k];
-          if (!sp || !next[k]) continue;
-          const nx = Math.max(0, sp.x + lastDx);
-          const ny = Math.max(0, sp.y + lastDy);
-          next[k] = { ...next[k], x: nx, y: ny };
-        }
-        return next;
-      });
+      // When pipeline ghost is active, only move the ghost — don't move the canvas container
+      if (!pipelineGhost) {
+        setCategories(prev => {
+          const next = { ...prev };
+          for (const k of movingKeys) {
+            const sp = startPositions[k];
+            if (!sp || !next[k]) continue;
+            const nx = Math.max(0, sp.x + lastDx);
+            const ny = Math.max(0, sp.y + lastDy);
+            next[k] = { ...next[k], x: nx, y: ny };
+          }
+          return next;
+        });
+      }
 
       // Merge detection only for single-drag in refactor mode
       if (refactorMode && !isMulti) {
@@ -539,17 +559,25 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
       }
     };
     const onUp = () => {
+      // Remove pipeline ghost
+      if (pipelineGhost) { pipelineGhost.remove(); pipelineGhost = null; }
       // Clean up TaskStructure highlight
       const tsWinCleanup = document.querySelector("[data-taskstructure-window]");
       if (tsWinCleanup) { tsWinCleanup.style.outline = ""; tsWinCleanup.style.outlineOffset = ""; }
 
       // ── Pipeline: category → team ──
       if (overTaskStructure && !isMulti) {
+        // Gather full idea data for the tasks to be created
+        const ideaIdsInCat = categoryOrders[catKey] || [];
+        const ideaData = ideaIdsInCat.map(id => {
+          const idea = ideas[id];
+          return idea ? { id, title: idea.title || "", description: idea.description || "" } : null;
+        }).filter(Boolean);
         window.dispatchEvent(new CustomEvent("pipeline-category-to-team", {
           detail: {
             categoryId: catKey,
             name: cat.name,
-            ideaIds: categoryOrders[catKey] || [],
+            ideas: ideaData,
           },
         }));
         setMergeCategoryTarget(null);
@@ -595,7 +623,7 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [categories, categoryOrders, dockedCategories, bring_to_front_category, merge_categories_api, set_position_category, selectedCategoryIds]);
+  }, [categories, categoryOrders, ideas, dockedCategories, bring_to_front_category, merge_categories_api, set_position_category, selectedCategoryIds]);
 
   // ── Category resize (multi-resize when multiple selected) ──
   const handleCategoryResize = useCallback((e, catKey, edge = "se") => {

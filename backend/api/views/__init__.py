@@ -227,6 +227,16 @@ from .formations import (
     get_default_context,
 )
 
+from .task_structure_views import (
+    list_ts_views,
+    create_ts_view,
+    get_ts_view,
+    update_ts_view,
+    delete_ts_view,
+    set_default_ts_view,
+    get_default_ts_view,
+)
+
 from .export import (
     export_ideabin,
 )

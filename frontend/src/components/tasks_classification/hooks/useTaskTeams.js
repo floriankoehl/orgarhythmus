@@ -205,25 +205,48 @@ export default function useTaskTeams({ projectId, selectedTeamIds, tasksRef }) {
     let didMove = false;
     let overIdeaBin = false;
 
+    // Pipeline ghost (DOM element that floats above both windows)
+    let pipelineGhost = null;
+    const pipelineActive = document.querySelector("[data-pipeline-active]");
+    if (pipelineActive && ids.length === 1) {
+      const team = teams[teamId];
+      pipelineGhost = document.createElement("div");
+      pipelineGhost.style.cssText = `position:fixed;z-index:100000;pointer-events:none;padding:6px 14px;border-radius:8px;background:rgba(245,158,11,0.92);color:#fff;font-size:13px;font-weight:600;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,.25);transform:translate(12px,12px);`;
+      pipelineGhost.textContent = `\ud83d\udc65 ${team?.name || "Team"}`;
+      pipelineGhost.style.left = `${startX}px`;
+      pipelineGhost.style.top = `${startY}px`;
+      document.body.appendChild(pipelineGhost);
+    }
+
     const onMove = (ev) => {
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didMove = true;
       if (!didMove) return;
-      setTeamPositions((prev) => {
-        const next = { ...prev };
-        for (const id of ids) {
-          const sp = startPositions[id];
-          next[id] = { ...next[id], x: Math.max(0, sp.x + dx), y: Math.max(0, sp.y + dy) };
-        }
-        saveCanvasState(projectId, next);
-        return next;
-      });
+
+      // Update pipeline ghost position
+      if (pipelineGhost) {
+        pipelineGhost.style.left = `${ev.clientX}px`;
+        pipelineGhost.style.top = `${ev.clientY}px`;
+      }
+
+      // When pipeline ghost is active, only move the ghost — don't move the canvas container
+      if (!pipelineGhost) {
+        setTeamPositions((prev) => {
+          const next = { ...prev };
+          for (const id of ids) {
+            const sp = startPositions[id];
+            next[id] = { ...next[id], x: Math.max(0, sp.x + dx), y: Math.max(0, sp.y + dy) };
+          }
+          saveCanvasState(projectId, next);
+          return next;
+        });
+      }
 
       // Pipeline: detect IdeaBin window
-      const pipelineActive = document.querySelector("[data-pipeline-active]");
+      const pa = document.querySelector("[data-pipeline-active]");
       const ibWin = document.querySelector("[data-ideabin-window]");
-      if (pipelineActive && ibWin) {
+      if (pa && ibWin) {
         const r = ibWin.getBoundingClientRect();
         const over = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
         overIdeaBin = over;
@@ -236,19 +259,25 @@ export default function useTaskTeams({ projectId, selectedTeamIds, tasksRef }) {
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      // Remove pipeline ghost
+      if (pipelineGhost) { pipelineGhost.remove(); pipelineGhost = null; }
       // Clean up highlight
       const ibWin = document.querySelector("[data-ideabin-window]");
       if (ibWin) { ibWin.style.outline = ""; ibWin.style.outlineOffset = ""; }
 
       if (overIdeaBin && ids.length === 1) {
         const team = teams[teamId];
-        // Gather task names from tasksRef
+        // Gather full task data from tasksRef
         const allTasks = tasksRef?.current || {};
-        const taskNames = Object.values(allTasks)
-          .filter((t) => t.team === teamId)
-          .map((t) => t.name);
+        const taskData = Object.values(allTasks)
+          .filter((t) => (t.team?.id ?? t.team) === teamId)
+          .map((t) => ({
+            name: t.name,
+            description: t.description || "",
+            acceptance_criteria: t.acceptance_criteria || [],
+          }));
         window.dispatchEvent(new CustomEvent("pipeline-team-to-category", {
-          detail: { teamId, name: team?.name || "Team", taskNames },
+          detail: { teamId, name: team?.name || "Team", tasks: taskData },
         }));
         return;
       }

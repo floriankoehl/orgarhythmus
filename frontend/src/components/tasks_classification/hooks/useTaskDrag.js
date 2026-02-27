@@ -141,6 +141,7 @@ export default function useTaskDrag({
             taskId: task.id,
             name: task.name,
             description: task.description || "",
+            acceptance_criteria: task.acceptance_criteria || [],
           },
         }));
         setDragging(null); setDragSource(null); setHoverTeamId(null);

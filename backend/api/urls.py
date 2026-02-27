@@ -246,6 +246,15 @@ urlpatterns = [
     path("user/formations/<int:formation_id>/delete/", views.delete_formation, name="delete_formation"),
     path("user/formations/<int:formation_id>/set-default/", views.set_default_formation, name="set_default_formation"),
 
+    # Task Structure Views (saved task-structure layouts — scoped to a project)
+    path("projects/<int:project_id>/ts-views/", views.list_ts_views, name="list_ts_views"),
+    path("projects/<int:project_id>/ts-views/create/", views.create_ts_view, name="create_ts_view"),
+    path("projects/<int:project_id>/ts-views/default/", views.get_default_ts_view, name="get_default_ts_view"),
+    path("ts-views/<int:view_id>/", views.get_ts_view, name="get_ts_view"),
+    path("ts-views/<int:view_id>/update/", views.update_ts_view, name="update_ts_view"),
+    path("ts-views/<int:view_id>/delete/", views.delete_ts_view, name="delete_ts_view"),
+    path("ts-views/<int:view_id>/set-default/", views.set_default_ts_view, name="set_default_ts_view"),
+
     # IdeaBin backup export
     path("ideabin/export/", views.export_ideabin, name="export_ideabin"),
     path("ideabin/import/", views.import_ideabin, name="import_ideabin"),

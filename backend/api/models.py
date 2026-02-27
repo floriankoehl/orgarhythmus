@@ -813,6 +813,41 @@ class Formation(models.Model):
         return f"{self.owner.username} — {self.name}"
 
 
+class TaskStructureView(models.Model):
+    """
+    A saved layout / view for the Task Structure floating window.
+    Scoped to a project + owner.
+
+    The ``state`` JSON field stores the complete visual configuration:
+
+    Schema (v1):
+        {
+            "version": 1,
+            "window_pos": {"x": int, "y": int},
+            "window_size": {"w": int, "h": int},
+            "is_maximized": bool,
+            "view_mode": "titles" | "compact" | "full",
+            "team_view_overrides": { "<team_id>": "titles"|"compact"|"full", ... },
+            "sidebar_width": int,
+            "legend_panel_collapsed": bool,
+            "group_by": "team" | "<legend_id>",
+            "collapsed_team_ids": [int, ...],
+            "team_positions": { "<team_id>": {"x","y","w","h","z"}, ... },
+        }
+    """
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="task_structure_views")
+    project = models.ForeignKey('Project', on_delete=models.CASCADE, related_name="task_structure_views")
+    name = models.CharField(max_length=200)
+    state = models.JSONField(default=dict)
+    is_default = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.owner.username} — {self.name} (project {self.project_id})"
 
 
 

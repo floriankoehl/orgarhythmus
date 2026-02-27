@@ -39,8 +39,8 @@ export default function TaskStructure() {
 
   // ── Floating window ──
   const {
-    isOpen, windowPos, windowSize, iconPos,
-    isMaximized, zIndex, bringToFront: bringWindowToFront, windowRef, iconRef,
+    isOpen, windowPos, setWindowPos, windowSize, setWindowSize, iconPos,
+    isMaximized, setIsMaximized, zIndex, bringToFront: bringWindowToFront, windowRef, iconRef,
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag,
     handleWindowResize, handleEdgeResize,
@@ -77,10 +77,43 @@ export default function TaskStructure() {
     handleTeamDrag, handleTeamResize,
   } = useTaskTeams({ projectId, selectedTeamIds, tasksRef });
 
+  // ── UI state (needed before useTaskViews for deps) ──
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [confirmModal, setConfirmModal] = useState(null);
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_W);
+  const [legendPanelCollapsed, setLegendPanelCollapsed] = useState(true);
+  const [taskMode, setTaskMode] = useState(true);
+  const [drawTeamMode, setDrawTeamMode] = useState(false);
+  const [collapsedTeamIds, setCollapsedTeamIds] = useState(new Set());
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [editingTeamId, setEditingTeamId] = useState(null);
+  const [editingTeamName, setEditingTeamName] = useState("");
+  const [exportModal, setExportModal] = useState(null);
+  const [importModal, setImportModal] = useState(null);
+  const [viewMode, setViewMode] = useState("compact");
+  const [teamViewOverrides, setTeamViewOverrides] = useState({});
+  const [groupBy, setGroupBy] = useState("team");
+
+  // ── Views / formations (API-backed) ──
   const {
-    views, activeViewIdx, groupBy, setGroupBy,
-    saveView, loadView, deleteView, renameView,
-  } = useTaskViews({ projectId });
+    views, showViewPanel, setShowViewPanel,
+    viewName, setViewName,
+    editingViewId, setEditingViewId,
+    editingViewName, setEditingViewName,
+    fetchViews, saveView, updateViewState,
+    renameView, loadView, deleteView,
+    toggleDefault, loadDefaultView,
+  } = useTaskViews({
+    projectId,
+    deps: {
+      windowPos, windowSize, isMaximized, viewMode, teamViewOverrides,
+      sidebarWidth, legendPanelCollapsed, groupBy,
+      collapsedTeamIds, teamPositions,
+      setWindowPos, setWindowSize, setIsMaximized, setViewMode,
+      setTeamViewOverrides, setSidebarWidth, setLegendPanelCollapsed,
+      setGroupBy, setCollapsedTeamIds, setTeamPositions,
+    },
+  });
 
   // ── Refs ──
   const taskListRef = useRef(null);
@@ -97,37 +130,6 @@ export default function TaskStructure() {
     windowRef, taskListRef, teamCanvasRef,
     selectedTaskIds,
   });
-
-  // ── UI state ──
-  const [editingTaskId, setEditingTaskId] = useState(null);
-  const [confirmModal, setConfirmModal] = useState(null);
-  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_W);
-  const [legendPanelCollapsed, setLegendPanelCollapsed] = useState(true);
-
-  // ── Mode state (spectator = default, task = drag enabled) ──
-  const [taskMode, setTaskMode] = useState(true);
-
-  // ── Draw-to-create team mode ──
-  const [drawTeamMode, setDrawTeamMode] = useState(false);
-
-  // ── Collapsed teams (displayed as chips on canvas top) ──
-  const [collapsedTeamIds, setCollapsedTeamIds] = useState(new Set());
-
-  // ── Task creation mode (show form in sidebar) ──
-  const [isCreatingTask, setIsCreatingTask] = useState(false);
-
-  // ── Team editing state ──
-  const [editingTeamId, setEditingTeamId] = useState(null);
-  const [editingTeamName, setEditingTeamName] = useState("");
-
-  // ── Import / Export modals ──
-  const [exportModal, setExportModal] = useState(null);   // { json, title } or null
-  const [importModal, setImportModal] = useState(null);   // { scope, targetTeamId?, targetTeamName? } or null
-
-  // ── Task view mode: "titles" | "compact" | "full" ──
-  const [viewMode, setViewMode] = useState("compact");
-  // ── Per-team view overrides: { teamId: "titles"|"compact"|"full" } ──
-  const [teamViewOverrides, setTeamViewOverrides] = useState({});
 
   // ── Keyboard: "t" toggles task mode, 1/2/3 changes view mode, Escape cancels draw mode ──
   useEffect(() => {
@@ -154,15 +156,36 @@ export default function TaskStructure() {
     return () => window.removeEventListener("keydown", handler);
   }, [isOpen, drawTeamMode, editingTaskId, isCreatingTask]);
 
+  // ── Load default view every time the window opens ──
+  const prevOpenRef = useRef(false);
+  useEffect(() => {
+    if (isOpen && !prevOpenRef.current) {
+      loadDefaultView();
+    }
+    prevOpenRef.current = isOpen;
+  }, [isOpen, loadDefaultView]);
+
   // ── Pipeline: idea → task (listen for drops from IdeaBin) ──
   useEffect(() => {
     const handler = async (e) => {
       const { ideaId, placementId, title, description } = e.detail || {};
       if (!title || !projectId) return;
       try {
+        // Parse acceptance criteria from description if present
+        let cleanDesc = description || "";
+        const parsedAC = [];
+        const acMatch = cleanDesc.match(/acceptance\s*criteria\s*:\s*([\s\S]*)/i);
+        if (acMatch) {
+          cleanDesc = cleanDesc.slice(0, acMatch.index).trim();
+          const acBlock = acMatch[1].trim();
+          const lines = acBlock.split(/\n/).map(l => l.replace(/^[-\u2022*]\s*/, "").trim()).filter(Boolean);
+          lines.forEach(l => parsedAC.push({ title: l }));
+        }
+
         const task = await createTaskForProject(projectId, {
-          name: title.split(/\s+/).slice(0, 6).join(" "),
-          description: description || "",
+          name: title,
+          description: cleanDesc,
+          acceptance_criteria: parsedAC,
         });
         const created = task?.task || task;
         if (created) {
@@ -199,18 +222,30 @@ export default function TaskStructure() {
   // ── Pipeline: category → team ──
   useEffect(() => {
     const handler = async (e) => {
-      const { categoryId, name, ideaIds } = e.detail || {};
+      const { categoryId, name, ideas: ideaData } = e.detail || {};
       if (!name || !projectId) return;
       try {
         const team = await createTeam(name);
         if (team) {
           // create tasks from the category's ideas and assign them to the new team
-          if (ideaIds?.length) {
-            for (const ideaId of ideaIds) {
+          if (ideaData?.length) {
+            for (const idea of ideaData) {
               try {
+                // Parse acceptance criteria from idea description if present
+                let cleanDesc = idea.description || "";
+                const parsedAC = [];
+                const acMatch = cleanDesc.match(/acceptance\s*criteria\s*:\s*([\s\S]*)/i);
+                if (acMatch) {
+                  cleanDesc = cleanDesc.slice(0, acMatch.index).trim();
+                  const acBlock = acMatch[1].trim();
+                  const lines = acBlock.split(/\n/).map(l => l.replace(/^[-\u2022*]\s*/, "").trim()).filter(Boolean);
+                  lines.forEach(l => parsedAC.push({ title: l }));
+                }
                 const task = await createTaskForProject(projectId, {
-                  name: `Task from idea ${ideaId}`,
-                  team: team.id,
+                  name: idea.title || "Untitled",
+                  description: cleanDesc,
+                  team_id: team.id,
+                  acceptance_criteria: parsedAC,
                 });
                 const created = task?.task || task;
                 if (created) {
@@ -571,9 +606,20 @@ export default function TaskStructure() {
             setGroupBy={setGroupBy}
             teams={teams}
             views={views}
-            activeViewIdx={activeViewIdx}
             loadView={loadView}
             saveView={saveView}
+            updateViewState={updateViewState}
+            deleteView={deleteView}
+            renameView={renameView}
+            toggleDefault={toggleDefault}
+            showViewPanel={showViewPanel}
+            setShowViewPanel={setShowViewPanel}
+            viewName={viewName}
+            setViewName={setViewName}
+            editingViewId={editingViewId}
+            setEditingViewId={setEditingViewId}
+            editingViewName={editingViewName}
+            setEditingViewName={setEditingViewName}
           />
 
           {/* ── Toolbar ── */}

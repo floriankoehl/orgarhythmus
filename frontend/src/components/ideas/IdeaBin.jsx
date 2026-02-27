@@ -38,13 +38,13 @@ import useIdeaBinTransform from "./hooks/useIdeaBinTransform.jsx";
 
 // Extracted API helpers
 
-import { fetchContextsApi } from "./api/contextApi";
+import { fetchContextsApi, assignCategoryToContextApi } from "./api/contextApi";
 import { mergeIdeasApi } from "./api/ideaApi";
 import { authFetch, API } from "./api/authFetch";
 import { exportIdeabinApi, importIdeabinApi, exportCategoryApi, importCategoryApi, insertIdeasIntoCategoryApi } from "./api/exportApi";
 import { delete_task } from "../../api/dependencies_api";
 import { deleteTeamForProject } from "../../api/org_API";
-import { createCategoryApi } from "./api/categoryApi";
+import { createCategoryApi, syncCategoryIdeas } from "./api/categoryApi";
 import { passesAllFiltersCheck } from "./ideaBinFilters";
 
 // ───────────────────── Constants ─────────────────────
@@ -302,7 +302,7 @@ export default function IdeaBin() {
     detectCRConflicts,
     crConflictsByCat,
     runConflictScan,
-  } = useIdeaBinCategories({ activeContext, setActiveContext, fetchAllIdeas: fetch_all_ideas, selectedCategoryIds, categoryOrders });
+  } = useIdeaBinCategories({ activeContext, setActiveContext, fetchAllIdeas: fetch_all_ideas, selectedCategoryIds, categoryOrders, ideas });
 
   // ── Transform / Reform hook ──
   const {
@@ -326,13 +326,19 @@ export default function IdeaBin() {
   // ── Pipeline: task → idea (listen for drops from TaskStructure) ──
   useEffect(() => {
     const handleTaskToIdea = async (e) => {
-      const { taskId, name, description } = e.detail || {};
+      const { taskId, name, description, acceptance_criteria } = e.detail || {};
       if (!name) return;
       try {
+        // Build description: original + acceptance criteria as text
+        let fullDesc = description || "";
+        if (acceptance_criteria?.length) {
+          const acLines = acceptance_criteria.map(c => `- ${c.title || c}`).join("\n");
+          fullDesc = fullDesc ? `${fullDesc}\n\nAcceptance criteria:\n${acLines}` : `Acceptance criteria:\n${acLines}`;
+        }
         await authFetch(`${API}/user/ideas/create/`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idea_name: name, description: description || "" }),
+          body: JSON.stringify({ idea_name: name, description: fullDesc }),
         });
         if (taskId && projectId) await delete_task(projectId, taskId);
         playSound("ideaRefactor");
@@ -365,28 +371,54 @@ export default function IdeaBin() {
   // ── Pipeline: team → category (listen for drops from TaskStructure) ──
   useEffect(() => {
     const handleTeamToCategory = async (e) => {
-      const { teamId, name, taskNames } = e.detail || {};
+      const { teamId, name, tasks: taskData } = e.detail || {};
       if (!name) return;
       try {
+        // Create the category
         const data = await createCategoryApi(name, false);
-        if (data?.category?.id && taskNames?.length) {
-          // Create ideas for each task that was in the team
-          for (const tName of taskNames) {
+        const catId = data?.category?.id;
+        if (!catId) return;
+
+        // If user is inside a context, assign category to that context
+        if (activeContext?.id) {
+          try {
+            await assignCategoryToContextApi(catId, activeContext.id);
+            setActiveContext(prev => prev ? { ...prev, category_ids: [...(prev.category_ids || []), catId] } : prev);
+          } catch (err) { console.error("Pipeline assign category to context failed:", err); }
+        }
+
+        // Create ideas for each task that was in the team, placed directly into the category
+        const createdIdeaIds = [];
+        if (taskData?.length) {
+          for (const t of taskData) {
             try {
-              await authFetch(`${API}/user/ideas/create/`, {
+              let fullDesc = t.description || "";
+              if (t.acceptance_criteria?.length) {
+                const acLines = t.acceptance_criteria.map(c => `- ${c.title || c}`).join("\n");
+                fullDesc = fullDesc ? `${fullDesc}\n\nAcceptance criteria:\n${acLines}` : `Acceptance criteria:\n${acLines}`;
+              }
+              const res = await authFetch(`${API}/user/ideas/create/`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ idea_name: tName }),
+                body: JSON.stringify({
+                  idea_name: t.name,
+                  description: fullDesc,
+                  category_id: catId,
+                  context_id: activeContext?.id || undefined,
+                }),
               });
+              const json = await res.json();
+              if (json?.idea?.id) createdIdeaIds.push(json.idea.id);
             } catch (_) { /* skip individual failures */ }
           }
         }
+
         if (teamId && projectId) {
           window.dispatchEvent(new CustomEvent("pipeline-delete-team", { detail: { teamId } }));
         }
         playSound("ideaRefactor");
-        fetch_all_ideas();
-        fetch_categories();
+        await fetch_all_ideas();
+        await fetch_categories();
       } catch (err) {
         console.error("Pipeline team→category failed:", err);
       }
@@ -408,7 +440,7 @@ export default function IdeaBin() {
       window.removeEventListener("pipeline-team-to-category", handleTeamToCategory);
       window.removeEventListener("pipeline-delete-category", handleDeleteCategory);
     };
-  }, [projectId, fetch_all_ideas, fetch_categories, delete_category]);
+  }, [projectId, activeContext, setActiveContext, fetch_all_ideas, fetch_categories, delete_category]);
 
   // ── Drag hook ──
   const {
