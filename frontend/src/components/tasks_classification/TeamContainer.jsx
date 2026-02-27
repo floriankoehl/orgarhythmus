@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useCallback } from "react";
 import { Pencil, Trash2, GripVertical, Minimize2, ChevronDown } from "lucide-react";
 import TaskCard from "./TaskCard";
 
@@ -37,9 +37,12 @@ export default function TeamContainer({
   onDeleteTask,
   setConfirmModal,
   taskMode = false,
+  isTeamSelected = false,
 }) {
   const [minimized, setMinimized] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [taskMarquee, setTaskMarquee] = useState(null); // { startY, currentY }
+  const taskListRef = useRef(null);
   const isEditing = editingTeamId === team.id;
   const isDropTarget = hoverTeamId != null && String(hoverTeamId) === String(team.id);
   const teamColor = team.color || "#6366f1";
@@ -69,8 +72,59 @@ export default function TeamContainer({
     });
   };
 
+  // ── Task marquee selection inside the team ──
+  const handleTaskMarqueeStart = useCallback((e) => {
+    // Only start if clicking on the container background, not on a task card
+    if (e.target.closest("[data-task-item]")) return;
+    if (e.button !== 0) return;
+
+    const startY = e.clientY;
+    setTaskMarquee({ startY, currentY: startY });
+
+    const handleMouseMove = (moveE) => {
+      setTaskMarquee((prev) => prev ? { ...prev, currentY: moveE.clientY } : null);
+    };
+
+    const handleMouseUp = (upE) => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      setTaskMarquee(null);
+
+      const minY = Math.min(startY, upE.clientY);
+      const maxY = Math.max(startY, upE.clientY);
+      if (maxY - minY < 5) return;
+
+      if (!taskListRef.current) return;
+      const items = taskListRef.current.querySelectorAll("[data-task-item]");
+      const hit = [];
+      items.forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.bottom > minY && r.top < maxY) {
+          const id = parseInt(el.dataset.taskId, 10);
+          if (id) hit.push(id);
+        }
+      });
+
+      if (hit.length > 0) {
+        if (upE.ctrlKey || upE.metaKey) {
+          setSelectedTaskIds((old) => {
+            const next = new Set(old);
+            hit.forEach((id) => next.add(id));
+            return next;
+          });
+        } else {
+          setSelectedTaskIds(new Set(hit));
+        }
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  }, [setSelectedTaskIds]);
+
   return (
     <div
+      data-team-container={team.id}
       style={{
         position: "absolute",
         left: position.x,
@@ -80,7 +134,7 @@ export default function TeamContainer({
         zIndex: position.z || 0,
       }}
       className={`flex flex-col rounded-lg shadow-md border overflow-hidden transition-shadow ${
-        isDropTarget ? "ring-2 ring-indigo-400 shadow-lg" : ""
+        isDropTarget ? "ring-2 ring-indigo-400 shadow-lg" : isTeamSelected ? "ring-2 ring-violet-400 shadow-md" : ""
       }`}
       style-border-color={teamColor}
     >
@@ -178,8 +232,10 @@ export default function TeamContainer({
       {/* ── Task list inside container ── */}
       {!minimized && (
         <div
-          className="flex-1 overflow-y-auto px-1 py-0.5"
+          ref={taskListRef}
+          className="flex-1 overflow-y-auto px-1 py-0.5 relative"
           style={{ backgroundColor: `color-mix(in srgb, ${teamColor} 5%, white)` }}
+          onMouseDown={handleTaskMarqueeStart}
         >
           {taskIds.length === 0 ? (
             <div className="text-center text-[10px] text-gray-300 py-4 italic">
@@ -208,6 +264,21 @@ export default function TeamContainer({
               />
             ))
           )}
+
+          {/* Task marquee overlay */}
+          {taskMarquee && taskListRef.current && (() => {
+            const listRect = taskListRef.current.getBoundingClientRect();
+            const top = Math.min(taskMarquee.startY, taskMarquee.currentY) - listRect.top + taskListRef.current.scrollTop;
+            const bottom = Math.max(taskMarquee.startY, taskMarquee.currentY) - listRect.top + taskListRef.current.scrollTop;
+            const h = bottom - top;
+            if (h < 5) return null;
+            return (
+              <div
+                className="absolute left-0 right-0 border border-indigo-400 bg-indigo-100/20 rounded pointer-events-none z-40"
+                style={{ top, height: h }}
+              />
+            );
+          })()}
         </div>
       )}
 

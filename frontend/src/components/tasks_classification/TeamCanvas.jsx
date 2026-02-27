@@ -38,6 +38,8 @@ export default function TeamCanvas({
   drawTeamMode = false,
   setDrawTeamMode,
   createTeamAt,
+  selectedTeamIds,
+  setSelectedTeamIds,
 }) {
   // ── Draw-to-create marquee state ──
   const [marquee, setMarquee] = useState(null); // { startX, startY, currentX, currentY }
@@ -48,16 +50,17 @@ export default function TeamCanvas({
     // Only start on direct canvas background click (not on team containers)
     if (e.target.closest("[data-team-container]")) return;
     if (e.button !== 0) return; // left click only
-    if (!drawModeRef.current) return;
 
+    const isDrawMode = drawModeRef.current;
     const rect = teamCanvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     const scrollLeft = teamCanvasRef.current.scrollLeft;
     const scrollTop = teamCanvasRef.current.scrollTop;
     const startX = e.clientX - rect.left + scrollLeft;
     const startY = e.clientY - rect.top + scrollTop;
+    const ctrlKey = e.ctrlKey || e.metaKey;
 
-    setMarquee({ startX, startY, currentX: startX, currentY: startY });
+    setMarquee({ startX, startY, currentX: startX, currentY: startY, isDrawMode });
 
     let lastX = startX;
     let lastY = startY;
@@ -82,29 +85,59 @@ export default function TeamCanvas({
       const w = mx2 - mx1;
       const h = my2 - my1;
 
-      // Minimum size check
-      if (w < 80 || h < 50) return;
-
-      // Create team at the drawn position
-      createTeamAt?.("New Team", "#6366f1", {
-        x: Math.round(mx1),
-        y: Math.round(my1),
-        w: Math.round(w),
-        h: Math.round(h),
-      }).then((team) => {
-        if (team) {
-          // Put into edit mode so user can name it
-          setEditingTeamId(team.id);
-          setEditingTeamName(team.name || "New Team");
-          // Exit draw mode
-          setDrawTeamMode?.(false);
+      if (isDrawMode) {
+        // Draw-to-create team
+        if (w < 80 || h < 50) return;
+        createTeamAt?.("New Team", "#6366f1", {
+          x: Math.round(mx1),
+          y: Math.round(my1),
+          w: Math.round(w),
+          h: Math.round(h),
+        }).then((team) => {
+          if (team) {
+            setEditingTeamId(team.id);
+            setEditingTeamName(team.name || "New Team");
+            setDrawTeamMode?.(false);
+          }
+        }).catch((err) => console.error("Draw-to-create team failed:", err));
+      } else {
+        // Selection marquee for teams
+        if (w * h < 100) {
+          // Just a click — deselect all
+          setSelectedTeamIds?.(new Set());
+          return;
         }
-      }).catch((err) => console.error("Draw-to-create team failed:", err));
+        const hit = [];
+        for (const tid of teamOrder) {
+          const pos = teamPositions[tid];
+          if (!pos) continue;
+          const tx = pos.x || 0;
+          const ty = pos.y || 0;
+          const tw = pos.w || 240;
+          const th = pos.h || 300;
+          if (tx + tw > mx1 && tx < mx2 && ty + th > my1 && ty < my2) {
+            hit.push(tid);
+          }
+        }
+        if (hit.length > 0) {
+          if (ctrlKey) {
+            setSelectedTeamIds?.((old) => {
+              const next = new Set(old);
+              hit.forEach((id) => next.add(id));
+              return next;
+            });
+          } else {
+            setSelectedTeamIds?.(new Set(hit));
+          }
+        } else {
+          setSelectedTeamIds?.(new Set());
+        }
+      }
     };
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
-  }, [teamCanvasRef, createTeamAt, setEditingTeamId, setEditingTeamName, setDrawTeamMode]);
+  }, [teamCanvasRef, createTeamAt, setEditingTeamId, setEditingTeamName, setDrawTeamMode, teamOrder, teamPositions, setSelectedTeamIds]);
 
   // Calculate canvas bounds to fit all containers
   let maxX = 600, maxY = 400;
@@ -138,12 +171,17 @@ export default function TeamCanvas({
           const y = Math.min(marquee.startY, marquee.currentY);
           const w = Math.abs(marquee.currentX - marquee.startX);
           const h = Math.abs(marquee.currentY - marquee.startY);
+          const isDrawing = marquee.isDrawMode;
           return w * h > 100 ? (
             <div
               style={{ left: x, top: y, width: w, height: h }}
-              className="absolute border-2 border-amber-500 bg-amber-100/30 shadow-lg rounded pointer-events-none z-[9999]"
+              className={`absolute border-2 rounded pointer-events-none z-[9999] ${
+                isDrawing
+                  ? "border-amber-500 bg-amber-100/30 shadow-lg"
+                  : "border-indigo-400 bg-indigo-100/20"
+              }`}
             >
-              {w >= 80 && h >= 50 && (
+              {isDrawing && w >= 80 && h >= 50 && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span className="text-[10px] text-amber-700 font-semibold bg-amber-50/90 px-2 py-0.5 rounded">
                     {Math.round(w)} × {Math.round(h)}
@@ -158,6 +196,7 @@ export default function TeamCanvas({
           const pos = teamPositions[teamId];
           if (!team || !pos) return null;
           const taskIds = tasksByTeamMap[teamId] || [];
+          const isTeamSelected = selectedTeamIds?.has(teamId);
 
           return (
             <TeamContainer
@@ -188,6 +227,7 @@ export default function TeamCanvas({
               onDeleteTask={onDeleteTask}
               setConfirmModal={setConfirmModal}
               taskMode={taskMode}
+              isTeamSelected={isTeamSelected}
             />
           );
         })}

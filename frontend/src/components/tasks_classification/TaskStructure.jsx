@@ -97,6 +97,12 @@ export default function TaskStructure() {
   // ── Draw-to-create team mode ──
   const [drawTeamMode, setDrawTeamMode] = useState(false);
 
+  // ── Selected team IDs (marquee selection on canvas) ──
+  const [selectedTeamIds, setSelectedTeamIds] = useState(new Set());
+
+  // ── Task creation mode (show form in sidebar) ──
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+
   // ── Team editing state ──
   const [editingTeamId, setEditingTeamId] = useState(null);
   const [editingTeamName, setEditingTeamName] = useState("");
@@ -121,7 +127,7 @@ export default function TaskStructure() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isOpen, drawTeamMode]);
+  }, [isOpen, drawTeamMode, editingTaskId, isCreatingTask]);
 
   // ── Derived data ──
   const tasksByTeamMap = useMemo(() => tasksByTeam(), [tasksByTeam]);
@@ -129,13 +135,21 @@ export default function TaskStructure() {
   const isNarrow = windowSize.w < LAYOUT_BREAKPOINT;
 
   // ── Handlers ──
-  const onCreateTask = useCallback(async () => {
-    const task = await createTask({ name: "New Task" });
-    if (task) {
-      setSelectedTaskIds(new Set([task.id]));
-      setEditingTaskId(task.id);
-    }
+  const onCreateTask = useCallback(() => {
+    setIsCreatingTask(true);
+    setEditingTaskId(null);
+  }, []);
+
+  const handleCreateTaskFromForm = useCallback(async (payload) => {
+    const task = await createTask(payload);
+    if (task) setSelectedTaskIds(new Set([task.id]));
+    return task;
   }, [createTask]);
+
+  const handleCloseForm = useCallback(() => {
+    setEditingTaskId(null);
+    setIsCreatingTask(false);
+  }, []);
 
   const onCreateTeam = useCallback(async (name, color) => {
     await createTeam(name, color);
@@ -145,6 +159,7 @@ export default function TaskStructure() {
 
   const onEditTask = useCallback((taskId) => {
     setEditingTaskId(taskId);
+    setIsCreatingTask(false);
   }, []);
 
   const onDeleteTask = useCallback(async (taskId) => {
@@ -281,34 +296,49 @@ export default function TaskStructure() {
 
           {/* ── Main content area ── */}
           <div className="flex flex-1 min-h-0 overflow-hidden">
-            {/* Left sidebar: Task list + Legend panel */}
+            {/* Left sidebar: Task form OR Task list + Legend */}
             <div className="flex flex-col" style={{ width: isNarrow ? "100%" : sidebarWidth }}>
-              <TaskList
-                tasks={tasks}
-                taskOrder={taskOrder}
-                teams={teams}
-                dragging={dragging}
-                dragSource={dragSource}
-                hoverIndex={hoverIndex}
-                prevIndex={prevIndex}
-                hoverUnassigned={hoverUnassigned}
-                handleTaskDrag={handleTaskDrag}
-                selectedTaskIds={selectedTaskIds}
-                setSelectedTaskIds={setSelectedTaskIds}
-                onEditTask={onEditTask}
-                onDeleteTask={onDeleteTask}
-                onCreateTask={onCreateTask}
-                setConfirmModal={setConfirmModal}
-                taskListRef={taskListRef}
-                sidebarWidth={isNarrow ? "100%" : sidebarWidth}
-                taskMode={taskMode}
-              />
+              {(editingTask || isCreatingTask) ? (
+                <TaskEditPanel
+                  task={editingTask}
+                  isNew={isCreatingTask}
+                  teams={teams}
+                  teamOrder={teamOrder}
+                  onUpdate={onUpdateTask}
+                  onCreate={handleCreateTaskFromForm}
+                  onClose={handleCloseForm}
+                  milestones={[]}
+                />
+              ) : (
+                <>
+                  <TaskList
+                    tasks={tasks}
+                    taskOrder={taskOrder}
+                    teams={teams}
+                    dragging={dragging}
+                    dragSource={dragSource}
+                    hoverIndex={hoverIndex}
+                    prevIndex={prevIndex}
+                    hoverUnassigned={hoverUnassigned}
+                    handleTaskDrag={handleTaskDrag}
+                    selectedTaskIds={selectedTaskIds}
+                    setSelectedTaskIds={setSelectedTaskIds}
+                    onEditTask={onEditTask}
+                    onDeleteTask={onDeleteTask}
+                    onCreateTask={onCreateTask}
+                    setConfirmModal={setConfirmModal}
+                    taskListRef={taskListRef}
+                    sidebarWidth={isNarrow ? "100%" : sidebarWidth}
+                    taskMode={taskMode}
+                  />
 
-              {/* Legend panel */}
-              <TaskLegendPanel
-                collapsed={legendPanelCollapsed}
-                setCollapsed={setLegendPanelCollapsed}
-              />
+                  {/* Legend panel */}
+                  <TaskLegendPanel
+                    collapsed={legendPanelCollapsed}
+                    setCollapsed={setLegendPanelCollapsed}
+                  />
+                </>
+              )}
             </div>
 
             {/* Sidebar resize handle */}
@@ -352,18 +382,8 @@ export default function TaskStructure() {
                 drawTeamMode={drawTeamMode}
                 setDrawTeamMode={setDrawTeamMode}
                 createTeamAt={createTeamAt}
-              />
-            )}
-
-            {/* Edit panel */}
-            {editingTask && (
-              <TaskEditPanel
-                task={editingTask}
-                teams={teams}
-                teamOrder={teamOrder}
-                onUpdate={onUpdateTask}
-                onClose={() => setEditingTaskId(null)}
-                milestones={[]} // TODO: fetch milestones for task
+                selectedTeamIds={selectedTeamIds}
+                setSelectedTeamIds={setSelectedTeamIds}
               />
             )}
           </div>
