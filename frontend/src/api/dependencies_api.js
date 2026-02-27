@@ -181,13 +181,14 @@ export async function get_all_dependencies(projectId){
     return answer
 }
 
-export async function create_dependency(projectId, sourceId, targetId, { weight, reason } = {}){
+export async function create_dependency(projectId, sourceId, targetId, { weight, reason, description } = {}){
     const body = {
         source: sourceId,
         target: targetId,
     };
     if (weight) body.weight = weight;
     if (reason !== undefined) body.reason = reason;
+    if (description !== undefined) body.description = description;
 
     const res = await authFetch(`/api/projects/${projectId}/create_dependency/`, {
         method: "POST",

@@ -20,6 +20,7 @@ import TaskConfirmModal from "./TaskConfirmModal";
 import TaskDragGhosts from "./TaskDragGhosts";
 import TaskExportModal from "./TaskExportModal";
 import TaskImportModal from "./TaskImportModal";
+import usePromptSettings from "../usePromptSettings";
 
 // ── Layout constants (mirror IdeaBin) ──
 const MIN_SIDEBAR_W = 200;
@@ -36,6 +37,9 @@ const LAYOUT_BREAKPOINT = 520;
  */
 export default function TaskStructure() {
   const { projectId } = useParams();
+
+  // ── Prompt settings (for AI prepend on export) ──
+  const { buildClipboardText } = usePromptSettings();
 
   // ── Floating window ──
   const {
@@ -222,10 +226,20 @@ export default function TaskStructure() {
   // ── Pipeline: category → team ──
   useEffect(() => {
     const handler = async (e) => {
-      const { categoryId, name, ideas: ideaData } = e.detail || {};
+      const { categoryId, name, ideas: ideaData, dropX, dropY } = e.detail || {};
       if (!name || !projectId) return;
       try {
-        const team = await createTeam(name);
+        // Convert screen coordinates to canvas-relative coordinates
+        let team;
+        const canvas = teamCanvasRef.current;
+        if (canvas && dropX != null && dropY != null) {
+          const rect = canvas.getBoundingClientRect();
+          const canvasX = dropX - rect.left + canvas.scrollLeft;
+          const canvasY = dropY - rect.top + canvas.scrollTop;
+          team = await createTeamAt(name, null, { x: Math.max(0, Math.round(canvasX - 120)), y: Math.max(0, Math.round(canvasY - 20)) });
+        } else {
+          team = await createTeam(name);
+        }
         if (team) {
           // create tasks from the category's ideas and assign them to the new team
           if (ideaData?.length) {
@@ -265,7 +279,7 @@ export default function TaskStructure() {
     };
     window.addEventListener("pipeline-category-to-team", handler);
     return () => window.removeEventListener("pipeline-category-to-team", handler);
-  }, [projectId, createTeam, setTasks, fetchTasks]);
+  }, [projectId, createTeam, createTeamAt, teamCanvasRef, setTasks, fetchTasks]);
 
   // ── Pipeline: clean up team from local state when IdeaBin converts it ──
   useEffect(() => {
@@ -316,6 +330,64 @@ export default function TaskStructure() {
     // Refetch tasks to update team assignments display
     fetchTasks();
   }, [createTeam, fetchTasks]);
+
+  // ── Fit all teams into visible canvas area ──
+  const fitAllTeams = useCallback(() => {
+    const canvas = teamCanvasRef.current;
+    if (!canvas || teamOrder.length === 0) return;
+
+    const PAD = 20;
+    const canvasW = canvas.clientWidth;
+    const canvasH = canvas.clientHeight;
+
+    // Compute bounding box of all visible teams
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const posEntries = [];
+    for (const tid of teamOrder) {
+      const pos = teamPositions[tid];
+      if (!pos) continue;
+      const x = pos.x || 0;
+      const y = pos.y || 0;
+      const w = pos.w || 240;
+      const h = pos.h || 300;
+      posEntries.push({ tid, x, y, w, h });
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x + w > maxX) maxX = x + w;
+      if (y + h > maxY) maxY = y + h;
+    }
+    if (posEntries.length === 0) return;
+
+    const bboxW = maxX - minX;
+    const bboxH = maxY - minY;
+    if (bboxW <= 0 || bboxH <= 0) return;
+
+    const availW = canvasW - PAD * 2;
+    const availH = canvasH - PAD * 2;
+    const scale = Math.min(1, availW / bboxW, availH / bboxH);
+
+    setTeamPositions((prev) => {
+      const next = { ...prev };
+      for (const { tid, x, y, w, h } of posEntries) {
+        next[tid] = {
+          ...next[tid],
+          x: Math.round((x - minX) * scale + PAD),
+          y: Math.round((y - minY) * scale + PAD),
+          w: Math.round(w * scale),
+          h: Math.round(h * scale),
+        };
+      }
+      // Persist to localStorage
+      try {
+        localStorage.setItem(`ts_team_canvas_${projectId}`, JSON.stringify(next));
+      } catch { /* ignore */ }
+      return next;
+    });
+
+    // Reset scroll to top-left so user sees all teams
+    canvas.scrollLeft = 0;
+    canvas.scrollTop = 0;
+  }, [teamOrder, teamPositions, setTeamPositions, projectId]);
 
   const onEditTask = useCallback((taskId) => {
     setEditingTaskId(taskId);
@@ -441,7 +513,7 @@ export default function TaskStructure() {
 
   // ── Export handlers ──
   const handleExportProject = useCallback(() => {
-    setExportModal({ json: buildExportJson("project"), title: "Export Project Structure" });
+    setExportModal({ json: buildExportJson("project"), title: "Export Project Structure", scenarioKey: "task_multi_teams" });
   }, [buildExportJson]);
 
   const handleExportSelectedTeams = useCallback(() => {
@@ -451,7 +523,8 @@ export default function TaskStructure() {
     const title = ids.length === 1 && teams[ids[0]]
       ? `Export Team — ${teams[ids[0]].name}`
       : `Export ${ids.length} Teams`;
-    setExportModal({ json, title });
+    const scenarioKey = ids.length === 1 ? 'task_single_team' : 'task_multi_teams';
+    setExportModal({ json, title, scenarioKey });
   }, [buildExportJson, selectedTeamIds, teams]);
 
   const handleExportSelectedTasks = useCallback(() => {
@@ -472,7 +545,7 @@ export default function TaskStructure() {
       return obj;
     };
     const tasksJson = ids.map((id) => tasks[id]).filter(Boolean).map(taskToJson);
-    setExportModal({ json: { tasks: tasksJson }, title: `Export ${ids.length} Task${ids.length > 1 ? "s" : ""}` });
+    setExportModal({ json: { tasks: tasksJson }, title: `Export ${ids.length} Task${ids.length > 1 ? "s" : ""}`, scenarioKey: 'task_single_task' });
   }, [selectedTaskIds, tasks]);
 
   // ── Import handlers ──
@@ -644,6 +717,7 @@ export default function TaskStructure() {
             selectedTaskIds={selectedTaskIds}
             viewMode={viewMode}
             setViewMode={setViewMode}
+            onFitAllTeams={fitAllTeams}
           />
 
           {/* ── Main content area ── */}
@@ -760,7 +834,7 @@ export default function TaskStructure() {
                 onExportTeam={(teamId) => {
                   const json = buildExportJson("teams", [teamId]);
                   const team = teams[teamId];
-                  setExportModal({ json, title: `Export Team — ${team?.name || "Team"}` });
+                  setExportModal({ json, title: `Export Team — ${team?.name || "Team"}`, scenarioKey: 'task_single_team' });
                 }}
                 viewMode={viewMode}
                 teamViewOverrides={teamViewOverrides}
@@ -778,6 +852,8 @@ export default function TaskStructure() {
             <TaskExportModal
               json={exportModal.json}
               title={exportModal.title}
+              scenarioKey={exportModal.scenarioKey}
+              buildClipboardText={buildClipboardText}
               onClose={() => setExportModal(null)}
             />
           )}

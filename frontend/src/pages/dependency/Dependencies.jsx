@@ -58,6 +58,7 @@ import DependencyCanvas from '../../components/dependencies/DependencyCanvas';
 import DependencyWarningToast from '../../components/dependencies/DependencyWarningToast';
 import SafetyCheckPanel from '../../components/dependencies/SafetyCheckPanel';
 import DependencyTaskSelectionBar from '../../components/dependencies/DependencyTaskSelectionBar';
+import usePromptSettings from '../../components/usePromptSettings';
 import { useSafetyCheck } from './useSafetyCheck';
 import { DependencyProvider, useDependency } from './DependencyContext.jsx';
 import { playSound, setMuted } from '../../assets/sound_registry';
@@ -81,6 +82,7 @@ function DependenciesContent() {
 
   const { projectId, teamContainerRef, pushAction, selectedTasks, setSelectedTasks } = useDependency();
   const navigate = useNavigate();
+  const { buildClipboardText } = usePromptSettings();
 
   // Secret shortcut: press 0 + 9 together to open 3D view
   const heldRef = useRef(new Set());
@@ -1689,6 +1691,7 @@ function DependenciesContent() {
         setSelectedTasks={setSelectedTasks}
         tasks={tasks}
         onImport={handleBulkImportDependencies}
+        buildClipboardText={buildClipboardText}
       />
 
       {/* Refactor mode: floating ghost card */}

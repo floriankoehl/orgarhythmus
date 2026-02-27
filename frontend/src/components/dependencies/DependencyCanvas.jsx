@@ -881,6 +881,7 @@ export default function DependencyCanvas({
                           target: conn.target,
                           weight: conn.weight || 'strong',
                           reason: conn.reason || '',
+                          description: conn.description || '',
                         });
                       }
                     }}

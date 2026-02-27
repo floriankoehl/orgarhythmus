@@ -250,3 +250,8 @@ from .category_transfer import (
     import_category,
     insert_ideas_into_category,
 )
+
+from .prompt_settings import (
+    get_prompt_settings,
+    update_prompt_settings,
+)

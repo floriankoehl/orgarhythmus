@@ -14,6 +14,7 @@ export default function DependencyTaskSelectionBar({
   setSelectedTasks,
   tasks,            // { [id]: { name, description, difficulty, priority, ... } }
   onImport,         // (jsonString) => Promise<void>
+  buildClipboardText, // (scenarioKey, jsonString) => string | null  (from usePromptSettings)
 }) {
   const [copied, setCopied] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -32,15 +33,18 @@ export default function DependencyTaskSelectionBar({
       };
     });
     const json = JSON.stringify({ tasks: taskList }, null, 2);
+    const text = buildClipboardText
+      ? buildClipboardText('dep_selected_tasks', json)
+      : json;
     try {
-      await navigator.clipboard.writeText(json);
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       playSound('click');
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // fallback
       const el = document.createElement('textarea');
-      el.value = json;
+      el.value = text;
       document.body.appendChild(el);
       el.select();
       document.execCommand('copy');
@@ -48,7 +52,7 @@ export default function DependencyTaskSelectionBar({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
-  }, [selectedTasks, tasks]);
+  }, [selectedTasks, tasks, buildClipboardText]);
 
   const handleClear = useCallback(() => {
     setSelectedTasks(new Set());
@@ -197,6 +201,7 @@ function DependencyImportModal({ selectedTasks, tasks, onImport, onClose }) {
     dependencies: selectedIds.slice(0, 3).map((id, i) => ({
       task_id: Number(id),
       depends_on: i > 0 ? [Number(selectedIds[i - 1])] : [],
+      ...(i > 0 ? { descriptions: { [Number(selectedIds[i - 1])]: "Short explanation why this dependency exists" } } : {}),
     }))
   }, null, 2);
 
@@ -224,7 +229,8 @@ function DependencyImportModal({ selectedTasks, tasks, onImport, onClose }) {
         <div className="flex-1 overflow-auto px-4 py-3">
           <p className="text-xs text-gray-500 mb-2">
             Paste the dependency JSON from your AI. This will create a milestone for each selected task
-            and schedule them respecting dependencies.
+            and schedule them respecting dependencies. Each entry can optionally include a <code className="text-[10px] bg-gray-100 px-1 rounded">"descriptions"</code> object
+            mapping dependency task IDs to a description string explaining why that dependency exists (nullable).
           </p>
 
           <p className="text-[10px] text-gray-400 mb-1 font-medium">Expected format:</p>

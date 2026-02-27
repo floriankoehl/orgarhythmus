@@ -260,6 +260,7 @@ class Dependency(models.Model):
                                related_name="incoming_dependencies")
     weight = models.CharField(max_length=20, choices=WEIGHT_CHOICES, default='strong')
     reason = models.TextField(blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
 
 
 # ═══════════════════════════════════════════════
@@ -848,6 +849,41 @@ class TaskStructureView(models.Model):
 
     def __str__(self):
         return f"{self.owner.username} — {self.name} (project {self.project_id})"
+
+
+# ═══════════════════════════════════════════════
+#  PROMPT SETTINGS (per-user AI prompt configuration)
+# ═══════════════════════════════════════════════
+
+class PromptSettings(models.Model):
+    """
+    Per-user prompt configuration for AI-assisted export workflows.
+
+    Toggles:
+      auto_add_system_prompt   – prepend the global system prompt
+      auto_add_json_format     – prepend the expected JSON schema
+      auto_add_scenario_prompt – prepend the scenario-specific user prompt
+
+    Prompts:
+      system_prompt     – free-text global prompt
+      scenario_prompts  – JSON dict mapping scenario keys to prompt strings:
+          ideabin_single_category, ideabin_multi_categories,
+          task_single_team, task_multi_teams, task_single_task,
+          dep_selected_tasks
+    """
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="prompt_settings")
+    auto_add_system_prompt = models.BooleanField(default=False)
+    auto_add_json_format = models.BooleanField(default=False)
+    auto_add_scenario_prompt = models.BooleanField(default=False)
+    system_prompt = models.TextField(blank=True, default="")
+    scenario_prompts = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Prompt settings"
+
+    def __str__(self):
+        return f"PromptSettings for {self.user.username}"
 
 
 

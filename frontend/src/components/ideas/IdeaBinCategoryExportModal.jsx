@@ -5,10 +5,11 @@ import { X, Copy, Download, Check } from "lucide-react";
  * Modal that shows the category JSON for copying or downloading.
  *
  * Props:
- *   json     – the JSON object to display  { category_name, ideas }
- *   onClose  – close callback
+ *   json               – the JSON object to display  { category_name, ideas }
+ *   onClose            – close callback
+ *   buildClipboardText – (scenarioKey, jsonString) => string | null
  */
-export default function IdeaBinCategoryExportModal({ json, onClose }) {
+export default function IdeaBinCategoryExportModal({ json, onClose, buildClipboardText }) {
   const [copied, setCopied] = useState(false);
   const textRef = useRef(null);
 
@@ -21,8 +22,11 @@ export default function IdeaBinCategoryExportModal({ json, onClose }) {
   }, []);
 
   const handleCopy = useCallback(async () => {
+    const text = buildClipboardText
+      ? buildClipboardText('ideabin_single_category', jsonString)
+      : jsonString;
     try {
-      await navigator.clipboard.writeText(jsonString);
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -32,7 +36,7 @@ export default function IdeaBinCategoryExportModal({ json, onClose }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
-  }, [jsonString]);
+  }, [jsonString, buildClipboardText]);
 
   const handleDownload = useCallback(() => {
     const blob = new Blob([jsonString], { type: "application/json" });

@@ -970,7 +970,7 @@ export function useDependencyMilestones({
                 const tgt = conn.target === milestoneId ? newId : conn.target;
                 try {
                   await create_dependency(projectId, src, tgt);
-                  restoredConns.push({ source: src, target: tgt, weight: conn.weight || 'strong', reason: conn.reason || null });
+                  restoredConns.push({ source: src, target: tgt, weight: conn.weight || 'strong', reason: conn.reason || null, description: conn.description || null });
                 } catch (e) { /* skip if other milestone also deleted */ }
               }
               if (restoredConns.length > 0) {

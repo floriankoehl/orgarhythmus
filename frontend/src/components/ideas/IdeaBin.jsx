@@ -35,6 +35,7 @@ import useIdeaBinDerivedState from "./hooks/useIdeaBinDerivedState";
 import useIdeaBinKeyboard from "./hooks/useIdeaBinKeyboard";
 import useIdeaBinContext from "./hooks/useIdeaBinContext";
 import useIdeaBinTransform from "./hooks/useIdeaBinTransform.jsx";
+import usePromptSettings from "../usePromptSettings";
 
 // Extracted API helpers
 
@@ -62,6 +63,7 @@ export default function IdeaBin() {
   const { projectId } = useParams();   // optional — only present inside a project
   const { user } = useAuth();
   const currentUserId = user?.id;
+  const { buildClipboardText } = usePromptSettings();
 
   // ───── Window state (extracted) ─────
   const headlineInputRef = useRef(null);
@@ -1305,6 +1307,7 @@ export default function IdeaBin() {
               <IdeaBinCategoryExportModal
                 json={categoryExportJson}
                 onClose={() => setCategoryExportJson(null)}
+                buildClipboardText={buildClipboardText}
               />
             )}
 

@@ -38,6 +38,10 @@ urlpatterns = [
 
     #Tasks
     path("user/tasks/", views.user_tasks, name="user_tasks"),  # Get all tasks assigned to current user
+
+    # ── Prompt Settings ──
+    path("user/prompt-settings/", views.get_prompt_settings, name="get_prompt_settings"),
+    path("user/prompt-settings/update/", views.update_prompt_settings, name="update_prompt_settings"),
     path("projects/<int:project_id>/tasks/", views.project_tasks, name="project_tasks", ),
     #TODO ADDED TASK
     path("projects/<int:project_id>/tasks/<int:task_id>/detail/", views.task_detail_view, name="task_detail_view"),  # ADD THIS

@@ -484,6 +484,7 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
     let currentMergeTarget = null;
     let lastDx = 0, lastDy = 0;
     let overTaskStructure = false;
+    let lastClientX = startX, lastClientY = startY;
 
     // Pipeline ghost (DOM element that floats above both windows)
     let pipelineGhost = null;
@@ -505,6 +506,8 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
       }
       lastDx = ev.clientX - startX;
       lastDy = ev.clientY - startY;
+      lastClientX = ev.clientX;
+      lastClientY = ev.clientY;
 
       // When pipeline ghost is active, only move the ghost — don't move the canvas container
       if (!pipelineGhost) {
@@ -578,6 +581,8 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
             categoryId: catKey,
             name: cat.name,
             ideas: ideaData,
+            dropX: lastClientX,
+            dropY: lastClientY,
           },
         }));
         setMergeCategoryTarget(null);

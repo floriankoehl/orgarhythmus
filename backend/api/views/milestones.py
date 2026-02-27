@@ -276,11 +276,14 @@ def bulk_import_dependencies(request, project_id):
 
     Body: {
       "dependencies": [
-        { "task_id": 10, "depends_on": [20, 30] },
+        { "task_id": 10, "depends_on": [20, 30], "descriptions": { "20": "reason text", "30": null } },
         { "task_id": 20, "depends_on": [] },
-        { "task_id": 30, "depends_on": [20] },
+        { "task_id": 30, "depends_on": [20], "descriptions": { "20": "blocks until auth is done" } },
       ]
     }
+
+    Each entry can optionally include a "descriptions" mapping from dep task_id
+    to a description string (or null) for that dependency edge.
 
     Algorithm:
     1. Create one milestone per task (named <task_name>_0).
@@ -405,16 +408,21 @@ def bulk_import_dependencies(request, project_id):
     for entry in deps_list:
         tid = int(entry["task_id"])
         depends_on = entry.get("depends_on", [])
+        descriptions = entry.get("descriptions", {})
         if not isinstance(depends_on, list):
             depends_on = []
+        if not isinstance(descriptions, dict):
+            descriptions = {}
         for dep_id in depends_on:
             dep_id = int(dep_id)
             source_ms = task_to_milestone[dep_id]    # prerequisite
             target_ms = task_to_milestone[tid]        # dependent
+            dep_desc = descriptions.get(str(dep_id)) or descriptions.get(dep_id)
             dep_obj = Dependency.objects.create(
                 source=source_ms,
                 target=target_ms,
                 weight='strong',
+                description=dep_desc if dep_desc else None,
             )
             created_deps.append(dep_obj)
 

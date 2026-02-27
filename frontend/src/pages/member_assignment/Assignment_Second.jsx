@@ -239,7 +239,7 @@ export default function AssignmentSecond() {
           const resDeps = await get_all_dependencies(projectId);
           const fetched = resDeps.dependencies;
           if (Array.isArray(fetched)) {
-            setConnections(fetched.map(d => ({ source: d.source, target: d.target, weight: d.weight || 'strong', reason: d.reason || null })));
+            setConnections(fetched.map(d => ({ source: d.source, target: d.target, weight: d.weight || 'strong', reason: d.reason || null, description: d.description || null })));
           }
         } catch { setConnections([]); }
 

@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Plus, Save, Pencil, Trash2, Eye, Hand, Move, Download, Upload, MoreVertical, Copy, ClipboardPaste, List, AlignLeft, FileText } from "lucide-react";
+import { Plus, Save, Pencil, Trash2, Eye, Hand, Move, Download, Upload, MoreVertical, Copy, ClipboardPaste, List, AlignLeft, FileText, Minimize2 } from "lucide-react";
 
 /**
  * Toolbar strip between title bar and content area.
@@ -33,6 +33,7 @@ export default function TaskStructureToolbar({
   selectedTaskIds,
   viewMode = "compact",
   setViewMode,
+  onFitAllTeams,
 }) {
   const [showTeamForm, setShowTeamForm] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
@@ -160,6 +161,15 @@ export default function TaskStructureToolbar({
           </button>
         ))}
       </div>
+
+      {/* ── Fit All Teams ── */}
+      <button
+        onClick={onFitAllTeams}
+        className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border border-gray-200 text-gray-600 hover:bg-gray-100 font-medium"
+        title="Fit all teams into visible canvas area"
+      >
+        <Minimize2 size={10} /> Fit All
+      </button>
 
       {/* ── Import / Export dropdown ── */}
       <div className="relative">

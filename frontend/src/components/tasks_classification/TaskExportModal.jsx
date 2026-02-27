@@ -10,11 +10,13 @@ import { X, Copy, Download, Check } from "lucide-react";
  *   - Single team: one team + its tasks
  *
  * Props:
- *   json     – the JSON object to display
- *   title    – modal title (e.g. "Export Project", "Export Team — Design")
- *   onClose  – close callback
+ *   json               – the JSON object to display
+ *   title              – modal title (e.g. "Export Project", "Export Team — Design")
+ *   onClose            – close callback
+ *   scenarioKey        – prompt-settings scenario (e.g. "task_single_team")
+ *   buildClipboardText – (scenarioKey, jsonString) => string | null
  */
-export default function TaskExportModal({ json, title, onClose }) {
+export default function TaskExportModal({ json, title, onClose, scenarioKey, buildClipboardText }) {
   const [copied, setCopied] = useState(false);
   const textRef = useRef(null);
 
@@ -26,8 +28,11 @@ export default function TaskExportModal({ json, title, onClose }) {
   }, []);
 
   const handleCopy = useCallback(async () => {
+    const text = (buildClipboardText && scenarioKey)
+      ? buildClipboardText(scenarioKey, jsonString)
+      : jsonString;
     try {
-      await navigator.clipboard.writeText(jsonString);
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -36,7 +41,7 @@ export default function TaskExportModal({ json, title, onClose }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
-  }, [jsonString]);
+  }, [jsonString, scenarioKey, buildClipboardText]);
 
   const handleDownload = useCallback(() => {
     const blob = new Blob([jsonString], { type: "application/json" });

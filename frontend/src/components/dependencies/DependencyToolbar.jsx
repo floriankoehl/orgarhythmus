@@ -813,7 +813,7 @@ export default function DependencyToolbar({
                             onClick={() => {
                               const conn = selectedConnections[0];
                               const fullConn = connections?.find(c => c.source === conn.source && c.target === conn.target) || conn;
-                              setConnectionEditModal({ source: fullConn.source, target: fullConn.target, weight: fullConn.weight || 'strong', reason: fullConn.reason || '' });
+                              setConnectionEditModal({ source: fullConn.source, target: fullConn.target, weight: fullConn.weight || 'strong', reason: fullConn.reason || '', description: fullConn.description || '' });
                             }}
                             className="w-full mt-1 px-2 py-1.5 text-xs rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition"
                           >

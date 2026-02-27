@@ -1,9 +1,10 @@
 import { useAuth } from "../../auth/AuthContext";
 import { Navigate, useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { fetch_all_projects, fetchUserTeams, fetchUserTasks } from '../../api/org_API.js';
-import { User, Mail, Calendar, Folder, LogOut, ArrowRight, Loader2, Users, AlertCircle, Zap, ListTodo } from "lucide-react";
+import { User, Mail, Calendar, Folder, LogOut, ArrowRight, Loader2, Users, AlertCircle, Zap, ListTodo, BotMessageSquare, ChevronDown, ChevronRight, Save } from "lucide-react";
 import Button from "@mui/material/Button";
+import usePromptSettings, { SCENARIO_LABELS, SCENARIO_GROUPS } from "../../components/usePromptSettings";
 
 export default function Profile() {
   const { user, isAuthenticated, loadingUser, logout } = useAuth();
@@ -14,6 +15,46 @@ export default function Profile() {
   const [loadingTeams, setLoadingTeams] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
+
+  // Prompt settings
+  const { settings: promptSettings, loading: loadingPrompt, update: updatePrompt } = usePromptSettings();
+  const [promptDraft, setPromptDraft] = useState(null);      // local edits before save
+  const [promptSaving, setPromptSaving] = useState(false);
+  const [promptExpanded, setPromptExpanded] = useState(false); // collapse section by default
+  const [expandedGroup, setExpandedGroup] = useState(null);   // which scenario group is open
+
+  // Sync draft whenever remote settings arrive
+  useEffect(() => {
+    if (promptSettings && !promptDraft) {
+      setPromptDraft({
+        auto_add_system_prompt: promptSettings.auto_add_system_prompt,
+        auto_add_json_format: promptSettings.auto_add_json_format,
+        auto_add_scenario_prompt: promptSettings.auto_add_scenario_prompt,
+        system_prompt: promptSettings.system_prompt || '',
+        scenario_prompts: { ...promptSettings.scenario_prompts },
+      });
+    }
+  }, [promptSettings]);
+
+  const promptDirty = promptDraft && promptSettings && (
+    promptDraft.auto_add_system_prompt !== promptSettings.auto_add_system_prompt ||
+    promptDraft.auto_add_json_format !== promptSettings.auto_add_json_format ||
+    promptDraft.auto_add_scenario_prompt !== promptSettings.auto_add_scenario_prompt ||
+    promptDraft.system_prompt !== (promptSettings.system_prompt || '') ||
+    JSON.stringify(promptDraft.scenario_prompts) !== JSON.stringify(promptSettings.scenario_prompts)
+  );
+
+  const handleSavePrompt = useCallback(async () => {
+    if (!promptDraft) return;
+    setPromptSaving(true);
+    try {
+      await updatePrompt(promptDraft);
+    } catch (e) {
+      console.error('Failed to save prompt settings:', e);
+    } finally {
+      setPromptSaving(false);
+    }
+  }, [promptDraft, updatePrompt]);
 
   useEffect(() => {
     if (isAuthenticated && user) {
@@ -157,6 +198,147 @@ export default function Profile() {
             </Button>
           </div>
         </header>
+
+
+        {/* ────────── Prompt Settings Section ────────── */}
+        <section className="rounded-2xl border border-slate-200 bg-white/90 backdrop-blur-sm shadow-sm">
+          {/* Section Header (always visible — click to expand/collapse) */}
+          <button
+            onClick={() => setPromptExpanded((p) => !p)}
+            className="w-full flex items-center justify-between p-6 text-left group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-amber-600 flex items-center justify-center">
+                <BotMessageSquare size={20} className="text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-semibold text-slate-900">AI Prompt Settings</h2>
+                <p className="text-sm text-slate-600 mt-0.5">
+                  Configure prompts that are prepended when you copy export JSON
+                </p>
+              </div>
+            </div>
+            {promptExpanded ? <ChevronDown size={20} className="text-slate-400" /> : <ChevronRight size={20} className="text-slate-400" />}
+          </button>
+
+          {promptExpanded && (
+            <div className="px-6 pb-6 flex flex-col gap-6">
+              {loadingPrompt || !promptDraft ? (
+                <div className="flex items-center justify-center py-8 gap-3">
+                  <Loader2 size={24} className="animate-spin text-slate-400" />
+                  <span className="text-sm text-slate-500">Loading prompt settings...</span>
+                </div>
+              ) : (
+                <>
+                  {/* ── Toggles ── */}
+                  <div className="flex flex-col gap-3">
+                    <h3 className="text-sm font-semibold text-slate-700">Auto-Prepend Toggles</h3>
+                    <p className="text-xs text-slate-500 -mt-1">
+                      Control which sections are automatically added before the JSON when you copy an export.
+                    </p>
+                    {[
+                      { key: 'auto_add_system_prompt', label: 'System Prompt', desc: 'Your global instruction (below) is prepended first.' },
+                      { key: 'auto_add_json_format', label: 'Expected JSON Format', desc: 'The expected JSON structure for the AI is shown before the data.' },
+                      { key: 'auto_add_scenario_prompt', label: 'Scenario Prompt', desc: 'A scenario-specific instruction for each export type is added.' },
+                    ].map(({ key, label, desc }) => (
+                      <label key={key} className="flex items-start gap-3 cursor-pointer group">
+                        <div className="pt-0.5">
+                          <input
+                            type="checkbox"
+                            checked={promptDraft[key]}
+                            onChange={(e) => setPromptDraft((d) => ({ ...d, [key]: e.target.checked }))}
+                            className="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-slate-800 group-hover:text-amber-700 transition-colors">{label}</span>
+                          <p className="text-xs text-slate-500">{desc}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+
+                  {/* ── System Prompt ── */}
+                  <div className="flex flex-col gap-2">
+                    <h3 className="text-sm font-semibold text-slate-700">Global System Prompt</h3>
+                    <p className="text-xs text-slate-500">
+                      This is the first block prepended to every export (when enabled above). Tell the AI who it is, what it should do, and any global rules.
+                    </p>
+                    <textarea
+                      value={promptDraft.system_prompt}
+                      onChange={(e) => setPromptDraft((d) => ({ ...d, system_prompt: e.target.value }))}
+                      placeholder="e.g. You are a project management assistant. Return valid JSON only. Always respect the expected format..."
+                      className="w-full font-mono text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-3 resize-y focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
+                      style={{ minHeight: 120, maxHeight: 400 }}
+                    />
+                  </div>
+
+                  {/* ── Scenario Prompts ── */}
+                  <div className="flex flex-col gap-3">
+                    <h3 className="text-sm font-semibold text-slate-700">Scenario-Specific Prompts</h3>
+                    <p className="text-xs text-slate-500">
+                      Each export type can have its own prompt. This is prepended after the system prompt & expected format, right before the actual JSON data.
+                    </p>
+
+                    {SCENARIO_GROUPS.map((group) => (
+                      <div key={group.label} className="border border-slate-200 rounded-lg overflow-hidden">
+                        {/* Group header */}
+                        <button
+                          onClick={() => setExpandedGroup((g) => (g === group.label ? null : group.label))}
+                          className="w-full flex items-center justify-between px-4 py-2.5 bg-slate-50 hover:bg-slate-100 transition-colors text-left"
+                        >
+                          <span className="text-sm font-medium text-slate-700">{group.label}</span>
+                          {expandedGroup === group.label
+                            ? <ChevronDown size={16} className="text-slate-400" />
+                            : <ChevronRight size={16} className="text-slate-400" />}
+                        </button>
+
+                        {/* Group body */}
+                        {expandedGroup === group.label && (
+                          <div className="p-4 flex flex-col gap-4 bg-white">
+                            {group.scenarios.map((key) => (
+                              <div key={key} className="flex flex-col gap-1.5">
+                                <label className="text-xs font-medium text-slate-600">
+                                  {SCENARIO_LABELS[key]}
+                                </label>
+                                <textarea
+                                  value={promptDraft.scenario_prompts[key] || ''}
+                                  onChange={(e) =>
+                                    setPromptDraft((d) => ({
+                                      ...d,
+                                      scenario_prompts: { ...d.scenario_prompts, [key]: e.target.value },
+                                    }))
+                                  }
+                                  placeholder={`Prompt for ${SCENARIO_LABELS[key]}...`}
+                                  className="w-full font-mono text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded p-2.5 resize-y focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400"
+                                  style={{ minHeight: 80, maxHeight: 300 }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ── Save button ── */}
+                  {promptDirty && (
+                    <div className="flex justify-end">
+                      <button
+                        onClick={handleSavePrompt}
+                        disabled={promptSaving}
+                        className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors shadow-sm"
+                      >
+                        {promptSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                        {promptSaving ? 'Saving...' : 'Save Prompt Settings'}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </section>
 
 
          {/* Assigned Tasks Section */}

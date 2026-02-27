@@ -74,15 +74,19 @@ def create_dependency(request, project_id):
 
     dependency, created = Dependency.objects.get_or_create(source=source, target=target)
 
-    # Apply optional weight and reason
+    # Apply optional weight, reason, and description
     weight = request.data.get("weight")
     reason = request.data.get("reason")
+    description = request.data.get("description")
     updated = False
     if weight and weight in dict(Dependency.WEIGHT_CHOICES):
         dependency.weight = weight
         updated = True
     if reason is not None:
         dependency.reason = reason if reason != "" else None
+        updated = True
+    if description is not None:
+        dependency.description = description if description != "" else None
         updated = True
     if updated:
         dependency.save()
@@ -133,7 +137,7 @@ def delete_dependency(request, project_id):
 def update_dependency(request, project_id):
     """
     Update a dependency's weight and/or reason.
-    Body: { "source": <id>, "target": <id>, "weight"?: str, "reason"?: str|null }
+    Body: { "source": <id>, "target": <id>, "weight"?: str, "reason"?: str|null, "description"?: str|null }
     """
     try:
         project = Project.objects.get(pk=project_id)
@@ -160,6 +164,7 @@ def update_dependency(request, project_id):
 
     weight = request.data.get("weight")
     reason = request.data.get("reason")
+    description = request.data.get("description")
 
     if weight is not None:
         if weight not in dict(Dependency.WEIGHT_CHOICES):
@@ -168,6 +173,9 @@ def update_dependency(request, project_id):
 
     if "reason" in request.data:
         dependency.reason = reason if reason else None
+
+    if "description" in request.data:
+        dependency.description = description if description else None
 
     dependency.save()
 

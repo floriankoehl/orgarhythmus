@@ -550,12 +550,14 @@ export default function DependencyModals({
 function ConnectionEditModal({ connectionEditModal, setConnectionEditModal, handleUpdateConnection }) {
   const [editWeight, setEditWeight] = useState('strong');
   const [editReason, setEditReason] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   // Sync local state when modal opens/changes
   useEffect(() => {
     if (connectionEditModal) {
       setEditWeight(connectionEditModal.weight || 'strong');
       setEditReason(connectionEditModal.reason || '');
+      setEditDescription(connectionEditModal.description || '');
     }
   }, [connectionEditModal]);
 
@@ -565,7 +567,7 @@ function ConnectionEditModal({ connectionEditModal, setConnectionEditModal, hand
     if (handleUpdateConnection) {
       const result = await handleUpdateConnection(
         connectionEditModal,
-        { weight: editWeight, reason: editReason || null }
+        { weight: editWeight, reason: editReason || null, description: editDescription || null }
       );
       if (result === false) return; // validation failed — keep modal open
     }
@@ -631,6 +633,28 @@ function ConnectionEditModal({ connectionEditModal, setConnectionEditModal, hand
               className="text-[10px] text-red-500 hover:underline mt-1"
             >
               Clear reason
+            </button>
+          )}
+        </div>
+
+        {/* Description text */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-slate-700 mb-2">
+            Description <span className="text-slate-400 font-normal">(optional, detailed explanation)</span>
+          </label>
+          <textarea
+            value={editDescription}
+            onChange={(e) => setEditDescription(e.target.value)}
+            placeholder="Detailed explanation of why this dependency exists…"
+            rows={3}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-y"
+          />
+          {editDescription && (
+            <button
+              onClick={() => setEditDescription('')}
+              className="text-[10px] text-red-500 hover:underline mt-1"
+            >
+              Clear description
             </button>
           )}
         </div>

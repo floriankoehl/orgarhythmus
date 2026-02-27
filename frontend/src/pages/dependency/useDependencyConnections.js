@@ -352,7 +352,7 @@ export function useDependencyConnections({
           if (deletedConn.reason) {
             await update_dependency(projectId, deletedConn.source, deletedConn.target, { reason: deletedConn.reason });
           }
-          setConnections(prev => [...prev, { source: deletedConn.source, target: deletedConn.target, weight: deletedConn.weight || 'strong', reason: deletedConn.reason || null }]);
+          setConnections(prev => [...prev, { source: deletedConn.source, target: deletedConn.target, weight: deletedConn.weight || 'strong', reason: deletedConn.reason || null, description: deletedConn.description || null }]);
         },
         redo: async () => {
           await delete_dependency(projectId, deletedConn.source, deletedConn.target);
