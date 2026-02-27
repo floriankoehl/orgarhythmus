@@ -40,6 +40,9 @@ export default function TeamCanvas({
   createTeamAt,
   selectedTeamIds,
   setSelectedTeamIds,
+  collapsedTeamIds,
+  onCollapseTeam,
+  onExpandTeam,
 }) {
   // ── Draw-to-create marquee state ──
   const [marquee, setMarquee] = useState(null); // { startX, startY, currentX, currentY }
@@ -165,6 +168,32 @@ export default function TeamCanvas({
           </div>
         )}
 
+        {/* Collapsed team chips at top of canvas */}
+        {teamOrder.some(tid => collapsedTeamIds?.has(tid)) && (
+          <div className="absolute top-1.5 left-2 flex flex-wrap gap-1.5 z-50 max-w-[70%]">
+            {teamOrder.filter(tid => collapsedTeamIds?.has(tid)).map(tid => {
+              const t = teams[tid];
+              if (!t) return null;
+              const taskCount = (tasksByTeamMap[tid] || []).length;
+              return (
+                <button
+                  key={tid}
+                  onClick={() => onExpandTeam?.(tid)}
+                  className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full border shadow-sm hover:shadow-md transition-all cursor-pointer"
+                  style={{
+                    backgroundColor: `color-mix(in srgb, ${t.color || "#6366f1"} 12%, white)`,
+                    borderColor: `color-mix(in srgb, ${t.color || "#6366f1"} 40%, white)`,
+                    color: t.color || "#6366f1",
+                  }}
+                  title={`Click to expand ${t.name}`}
+                >
+                  {t.name || "Unnamed"} · {taskCount}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Marquee overlay */}
         {marquee && (() => {
           const x = Math.min(marquee.startX, marquee.currentX);
@@ -192,6 +221,7 @@ export default function TeamCanvas({
           ) : null;
         })()}
         {teamOrder.map((teamId) => {
+          if (collapsedTeamIds?.has(teamId)) return null;
           const team = teams[teamId];
           const pos = teamPositions[teamId];
           if (!team || !pos) return null;
@@ -228,6 +258,8 @@ export default function TeamCanvas({
               setConfirmModal={setConfirmModal}
               taskMode={taskMode}
               isTeamSelected={isTeamSelected}
+              onCollapseTeam={onCollapseTeam}
+              setSelectedTeamIds={setSelectedTeamIds}
             />
           );
         })}

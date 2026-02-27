@@ -115,10 +115,10 @@ export default function TaskStructureToolbar({
             ? "bg-violet-100 text-violet-700 border-violet-300"
             : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
         }`}
-        title={taskMode ? "Task mode — drag tasks enabled (T)" : "Spectator mode — drag tasks disabled (T)"}
+        title={taskMode ? "Edit mode — drag tasks enabled (T)" : "Spectator mode — drag tasks disabled (T)"}
       >
         {taskMode ? <Move size={10} /> : <Hand size={10} />}
-        {taskMode ? "Task" : "Spectator"}
+        {taskMode ? "Edit" : "Spectator"}
       </button>
 
       {/* Spacer */}

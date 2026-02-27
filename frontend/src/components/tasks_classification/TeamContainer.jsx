@@ -38,6 +38,8 @@ export default function TeamContainer({
   setConfirmModal,
   taskMode = false,
   isTeamSelected = false,
+  onCollapseTeam,
+  setSelectedTeamIds,
 }) {
   const [minimized, setMinimized] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -140,7 +142,21 @@ export default function TeamContainer({
     >
       {/* ── Team header ── */}
       <div
-        onMouseDown={(e) => handleTeamDrag(e, team.id)}
+        onMouseDown={(e) => handleTeamDrag(e, team.id, () => {
+          // Click (no drag) — select/toggle team
+          if (e.ctrlKey || e.metaKey) {
+            setSelectedTeamIds?.((prev) => {
+              const next = new Set(prev);
+              if (next.has(team.id)) next.delete(team.id);
+              else next.add(team.id);
+              return next;
+            });
+          } else {
+            setSelectedTeamIds?.((prev) =>
+              prev.size === 1 && prev.has(team.id) ? new Set() : new Set([team.id])
+            );
+          }
+        })}
         className="flex items-center gap-1.5 px-2 py-1.5 cursor-grab active:cursor-grabbing flex-shrink-0"
         style={{
           backgroundColor: `color-mix(in srgb, ${teamColor} 15%, white)`,
@@ -176,8 +192,14 @@ export default function TeamContainer({
             style={{ color: teamColor }}
             onDoubleClick={(e) => {
               e.stopPropagation();
-              setEditingTeamId(team.id);
-              setEditingTeamName(team.name || "");
+              if (taskMode) {
+                // Edit mode: rename
+                setEditingTeamId(team.id);
+                setEditingTeamName(team.name || "");
+              } else {
+                // Spectator mode: collapse to chip
+                onCollapseTeam?.(team.id);
+              }
             }}
           >
             {team.name || "Unnamed Team"}

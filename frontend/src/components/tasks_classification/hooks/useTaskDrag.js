@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 
 /**
  * Manages drag & drop for the Task Structure page.
@@ -20,19 +20,26 @@ export default function useTaskDrag({
   windowRef,
   taskListRef,
   teamCanvasRef,
+  selectedTaskIds,
 }) {
-  const [dragging, setDragging] = useState(null);        // { task, x, y }
+  const [dragging, setDragging] = useState(null);        // { task, x, y, count }
   const [dragSource, setDragSource] = useState(null);    // { type: "unassigned"|"team", teamId? }
   const [hoverTeamId, setHoverTeamId] = useState(null);  // team being hovered
   const [hoverUnassigned, setHoverUnassigned] = useState(false);
   const [hoverIndex, setHoverIndex] = useState(null);    // index in list for reorder indicator
   const [prevIndex, setPrevIndex] = useState(null);
 
+  // Ref for selected task IDs (multi-task drag)
+  const selectedTaskIdsRef = useRef(new Set());
+  useEffect(() => { selectedTaskIdsRef.current = selectedTaskIds || new Set(); }, [selectedTaskIds]);
+
   const isPointInRect = (px, py, r) =>
     px >= r.left && px <= r.right && py >= r.top && py <= r.bottom;
 
   const handleTaskDrag = useCallback((e, task, index, source) => {
-    let ghost = { task, x: e.clientX, y: e.clientY };
+    const dragCount = selectedTaskIdsRef.current?.has(task.id) && selectedTaskIdsRef.current.size > 1
+      ? selectedTaskIdsRef.current.size : 1;
+    let ghost = { task, x: e.clientX, y: e.clientY, count: dragCount };
     let dropTarget = null;
 
     setDragging(ghost);
@@ -106,12 +113,16 @@ export default function useTaskDrag({
       document.removeEventListener("mouseup", onUp);
 
       if (dropTarget?.type === "team") {
-        // Assign task to team
+        // Assign task(s) to team
         const teamId = parseInt(dropTarget.teamId, 10);
-        assignTaskToTeam(task.id, teamId);
+        const idsToAssign = selectedTaskIdsRef.current?.has(task.id) && selectedTaskIdsRef.current.size > 1
+          ? [...selectedTaskIdsRef.current] : [task.id];
+        for (const id of idsToAssign) assignTaskToTeam(id, teamId);
       } else if (dropTarget?.type === "unassigned" && source.type === "team") {
-        // Move task back to unassigned
-        assignTaskToTeam(task.id, null);
+        // Move task(s) back to unassigned
+        const idsToUnassign = selectedTaskIdsRef.current?.has(task.id) && selectedTaskIdsRef.current.size > 1
+          ? [...selectedTaskIdsRef.current] : [task.id];
+        for (const id of idsToUnassign) assignTaskToTeam(id, null);
       } else if (
         dropTarget?.type === "unassigned" &&
         source.type === "unassigned" &&

@@ -48,6 +48,10 @@ export default function TaskStructure() {
   });
 
   // ── Data hooks ──
+  // ── Selection state (declared early — referenced by hooks below) ──
+  const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
+  const [selectedTeamIds, setSelectedTeamIds] = useState(new Set());
+
   const {
     tasks, setTasks, taskOrder, setTaskOrder,
     loading: tasksLoading,
@@ -62,7 +66,7 @@ export default function TaskStructure() {
     fetchTeams, createTeam, createTeamAt, updateTeamApi, deleteTeam,
     setTeamPosition, bringToFront,
     handleTeamDrag, handleTeamResize,
-  } = useTaskTeams({ projectId });
+  } = useTaskTeams({ projectId, selectedTeamIds });
 
   const {
     views, activeViewIdx, groupBy, setGroupBy,
@@ -82,10 +86,10 @@ export default function TaskStructure() {
     assignTaskToTeam,
     teams, teamPositions,
     windowRef, taskListRef, teamCanvasRef,
+    selectedTaskIds,
   });
 
   // ── UI state ──
-  const [selectedTaskIds, setSelectedTaskIds] = useState(new Set());
   const [editingTaskId, setEditingTaskId] = useState(null);
   const [confirmModal, setConfirmModal] = useState(null);
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_W);
@@ -97,8 +101,8 @@ export default function TaskStructure() {
   // ── Draw-to-create team mode ──
   const [drawTeamMode, setDrawTeamMode] = useState(false);
 
-  // ── Selected team IDs (marquee selection on canvas) ──
-  const [selectedTeamIds, setSelectedTeamIds] = useState(new Set());
+  // ── Collapsed teams (displayed as chips on canvas top) ──
+  const [collapsedTeamIds, setCollapsedTeamIds] = useState(new Set());
 
   // ── Task creation mode (show form in sidebar) ──
   const [isCreatingTask, setIsCreatingTask] = useState(false);
@@ -149,6 +153,17 @@ export default function TaskStructure() {
   const handleCloseForm = useCallback(() => {
     setEditingTaskId(null);
     setIsCreatingTask(false);
+  }, []);
+
+  // ── Auto-assign: single selected team → new task gets assigned there ──
+  const autoAssignTeamId = selectedTeamIds.size === 1 ? [...selectedTeamIds][0] : null;
+
+  const handleCollapseTeam = useCallback((teamId) => {
+    setCollapsedTeamIds((prev) => { const next = new Set(prev); next.add(teamId); return next; });
+  }, []);
+
+  const handleExpandTeam = useCallback((teamId) => {
+    setCollapsedTeamIds((prev) => { const next = new Set(prev); next.delete(teamId); return next; });
   }, []);
 
   const onCreateTeam = useCallback(async (name, color) => {
@@ -298,6 +313,20 @@ export default function TaskStructure() {
           <div className="flex flex-1 min-h-0 overflow-hidden">
             {/* Left sidebar: Task form OR Task list + Legend */}
             <div className="flex flex-col" style={{ width: isNarrow ? "100%" : sidebarWidth }}>
+              {/* Auto-assign team indicator */}
+              {autoAssignTeamId && teams[autoAssignTeamId] && (
+                <div
+                  className="px-3 py-1 text-[10px] font-medium flex items-center gap-1.5 border-b flex-shrink-0"
+                  style={{
+                    backgroundColor: `color-mix(in srgb, ${teams[autoAssignTeamId].color || "#6366f1"} 10%, white)`,
+                    borderColor: `color-mix(in srgb, ${teams[autoAssignTeamId].color || "#6366f1"} 30%, white)`,
+                    color: teams[autoAssignTeamId].color || "#6366f1",
+                  }}
+                >
+                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: teams[autoAssignTeamId].color || "#6366f1" }} />
+                  <span className="truncate">Selected: {teams[autoAssignTeamId].name}</span>
+                </div>
+              )}
               {(editingTask || isCreatingTask) ? (
                 <TaskEditPanel
                   task={editingTask}
@@ -308,6 +337,7 @@ export default function TaskStructure() {
                   onCreate={handleCreateTaskFromForm}
                   onClose={handleCloseForm}
                   milestones={[]}
+                  defaultTeamId={autoAssignTeamId}
                 />
               ) : (
                 <>
@@ -384,6 +414,9 @@ export default function TaskStructure() {
                 createTeamAt={createTeamAt}
                 selectedTeamIds={selectedTeamIds}
                 setSelectedTeamIds={setSelectedTeamIds}
+                collapsedTeamIds={collapsedTeamIds}
+                onCollapseTeam={handleCollapseTeam}
+                onExpandTeam={handleExpandTeam}
               />
             )}
           </div>

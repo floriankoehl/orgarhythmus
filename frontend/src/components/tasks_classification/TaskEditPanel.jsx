@@ -16,12 +16,13 @@ export default function TaskEditPanel({
   onCreate,       // (payload) => Promise<task> for creation mode
   onClose,
   milestones,
+  defaultTeamId,
 }) {
   const [name, setName] = useState(task?.name || "");
   const [description, setDescription] = useState(task?.description || "");
   const [priority, setPriority] = useState(task?.priority || "");
   const [difficulty, setDifficulty] = useState(task?.difficulty || "");
-  const [teamId, setTeamId] = useState(task?.team?.id || task?.team || "");
+  const [teamId, setTeamId] = useState(task?.team?.id || task?.team || defaultTeamId || "");
   const [criteria, setCriteria] = useState(() => {
     try { return JSON.parse(task?.asking || "[]"); }
     catch { return task?.asking ? [task.asking] : []; }
@@ -49,6 +50,11 @@ export default function TaskEditPanel({
     try { setCriteria(JSON.parse(task?.asking || "[]")); }
     catch { setCriteria(task?.asking ? [task.asking] : []); }
   }, [task?.id]);
+
+  // Sync defaultTeamId for creation mode when team selection changes
+  useEffect(() => {
+    if (isNew && defaultTeamId) setTeamId(defaultTeamId);
+  }, [isNew, defaultTeamId]);
 
   // ── Save handler ──
   const handleSave = useCallback(async () => {

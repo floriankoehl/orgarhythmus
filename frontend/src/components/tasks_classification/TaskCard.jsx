@@ -113,10 +113,14 @@ export default function TaskCard({
             e.stopPropagation();
             handleTaskDrag(e, task, index, source);
           }}
-          className={`mt-0.5 ${taskMode ? "cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500" : "text-gray-200 cursor-default"}`}
-          title={taskMode ? "Drag to reorder or assign" : "Switch to task mode (T) to drag"}
+          className={`mt-0.5 flex-shrink-0 rounded p-0.5 transition-colors ${
+            taskMode
+              ? "cursor-grab active:cursor-grabbing bg-gray-100 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-300"
+              : "text-gray-200 cursor-default"
+          }`}
+          title={taskMode ? "Drag to reorder or assign" : "Switch to edit mode (T) to drag"}
         >
-          <GripVertical size={12} />
+          <GripVertical size={14} />
         </div>
 
         {/* Content */}

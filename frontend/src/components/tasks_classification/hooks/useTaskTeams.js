@@ -28,12 +28,16 @@ function saveCanvasState(projectId, positions) {
   } catch { /* ignore */ }
 }
 
-export default function useTaskTeams({ projectId }) {
+export default function useTaskTeams({ projectId, selectedTeamIds }) {
   const [teams, setTeams] = useState({});            // { id: teamObj }
   const [teamOrder, setTeamOrder] = useState([]);     // ordered team ids
   const [teamPositions, setTeamPositions] = useState({});  // { id: {x,y,w,h,z} }
   const [loading, setLoading] = useState(false);
   const nextZ = useRef(1);
+
+  // Ref for selected team IDs (used in drag/resize closures)
+  const selectedTeamIdsRef = useRef(new Set());
+  useEffect(() => { selectedTeamIdsRef.current = selectedTeamIds || new Set(); }, [selectedTeamIds]);
 
   // ── Fetch teams ──
   const fetchTeams = useCallback(async () => {
@@ -180,44 +184,81 @@ export default function useTaskTeams({ projectId }) {
     });
   }, [projectId]);
 
-  // ── Drag team on canvas ──
-  const handleTeamDrag = useCallback((e, teamId) => {
+  // ── Drag team on canvas (supports multi-team + click detection) ──
+  const handleTeamDrag = useCallback((e, teamId, onClickCallback) => {
     e.preventDefault();
     bringToFront(teamId);
     const startX = e.clientX;
     const startY = e.clientY;
-    const startPos = teamPositions[teamId] || { x: 0, y: 0 };
+
+    // Determine which teams to move
+    const selected = selectedTeamIdsRef.current;
+    const ids = selected?.has(teamId) && selected.size > 1
+      ? [...selected] : [teamId];
+
+    // Capture start positions for all affected teams
+    const startPositions = {};
+    for (const id of ids) {
+      startPositions[id] = { ...(teamPositions[id] || { x: 0, y: 0 }) };
+    }
+
+    let didMove = false;
 
     const onMove = (ev) => {
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
-      setTeamPosition(teamId, {
-        x: Math.max(0, startPos.x + dx),
-        y: Math.max(0, startPos.y + dy),
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didMove = true;
+      if (!didMove) return;
+      setTeamPositions((prev) => {
+        const next = { ...prev };
+        for (const id of ids) {
+          const sp = startPositions[id];
+          next[id] = { ...next[id], x: Math.max(0, sp.x + dx), y: Math.max(0, sp.y + dy) };
+        }
+        saveCanvasState(projectId, next);
+        return next;
       });
     };
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      if (!didMove && onClickCallback) onClickCallback();
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [teamPositions, setTeamPosition, bringToFront]);
+  }, [teamPositions, bringToFront, projectId]);
 
-  // ── Resize team container ──
+  // ── Resize team container (supports multi-team) ──
   const handleTeamResize = useCallback((e, teamId) => {
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX;
     const startY = e.clientY;
-    const startPos = teamPositions[teamId] || { w: 240, h: 300 };
+
+    // Determine which teams to resize
+    const selected = selectedTeamIdsRef.current;
+    const ids = selected?.has(teamId) && selected.size > 1
+      ? [...selected] : [teamId];
+
+    const startPositions = {};
+    for (const id of ids) {
+      startPositions[id] = { ...(teamPositions[id] || { w: 240, h: 300 }) };
+    }
 
     const onMove = (ev) => {
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
-      setTeamPosition(teamId, {
-        w: Math.max(180, (startPos.w || 240) + dx),
-        h: Math.max(120, (startPos.h || 300) + dy),
+      setTeamPositions((prev) => {
+        const next = { ...prev };
+        for (const id of ids) {
+          const sp = startPositions[id];
+          next[id] = { ...next[id],
+            w: Math.max(180, (sp.w || 240) + dx),
+            h: Math.max(120, (sp.h || 300) + dy),
+          };
+        }
+        saveCanvasState(projectId, next);
+        return next;
       });
     };
     const onUp = () => {
@@ -226,7 +267,7 @@ export default function useTaskTeams({ projectId }) {
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [teamPositions, setTeamPosition]);
+  }, [teamPositions, projectId]);
 
   // Initial fetch
   useEffect(() => {
