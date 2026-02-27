@@ -23,7 +23,7 @@ import {
   assignIdeaLegendTypeApi,
 } from "../api/ideaApi";
 
-export default function useIdeaBinCategories({ activeContext, setActiveContext, fetchAllIdeas, selectedCategoryIds }) {
+export default function useIdeaBinCategories({ activeContext, setActiveContext, fetchAllIdeas, selectedCategoryIds, categoryOrders }) {
   const [categories, setCategories] = useState({});
   const [displayCategoryForm, setDisplayCategoryForm] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -483,6 +483,7 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
     const startY = e.clientY;
     let currentMergeTarget = null;
     let lastDx = 0, lastDy = 0;
+    let overTaskStructure = false;
 
     const onMove = (ev) => {
       lastDx = ev.clientX - startX;
@@ -518,8 +519,45 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
         currentMergeTarget = found;
         setMergeCategoryTarget(found);
       }
+
+      // ── Pipeline mode: detect TaskStructure window for category → team ──
+      const tsWin = document.querySelector("[data-taskstructure-window]");
+      const pipelineActive = document.querySelector("[data-pipeline-active]");
+      if (tsWin && pipelineActive) {
+        const isP = (px, py, r) => px >= r.left && px <= r.right && py >= r.top && py <= r.bottom;
+        const tsRect = tsWin.getBoundingClientRect();
+        overTaskStructure = isP(ev.clientX, ev.clientY, tsRect);
+        if (overTaskStructure) {
+          tsWin.style.outline = "3px solid #10b981";
+          tsWin.style.outlineOffset = "-3px";
+        } else {
+          tsWin.style.outline = "";
+          tsWin.style.outlineOffset = "";
+        }
+      } else {
+        overTaskStructure = false;
+      }
     };
     const onUp = () => {
+      // Clean up TaskStructure highlight
+      const tsWinCleanup = document.querySelector("[data-taskstructure-window]");
+      if (tsWinCleanup) { tsWinCleanup.style.outline = ""; tsWinCleanup.style.outlineOffset = ""; }
+
+      // ── Pipeline: category → team ──
+      if (overTaskStructure && !isMulti) {
+        window.dispatchEvent(new CustomEvent("pipeline-category-to-team", {
+          detail: {
+            categoryId: catKey,
+            name: cat.name,
+            ideaIds: categoryOrders[catKey] || [],
+          },
+        }));
+        setMergeCategoryTarget(null);
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        return;
+      }
+
       if (refactorMode && !isMulti && currentMergeTarget && currentMergeTarget !== catKey) {
         const targetCat = categories[currentMergeTarget];
         setConfirmModal({
@@ -557,7 +595,7 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [categories, dockedCategories, bring_to_front_category, merge_categories_api, set_position_category, selectedCategoryIds]);
+  }, [categories, categoryOrders, dockedCategories, bring_to_front_category, merge_categories_api, set_position_category, selectedCategoryIds]);
 
   // ── Category resize (multi-resize when multiple selected) ──
   const handleCategoryResize = useCallback((e, catKey, edge = "se") => {

@@ -27,6 +27,8 @@ export default function TaskList({
   taskListRef,
   sidebarWidth,
   taskMode = false,
+  viewMode = "compact",
+  onToggleCriterion,
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAllTasks, setShowAllTasks] = useState(false);
@@ -109,6 +111,8 @@ export default function TaskList({
               onDeleteTask={onDeleteTask}
               setConfirmModal={setConfirmModal}
               taskMode={taskMode}
+              viewMode={viewMode}
+              onToggleCriterion={onToggleCriterion}
             />
           ))
         )}

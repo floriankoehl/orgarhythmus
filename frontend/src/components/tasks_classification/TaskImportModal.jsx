@@ -156,7 +156,16 @@ export default function TaskImportModal({ scope = "project", targetTeamName, onI
     ? `// Array of tasks:
 {
   "tasks": [
-    { "name": "Task A", "description": "...", "priority": "high", "difficulty": "easy" },
+    {
+      "name": "Task A",
+      "description": "...",
+      "priority": "high",
+      "difficulty": "easy",
+      "acceptance_criteria": [
+        { "title": "Criterion 1", "done": true },
+        { "title": "Criterion 2", "description": "Optional clarification", "done": false }
+      ]
+    },
     { "name": "Task B", "description": "..." }
   ]
 }
@@ -172,7 +181,13 @@ export default function TaskImportModal({ scope = "project", targetTeamName, onI
   "name": "Design",
   "color": "#6366f1",
   "tasks": [
-    { "name": "Task A", "description": "...", "priority": "high" }
+    {
+      "name": "Task A",
+      "priority": "high",
+      "acceptance_criteria": [
+        { "title": "Works on mobile", "done": false }
+      ]
+    }
   ]
 }
 
@@ -198,7 +213,16 @@ export default function TaskImportModal({ scope = "project", targetTeamName, onI
       "name": "Design",
       "color": "#6366f1",
       "tasks": [
-        { "name": "Task A", "description": "...", "priority": "high", "difficulty": "medium" },
+        {
+          "name": "Task A",
+          "description": "...",
+          "priority": "high",
+          "difficulty": "medium",
+          "acceptance_criteria": [
+            { "title": "Responsive layout", "done": true },
+            { "title": "Accessibility audit", "done": false }
+          ]
+        },
         { "name": "Task B" }
       ]
     },

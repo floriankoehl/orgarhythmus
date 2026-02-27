@@ -151,7 +151,7 @@ class Task(models.Model):
     description = models.TextField(blank=True, null=True)
     difficulty = models.CharField(max_length=200, blank=True, null=True)
     priority = models.CharField(max_length=200, blank=True, null=True)
-    asking = models.CharField(max_length=200, blank=True, null=True)
+    needs_approval = models.BooleanField(default=False)
     team = models.ForeignKey(Team, on_delete=SET_NULL, null=True, blank=True, related_name="tasks")
     project = models.ForeignKey(
         Project, on_delete=models.CASCADE, related_name="tasks",
@@ -165,10 +165,25 @@ class Task(models.Model):
     order_index = models.IntegerField(default=0)
 
     def __str__(self):
-        return self.name
+        return self.name or "Untitled"
     
     class Meta: 
         ordering = ["team", "order_index"]
+
+
+class AcceptanceCriterion(models.Model):
+    """Individual acceptance criterion belonging to a Task."""
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="acceptance_criteria")
+    title = models.CharField(max_length=500)
+    description = models.TextField(blank=True, default="")
+    done = models.BooleanField(default=False)
+    order = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ["order"]
+
+    def __str__(self):
+        return self.title
 
 
 # ═══════════════════════════════════════════════

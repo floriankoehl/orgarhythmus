@@ -40,7 +40,11 @@ import useIdeaBinTransform from "./hooks/useIdeaBinTransform.jsx";
 
 import { fetchContextsApi } from "./api/contextApi";
 import { mergeIdeasApi } from "./api/ideaApi";
+import { authFetch, API } from "./api/authFetch";
 import { exportIdeabinApi, importIdeabinApi, exportCategoryApi, importCategoryApi, insertIdeasIntoCategoryApi } from "./api/exportApi";
+import { delete_task } from "../../api/dependencies_api";
+import { deleteTeamForProject } from "../../api/org_API";
+import { createCategoryApi } from "./api/categoryApi";
 import { passesAllFiltersCheck } from "./ideaBinFilters";
 
 // ───────────────────── Constants ─────────────────────
@@ -66,6 +70,7 @@ export default function IdeaBin() {
     windowPos, setWindowPos, windowSize, setWindowSize,
     iconPos,
     isMaximized, setIsMaximized,
+    zIndex, bringToFront,
     windowRef, iconRef,
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag, handleWindowResize, handleEdgeResize,
@@ -297,7 +302,7 @@ export default function IdeaBin() {
     detectCRConflicts,
     crConflictsByCat,
     runConflictScan,
-  } = useIdeaBinCategories({ activeContext, setActiveContext, fetchAllIdeas: fetch_all_ideas, selectedCategoryIds });
+  } = useIdeaBinCategories({ activeContext, setActiveContext, fetchAllIdeas: fetch_all_ideas, selectedCategoryIds, categoryOrders });
 
   // ── Transform / Reform hook ──
   const {
@@ -317,6 +322,93 @@ export default function IdeaBin() {
     projectId, ideas, categories, categoryOrders, selectedCategoryIds,
     setConfirmModal, fetch_all_ideas, delete_idea, delete_category,
   });
+
+  // ── Pipeline: task → idea (listen for drops from TaskStructure) ──
+  useEffect(() => {
+    const handleTaskToIdea = async (e) => {
+      const { taskId, name, description } = e.detail || {};
+      if (!name) return;
+      try {
+        await authFetch(`${API}/user/ideas/create/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idea_name: name, description: description || "" }),
+        });
+        if (taskId && projectId) await delete_task(projectId, taskId);
+        playSound("ideaRefactor");
+        fetch_all_ideas();
+        // Notify TaskStructure to remove the task from state
+        window.dispatchEvent(new CustomEvent("pipeline-delete-task", { detail: { taskId } }));
+      } catch (err) {
+        console.error("Pipeline task→idea failed:", err);
+      }
+    };
+    const handleDeleteIdea = async (e) => {
+      const { ideaId, placementId } = e.detail || {};
+      if (ideaId) {
+        try {
+          await delete_idea(ideaId);
+          fetch_all_ideas();
+        } catch (err) {
+          console.error("Pipeline delete idea failed:", err);
+        }
+      }
+    };
+    window.addEventListener("pipeline-task-to-idea", handleTaskToIdea);
+    window.addEventListener("pipeline-delete-idea", handleDeleteIdea);
+    return () => {
+      window.removeEventListener("pipeline-task-to-idea", handleTaskToIdea);
+      window.removeEventListener("pipeline-delete-idea", handleDeleteIdea);
+    };
+  }, [projectId, fetch_all_ideas, delete_idea]);
+
+  // ── Pipeline: team → category (listen for drops from TaskStructure) ──
+  useEffect(() => {
+    const handleTeamToCategory = async (e) => {
+      const { teamId, name, taskNames } = e.detail || {};
+      if (!name) return;
+      try {
+        const data = await createCategoryApi(name, false);
+        if (data?.category?.id && taskNames?.length) {
+          // Create ideas for each task that was in the team
+          for (const tName of taskNames) {
+            try {
+              await authFetch(`${API}/user/ideas/create/`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ idea_name: tName }),
+              });
+            } catch (_) { /* skip individual failures */ }
+          }
+        }
+        if (teamId && projectId) {
+          window.dispatchEvent(new CustomEvent("pipeline-delete-team", { detail: { teamId } }));
+        }
+        playSound("ideaRefactor");
+        fetch_all_ideas();
+        fetch_categories();
+      } catch (err) {
+        console.error("Pipeline team→category failed:", err);
+      }
+    };
+    const handleDeleteCategory = async (e) => {
+      const { categoryId } = e.detail || {};
+      if (categoryId) {
+        try {
+          await delete_category(categoryId);
+          fetch_all_ideas();
+        } catch (err) {
+          console.error("Pipeline delete category failed:", err);
+        }
+      }
+    };
+    window.addEventListener("pipeline-team-to-category", handleTeamToCategory);
+    window.addEventListener("pipeline-delete-category", handleDeleteCategory);
+    return () => {
+      window.removeEventListener("pipeline-team-to-category", handleTeamToCategory);
+      window.removeEventListener("pipeline-delete-category", handleDeleteCategory);
+    };
+  }, [projectId, fetch_all_ideas, fetch_categories, delete_category]);
 
   // ── Drag hook ──
   const {
@@ -1006,7 +1098,7 @@ export default function IdeaBin() {
             position: "fixed",
             left: iconPos.x,
             top: iconPos.y,
-            zIndex: 9980,
+            zIndex: zIndex,
             background: activeContext?.color
               ? `linear-gradient(135deg, ${activeContext.color}, color-mix(in srgb, ${activeContext.color} 70%, #333))`
               : undefined,
@@ -1038,13 +1130,14 @@ export default function IdeaBin() {
         <div
           ref={windowRef}
           data-ideabin-window
+          onMouseDown={bringToFront}
           style={{
             position: "fixed",
             left: windowPos.x,
             top: windowPos.y,
             width: windowSize.w,
             height: windowSize.h,
-            zIndex: 9980,
+            zIndex: zIndex,
           }}
           className="flex flex-col bg-white rounded-lg shadow-2xl border border-gray-300 overflow-hidden select-none"
         >

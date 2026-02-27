@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback } from "react";
-import { Pencil, Trash2, GripVertical, Minimize2, ChevronDown, Upload, Download } from "lucide-react";
+import { Pencil, Trash2, GripVertical, Minimize2, ChevronDown, Upload, Download, Eye, Settings } from "lucide-react";
 import TaskCard from "./TaskCard";
 
 /**
@@ -42,6 +42,9 @@ export default function TeamContainer({
   setSelectedTeamIds,
   onInsertTasks,
   onExportTeam,
+  viewMode = "compact",
+  setTeamViewOverride,
+  onToggleCriterion,
 }) {
   const [minimized, setMinimized] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -213,6 +216,16 @@ export default function TeamContainer({
           {taskIds.length}
         </span>
 
+        {/* Settings button */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowSettings((p) => !p); }}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="p-0.5 rounded hover:bg-white/50 text-gray-400 hover:text-gray-600"
+          title="Team settings"
+        >
+          <Settings size={11} />
+        </button>
+
         {/* Minimize toggle */}
         <button
           onClick={(e) => { e.stopPropagation(); setMinimized((p) => !p); }}
@@ -263,6 +276,19 @@ export default function TeamContainer({
           >
             <Download size={10} /> Export Team
           </button>
+          <div className="my-0.5 border-t border-gray-100" />
+          <div className="px-2 py-0.5 text-[9px] text-gray-400 font-medium">View Mode</div>
+          {["titles", "compact", "full"].map((m) => (
+            <button
+              key={m}
+              onClick={() => { setTeamViewOverride?.(team.id, viewMode === m ? null : m); setShowSettings(false); }}
+              className={`w-full text-left px-2 py-1 text-[10px] flex items-center gap-1 ${
+                viewMode === m ? "text-indigo-700 bg-indigo-50 font-medium" : "text-gray-700 hover:bg-gray-100"
+              }`}
+            >
+              <Eye size={10} /> {m === "titles" ? "Titles Only" : m === "compact" ? "Compact" : "Full View"}
+            </button>
+          ))}
         </div>
       )}
 
@@ -298,6 +324,8 @@ export default function TeamContainer({
                 onDeleteTask={onDeleteTask}
                 setConfirmModal={setConfirmModal}
                 taskMode={taskMode}
+                viewMode={viewMode}
+                onToggleCriterion={onToggleCriterion}
               />
             ))
           )}

@@ -435,6 +435,19 @@ export async function updateTask(projectId, taskId, payload) {
   return await res.json();
 }
 
+// toggleCriterion — toggle done state of an acceptance criterion
+export async function toggleCriterion(projectId, taskId, criterionId) {
+  const res = await authFetch(`/api/projects/${projectId}/tasks/${taskId}/criteria/${criterionId}/toggle/`, {
+    method: 'PATCH',
+  });
+
+  if (!res.ok) {
+    throw new Error('Failed to toggle criterion');
+  }
+
+  return await res.json();
+}
+
 // Assign a user to a task
 export async function assignTaskMember(projectId, taskId, userId) {
   const res = await authFetch(`/api/projects/${projectId}/tasks/${taskId}/assign/`, {

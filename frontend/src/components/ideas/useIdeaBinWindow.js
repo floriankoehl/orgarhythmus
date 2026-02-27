@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { playSound } from "../../assets/sound_registry";
+import { getNextZIndex } from "../shared/windowZIndex";
 
 // ───────────────────── Constants ─────────────────────
 const MIN_W = 290;
@@ -21,8 +22,14 @@ export default function useIdeaBinWindow(headlineInputRef) {
   }));
   const [isMaximized, setIsMaximized] = useState(false);
   const [preMaxState, setPreMaxState] = useState(null);
+  const [zIndex, setZIndex] = useState(() => getNextZIndex());
   const windowRef = useRef(null);
   const iconRef = useRef(null);
+
+  /** Bring this window to front (call on mousedown / focus) */
+  const bringToFront = useCallback(() => {
+    setZIndex(getNextZIndex());
+  }, []);
 
   const openWindow = useCallback(() => {
     setWindowPos({
@@ -30,6 +37,7 @@ export default function useIdeaBinWindow(headlineInputRef) {
       y: Math.max(0, Math.min(iconPos.y - windowSize.h + 48, window.innerHeight - windowSize.h)),
     });
     setIsOpen(true);
+    setZIndex(getNextZIndex());
     playSound('ideaOpen');
     setTimeout(() => headlineInputRef.current?.focus(), 100);
   }, [iconPos, windowSize, headlineInputRef]);
@@ -214,6 +222,7 @@ export default function useIdeaBinWindow(headlineInputRef) {
     windowPos, setWindowPos, windowSize, setWindowSize,
     iconPos,
     isMaximized, setIsMaximized,
+    zIndex, bringToFront,
     windowRef, iconRef,
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag, handleWindowResize, handleEdgeResize,

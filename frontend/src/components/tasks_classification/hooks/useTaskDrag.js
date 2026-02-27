@@ -41,6 +41,7 @@ export default function useTaskDrag({
       ? selectedTaskIdsRef.current.size : 1;
     let ghost = { task, x: e.clientX, y: e.clientY, count: dragCount };
     let dropTarget = null;
+    let overIdeaBin = false;
 
     setDragging(ghost);
     setPrevIndex(index);
@@ -91,6 +92,23 @@ export default function useTaskDrag({
         ? { type: "unassigned" }
         : null;
 
+      // ── Pipeline mode: detect IdeaBin window ──
+      const ibWin = document.querySelector("[data-ideabin-window]");
+      const pipelineActive = document.querySelector("[data-pipeline-active]");
+      if (ibWin && pipelineActive) {
+        const ibRect = ibWin.getBoundingClientRect();
+        overIdeaBin = isPointInRect(ev.clientX, ev.clientY, ibRect);
+        if (overIdeaBin) {
+          ibWin.style.outline = "3px solid #f59e0b";
+          ibWin.style.outlineOffset = "-3px";
+        } else {
+          ibWin.style.outline = "";
+          ibWin.style.outlineOffset = "";
+        }
+      } else {
+        overIdeaBin = false;
+      }
+
       // Track reorder index within source list
       const isOverSrc = source.type === "unassigned" && foundUnassigned;
       if (isOverSrc && srcElements.length > 1) {
@@ -111,6 +129,24 @@ export default function useTaskDrag({
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+
+      // Clean up IdeaBin highlight
+      const ibCleanup = document.querySelector("[data-ideabin-window]");
+      if (ibCleanup) { ibCleanup.style.outline = ""; ibCleanup.style.outlineOffset = ""; }
+
+      // ── Pipeline: task → idea ──
+      if (overIdeaBin) {
+        window.dispatchEvent(new CustomEvent("pipeline-task-to-idea", {
+          detail: {
+            taskId: task.id,
+            name: task.name,
+            description: task.description || "",
+          },
+        }));
+        setDragging(null); setDragSource(null); setHoverTeamId(null);
+        setHoverUnassigned(false); setHoverIndex(null); setPrevIndex(null);
+        return;
+      }
 
       if (dropTarget?.type === "team") {
         // Assign task(s) to team

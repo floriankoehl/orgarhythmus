@@ -4,6 +4,7 @@ import {
   createTaskForProject,
   updateTask,
   delete_task,
+  toggleCriterion,
 } from "../../../api/org_API";
 
 /**
@@ -129,6 +130,27 @@ export default function useTaskData({ projectId }) {
     return groups;
   }, [tasks]);
 
+  // ── Toggle acceptance criterion done state ──
+  const toggleCriterionApi = useCallback(async (taskId, criterionId) => {
+    if (!projectId) return null;
+    try {
+      const updated = await toggleCriterion(projectId, taskId, criterionId);
+      // Update the criterion in the local task object
+      setTasks((prev) => {
+        const task = prev[taskId];
+        if (!task) return prev;
+        const criteria = (task.acceptance_criteria || []).map((c) =>
+          c.id === criterionId ? { ...c, done: updated.done } : c
+        );
+        return { ...prev, [taskId]: { ...task, acceptance_criteria: criteria } };
+      });
+      return updated;
+    } catch (err) {
+      console.error("Failed to toggle criterion:", err);
+      return null;
+    }
+  }, [projectId]);
+
   // Initial fetch
   useEffect(() => {
     fetchTasks();
@@ -147,5 +169,6 @@ export default function useTaskData({ projectId }) {
     assignTaskToTeam,
     reorderUnassigned,
     tasksByTeam,
+    toggleCriterionApi,
   };
 }

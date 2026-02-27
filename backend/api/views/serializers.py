@@ -6,6 +6,7 @@ from ..models import (
     Project,
     Team,
     Task,
+    AcceptanceCriterion,
     Milestone,
     Dependency,
     Idea,
@@ -21,6 +22,14 @@ from ..models import (
     Context,
     CategoryContextPlacement,
 )
+
+
+# AcceptanceCriterionSerializer
+class AcceptanceCriterionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AcceptanceCriterion
+        fields = ["id", "title", "description", "done", "order"]
+        read_only_fields = ["id"]
 
 
 # ProjectSerializer
@@ -40,6 +49,8 @@ class ProjectSerializer(serializers.ModelSerializer):
 
 # TaskSerializer
 class TaskSerializer(serializers.ModelSerializer):
+    acceptance_criteria = AcceptanceCriterionSerializer(many=True, read_only=True)
+
     class Meta:
         model = Task
         fields = [
@@ -48,8 +59,9 @@ class TaskSerializer(serializers.ModelSerializer):
             "description",
             "difficulty",
             "priority",
-            "asking",
+            "needs_approval",
             "team",
+            "acceptance_criteria",
         ]
 
 
@@ -89,6 +101,7 @@ class BasicTeamSerializer(serializers.ModelSerializer):
 # TaskSerializer_TeamView
 class TaskSerializer_TeamView(serializers.ModelSerializer):
     team = BasicTeamSerializer(read_only=True)
+    acceptance_criteria = AcceptanceCriterionSerializer(many=True, read_only=True)
 
     class Meta:
         model = Task
@@ -98,8 +111,9 @@ class TaskSerializer_TeamView(serializers.ModelSerializer):
             "description",
             "difficulty",
             "priority",
-            "asking",
+            "needs_approval",
             "team",
+            "acceptance_criteria",
         ]
 
 
@@ -108,6 +122,7 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
     team = BasicTeamSerializer(read_only=True)
     project_id = serializers.IntegerField(source='project.id', read_only=True)
     assigned_members_data = serializers.SerializerMethodField()
+    acceptance_criteria = AcceptanceCriterionSerializer(many=True, read_only=True)
 
     class Meta:
         model = Task
@@ -117,10 +132,12 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
             'description',
             'priority',
             'difficulty',
+            'needs_approval',
             'team',
             'project_id',
             'assigned_members',
             'assigned_members_data',
+            'acceptance_criteria',
         ]
 
     def get_assigned_members_data(self, obj):
@@ -275,6 +292,7 @@ class MilestoneSerializer_Deps(serializers.ModelSerializer):
 
 class TaskSerializer_Deps(serializers.ModelSerializer):
     milestones = MilestoneSerializer_Deps(many=True, read_only=True)
+    acceptance_criteria = AcceptanceCriterionSerializer(many=True, read_only=True)
 
     class Meta:
         model = Task

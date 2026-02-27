@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Plus, Save, Pencil, Trash2, Eye, Hand, Move, Download, Upload, MoreVertical, Copy, ClipboardPaste } from "lucide-react";
+import { Plus, Save, Pencil, Trash2, Eye, Hand, Move, Download, Upload, MoreVertical, Copy, ClipboardPaste, List, AlignLeft, FileText } from "lucide-react";
 
 /**
  * Toolbar strip between title bar and content area.
@@ -31,6 +31,8 @@ export default function TaskStructureToolbar({
   onExportSelectedTasks,
   selectedTeamIds,
   selectedTaskIds,
+  viewMode = "compact",
+  setViewMode,
 }) {
   const [showTeamForm, setShowTeamForm] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
@@ -135,6 +137,29 @@ export default function TaskStructureToolbar({
 
       {/* Separator */}
       <div className="h-4 w-px bg-gray-300 mx-0.5" />
+
+      {/* ── View mode pills: 1 Titles / 2 Compact / 3 Full ── */}
+      <div className="flex items-center rounded-full bg-gray-100 p-0.5">
+        {[
+          { key: "titles", label: "1", icon: List, tip: "Titles only (1)" },
+          { key: "compact", label: "2", icon: AlignLeft, tip: "Compact (2)" },
+          { key: "full", label: "3", icon: FileText, tip: "Full view (3)" },
+        ].map(({ key, label, icon: Icon, tip }) => (
+          <button
+            key={key}
+            onClick={() => setViewMode?.(key)}
+            className={`flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-medium rounded-full transition-colors ${
+              viewMode === key
+                ? "bg-white shadow-sm text-indigo-700"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+            title={tip}
+          >
+            <Icon size={9} />
+            {label}
+          </button>
+        ))}
+      </div>
 
       {/* ── Import / Export dropdown ── */}
       <div className="relative">

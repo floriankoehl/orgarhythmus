@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { LayoutGrid } from "lucide-react";
+import { playSound } from "../../assets/sound_registry";
+import { createTaskForProject } from "../../api/org_API";
 
 import useFloatingWindow from "../shared/useFloatingWindow";
 import useTaskData from "./hooks/useTaskData";
@@ -38,7 +40,7 @@ export default function TaskStructure() {
   // ── Floating window ──
   const {
     isOpen, windowPos, windowSize, iconPos,
-    isMaximized, windowRef, iconRef,
+    isMaximized, zIndex, bringToFront: bringWindowToFront, windowRef, iconRef,
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag,
     handleWindowResize, handleEdgeResize,
@@ -59,7 +61,12 @@ export default function TaskStructure() {
     loading: tasksLoading,
     fetchTasks, createTask, updateTaskApi, deleteTask,
     assignTaskToTeam, reorderUnassigned, tasksByTeam,
+    toggleCriterionApi,
   } = useTaskData({ projectId });
+
+  // Keep a ref to tasks for cross-hook access (e.g. pipeline drag)
+  const tasksRef = useRef(tasks);
+  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
 
   const {
     teams, setTeams, teamOrder, setTeamOrder,
@@ -68,7 +75,7 @@ export default function TaskStructure() {
     fetchTeams, createTeam, createTeamAt, updateTeamApi, deleteTeam,
     setTeamPosition, bringToFront,
     handleTeamDrag, handleTeamResize,
-  } = useTaskTeams({ projectId, selectedTeamIds });
+  } = useTaskTeams({ projectId, selectedTeamIds, tasksRef });
 
   const {
     views, activeViewIdx, groupBy, setGroupBy,
@@ -117,7 +124,12 @@ export default function TaskStructure() {
   const [exportModal, setExportModal] = useState(null);   // { json, title } or null
   const [importModal, setImportModal] = useState(null);   // { scope, targetTeamId?, targetTeamName? } or null
 
-  // ── Keyboard: "t" toggles task mode, Escape cancels draw mode ──
+  // ── Task view mode: "titles" | "compact" | "full" ──
+  const [viewMode, setViewMode] = useState("compact");
+  // ── Per-team view overrides: { teamId: "titles"|"compact"|"full" } ──
+  const [teamViewOverrides, setTeamViewOverrides] = useState({});
+
+  // ── Keyboard: "t" toggles task mode, 1/2/3 changes view mode, Escape cancels draw mode ──
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e) => {
@@ -128,6 +140,9 @@ export default function TaskStructure() {
         e.preventDefault();
         setTaskMode((prev) => !prev);
       }
+      if (e.key === "1") { e.preventDefault(); setViewMode("titles"); }
+      if (e.key === "2") { e.preventDefault(); setViewMode("compact"); }
+      if (e.key === "3") { e.preventDefault(); setViewMode("full"); }
       if (e.key === "Escape") {
         if (drawTeamMode) {
           e.preventDefault();
@@ -138,6 +153,95 @@ export default function TaskStructure() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [isOpen, drawTeamMode, editingTaskId, isCreatingTask]);
+
+  // ── Pipeline: idea → task (listen for drops from IdeaBin) ──
+  useEffect(() => {
+    const handler = async (e) => {
+      const { ideaId, placementId, title, description } = e.detail || {};
+      if (!title || !projectId) return;
+      try {
+        const task = await createTaskForProject(projectId, {
+          name: title.split(/\s+/).slice(0, 6).join(" "),
+          description: description || "",
+        });
+        const created = task?.task || task;
+        if (created) {
+          setTasks((prev) => ({ ...prev, [created.id]: created }));
+          if (!created.team) setTaskOrder((prev) => [...prev, created.id]);
+        }
+        // Delete the source idea
+        window.dispatchEvent(new CustomEvent("pipeline-delete-idea", { detail: { ideaId, placementId } }));
+        playSound("ideaTransform");
+      } catch (err) {
+        console.error("Pipeline idea→task failed:", err);
+      }
+    };
+    window.addEventListener("pipeline-idea-to-task", handler);
+    return () => window.removeEventListener("pipeline-idea-to-task", handler);
+  }, [projectId, setTasks, setTaskOrder]);
+
+  // ── Pipeline: clean up task from local state when IdeaBin converts it ──
+  useEffect(() => {
+    const handler = (e) => {
+      const { taskId } = e.detail || {};
+      if (!taskId) return;
+      setTasks((prev) => {
+        const next = { ...prev };
+        delete next[taskId];
+        return next;
+      });
+      setTaskOrder((prev) => prev.filter((id) => id !== taskId));
+    };
+    window.addEventListener("pipeline-delete-task", handler);
+    return () => window.removeEventListener("pipeline-delete-task", handler);
+  }, [setTasks, setTaskOrder]);
+
+  // ── Pipeline: category → team ──
+  useEffect(() => {
+    const handler = async (e) => {
+      const { categoryId, name, ideaIds } = e.detail || {};
+      if (!name || !projectId) return;
+      try {
+        const team = await createTeam(name);
+        if (team) {
+          // create tasks from the category's ideas and assign them to the new team
+          if (ideaIds?.length) {
+            for (const ideaId of ideaIds) {
+              try {
+                const task = await createTaskForProject(projectId, {
+                  name: `Task from idea ${ideaId}`,
+                  team: team.id,
+                });
+                const created = task?.task || task;
+                if (created) {
+                  setTasks((prev) => ({ ...prev, [created.id]: created }));
+                }
+              } catch (_) { /* skip individual failures */ }
+            }
+          }
+          // delete source category
+          window.dispatchEvent(new CustomEvent("pipeline-delete-category", { detail: { categoryId } }));
+          playSound("ideaTransform");
+          fetchTasks();
+        }
+      } catch (err) {
+        console.error("Pipeline category→team failed:", err);
+      }
+    };
+    window.addEventListener("pipeline-category-to-team", handler);
+    return () => window.removeEventListener("pipeline-category-to-team", handler);
+  }, [projectId, createTeam, setTasks, fetchTasks]);
+
+  // ── Pipeline: clean up team from local state when IdeaBin converts it ──
+  useEffect(() => {
+    const handler = (e) => {
+      const { teamId } = e.detail || {};
+      if (!teamId) return;
+      deleteTeam(teamId);
+    };
+    window.addEventListener("pipeline-delete-team", handler);
+    return () => window.removeEventListener("pipeline-delete-team", handler);
+  }, [deleteTeam]);
 
   // ── Derived data ──
   const tasksByTeamMap = useMemo(() => tasksByTeam(), [tasksByTeam]);
@@ -215,6 +319,32 @@ export default function TaskStructure() {
     }
   }, [updateTaskApi, fetchTasks]);
 
+  // ── Toggle acceptance criterion done state ──
+  const onToggleCriterion = useCallback(async (taskId, criterionId) => {
+    // Optimistic update
+    setTasks((prev) => {
+      const task = prev[taskId];
+      if (!task) return prev;
+      const criteria = (task.acceptance_criteria || []).map((c) =>
+        c.id === criterionId ? { ...c, done: !c.done } : c
+      );
+      return { ...prev, [taskId]: { ...task, acceptance_criteria: criteria } };
+    });
+    await toggleCriterionApi(taskId, criterionId);
+  }, [setTasks, toggleCriterionApi]);
+
+  // ── Set per-team view override ──
+  const setTeamViewOverride = useCallback((teamId, mode) => {
+    setTeamViewOverrides((prev) => {
+      if (!mode) {
+        const next = { ...prev };
+        delete next[teamId];
+        return next;
+      }
+      return { ...prev, [teamId]: mode };
+    });
+  }, []);
+
   // ── Sidebar resize ──
   const handleSidebarResize = useCallback((e) => {
     e.preventDefault();
@@ -239,9 +369,12 @@ export default function TaskStructure() {
       if (t.description) obj.description = t.description;
       if (t.priority) obj.priority = t.priority;
       if (t.difficulty) obj.difficulty = t.difficulty;
-      if (t.asking) {
-        try { const arr = JSON.parse(t.asking); if (arr.length) obj.acceptance_criteria = arr; }
-        catch { if (t.asking) obj.acceptance_criteria = [t.asking]; }
+      if (t.acceptance_criteria && t.acceptance_criteria.length) {
+        obj.acceptance_criteria = t.acceptance_criteria.map((c) => ({
+          title: c.title,
+          ...(c.description ? { description: c.description } : {}),
+          done: !!c.done,
+        }));
       }
       if (t.hard_deadline) obj.hard_deadline = t.hard_deadline;
       return obj;
@@ -294,9 +427,12 @@ export default function TaskStructure() {
       if (t.description) obj.description = t.description;
       if (t.priority) obj.priority = t.priority;
       if (t.difficulty) obj.difficulty = t.difficulty;
-      if (t.asking) {
-        try { const arr = JSON.parse(t.asking); if (arr.length) obj.acceptance_criteria = arr; }
-        catch { if (t.asking) obj.acceptance_criteria = [t.asking]; }
+      if (t.acceptance_criteria && t.acceptance_criteria.length) {
+        obj.acceptance_criteria = t.acceptance_criteria.map((c) => ({
+          title: c.title,
+          ...(c.description ? { description: c.description } : {}),
+          done: !!c.done,
+        }));
       }
       return obj;
     };
@@ -322,6 +458,16 @@ export default function TaskStructure() {
     const importScope = importModal?.scope;
     const targetTeamId = importModal?.targetTeamId;
 
+    // Helper: normalise acceptance_criteria to [{title, description?, done},...] array
+    const normaliseCriteria = (criteria) => {
+      if (!criteria || !Array.isArray(criteria)) return [];
+      return criteria.map((c) =>
+        typeof c === "string"
+          ? { title: c, done: false }
+          : { title: c.title || c.text || "", description: c.description || "", done: !!c.done }
+      ).filter((c) => c.title);
+    };
+
     // Create teams + their tasks
     for (const teamData of (data.teams || [])) {
       const created = await createTeam(teamData.name, teamData.color || "#6366f1");
@@ -333,7 +479,7 @@ export default function TaskStructure() {
             priority: taskData.priority || "",
             difficulty: taskData.difficulty || "",
             team_id: created.id,
-            asking: taskData.acceptance_criteria ? JSON.stringify(taskData.acceptance_criteria) : "[]",
+            acceptance_criteria: normaliseCriteria(taskData.acceptance_criteria),
           };
           if (taskData.hard_deadline) payload.hard_deadline = taskData.hard_deadline;
           await createTask(payload);
@@ -349,7 +495,7 @@ export default function TaskStructure() {
         priority: taskData.priority || "",
         difficulty: taskData.difficulty || "",
         team_id: importScope === "tasks" && targetTeamId ? targetTeamId : null,
-        asking: taskData.acceptance_criteria ? JSON.stringify(taskData.acceptance_criteria) : "[]",
+        acceptance_criteria: normaliseCriteria(taskData.acceptance_criteria),
       };
       if (taskData.hard_deadline) payload.hard_deadline = taskData.hard_deadline;
       await createTask(payload);
@@ -376,14 +522,14 @@ export default function TaskStructure() {
             position: "fixed",
             left: iconPos.x,
             top: iconPos.y,
-            zIndex: 9970,
+            zIndex: zIndex,
           }}
-          className="w-11 h-11 rounded-full shadow-lg bg-gradient-to-br from-indigo-500 to-violet-600 border-2 border-indigo-300
+          className="w-12 h-12 rounded-full shadow-lg bg-gradient-to-br from-indigo-500 to-violet-600 border-2 border-indigo-300
             flex items-center justify-center cursor-pointer select-none
             hover:scale-110 hover:shadow-xl active:scale-95 transition-shadow duration-150"
           title="Open Task Structure"
         >
-          <LayoutGrid size={20} className="text-white drop-shadow" />
+          <LayoutGrid size={22} className="text-white drop-shadow" />
         </div>
       )}
 
@@ -392,13 +538,14 @@ export default function TaskStructure() {
         <div
           ref={windowRef}
           data-taskstructure-window
+          onMouseDown={bringWindowToFront}
           style={{
             position: "fixed",
             left: windowPos.x,
             top: windowPos.y,
             width: windowSize.w,
             height: windowSize.h,
-            zIndex: 9970,
+            zIndex: zIndex,
           }}
           className="flex flex-col bg-white rounded-lg shadow-2xl border border-gray-300 overflow-hidden select-none"
         >
@@ -449,6 +596,8 @@ export default function TaskStructure() {
             onExportSelectedTasks={handleExportSelectedTasks}
             selectedTeamIds={selectedTeamIds}
             selectedTaskIds={selectedTaskIds}
+            viewMode={viewMode}
+            setViewMode={setViewMode}
           />
 
           {/* ── Main content area ── */}
@@ -502,6 +651,8 @@ export default function TaskStructure() {
                     taskListRef={taskListRef}
                     sidebarWidth={isNarrow ? "100%" : sidebarWidth}
                     taskMode={taskMode}
+                    viewMode={viewMode}
+                    onToggleCriterion={onToggleCriterion}
                   />
 
                   {/* Legend panel */}
@@ -565,6 +716,10 @@ export default function TaskStructure() {
                   const team = teams[teamId];
                   setExportModal({ json, title: `Export Team — ${team?.name || "Team"}` });
                 }}
+                viewMode={viewMode}
+                teamViewOverrides={teamViewOverrides}
+                setTeamViewOverride={setTeamViewOverride}
+                onToggleCriterion={onToggleCriterion}
               />
             )}
           </div>

@@ -1,8 +1,13 @@
 import { useRef, useState } from "react";
-import { GripVertical, Users, Pencil, Trash2, MoreVertical, ChevronDown, ChevronRight } from "lucide-react";
+import { GripVertical, Users, Pencil, Trash2, MoreVertical, ChevronDown, ChevronRight, CheckSquare, Square, AlertTriangle, Target, Flag } from "lucide-react";
 
 /**
  * Individual task card rendered in the sidebar task list and within team containers.
+ *
+ * Supports three view modes:
+ *   "titles"  — name only (+ team badge if outside team)
+ *   "compact" — name + description (line-clamp-2)
+ *   "full"    — name + description (expanded) + priority + difficulty + deadline + milestones + acceptance criteria (tickable)
  *
  * Mirrors IdeaBinIdeaCard: draggable, selectable, shows team color accent,
  * priority/difficulty badges, and quick actions.
@@ -24,9 +29,10 @@ export default function TaskCard({
   setConfirmModal,
   taskMode = false,        // when true, dragging is enabled
   insideTeam = false,      // when true, hide team badge (already visible in container header)
+  viewMode = "compact",    // "titles" | "compact" | "full"
+  onToggleCriterion,       // (taskId, criterionId) => void
 }) {
   const [showActions, setShowActions] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
   const moreRef = useRef(null);
 
   if (!task) return null;
@@ -50,6 +56,11 @@ export default function TaskCard({
     medium: "bg-blue-100 text-blue-700",
     easy: "bg-teal-100 text-teal-700",
   };
+
+  // Acceptance criteria from the related model
+  const criteria = task.acceptance_criteria || [];
+  const criteriaTotal = criteria.length;
+  const criteriaDone = criteria.filter((c) => c.done).length;
 
   const handleClick = (e) => {
     if (e.ctrlKey || e.metaKey) {
@@ -125,7 +136,7 @@ export default function TaskCard({
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          {/* Name + team */}
+          {/* Name + team badge */}
           <div className="flex items-center gap-1">
             <span className="font-semibold text-gray-800 truncate">
               {task.name || "Untitled Task"}
@@ -141,28 +152,97 @@ export default function TaskCard({
                 {team.name || "Team"}
               </span>
             )}
+            {/* Criteria progress indicator (compact + titles modes) */}
+            {viewMode !== "full" && criteriaTotal > 0 && (
+              <span className={`text-[8px] px-1 py-0 rounded font-medium flex-shrink-0 ${
+                criteriaDone === criteriaTotal ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+              }`}>
+                {criteriaDone}/{criteriaTotal}
+              </span>
+            )}
           </div>
 
-          {/* Description (collapsed/expanded) */}
-          {task.description && !collapsed && (
-            <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2 whitespace-pre-wrap">
+          {/* ── COMPACT + FULL: Description ── */}
+          {viewMode !== "titles" && task.description && (
+            <p className={`text-[10px] text-gray-500 mt-0.5 whitespace-pre-wrap ${
+              viewMode === "compact" ? "line-clamp-2" : ""
+            }`}>
               {task.description}
             </p>
           )}
 
-          {/* Priority + Difficulty badges */}
-          <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-            {task.priority && (
-              <span className={`text-[9px] px-1 py-0 rounded font-medium ${priorityColors[task.priority?.toLowerCase()] || "bg-gray-100 text-gray-600"}`}>
-                {task.priority}
-              </span>
-            )}
-            {task.difficulty && (
-              <span className={`text-[9px] px-1 py-0 rounded font-medium ${difficultyColors[task.difficulty?.toLowerCase()] || "bg-gray-100 text-gray-600"}`}>
-                {task.difficulty}
-              </span>
-            )}
-          </div>
+          {/* ── FULL only: Priority + Difficulty + Deadline badges ── */}
+          {viewMode === "full" && (task.priority || task.difficulty || task.hard_deadline) && (
+            <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+              {task.priority && (
+                <span className={`text-[9px] px-1 py-0 rounded font-medium ${priorityColors[task.priority?.toLowerCase()] || "bg-gray-100 text-gray-600"}`}>
+                  Priority: {task.priority}
+                </span>
+              )}
+              {task.difficulty && (
+                <span className={`text-[9px] px-1 py-0 rounded font-medium ${difficultyColors[task.difficulty?.toLowerCase()] || "bg-gray-100 text-gray-600"}`}>
+                  Difficulty: {task.difficulty}
+                </span>
+              )}
+              {task.hard_deadline && (
+                <span className="text-[9px] px-1 py-0 rounded font-medium bg-orange-100 text-orange-700">
+                  ⏰ {task.hard_deadline}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* ── FULL: Milestones ── */}
+          {viewMode === "full" && task.milestones && task.milestones.length > 0 && (
+            <div className="mt-1.5">
+              <div className="flex items-center gap-0.5 text-[9px] font-medium text-gray-400 uppercase mb-0.5">
+                <Flag size={8} /> Milestones
+              </div>
+              {task.milestones.map((m, i) => (
+                <div key={m.id || i} className="text-[9px] text-gray-600 pl-2 py-0.5 border-l-2 border-gray-200 ml-0.5 mb-0.5">
+                  <span className="font-medium">{m.name}</span>
+                  {m.description && <span className="text-gray-400 ml-1">— {m.description}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── FULL: Acceptance Criteria (tickable checkboxes) ── */}
+          {viewMode === "full" && criteriaTotal > 0 && (
+            <div className="mt-1.5">
+              <div className="flex items-center gap-0.5 text-[9px] font-medium text-gray-400 uppercase mb-0.5">
+                <CheckSquare size={8} /> Criteria
+                <span className={`ml-auto text-[8px] font-medium ${
+                  criteriaDone === criteriaTotal ? "text-green-600" : "text-gray-400"
+                }`}>
+                  {criteriaDone}/{criteriaTotal}
+                </span>
+              </div>
+              <div className="space-y-0.5">
+                {criteria.map((c) => (
+                  <div
+                    key={c.id}
+                    className="flex items-start gap-1 group/crit cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleCriterion?.(task.id, c.id);
+                    }}
+                  >
+                    {c.done ? (
+                      <CheckSquare size={11} className="text-green-500 mt-0.5 flex-shrink-0" />
+                    ) : (
+                      <Square size={11} className="text-gray-300 group-hover/crit:text-gray-500 mt-0.5 flex-shrink-0" />
+                    )}
+                    <span className={`text-[10px] flex-1 ${
+                      c.done ? "text-gray-400 line-through" : "text-gray-700"
+                    }`}>
+                      {c.title}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Actions (visible on hover) */}

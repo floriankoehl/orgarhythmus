@@ -207,9 +207,9 @@ export default function Profile() {
                           <h3 className="text-lg font-semibold text-slate-900 group-hover:text-emerald-600 transition-colors line-clamp-1">
                             {task.name}
                           </h3>
-                          {task.asking && (
+                          {task.description && (
                             <p className="text-sm text-slate-600 mt-1 line-clamp-2">
-                              {task.asking}
+                              {task.description}
                             </p>
                           )}
                         </div>

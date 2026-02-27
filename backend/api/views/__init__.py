@@ -10,6 +10,7 @@ from .serializers import (
     BasicTeamSerializer,
     TaskSerializer_TeamView,
     TaskExpandedSerializer,
+    AcceptanceCriterionSerializer,
     IdeaSerializer,
     CategorySerializer,
     LegendTypeSerializer,
@@ -60,6 +61,7 @@ from .tasks import (
     fetch_project_tasks,
     reorder_team_tasks,
     set_task_deadline,
+    toggle_criterion,
 )
 
 from .milestones import (

@@ -39,6 +39,7 @@ export default function useIdeaBinDrag(deps) {
     let dropTarget = null;
     let ghost = { idea, x: e.clientX, y: e.clientY };
     let isExternal = false;
+    let overTaskStructure = false;
     let extInfo = { teamId: null, teamName: null, teamColor: null, taskId: null, taskName: null, dayIndex: null, dayLabel: null, dayWeekday: null };
     let lastHighlightedCell = null;
 
@@ -95,6 +96,23 @@ export default function useIdeaBinDrag(deps) {
           lastHighlightedCell = null;
         }
 
+        // ── Pipeline mode: detect TaskStructure window ──
+        const tsWin = document.querySelector("[data-taskstructure-window]");
+        const pipelineActive = document.querySelector("[data-pipeline-active]");
+        if (tsWin && pipelineActive) {
+          const tsRect = tsWin.getBoundingClientRect();
+          overTaskStructure = isPointInRect(ev.clientX, ev.clientY, tsRect);
+          if (overTaskStructure) {
+            tsWin.style.outline = "3px solid #10b981";
+            tsWin.style.outlineOffset = "-3px";
+          } else {
+            tsWin.style.outline = "";
+            tsWin.style.outlineOffset = "";
+          }
+        } else {
+          overTaskStructure = false;
+        }
+
         setExternalGhost({
           idea,
           x: ev.clientX,
@@ -102,6 +120,7 @@ export default function useIdeaBinDrag(deps) {
           ...extInfo,
           dayLabel: extInfo.dayLabel,
           dayWeekday: extInfo.dayWeekday,
+          overTaskStructure,
         });
         setHoverCategory(null);
         setHoverUnassigned(false);
@@ -168,7 +187,27 @@ export default function useIdeaBinDrag(deps) {
         lastHighlightedCell.style.outline = '';
         lastHighlightedCell = null;
       }
+      // Clean up TaskStructure highlight
+      const tsWinCleanup = document.querySelector("[data-taskstructure-window]");
+      if (tsWinCleanup) { tsWinCleanup.style.outline = ""; tsWinCleanup.style.outlineOffset = ""; }
       setExternalGhost(null);
+
+      // ── Pipeline: idea → task ──
+      if (isExternal && overTaskStructure) {
+        window.dispatchEvent(new CustomEvent("pipeline-idea-to-task", {
+          detail: {
+            ideaId: idea.id || idea.idea_id,
+            placementId: idea.placement_id,
+            title: idea.title,
+            description: idea.description || "",
+          },
+        }));
+        setDragging(null); setPrevIndex(null); setHoverIndex(null);
+        setDragSource(null); setHoverCategory(null); setHoverUnassigned(false);
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        return;
+      }
 
       const isVirtualTeamDrop = extInfo.teamId && isNaN(parseInt(extInfo.teamId));
       if (isExternal && (extInfo.teamId || extInfo.dayIndex !== null) && !isVirtualTeamDrop) {

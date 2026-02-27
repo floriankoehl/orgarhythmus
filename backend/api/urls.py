@@ -44,6 +44,7 @@ urlpatterns = [
     path('projects/<int:project_id>/tasks/<int:task_id>/delete/', views.delete_task_by_id),
     path("projects/<int:project_id>/tasks/<int:task_id>/assign/", views.assign_task_member, name="assign_task_member"),
     path("projects/<int:project_id>/tasks/<int:task_id>/set_deadline/", views.set_task_deadline, name="set_task_deadline"),
+    path("projects/<int:project_id>/tasks/<int:task_id>/criteria/<int:criterion_id>/toggle/", views.toggle_criterion, name="toggle_criterion"),
     
     #Notifications
     path("notifications/", views.user_notifications, name="user_notifications"),  # Get all notifications

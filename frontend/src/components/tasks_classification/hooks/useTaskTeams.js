@@ -28,7 +28,7 @@ function saveCanvasState(projectId, positions) {
   } catch { /* ignore */ }
 }
 
-export default function useTaskTeams({ projectId, selectedTeamIds }) {
+export default function useTaskTeams({ projectId, selectedTeamIds, tasksRef }) {
   const [teams, setTeams] = useState({});            // { id: teamObj }
   const [teamOrder, setTeamOrder] = useState([]);     // ordered team ids
   const [teamPositions, setTeamPositions] = useState({});  // { id: {x,y,w,h,z} }
@@ -203,6 +203,7 @@ export default function useTaskTeams({ projectId, selectedTeamIds }) {
     }
 
     let didMove = false;
+    let overIdeaBin = false;
 
     const onMove = (ev) => {
       const dx = ev.clientX - startX;
@@ -218,15 +219,44 @@ export default function useTaskTeams({ projectId, selectedTeamIds }) {
         saveCanvasState(projectId, next);
         return next;
       });
+
+      // Pipeline: detect IdeaBin window
+      const pipelineActive = document.querySelector("[data-pipeline-active]");
+      const ibWin = document.querySelector("[data-ideabin-window]");
+      if (pipelineActive && ibWin) {
+        const r = ibWin.getBoundingClientRect();
+        const over = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+        overIdeaBin = over;
+        ibWin.style.outline = over ? "3px solid #f59e0b" : "";
+        ibWin.style.outlineOffset = over ? "-3px" : "";
+      } else {
+        overIdeaBin = false;
+      }
     };
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      // Clean up highlight
+      const ibWin = document.querySelector("[data-ideabin-window]");
+      if (ibWin) { ibWin.style.outline = ""; ibWin.style.outlineOffset = ""; }
+
+      if (overIdeaBin && ids.length === 1) {
+        const team = teams[teamId];
+        // Gather task names from tasksRef
+        const allTasks = tasksRef?.current || {};
+        const taskNames = Object.values(allTasks)
+          .filter((t) => t.team === teamId)
+          .map((t) => t.name);
+        window.dispatchEvent(new CustomEvent("pipeline-team-to-category", {
+          detail: { teamId, name: team?.name || "Team", taskNames },
+        }));
+        return;
+      }
       if (!didMove && onClickCallback) onClickCallback();
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [teamPositions, bringToFront, projectId]);
+  }, [teamPositions, teams, bringToFront, projectId, tasksRef]);
 
   // ── Resize team container (supports multi-team) ──
   const handleTeamResize = useCallback((e, teamId) => {

@@ -6,11 +6,12 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..models import Project, Team, Task, Milestone, Notification
+from ..models import Project, Team, Task, AcceptanceCriterion, Milestone, Notification
 from .serializers import (
     TaskSerializer_TeamView, 
     TaskExpandedSerializer,
     TaskSerializer_Deps,
+    AcceptanceCriterionSerializer,
 )
 from .helpers import user_has_project_access
 from django.db import transaction
@@ -74,6 +75,7 @@ def project_tasks(request, project_id):
             Task.objects
             .filter(project=project)
             .select_related("team")
+            .prefetch_related("acceptance_criteria")
         )
 
         serializer = TaskSerializer_TeamView(tasks, many=True)
@@ -90,12 +92,13 @@ def project_tasks(request, project_id):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        priority = payload.get("priority") or 0
-        difficulty = payload.get("difficulty") or 0
+        priority = payload.get("priority") or ""
+        difficulty = payload.get("difficulty") or ""
         description = (payload.get("description") or "").strip()
-        approval = bool(payload.get("approval", False))
+        needs_approval = bool(payload.get("needs_approval", False))
         team_id = payload.get("team_id")
         assigned_member_ids = payload.get("assigned_members", [])
+        acceptance_criteria = payload.get("acceptance_criteria", [])
 
         team = None
         if team_id:
@@ -114,8 +117,22 @@ def project_tasks(request, project_id):
             description=description,
             priority=priority,
             difficulty=difficulty,
-            asking=approval,
+            needs_approval=needs_approval,
         )
+
+        # Create acceptance criteria
+        if acceptance_criteria and isinstance(acceptance_criteria, list):
+            for idx, c in enumerate(acceptance_criteria):
+                if isinstance(c, str):
+                    AcceptanceCriterion.objects.create(task=task, title=c, order=idx)
+                elif isinstance(c, dict):
+                    AcceptanceCriterion.objects.create(
+                        task=task,
+                        title=c.get("title", ""),
+                        description=c.get("description", ""),
+                        done=bool(c.get("done", False)),
+                        order=idx,
+                    )
 
         # Assign members to the task if provided
         if assigned_member_ids and isinstance(assigned_member_ids, list):
@@ -133,6 +150,8 @@ def project_tasks(request, project_id):
             if users:
                 task.assigned_members.set(users)
 
+        # Re-fetch with prefetch to include newly created criteria
+        task = Task.objects.select_related("team").prefetch_related("acceptance_criteria").get(pk=task.pk)
         serializer = TaskSerializer_TeamView(task)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -151,6 +170,7 @@ def task_detail_view(request, project_id, task_id):
         task = (
             Task.objects
             .select_related("project", "team")
+            .prefetch_related("acceptance_criteria")
             .get(
                 id=task_id,
                 project_id=project_id,
@@ -199,6 +219,26 @@ def task_detail_view(request, project_id, task_id):
         if "description" in data:
             task.description = data["description"].strip() if data["description"] else ""
 
+        if "needs_approval" in data:
+            task.needs_approval = bool(data["needs_approval"])
+
+        # Replace acceptance criteria (full replace strategy)
+        if "acceptance_criteria" in data:
+            task.acceptance_criteria.all().delete()
+            criteria_list = data["acceptance_criteria"]
+            if isinstance(criteria_list, list):
+                for idx, c in enumerate(criteria_list):
+                    if isinstance(c, str):
+                        AcceptanceCriterion.objects.create(task=task, title=c, order=idx)
+                    elif isinstance(c, dict):
+                        AcceptanceCriterion.objects.create(
+                            task=task,
+                            title=c.get("title", ""),
+                            description=c.get("description", ""),
+                            done=bool(c.get("done", False)),
+                            order=idx,
+                        )
+
         if "assigned_members" in data:
             # Update assigned members
             member_ids = data["assigned_members"]
@@ -220,6 +260,8 @@ def task_detail_view(request, project_id, task_id):
 
         task.save()
 
+        # Re-fetch with prefetch to include updated criteria
+        task = Task.objects.select_related("project", "team").prefetch_related("acceptance_criteria").get(pk=task.pk)
         serializer = TaskExpandedSerializer(task)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -510,7 +552,30 @@ def set_task_deadline(request, project_id, task_id):
     })
 
 
+# toggle_criterion
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def toggle_criterion(request, project_id, task_id, criterion_id):
+    """Toggle the done state of an acceptance criterion."""
+    user = request.user
 
+    try:
+        task = Task.objects.select_related("project").get(id=task_id, project_id=project_id)
+    except Task.DoesNotExist:
+        return Response({"detail": "Task not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(user, task.project):
+        return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
+
+    try:
+        criterion = AcceptanceCriterion.objects.get(id=criterion_id, task=task)
+    except AcceptanceCriterion.DoesNotExist:
+        return Response({"detail": "Criterion not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    criterion.done = not criterion.done
+    criterion.save(update_fields=["done"])
+
+    return Response(AcceptanceCriterionSerializer(criterion).data, status=status.HTTP_200_OK)
 
 
 

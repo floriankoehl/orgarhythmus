@@ -45,6 +45,10 @@ export default function TeamCanvas({
   onExpandTeam,
   onInsertTasks,
   onExportTeam,
+  viewMode = "compact",
+  teamViewOverrides = {},
+  setTeamViewOverride,
+  onToggleCriterion,
 }) {
   // ── Draw-to-create marquee state ──
   const [marquee, setMarquee] = useState(null); // { startX, startY, currentX, currentY }
@@ -264,6 +268,9 @@ export default function TeamCanvas({
               setSelectedTeamIds={setSelectedTeamIds}
               onInsertTasks={onInsertTasks}
               onExportTeam={onExportTeam}
+              viewMode={teamViewOverrides[teamId] || viewMode}
+              setTeamViewOverride={setTeamViewOverride}
+              onToggleCriterion={onToggleCriterion}
             />
           );
         })}

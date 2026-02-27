@@ -1,9 +1,10 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { playSound } from "../../assets/sound_registry";
+import { getNextZIndex } from "./windowZIndex";
 
 /**
  * Generic floating-window hook — manages position, size, icon position,
- * maximize/minimize, and all drag/resize handlers.
+ * maximize/minimize, z-index focus, and all drag/resize handlers.
  *
  * Extracted from useIdeaBinWindow so both IdeaBin and TaskStructure can share it.
  *
@@ -35,8 +36,14 @@ export default function useFloatingWindow(opts = {}) {
   const [iconPos, setIconPos] = useState(() => ({ ...defaultIcon }));
   const [isMaximized, setIsMaximized] = useState(false);
   const [preMaxState, setPreMaxState] = useState(null);
+  const [zIndex, setZIndex] = useState(() => getNextZIndex());
   const windowRef = useRef(null);
   const iconRef = useRef(null);
+
+  /** Bring this window to front (call on mousedown / focus) */
+  const bringToFront = useCallback(() => {
+    setZIndex(getNextZIndex());
+  }, []);
 
   // ── Open / minimise / maximise ──
   const openWindow = useCallback(() => {
@@ -45,6 +52,7 @@ export default function useFloatingWindow(opts = {}) {
       y: Math.max(0, Math.min(iconPos.y - windowSize.h + 48, window.innerHeight - windowSize.h)),
     });
     setIsOpen(true);
+    setZIndex(getNextZIndex());
     playSound(openSound);
     if (focusRef) setTimeout(() => focusRef.current?.focus(), 100);
   }, [iconPos, windowSize, openSound, focusRef]);
@@ -195,6 +203,7 @@ export default function useFloatingWindow(opts = {}) {
     windowSize, setWindowSize,
     iconPos, setIconPos,
     isMaximized, setIsMaximized,
+    zIndex, bringToFront,
     windowRef, iconRef,
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag,

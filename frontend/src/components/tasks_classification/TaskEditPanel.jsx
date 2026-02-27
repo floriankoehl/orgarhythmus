@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { X, Plus, Trash2, ChevronDown, ChevronUp, CheckSquare, Milestone as MilestoneIcon, Save } from "lucide-react";
+import { X, Plus, Trash2, ChevronDown, ChevronUp, CheckSquare, Square, Milestone as MilestoneIcon, Save } from "lucide-react";
 
 /**
  * Task editing / creation panel — shown in the left sidebar, replacing the task list.
@@ -24,11 +24,15 @@ export default function TaskEditPanel({
   const [difficulty, setDifficulty] = useState(task?.difficulty || "");
   const [teamId, setTeamId] = useState(task?.team?.id || task?.team || defaultTeamId || "");
   const [criteria, setCriteria] = useState(() => {
-    try { return JSON.parse(task?.asking || "[]"); }
-    catch { return task?.asking ? [task.asking] : []; }
+    return (task?.acceptance_criteria || []).map((c) => ({
+      title: c.title || "",
+      description: c.description || "",
+      done: !!c.done,
+    }));
   });
-  const [newCriterion, setNewCriterion] = useState("");
+  const [newCriterionTitle, setNewCriterionTitle] = useState("");
   const [showMilestones, setShowMilestones] = useState(false);
+  const [expandedCriterionIdx, setExpandedCriterionIdx] = useState(null);
   const [saving, setSaving] = useState(false);
   const nameRef = useRef(null);
 
@@ -47,8 +51,12 @@ export default function TaskEditPanel({
     setPriority(task?.priority || "");
     setDifficulty(task?.difficulty || "");
     setTeamId(task?.team?.id || task?.team || "");
-    try { setCriteria(JSON.parse(task?.asking || "[]")); }
-    catch { setCriteria(task?.asking ? [task.asking] : []); }
+    setCriteria((task?.acceptance_criteria || []).map((c) => ({
+      title: c.title || "",
+      description: c.description || "",
+      done: !!c.done,
+    })));
+    setExpandedCriterionIdx(null);
   }, [task?.id]);
 
   // Sync defaultTeamId for creation mode when team selection changes
@@ -69,7 +77,11 @@ export default function TaskEditPanel({
         priority,
         difficulty,
         team_id: teamId || null,
-        asking: JSON.stringify(criteria),
+        acceptance_criteria: criteria.filter((c) => c.title.trim()).map((c, i) => ({
+          title: c.title.trim(),
+          description: (c.description || "").trim(),
+          done: !!c.done,
+        })),
       };
       if (isNew) {
         await onCreate?.(payload);
@@ -83,11 +95,21 @@ export default function TaskEditPanel({
     setSaving(false);
   }, [name, description, priority, difficulty, teamId, criteria, isNew, task, onCreate, onUpdate, onClose, saving]);
 
-  // ── Keyboard: Enter = save, Escape = close ──
+  // ── Auto-save on close: save if valid name, otherwise just close ──
+  const handleAutoSaveClose = useCallback(async () => {
+    const trimmedName = name.trim();
+    if (trimmedName && !saving) {
+      await handleSave();
+    } else {
+      onClose();
+    }
+  }, [name, saving, handleSave, onClose]);
+
+  // ── Keyboard: Enter = save, Escape = auto-save & close ──
   const handleKeyDown = useCallback((e) => {
     if (e.key === "Escape") {
       e.preventDefault();
-      onClose();
+      handleAutoSaveClose();
       return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
@@ -98,12 +120,12 @@ export default function TaskEditPanel({
       e.preventDefault();
       handleSave();
     }
-  }, [onClose, handleSave]);
+  }, [handleAutoSaveClose, handleSave]);
 
   const addCriterion = () => {
-    if (!newCriterion.trim()) return;
-    setCriteria((prev) => [...prev, newCriterion.trim()]);
-    setNewCriterion("");
+    if (!newCriterionTitle.trim()) return;
+    setCriteria((prev) => [...prev, { title: newCriterionTitle.trim(), description: "", done: false }]);
+    setNewCriterionTitle("");
   };
 
   const removeCriterion = (idx) => {
@@ -120,7 +142,7 @@ export default function TaskEditPanel({
         <span className="text-[11px] font-semibold text-gray-700">
           {isNew ? "New Task" : "Edit Task"}
         </span>
-        <button onClick={onClose} className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+        <button onClick={handleAutoSaveClose} className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600">
           <X size={14} />
         </button>
       </div>
@@ -197,25 +219,62 @@ export default function TaskEditPanel({
           <label className="text-[9px] font-medium text-gray-500 uppercase flex items-center gap-1">
             <CheckSquare size={9} /> Acceptance Criteria
           </label>
-          <div className="mt-1 space-y-0.5">
+          <div className="mt-1 space-y-1">
             {criteria.map((c, i) => (
-              <div key={i} className="flex items-start gap-1 group">
-                <span className="text-[10px] text-gray-400 mt-0.5">•</span>
-                <span className="text-[10px] text-gray-700 flex-1">{c}</span>
-                <button
-                  onClick={() => removeCriterion(i)}
-                  className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-400 hover:text-red-500 transition-opacity"
-                >
-                  <Trash2 size={9} />
-                </button>
+              <div key={i} className="group border border-gray-100 rounded px-1.5 py-1">
+                <div className="flex items-start gap-1">
+                  <button
+                    onClick={() => setCriteria((prev) => prev.map((item, j) =>
+                      j === i ? { ...item, done: !item.done } : item
+                    ))}
+                    className="mt-0.5 flex-shrink-0"
+                  >
+                    {c.done
+                      ? <CheckSquare size={12} className="text-green-500" />
+                      : <Square size={12} className="text-gray-300 hover:text-gray-500" />
+                    }
+                  </button>
+                  <input
+                    value={c.title}
+                    onChange={(e) => setCriteria((prev) => prev.map((item, j) =>
+                      j === i ? { ...item, title: e.target.value } : item
+                    ))}
+                    placeholder="Criterion title…"
+                    className={`flex-1 text-[10px] bg-transparent border-none focus:outline-none ${c.done ? "text-gray-400 line-through" : "text-gray-700"}`}
+                  />
+                  <button
+                    onClick={() => setExpandedCriterionIdx((prev) => prev === i ? null : i)}
+                    className="p-0.5 text-gray-300 hover:text-gray-500"
+                    title="Toggle description"
+                  >
+                    {expandedCriterionIdx === i ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
+                  </button>
+                  <button
+                    onClick={() => removeCriterion(i)}
+                    className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-400 hover:text-red-500 transition-opacity"
+                  >
+                    <Trash2 size={9} />
+                  </button>
+                </div>
+                {expandedCriterionIdx === i && (
+                  <textarea
+                    value={c.description || ""}
+                    onChange={(e) => setCriteria((prev) => prev.map((item, j) =>
+                      j === i ? { ...item, description: e.target.value } : item
+                    ))}
+                    rows={2}
+                    placeholder="Optional description for clarification…"
+                    className="w-full text-[9px] text-gray-500 border border-gray-100 rounded px-1.5 py-0.5 mt-0.5 resize-none focus:outline-none focus:border-indigo-300 ml-4"
+                  />
+                )}
               </div>
             ))}
           </div>
           <div className="flex items-center gap-1 mt-1">
             <input
               data-criterion-input="true"
-              value={newCriterion}
-              onChange={(e) => setNewCriterion(e.target.value)}
+              value={newCriterionTitle}
+              onChange={(e) => setNewCriterionTitle(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); addCriterion(); } }}
               placeholder="Add criterion…"
               className="flex-1 text-[10px] border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-indigo-300"
@@ -257,7 +316,7 @@ export default function TaskEditPanel({
         </div>
       </div>
 
-      {/* Save / Cancel footer */}
+      {/* Save footer */}
       <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-100 flex-shrink-0">
         <button
           onClick={handleSave}
@@ -267,13 +326,7 @@ export default function TaskEditPanel({
           <Save size={10} />
           {isNew ? "Create" : "Save"}
         </button>
-        <button
-          onClick={onClose}
-          className="text-[10px] px-3 py-1.5 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 font-medium transition-colors"
-        >
-          Cancel
-        </button>
-        <span className="text-[9px] text-gray-400 ml-auto">↵ save</span>
+        <span className="text-[9px] text-gray-400 ml-auto">auto-saves on close</span>
       </div>
     </div>
   );
