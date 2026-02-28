@@ -5,11 +5,12 @@ import { X, Copy, Download, Check } from "lucide-react";
  * Modal that shows the category JSON for copying or downloading.
  *
  * Props:
- *   json               – the JSON object to display  { category_name, ideas }
+ *   json               – the JSON object to display  { category_name, ideas } or { categories: [...] }
  *   onClose            – close callback
  *   buildClipboardText – (scenarioKey, jsonString) => string | null
+ *   scenarioKey        – prompt scenario key (default 'ideabin_single_category')
  */
-export default function IdeaBinCategoryExportModal({ json, onClose, buildClipboardText }) {
+export default function IdeaBinCategoryExportModal({ json, onClose, buildClipboardText, scenarioKey = 'ideabin_single_category' }) {
   const [copied, setCopied] = useState(false);
   const textRef = useRef(null);
 
@@ -23,7 +24,7 @@ export default function IdeaBinCategoryExportModal({ json, onClose, buildClipboa
 
   const handleCopy = useCallback(async () => {
     const text = buildClipboardText
-      ? buildClipboardText('ideabin_single_category', jsonString)
+      ? buildClipboardText(scenarioKey, jsonString)
       : jsonString;
     try {
       await navigator.clipboard.writeText(text);
@@ -36,13 +37,14 @@ export default function IdeaBinCategoryExportModal({ json, onClose, buildClipboa
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
-  }, [jsonString, buildClipboardText]);
+  }, [jsonString, buildClipboardText, scenarioKey]);
 
   const handleDownload = useCallback(() => {
     const blob = new Blob([jsonString], { type: "application/json" });
     const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const safeName = (json.category_name || "category").replace(/[^a-zA-Z0-9_-]/g, "_");
-    const filename = `category_${safeName}_${ts}.json`;
+    const safeName = (json.category_name || json.categories?.map(c => c.category_name).join('_') || "categories").replace(/[^a-zA-Z0-9_-]/g, "_");
+    const prefix = json.categories ? 'categories' : 'category';
+    const filename = `${prefix}_${safeName}_${ts}.json`;
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -51,7 +53,7 @@ export default function IdeaBinCategoryExportModal({ json, onClose, buildClipboa
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-  }, [jsonString, json.category_name]);
+  }, [jsonString, json]);
 
   return (
     <>
@@ -65,7 +67,9 @@ export default function IdeaBinCategoryExportModal({ json, onClose, buildClipboa
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-200">
           <span className="text-sm font-semibold text-gray-800">
-            Export Category — {json.category_name}
+            {json.categories
+              ? `Export ${json.categories.length} Categories`
+              : `Export Category — ${json.category_name}`}
           </span>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X size={16} />

@@ -57,6 +57,21 @@ export async function exportCategoryApi(categoryId) {
 }
 
 /**
+ * Export multiple categories at once.
+ * @param {number[]} categoryIds
+ * @returns {Promise<{ categories: Array<{ category_name: string, ideas: Array }> }>}
+ */
+export async function exportMultipleCategoriesApi(categoryIds) {
+  const res = await authFetch(`${API}/user/categories/export-multi/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category_ids: categoryIds }),
+  });
+  if (!res.ok) throw new Error("Multi-category export failed");
+  return res.json();
+}
+
+/**
  * Import a category from JSON (creates a new category + ideas).
  * @param {object|File} jsonOrFile  – parsed JSON object, or a File
  * @param {number|null} contextId   – optional context to place the new category into

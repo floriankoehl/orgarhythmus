@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { LayoutGrid } from "lucide-react";
 import { playSound } from "../../assets/sound_registry";
-import { createTaskForProject } from "../../api/org_API";
+import { createTaskForProject, bulk_delete_tasks } from "../../api/org_API";
 
 import useFloatingWindow from "../shared/useFloatingWindow";
 import useTaskData from "./hooks/useTaskData";
@@ -122,6 +122,7 @@ export default function TaskStructure() {
   // ── Refs ──
   const taskListRef = useRef(null);
   const teamCanvasRef = useRef(null);
+  const triggerDeleteSelectedRef = useRef(null);
 
   // ── Drag hook ──
   const {
@@ -136,12 +137,22 @@ export default function TaskStructure() {
   });
 
   // ── Keyboard: "t" toggles task mode, 1/2/3 changes view mode, Escape cancels draw mode ──
+  //    Ctrl+T selects all displayed tasks, Delete triggers delete selected, Enter confirms modal
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e) => {
       // Ignore if user is typing in an input/textarea
       const tag = e.target.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable) return;
+
+      // Ctrl+T  → select all displayed tasks
+      if ((e.ctrlKey || e.metaKey) && (e.key === "t" || e.key === "T")) {
+        e.preventDefault();
+        const allIds = Object.keys(tasks).map(Number);
+        setSelectedTaskIds(new Set(allIds));
+        return;
+      }
+
       if (e.key === "t" || e.key === "T") {
         e.preventDefault();
         setTaskMode((prev) => !prev);
@@ -155,10 +166,18 @@ export default function TaskStructure() {
           setDrawTeamMode(false);
         }
       }
+      // Delete key → trigger delete for selected tasks
+      if (e.key === "Delete") {
+        e.preventDefault();
+        if (selectedTaskIds.size > 0) {
+          // We need to call triggerDeleteSelected from the ref
+          triggerDeleteSelectedRef.current?.();
+        }
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isOpen, drawTeamMode, editingTaskId, isCreatingTask]);
+  }, [isOpen, drawTeamMode, editingTaskId, isCreatingTask, tasks, selectedTaskIds]);
 
   // ── Load default view every time the window opens ──
   const prevOpenRef = useRef(false);
@@ -403,6 +422,55 @@ export default function TaskStructure() {
       return next;
     });
   }, [deleteTask, editingTaskId]);
+
+  // ── Bulk-delete selected tasks (with confirmation) ──
+  const triggerDeleteSelected = useCallback(() => {
+    const ids = [...selectedTaskIds];
+    if (ids.length === 0) return;
+
+    const taskItems = ids.map((id) => tasks[id]).filter(Boolean);
+    if (taskItems.length === 0) return;
+
+    setConfirmModal({
+      message: (
+        <div>
+          <p className="text-sm font-medium mb-2">
+            Delete {taskItems.length} task{taskItems.length > 1 ? 's' : ''}?
+          </p>
+          <ul className="text-xs text-gray-600 space-y-0.5 max-h-[160px] overflow-y-auto pr-1">
+            {taskItems.map((t) => (
+              <li key={t.id} className="flex items-start gap-1">
+                <span className="text-red-400 mt-px">•</span>
+                <span className="font-semibold">{t.name || '(untitled)'}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ),
+      confirmLabel: `Delete${taskItems.length > 1 ? ` (${taskItems.length})` : ''}`,
+      confirmColor: 'bg-red-500 hover:bg-red-600',
+      onConfirm: async () => {
+        setConfirmModal(null);
+        try {
+          await bulk_delete_tasks(projectId, ids);
+          setTasks((prev) => {
+            const next = { ...prev };
+            ids.forEach((id) => delete next[id]);
+            return next;
+          });
+          setTaskOrder((prev) => prev.filter((id) => !ids.includes(id)));
+          setSelectedTaskIds(new Set());
+          if (ids.includes(editingTaskId)) setEditingTaskId(null);
+        } catch (e) {
+          console.error('Bulk delete failed', e);
+        }
+      },
+      onCancel: () => setConfirmModal(null),
+    });
+  }, [selectedTaskIds, tasks, projectId, editingTaskId, setTasks, setTaskOrder]);
+
+  // Keep ref in sync so the keyboard handler can call it without stale closure
+  useEffect(() => { triggerDeleteSelectedRef.current = triggerDeleteSelected; }, [triggerDeleteSelected]);
 
   const onRenameTeam = useCallback(async (teamId, newName) => {
     await updateTeamApi(teamId, { name: newName });

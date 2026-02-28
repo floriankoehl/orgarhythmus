@@ -46,6 +46,7 @@ urlpatterns = [
     #TODO ADDED TASK
     path("projects/<int:project_id>/tasks/<int:task_id>/detail/", views.task_detail_view, name="task_detail_view"),  # ADD THIS
     path('projects/<int:project_id>/tasks/<int:task_id>/delete/', views.delete_task_by_id),
+    path('projects/<int:project_id>/tasks/bulk-delete/', views.bulk_delete_tasks, name='bulk_delete_tasks'),
     path("projects/<int:project_id>/tasks/<int:task_id>/assign/", views.assign_task_member, name="assign_task_member"),
     path("projects/<int:project_id>/tasks/<int:task_id>/set_deadline/", views.set_task_deadline, name="set_task_deadline"),
     path("projects/<int:project_id>/tasks/<int:task_id>/criteria/<int:criterion_id>/toggle/", views.toggle_criterion, name="toggle_criterion"),
@@ -76,6 +77,7 @@ urlpatterns = [
     path("user/categories/set_position/", views.set_position_category),
     path("user/categories/set_area/", views.set_area_category),
     path("user/categories/<int:category_id>/export/", views.export_category, name="export_category"),
+    path("user/categories/export-multi/", views.export_categories_multi, name="export_categories_multi"),
     path("user/categories/import/", views.import_category, name="import_category"),
     path("user/categories/<int:category_id>/insert-ideas/", views.insert_ideas_into_category, name="insert_ideas_into_category"),
 

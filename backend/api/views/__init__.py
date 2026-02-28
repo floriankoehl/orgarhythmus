@@ -54,6 +54,7 @@ from .teams import (
 
 from .tasks import (
     delete_task_by_id,
+    bulk_delete_tasks,
     project_tasks,
     task_detail_view,
     assign_task_member,
@@ -247,6 +248,7 @@ from .import_backup import (
 
 from .category_transfer import (
     export_category,
+    export_categories_multi,
     import_category,
     insert_ideas_into_category,
 )

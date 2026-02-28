@@ -60,17 +60,13 @@ from .ideas import _get_accessible_category
 
 # ─── export ──────────────────────────────────────────────
 
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def export_category(request, category_id):
-    """Return a simple JSON blob for one category and its ideas."""
-    user = request.user
 
+def _export_single_category(user, category_id):
+    """Return a dict for one category + its ideas, or None if not found."""
     cat = _get_accessible_category(user, category_id)
     if not cat:
-        return JsonResponse({"error": "Category not found."}, status=404)
+        return None
 
-    # Gather ideas placed in this category (ordered)
     placements = (
         IdeaPlacement.objects
         .filter(category=cat)
@@ -86,7 +82,6 @@ def export_category(request, category_id):
             "description": idea.description or "",
         }
 
-        # Include legend type assignments (human-readable)
         ltypes = (
             IdeaLegendType.objects
             .filter(idea=idea)
@@ -104,12 +99,49 @@ def export_category(request, category_id):
 
         ideas_list.append(idea_data)
 
-    data = {
+    return {
         "category_name": cat.name,
         "ideas": ideas_list,
     }
 
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def export_category(request, category_id):
+    """Return a simple JSON blob for one category and its ideas."""
+    data = _export_single_category(request.user, category_id)
+    if data is None:
+        return JsonResponse({"error": "Category not found."}, status=404)
     return JsonResponse(data, json_dumps_params={"indent": 2})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def export_categories_multi(request):
+    """
+    Export multiple categories at once.
+
+    Body: { "category_ids": [1, 2, 3] }
+    Returns: { "categories": [ { "category_name": "...", "ideas": [...] }, ... ] }
+    """
+    ids = request.data.get("category_ids", [])
+    if not isinstance(ids, list) or len(ids) == 0:
+        return JsonResponse({"error": "Provide a non-empty 'category_ids' array."}, status=400)
+
+    results = []
+    for cid in ids:
+        try:
+            cid = int(cid)
+        except (TypeError, ValueError):
+            continue
+        cat_data = _export_single_category(request.user, cid)
+        if cat_data:
+            results.append(cat_data)
+
+    if not results:
+        return JsonResponse({"error": "No accessible categories found."}, status=404)
+
+    return JsonResponse({"categories": results}, json_dumps_params={"indent": 2})
 
 
 # ─── import ──────────────────────────────────────────────

@@ -39,6 +39,9 @@ export default function IdeaBinToolbar({
   onExportBackup,
   // import
   onImportBackup,
+  // multi-category export
+  selectedCategoryCount,
+  onExportSelectedCategories,
 }) {
   const ctxColor = activeContext?.color;
   const importInputRef = useRef(null);
@@ -274,6 +277,18 @@ export default function IdeaBinToolbar({
 
       {/* spacer */}
       <div className="flex-1" />
+
+      {/* ── Export selected categories ── */}
+      {selectedCategoryCount >= 2 && (
+        <button
+          onClick={onExportSelectedCategories}
+          className="text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 border flex items-center gap-0.5 bg-blue-50 text-blue-600 border-blue-300 hover:bg-blue-100 hover:text-blue-800 transition-colors"
+          title={`Export ${selectedCategoryCount} selected categories as JSON`}
+        >
+          <Download size={10} />
+          Export Selected ({selectedCategoryCount})
+        </button>
+      )}
 
       {/* ── Export backup ── */}
       <button

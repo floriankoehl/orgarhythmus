@@ -42,7 +42,7 @@ import usePromptSettings from "../usePromptSettings";
 import { fetchContextsApi, assignCategoryToContextApi } from "./api/contextApi";
 import { mergeIdeasApi } from "./api/ideaApi";
 import { authFetch, API } from "./api/authFetch";
-import { exportIdeabinApi, importIdeabinApi, exportCategoryApi, importCategoryApi, insertIdeasIntoCategoryApi } from "./api/exportApi";
+import { exportIdeabinApi, importIdeabinApi, exportCategoryApi, exportMultipleCategoriesApi, importCategoryApi, insertIdeasIntoCategoryApi } from "./api/exportApi";
 import { delete_task } from "../../api/dependencies_api";
 import { deleteTeamForProject } from "../../api/org_API";
 import { createCategoryApi, syncCategoryIdeas } from "./api/categoryApi";
@@ -196,6 +196,7 @@ export default function IdeaBin() {
 
   // ───── Category export / import modals ─────
   const [categoryExportJson, setCategoryExportJson] = useState(null); // JSON object or null
+  const [exportScenarioKey, setExportScenarioKey] = useState('ideabin_single_category');
   const [showCategoryImport, setShowCategoryImport] = useState(false);
   const [insertIdeasTarget, setInsertIdeasTarget] = useState(null); // { id, name } or null
 
@@ -657,12 +658,26 @@ export default function IdeaBin() {
   const handleExportCategory = useCallback(async (categoryId) => {
     try {
       const data = await exportCategoryApi(categoryId);
+      setExportScenarioKey('ideabin_single_category');
       setCategoryExportJson(data);
     } catch (e) {
       console.error("Category export failed", e);
       window.alert(`Export failed: ${e.message}`);
     }
   }, []);
+
+  const handleExportSelectedCategories = useCallback(async () => {
+    if (selectedCategoryIds.size === 0) return;
+    try {
+      const ids = [...selectedCategoryIds];
+      const data = await exportMultipleCategoriesApi(ids);
+      setExportScenarioKey('ideabin_multi_categories');
+      setCategoryExportJson(data);
+    } catch (e) {
+      console.error("Multi-category export failed", e);
+      window.alert(`Export failed: ${e.message}`);
+    }
+  }, [selectedCategoryIds]);
 
   const handleImportCategory = useCallback(async (jsonData) => {
     try {
@@ -1232,6 +1247,8 @@ export default function IdeaBin() {
             onMergeClick={handleMergeClick}
             onExportBackup={handleExportBackup}
             onImportBackup={handleImportBackup}
+            selectedCategoryCount={selectedCategoryIds.size}
+            onExportSelectedCategories={handleExportSelectedCategories}
           />
 
           {/* ── Content area ── */}
@@ -1308,6 +1325,7 @@ export default function IdeaBin() {
                 json={categoryExportJson}
                 onClose={() => setCategoryExportJson(null)}
                 buildClipboardText={buildClipboardText}
+                scenarioKey={exportScenarioKey}
               />
             )}
 

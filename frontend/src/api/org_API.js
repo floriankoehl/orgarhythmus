@@ -380,6 +380,20 @@ export async function delete_task(projectId, id) {
   return true;
 }
 
+// bulk_delete_tasks
+export async function bulk_delete_tasks(projectId, taskIds) {
+  const res = await authFetch(`/api/projects/${projectId}/tasks/bulk-delete/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task_ids: taskIds }),
+  });
+  if (!res.ok) {
+    console.error('Failed to bulk-delete tasks');
+    return null;
+  }
+  return res.json();
+}
+
 // fetchTasksForProject
 export async function fetchTasksForProject(projectId) {
   const res = await authFetch(`/api/projects/${projectId}/tasks/`, {

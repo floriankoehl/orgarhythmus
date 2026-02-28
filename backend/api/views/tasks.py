@@ -49,6 +49,31 @@ def delete_task_by_id(request, project_id, task_id):
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def bulk_delete_tasks(request, project_id):
+    """
+    Delete multiple tasks at once.
+    Body: { "task_ids": [1, 2, 3] }
+    """
+    try:
+        project = Project.objects.get(id=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    task_ids = request.data.get("task_ids", [])
+    if not isinstance(task_ids, list) or len(task_ids) == 0:
+        return Response({"detail": "Provide a non-empty 'task_ids' array."}, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        deleted_count, _ = Task.objects.filter(id__in=task_ids, project=project).delete()
+
+    return Response({"deleted": deleted_count}, status=status.HTTP_200_OK)
+
+
 # project_tasks
 @api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
