@@ -63,7 +63,7 @@ import { daysBetween } from './layoutMath';
 //  MilestoneScheduleAdapter
 // ═══════════════════════════════════════════════════════════════════════════
 
-export default function MilestoneScheduleAdapter({ isFloating = false, windowPos, windowSize, setWindowPos, setWindowSize, isMaximized, setIsMaximized }) {
+export default function MilestoneScheduleAdapter({ isFloating = false, windowPos, windowSize, setWindowPos, setWindowSize, isMaximized, setIsMaximized, viewBarRef, triggerViewBarRender }) {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { buildClipboardText } = usePromptSettings();
@@ -611,6 +611,10 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       buildClipboardText={buildClipboardText}
       onBulkImport={handleBulkImport}
       handleRefactorDrag={handleRefactorDrag}
+
+      // View bar (floating title bar)
+      viewBarRef={viewBarRef}
+      triggerViewBarRender={triggerViewBarRender}
     >
       {/* Refactor mode ghost card */}
       {refactorGhost && (

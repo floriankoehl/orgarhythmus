@@ -201,6 +201,10 @@ function DependencyGridContent({
   setWindowSize,
   isMaximized,
   setIsMaximized,
+
+  // ── View bar ref (floating title bar uses this to show views) ──
+  viewBarRef,
+  triggerViewBarRender,
 }) {
 
   const {
@@ -686,6 +690,26 @@ function DependencyGridContent({
     });
     playSound('uiClick');
   }, [onSaveShortcuts]);
+
+  // ── Expose view state to floating title bar via ref ──
+  if (viewBarRef) {
+    viewBarRef.current = {
+      savedViews,
+      activeViewId,
+      activeViewName,
+      onLoadView: handleLoadView,
+      onSaveView: handleSaveView,
+      onCreateView: handleCreateView,
+      onRenameView: handleRenameView,
+      onDeleteView: handleDeleteView,
+      onSetDefaultView: handleSetDefaultView,
+      onUpdateViewShortcut: handleUpdateViewShortcut,
+      viewShortcuts,
+      onNextView: handleNextView,
+      onPrevView: handlePrevView,
+    };
+  }
+  useEffect(() => { triggerViewBarRender?.(); }, [savedViews, activeViewId, activeViewName, triggerViewBarRender]);
 
   // ─────────────────────────
   //  Snapshot management (inline — no separate hook needed since it's all callbacks)

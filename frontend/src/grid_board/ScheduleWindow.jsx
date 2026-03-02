@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
 import { CalendarRange } from "lucide-react";
 import useFloatingWindow from "../components/shared/useFloatingWindow";
@@ -20,8 +20,7 @@ import ScheduleTitleBar from "./ScheduleTitleBar";
  * Automatically opens when the user navigates to the /dependencies route.
  */
 
-const MIN_CONTENT_W = 900;
-const MIN_CONTENT_H = 500;
+const MIN_CONTENT_H = 200;
 
 export default function ScheduleWindow() {
   const { projectId } = useParams();
@@ -58,6 +57,11 @@ export default function ScheduleWindow() {
     }
     prevPathRef.current = location.pathname;
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── View bar: DependencyGrid populates this ref, counter triggers re-render ──
+  const viewBarRef = useRef({});
+  const [, setViewBarTick] = useState(0);
+  const triggerViewBarRender = useCallback(() => setViewBarTick(v => v + 1), []);
 
   // Don't render window contents when no project is selected
   if (!projectId) return null;
@@ -117,16 +121,16 @@ export default function ScheduleWindow() {
             toggleMaximize={toggleMaximize}
             isMaximized={isMaximized}
             minimizeWindow={minimizeWindow}
+            viewBar={viewBarRef.current}
           />
 
-          {/* ── Content area with min-size scroll ── */}
+          {/* ── Content area ── */}
           <div
             className="flex-1 min-h-0 overflow-auto"
             style={{ minWidth: 0 }}
           >
             <div
               style={{
-                minWidth: `${MIN_CONTENT_W}px`,
                 minHeight: `${MIN_CONTENT_H}px`,
                 height: "100%",
               }}
@@ -139,6 +143,8 @@ export default function ScheduleWindow() {
                 setWindowSize={setWindowSize}
                 isMaximized={isMaximized}
                 setIsMaximized={setIsMaximized}
+                viewBarRef={viewBarRef}
+                triggerViewBarRender={triggerViewBarRender}
               />
             </div>
           </div>
