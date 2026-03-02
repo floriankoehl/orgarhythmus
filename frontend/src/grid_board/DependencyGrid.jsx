@@ -186,6 +186,9 @@ function DependencyGridContent({
   buildClipboardText,
   /** Bulk import handler — adapter-supplied */
   onBulkImport,
+
+  /** Refactor drag handler — adapter-supplied for domain-specific refactor mode */
+  handleRefactorDrag,
 }) {
 
   const {
@@ -971,6 +974,7 @@ function DependencyGridContent({
     setOpenLaneSettings,
     setHoveredColumnCell,
     handleMarqueeStart,
+    handleRefactorDrag,
     onSetDeadline: handleSetDeadline,
     setEdgeEditModal,
     setPhaseEditModal,

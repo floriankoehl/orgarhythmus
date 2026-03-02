@@ -301,7 +301,8 @@ export default function MilestoneScheduleAdapter() {
     await safe_team_order(projectId, newOrder);
   }, [projectId]);
 
-  const persistLaneCreate = useCallback(async (name, color) => {
+  const persistLaneCreate = useCallback(async (data) => {
+    const { name, color } = data;
     const result = await createTeamForProject(projectId, { name, color });
     return result;
   }, [projectId]);
@@ -310,8 +311,9 @@ export default function MilestoneScheduleAdapter() {
     await reorder_team_tasks(projectId, rowId, targetLaneId, order);
   }, [projectId]);
 
-  const persistRowCreate = useCallback(async (name, laneId) => {
-    const result = await createTaskForProject(projectId, { name, team_id: laneId });
+  const persistRowCreate = useCallback(async (data) => {
+    const { name, lane_id } = data;
+    const result = await createTaskForProject(projectId, { name, team_id: lane_id });
     return result;
   }, [projectId]);
 
@@ -325,12 +327,12 @@ export default function MilestoneScheduleAdapter() {
 
   const persistPhaseCreate = useCallback(async (data) => {
     const result = await create_phase(projectId, data);
-    return result;
+    return result ? { ...result, lane: result.team } : result;
   }, [projectId]);
 
   const persistPhaseUpdate = useCallback(async (phaseId, updates) => {
     const result = await update_phase(projectId, phaseId, updates);
-    return result;
+    return result ? { ...result, lane: result.team } : result;
   }, [projectId]);
 
   const persistPhaseDelete = useCallback(async (phaseId) => {
@@ -424,10 +426,92 @@ export default function MilestoneScheduleAdapter() {
   const [refactorGhost, setRefactorGhost] = useState(null);
   const refactorDragging = useRef(false);
 
-  // Refactor drag is entirely adapter-level; the generic grid doesn't know about IdeaBin.
-  // The grid exposes `refactorMode` state, and the adapter can inject extra drag
-  // behaviour via the `children` slot and event handling.
-  // For now we re-implement the refactor-drag ghost + IdeaBin drop here.
+  const handleRefactorDrag = useCallback((e, type, payload) => {
+    e.preventDefault();
+    e.stopPropagation();
+    refactorDragging.current = true;
+
+    let ghost = { type, ...payload, x: e.clientX, y: e.clientY, overIdeaBin: false, overCell: null };
+    setRefactorGhost(ghost);
+
+    const onMove = (ev) => {
+      const ideaBinEl = document.querySelector("[data-ideabin-window]");
+      let overIdeaBin = false;
+      if (ideaBinEl) {
+        const r = ideaBinEl.getBoundingClientRect();
+        overIdeaBin = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+      }
+      let overCell = null;
+      if (!overIdeaBin && type === 'node') {
+        const el = document.elementFromPoint(ev.clientX, ev.clientY);
+        if (el) {
+          const cell = el.closest('[data-grid-col-index]');
+          if (cell) {
+            overCell = {
+              columnIndex: parseInt(cell.dataset.gridColIndex, 10),
+              rowId: cell.dataset.gridColRowId,
+              laneId: cell.dataset.gridColLaneId,
+            };
+          }
+        }
+      }
+      ghost = { ...ghost, x: ev.clientX, y: ev.clientY, overIdeaBin, overCell };
+      setRefactorGhost(ghost);
+    };
+
+    const onUp = async () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      refactorDragging.current = false;
+
+      if (ghost.overIdeaBin) {
+        window.dispatchEvent(new CustomEvent("dep-refactor-drop", {
+          detail: { type, ...payload },
+        }));
+        setRefactorGhost(null);
+        return;
+      }
+
+      if (type === 'node' && ghost.overCell) {
+        const { columnIndex, rowId: targetRowId } = ghost.overCell;
+        const nId = payload.id;
+        try {
+          const oldRow = payload.rowId;
+          const rowChanged = String(targetRowId) !== String(oldRow);
+          if (rowChanged) {
+            await move_milestone_task(projectId, nId, targetRowId);
+          }
+          await update_start_index(projectId, nId, columnIndex);
+          // Optimistic update
+          setNodes(prev => ({
+            ...prev,
+            [nId]: { ...prev[nId], row: targetRowId, startColumn: columnIndex },
+          }));
+          if (rowChanged) {
+            setRows(prev => {
+              const updated = { ...prev };
+              if (updated[oldRow]) {
+                updated[oldRow] = { ...updated[oldRow], nodes: (updated[oldRow].nodes || []).filter(ref => String(ref.id || ref) !== String(nId)) };
+              }
+              if (updated[targetRowId]) {
+                updated[targetRowId] = { ...updated[targetRowId], nodes: [...(updated[targetRowId].nodes || []), { id: nId }] };
+              }
+              return updated;
+            });
+          }
+          playSound('milestoneMove');
+        } catch (err) {
+          console.error("Refactor drag move failed:", err);
+          playSound('error');
+        }
+      }
+
+      setRefactorGhost(null);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [projectId, setNodes, setRows]);
 
   // ════════════════════════════════════════════════════════════════════
   //  Render
@@ -514,6 +598,7 @@ export default function MilestoneScheduleAdapter() {
       // Extra
       buildClipboardText={buildClipboardText}
       onBulkImport={handleBulkImport}
+      handleRefactorDrag={handleRefactorDrag}
     >
       {/* Refactor mode ghost card */}
       {refactorGhost && (
@@ -527,11 +612,11 @@ export default function MilestoneScheduleAdapter() {
           }`}
         >
           {refactorGhost.overIdeaBin ? '\uD83D\uDCA1 ' : ''}
-          {refactorGhost.type === 'team' && `\uD83C\uDFE2 ${refactorGhost.name}`}
-          {refactorGhost.type === 'task' && `\uD83D\uDCCB ${refactorGhost.name}`}
-          {refactorGhost.type === 'milestone' && `\uD83C\uDFC1 ${refactorGhost.name}`}
+          {refactorGhost.type === 'lane' && `\uD83C\uDFE2 ${refactorGhost.name}`}
+          {refactorGhost.type === 'row' && `\uD83D\uDCCB ${refactorGhost.name}`}
+          {refactorGhost.type === 'node' && `\uD83C\uDFC1 ${refactorGhost.name}`}
           {refactorGhost.overIdeaBin && <div className="text-[10px] font-normal text-yellow-600 mt-0.5">Drop to create idea</div>}
-          {refactorGhost.overCell && refactorGhost.type === 'milestone' && <div className="text-[10px] font-normal text-blue-600 mt-0.5">Drop to move here</div>}
+          {refactorGhost.overCell && refactorGhost.type === 'node' && <div className="text-[10px] font-normal text-blue-600 mt-0.5">Drop to move here</div>}
         </div>
       )}
 

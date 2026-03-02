@@ -504,43 +504,43 @@ export function useGridInteraction({
       case 'modeInspection': setViewMode("inspection"); baseViewModeRef.current = "inspection"; playSound('modeSwitch'); return true;
       case 'modeRefactor': setRefactorMode(prev => !prev); playSound('refactorToggle'); return true;
       // Sizing
-      case 'dayWidthUp': setCustomColumnWidth(prev => Math.min((prev || 50) + 10, 200)); playSound('settingToggle'); return true;
-      case 'dayWidthDown': setCustomColumnWidth(prev => Math.max((prev || 50) - 10, 20)); playSound('settingToggle'); return true;
-      case 'taskHeightUp': setCustomRowHeightNormal(prev => Math.min((prev || 38) + 4, 80)); playSound('settingToggle'); return true;
-      case 'taskHeightDown': setCustomRowHeightNormal(prev => Math.max((prev || 38) - 4, 16)); playSound('settingToggle'); return true;
-      case 'taskHeightSmallUp': setCustomRowHeightSmall(prev => Math.min((prev || 20) + 4, 60)); playSound('settingToggle'); return true;
-      case 'taskHeightSmallDown': setCustomRowHeightSmall(prev => Math.max((prev || 20) - 4, 10)); playSound('settingToggle'); return true;
+      case 'columnWidthUp': setCustomColumnWidth(prev => Math.min((prev || 50) + 10, 200)); playSound('settingToggle'); return true;
+      case 'columnWidthDown': setCustomColumnWidth(prev => Math.max((prev || 50) - 10, 20)); playSound('settingToggle'); return true;
+      case 'rowHeightUp': setCustomRowHeightNormal(prev => Math.min((prev || 38) + 4, 80)); playSound('settingToggle'); return true;
+      case 'rowHeightDown': setCustomRowHeightNormal(prev => Math.max((prev || 38) - 4, 16)); playSound('settingToggle'); return true;
+      case 'rowHeightSmallUp': setCustomRowHeightSmall(prev => Math.min((prev || 20) + 4, 60)); playSound('settingToggle'); return true;
+      case 'rowHeightSmallDown': setCustomRowHeightSmall(prev => Math.max((prev || 20) - 4, 10)); playSound('settingToggle'); return true;
       // Visibility toggles
-      case 'toggleDayHeader': setHideColumnHeader(prev => !prev); playSound('settingToggle'); return true;
+      case 'toggleColumnHeader': setHideColumnHeader(prev => !prev); playSound('settingToggle'); return true;
       case 'toggleSound': setSoundEnabled(prev => !prev); playSound('settingToggle'); return true;
       case 'toggleFullscreen': toggleFullscreen(); playSound('uiClick'); return true;
-      case 'toggleEmptyTeams': setShowEmptyLanes(prev => !prev); playSound('settingToggle'); return true;
+      case 'toggleEmptyLanes': setShowEmptyLanes(prev => !prev); playSound('settingToggle'); return true;
       case 'togglePhaseColors': setShowPhaseColorsInGrid(prev => !prev); playSound('settingToggle'); return true;
-      case 'toggleAllDeps': setHideAllEdges(prev => !prev); playSound('settingToggle'); return true;
-      case 'toggleCollapsedDeps': setHideCollapsedEdges(prev => !prev); playSound('settingToggle'); return true;
-      case 'toggleCollapsedMilestones': setHideCollapsedNodes(prev => !prev); playSound('settingToggle'); return true;
-      case 'toggleExpandedTask': setExpandedRowView(prev => !prev); playSound('settingToggle'); return true;
+      case 'toggleAllEdges': setHideAllEdges(prev => !prev); playSound('settingToggle'); return true;
+      case 'toggleCollapsedEdges': setHideCollapsedEdges(prev => !prev); playSound('settingToggle'); return true;
+      case 'toggleCollapsedNodes': setHideCollapsedNodes(prev => !prev); playSound('settingToggle'); return true;
+      case 'toggleExpandedRow': setExpandedRowView(prev => !prev); playSound('settingToggle'); return true;
       case 'toggleGlobalPhases': setHideGlobalPhases(prev => !prev); playSound('settingToggle'); return true;
       case 'toggleAutoSelect': setAutoSelectBlocking(prev => !prev); playSound('settingToggle'); return true;
       // Bulk lane/row actions
-      case 'collapseAllTeams': setLaneDisplaySettings(prev => {
+      case 'collapseAllLanes': setLaneDisplaySettings(prev => {
         const u = { ...prev }; for (const lid of laneOrder) u[lid] = { ...u[lid], collapsed: true }; return u;
       }); playSound('settingToggle'); return true;
-      case 'expandAllTeams': setLaneDisplaySettings(prev => {
+      case 'expandAllLanes': setLaneDisplaySettings(prev => {
         const u = { ...prev }; for (const lid of laneOrder) u[lid] = { ...u[lid], collapsed: false }; return u;
       }); playSound('settingToggle'); return true;
-      case 'allTasksSmall': setRowDisplaySettings(prev => {
+      case 'allRowsSmall': setRowDisplaySettings(prev => {
         const u = { ...prev }; for (const lid of laneOrder) { const l = lanes[lid]; if (l) for (const rk of l.rows) u[rk] = { ...u[rk], size: 'small' }; } return u;
       }); playSound('settingToggle'); return true;
-      case 'allTasksNormal': setRowDisplaySettings(prev => {
+      case 'allRowsNormal': setRowDisplaySettings(prev => {
         const u = { ...prev }; for (const lid of laneOrder) { const l = lanes[lid]; if (l) for (const rk of l.rows) u[rk] = { ...u[rk], size: 'normal' }; } return u;
       }); playSound('settingToggle'); return true;
-      case 'uncollapseAllDays': if (uncollapseAll) uncollapseAll(); return true;
+      case 'uncollapseAllColumns': if (uncollapseAll) uncollapseAll(); return true;
       // Select-all shortcuts
-      case 'selectAllMilestones': setSelectedNodes(new Set(Object.keys(nodes).map(Number))); setSelectedEdges([]); playSound('milestoneSelect'); return true;
-      case 'selectAllDeps': setSelectedEdges([...edges]); setSelectedNodes(new Set()); playSound('milestoneSelect'); return true;
+      case 'selectAllNodes': setSelectedNodes(new Set(Object.keys(nodes).map(Number))); setSelectedEdges([]); playSound('milestoneSelect'); return true;
+      case 'selectAllEdges': setSelectedEdges([...edges]); setSelectedNodes(new Set()); playSound('milestoneSelect'); return true;
       // Select visible nodes / edges
-      case 'selectVisibleMilestones': {
+      case 'selectVisibleNodes': {
         const visibleIds = new Set();
         for (const [id, nd] of Object.entries(nodes)) {
           const row = rows[nd.row];
@@ -556,7 +556,7 @@ export function useGridInteraction({
         playSound('milestoneSelect');
         return true;
       }
-      case 'selectVisibleDeps': {
+      case 'selectVisibleEdges': {
         if (hideAllEdges) { setSelectedEdges([]); return true; }
         const visibleEdges = edges.filter(edge => {
           const srcNd = nodes[edge.source];
@@ -577,8 +577,8 @@ export function useGridInteraction({
         return true;
       }
       // Create actions (open modals)
-      case 'createTeam': if (setShowCreateLaneModal) setShowCreateLaneModal(true); playSound('uiClick'); return true;
-      case 'createTask': if (setShowCreateRowModal) setShowCreateRowModal(true); playSound('uiClick'); return true;
+      case 'createLane': if (setShowCreateLaneModal) setShowCreateLaneModal(true); playSound('uiClick'); return true;
+      case 'createRow': if (setShowCreateRowModal) setShowCreateRowModal(true); playSound('uiClick'); return true;
       case 'createPhase': if (setPhaseEditModal) setPhaseEditModal({ mode: 'create', start_index: 0, duration: 7, name: '', color: '#3b82f6', lane: null }); playSound('uiClick'); return true;
       case 'loadDefaultView': if (onLoadDefaultView) onLoadDefaultView(); return true;
       default: return false;
