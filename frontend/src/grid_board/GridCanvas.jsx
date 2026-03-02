@@ -236,7 +236,7 @@ export default function GridCanvas({
             const rowYMap = {};
             let cumRowY = 0;
             const phaseRowH = getLanePhaseRowHeight ? getLanePhaseRowHeight(ghost.id) : 0;
-            for (const rid of (ghost.teamTasks || [])) {
+            for (const rid of (ghost.laneRows || [])) {
               rowYMap[rid] = cumRowY;
               cumRowY += getRowHeight(rid, rowDisplaySettings);
             }
@@ -275,7 +275,7 @@ export default function GridCanvas({
                 </div>
                 {/* Row names column */}
                 <div style={{ position: 'absolute', left: `${LANEWIDTH}px`, top: `${phaseRowH}px`, width: `${ROWLABELWIDTH}px`, height: `${ghost.height - phaseRowH}px`, borderRight: '1px solid rgba(0,0,0,0.1)' }}>
-                  {(ghost.teamTasks || []).map(rid => {
+                  {(ghost.laneRows || []).map(rid => {
                     const r = rows[rid];
                     if (!r) return null;
                     const rh = getRowHeight(rid, rowDisplaySettings);
@@ -734,18 +734,18 @@ export default function GridCanvas({
               let srcY = sourcePos.y;
               let tgtY = targetPos.y;
               if (ghost) {
-                const laneDragDelta = (ghost.y - ghost.offsetY) - ghost.teamYOffset;
+                const laneDragDelta = (ghost.y - ghost.offsetY) - ghost.laneYOffset;
                 const sNode = nodes[edge.source];
                 const tNode = nodes[edge.target];
-                if (sNode && ghost.teamTasks?.includes(sNode.row)) srcY += laneDragDelta;
-                if (tNode && ghost.teamTasks?.includes(tNode.row)) tgtY += laneDragDelta;
+                if (sNode && ghost.laneRows?.includes(sNode.row)) srcY += laneDragDelta;
+                if (tNode && ghost.laneRows?.includes(tNode.row)) tgtY += laneDragDelta;
               }
               if (rowGhost) {
-                const rowDragDelta = (rowGhost.y - rowGhost.offsetY) - rowGhost.taskTopY;
+                const rowDragDelta = (rowGhost.y - rowGhost.offsetY) - rowGhost.rowTopY;
                 const sNode = nodes[edge.source];
                 const tNode = nodes[edge.target];
-                if (sNode && sNode.row === rowGhost.taskKey) srcY += rowDragDelta;
-                if (tNode && tNode.row === rowGhost.taskKey) tgtY += rowDragDelta;
+                if (sNode && sNode.row === rowGhost.rowKey) srcY += rowDragDelta;
+                if (tNode && tNode.row === rowGhost.rowKey) tgtY += rowDragDelta;
               }
 
               const sourceNode = nodes[edge.source];
@@ -759,8 +759,8 @@ export default function GridCanvas({
                 const targetRowId = targetNode.row;
                 for (const lId of laneOrder) {
                   const l = lanes[lId];
-                  if (l && l.tasks.includes(sourceRowId) && isLaneCollapsed(lId)) return null;
-                  if (l && l.tasks.includes(targetRowId) && isLaneCollapsed(lId)) return null;
+                  if (l && (l.rows || []).includes(sourceRowId) && isLaneCollapsed(lId)) return null;
+                  if (l && (l.rows || []).includes(targetRowId) && isLaneCollapsed(lId)) return null;
                 }
                 if (hideCollapsedEdges || hideCollapsedNodes) {
                   const sourceRowCollapsed = rowDisplaySettings[sourceRowId]?.size === 'small';
@@ -773,8 +773,8 @@ export default function GridCanvas({
               const isOutgoing = edgeSettings.colorDirectionHighlight !== false && selectedNodes.size > 0 && selectedNodes.has(edge.source);
               const isIncoming = edgeSettings.colorDirectionHighlight !== false && selectedNodes.size > 0 && selectedNodes.has(edge.target);
               const isBlockedHighlight = blockedMoveHighlight &&
-                blockedMoveHighlight.connectionSource === edge.source &&
-                blockedMoveHighlight.connectionTarget === edge.target;
+                blockedMoveHighlight.edgeSource === edge.source &&
+                blockedMoveHighlight.edgeTarget === edge.target;
 
               let strokeColor = "#374151";
               if (isBlockedHighlight) {

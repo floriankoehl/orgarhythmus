@@ -281,7 +281,7 @@ export default function GridNodeLayer({
             const isSelected = selectedNodes.has(node.id);
             const isEditing = editingNodeId === node.id;
             const showEdgeResize = viewMode === "schedule" && hoveredNode === node.id;
-            const isBlockedHighlight = blockedMoveHighlight?.milestoneId === node.id;
+            const isBlockedHighlight = blockedMoveHighlight?.nodeId === node.id;
 
             // Get lane color for node
             const nodeColor = node.color || lane.color || '#facc15';

@@ -112,8 +112,8 @@ export default function GridLaneList({
         const isCollapsed = isLaneCollapsed(lane_key);
         const laneColor = lane.color || '#94a3b8';
         const isVirtual = !!lane._virtual;
-        const hasNoRows = lane.tasks.length === 0;
-        const allRowsHidden = lane.tasks.length > 0 && visibleRows_.length === 0;
+        const hasNoRows = (lane.rows || []).length === 0;
+        const allRowsHidden = (lane.rows || []).length > 0 && visibleRows_.length === 0;
         // Phase row height for this lane
         const phaseRowH = isCollapsed ? 0 : (getLanePhaseRowHeight ? getLanePhaseRowHeight(lane_key) : 0);
         const laneRowHeight = laneHeight - phaseRowH;
@@ -323,7 +323,7 @@ export default function GridLaneList({
                         id: lane_key,
                         name: lane.name,
                         color: laneColor,
-                        rowIds: lane.tasks || [],
+                        rowIds: lane.rows || [],
                       });
                       return;
                     }
@@ -398,7 +398,7 @@ export default function GridLaneList({
                 {/* Row labels column - only show when not collapsed AND has visible rows */}
                 {!isCollapsed && visibleRows_.length > 0 && (
                   <div className="flex flex-col border-r border-slate-200" style={{ backgroundColor: 'rgba(255,255,255,0.97)' }}>
-                    {lane.tasks.map((row_key) => {
+                    {(lane.rows || []).map((row_key) => {
                       if (!isRowVisible(row_key, rowDisplaySettings)) return null;
 
                       const rowHeight = getRowHeight(row_key, rowDisplaySettings);
@@ -420,7 +420,7 @@ export default function GridLaneList({
                             height: `${rowHeight}px`,
                             width: `${ROWLABELWIDTH}px`,
                             borderBottom: isLastVisible ? "none" : "1px solid #e2e8f0",
-                            opacity: rowGhost?.taskKey === row_key ? 0.3 : 1,
+                            opacity: rowGhost?.rowKey === row_key ? 0.3 : 1,
                           }}
                           key={`${row_key}_container`}
                         >
@@ -553,7 +553,7 @@ export default function GridLaneList({
                     }}
                   >
                     <span className="text-[10px] text-slate-400 italic">
-                      {lane.tasks.length} row{lane.tasks.length !== 1 ? 's' : ''} (collapsed)
+                      {(lane.rows || []).length} row{(lane.rows || []).length !== 1 ? 's' : ''} (collapsed)
                     </span>
                   </div>
                 )}
@@ -563,10 +563,10 @@ export default function GridLaneList({
                 isCollapsed={isLaneCollapsed(lane_key)}
                 laneHeight={laneRowHeight}
                 rawHeight={rawHeight}
-                laneRows={lane.tasks}
+                laneRows={lane.rows || []}
                 visibleRows={visibleRows_}
                 lane_key={lane_key}
-                totalColumns={totalColumns}
+                columns={totalColumns}
                 columnLabels={columnLabels}
                 COLUMNWIDTH={COLUMNWIDTH}
                 ghost={ghost}

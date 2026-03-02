@@ -58,9 +58,9 @@ export function computeCascadePush(nodes, rows, edges, originPositions) {
         const targetNode = nodes[targetId];
         if (targetNode) {
           const row = rows[targetNode.row];
-          if (row && row.hardDeadline !== null && row.hardDeadline !== undefined) {
+          if (row && row.hard_deadline !== null && row.hard_deadline !== undefined) {
             const newEnd = newStart + tp.duration - 1;
-            if (newEnd > row.hardDeadline) {
+            if (newEnd > row.hard_deadline) {
               return { valid: false, reason: 'hard_deadline', nodeId: targetId };
             }
           }
@@ -94,9 +94,9 @@ export function computeCascadePush(nodes, rows, edges, originPositions) {
               const otherNode = nodes[otherId];
               if (otherNode) {
                 const otherRow = rows[otherNode.row];
-                if (otherRow && otherRow.hardDeadline !== null && otherRow.hardDeadline !== undefined) {
+                if (otherRow && otherRow.hard_deadline !== null && otherRow.hard_deadline !== undefined) {
                   const newEnd = newStart + op.duration - 1;
-                  if (newEnd > otherRow.hardDeadline) {
+                  if (newEnd > otherRow.hard_deadline) {
                     return { valid: false, reason: 'hard_deadline', nodeId: otherId };
                   }
                 }
@@ -308,7 +308,7 @@ export function checkDeadlineViolation(nodes, rows, nodeId, newStartColumn, newD
   const row = rows[rowId];
   if (!row) return { valid: true };
 
-  const deadline = row.hardDeadline;
+  const deadline = row.hard_deadline;
   if (deadline === null || deadline === undefined) return { valid: true };
 
   const newEnd = newStartColumn + newDuration - 1;

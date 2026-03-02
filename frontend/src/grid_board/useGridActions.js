@@ -117,36 +117,20 @@ export function useGridActions({
     const colIdx = columnPurposeModal.columnIndex;
     const savePurpose = newColumnPurpose;
     const savePurposeLanes = newColumnPurposeLanes;
+    const oldPurpose = columnPurposeModal.currentPurpose || null;
+    const oldPurposeLanes = columnPurposeModal.currentPurposeLanes || null;
 
     try {
-      let oldPurpose = null;
-      let oldPurposeLanes = null;
-      setColumns(prev => {
-        const oldCol = prev[colIdx];
-        if (oldCol) {
-          oldPurpose = oldCol.purpose || null;
-          oldPurposeLanes = oldCol.purpose_lanes || null;
-        }
-        return prev;
-      });
-
       if (persistColumnPurpose) {
         const result = await persistColumnPurpose(colIdx, savePurpose, savePurposeLanes);
         if (result?.success) {
-          setColumns(prev => ({
-            ...prev,
-            [colIdx]: result.column || result.day,
-          }));
-
           pushAction({
             description: 'Set column purpose',
             undo: async () => {
-              const r = await persistColumnPurpose(colIdx, oldPurpose, oldPurposeLanes);
-              if (r?.success) setColumns(prev => ({ ...prev, [colIdx]: r.column || r.day }));
+              await persistColumnPurpose(colIdx, oldPurpose, oldPurposeLanes);
             },
             redo: async () => {
-              const r = await persistColumnPurpose(colIdx, savePurpose, savePurposeLanes);
-              if (r?.success) setColumns(prev => ({ ...prev, [colIdx]: r.column || r.day }));
+              await persistColumnPurpose(colIdx, savePurpose, savePurposeLanes);
             },
           });
         }
@@ -165,36 +149,20 @@ export function useGridActions({
     if (!columnPurposeModal) return;
 
     const colIdx = columnPurposeModal.columnIndex;
+    const oldPurpose = columnPurposeModal.currentPurpose || null;
+    const oldPurposeLanes = columnPurposeModal.currentPurposeLanes || null;
 
     try {
-      let oldPurpose = null;
-      let oldPurposeLanes = null;
-      setColumns(prev => {
-        const oldCol = prev[colIdx];
-        if (oldCol) {
-          oldPurpose = oldCol.purpose || null;
-          oldPurposeLanes = oldCol.purpose_lanes || null;
-        }
-        return prev;
-      });
-
       if (persistColumnPurpose) {
         const result = await persistColumnPurpose(colIdx, null, null);
         if (result?.success) {
-          setColumns(prev => ({
-            ...prev,
-            [colIdx]: result.column || result.day,
-          }));
-
           pushAction({
             description: 'Clear column purpose',
             undo: async () => {
-              const r = await persistColumnPurpose(colIdx, oldPurpose, oldPurposeLanes);
-              if (r?.success) setColumns(prev => ({ ...prev, [colIdx]: r.column || r.day }));
+              await persistColumnPurpose(colIdx, oldPurpose, oldPurposeLanes);
             },
             redo: async () => {
-              const r = await persistColumnPurpose(colIdx, null, null);
-              if (r?.success) setColumns(prev => ({ ...prev, [colIdx]: r.column || r.day }));
+              await persistColumnPurpose(colIdx, null, null);
             },
           });
         }

@@ -142,8 +142,8 @@ export default function GridModals({
             </div>
 
             <p className="text-sm text-slate-600 mb-4">
-              {columnLabel} {columnPurposeModal.dayIndex + 1} - {columnLabels[columnPurposeModal.dayIndex]?.dateStr}
-              {columnLabels[columnPurposeModal.dayIndex]?.isSunday && (
+              {columnLabel} {columnPurposeModal.columnIndex + 1} - {columnLabels[columnPurposeModal.columnIndex]?.dateStr}
+              {columnLabels[columnPurposeModal.columnIndex]?.isSunday && (
                 <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Sunday</span>
               )}
             </p>
@@ -397,9 +397,9 @@ export default function GridModals({
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4 modal-animate-in">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">Create {nodeLabel}?</h2>
             <p className="text-sm text-slate-600 mb-4">
-              Create a new {nodeLabel.toLowerCase()} on <strong>{columnLabel} {nodeCreateModal.dayIndex + 1}</strong> for {rowLabel.toLowerCase()}{" "}
+              Create a new {nodeLabel.toLowerCase()} on <strong>{columnLabel} {nodeCreateModal.columnIndex + 1}</strong> for {rowLabel.toLowerCase()}{" "}
               <span className="font-medium text-slate-800">
-                "{rows[nodeCreateModal.taskId]?.name || 'Unknown'}"
+                "{rows[nodeCreateModal.rowId]?.name || 'Unknown'}"
               </span>?
             </p>
             <div className="flex justify-end gap-3">
@@ -425,20 +425,20 @@ export default function GridModals({
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm modal-backdrop-animate">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4 modal-animate-in">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">
-              Delete {deleteConfirmModal.connectionId
-                ? (deleteConfirmModal.connections?.length > 1 ? `${edgeLabel}s` : edgeLabel)
-                : deleteConfirmModal.milestoneIds ? `${nodeLabel}s` : nodeLabel}?
+              Delete {deleteConfirmModal.edgeId
+                ? (deleteConfirmModal.edges?.length > 1 ? `${edgeLabel}s` : edgeLabel)
+                : deleteConfirmModal.nodeIds ? `${nodeLabel}s` : nodeLabel}?
             </h2>
             <p className="text-sm text-slate-600 mb-4">
               Are you sure you want to delete{" "}
               <span className="font-medium text-slate-800">
-                {deleteConfirmModal.connectionId
-                  ? (deleteConfirmModal.connections?.length > 1 ? `${deleteConfirmModal.connections.length} ${edgeLabel.toLowerCase()}s` : deleteConfirmModal.connectionName)
-                  : deleteConfirmModal.milestoneIds
-                    ? `${deleteConfirmModal.milestoneIds.length} ${nodeLabel.toLowerCase()}s`
-                    : `"${deleteConfirmModal.milestoneName}"`
+                {deleteConfirmModal.edgeId
+                  ? (deleteConfirmModal.edges?.length > 1 ? `${deleteConfirmModal.edges.length} ${edgeLabel.toLowerCase()}s` : deleteConfirmModal.edgeName)
+                  : deleteConfirmModal.nodeIds
+                    ? `${deleteConfirmModal.nodeIds.length} ${nodeLabel.toLowerCase()}s`
+                    : `"${deleteConfirmModal.nodeName}"`
                 }
-              </span>?{!deleteConfirmModal.connectionId && ` This will also remove any ${edgeLabel.toLowerCase()}s connected to ${deleteConfirmModal.milestoneIds ? 'them' : 'it'}.`}
+              </span>?{!deleteConfirmModal.edgeId && ` This will also remove any ${edgeLabel.toLowerCase()}s connected to ${deleteConfirmModal.nodeIds ? 'them' : 'it'}.`}
             </p>
             <div className="flex justify-end gap-3">
               <button

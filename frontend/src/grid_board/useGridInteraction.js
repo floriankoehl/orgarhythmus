@@ -273,12 +273,12 @@ export function useGridInteraction({
 
   // ── Edge interactions ──
   const {
-    isDraggingEdge,
-    setIsDraggingEdge,
-    edgeStart,
-    setEdgeStart,
-    edgeEnd,
-    setEdgeEnd,
+    isDraggingEdge: isDraggingConnection,
+    setIsDraggingEdge: setIsDraggingConnection,
+    edgeStart: connectionStart,
+    setEdgeStart: setConnectionStart,
+    edgeEnd: connectionEnd,
+    setEdgeEnd: setConnectionEnd,
     handleEdgeDragStart,
     handleEdgeClick,
     handleDeleteEdge,
@@ -1313,12 +1313,12 @@ export function useGridInteraction({
     setRowGhost,
     rowDropTarget,
     setRowDropTarget,
-    isDraggingEdge,
-    setIsDraggingEdge,
-    edgeStart,
-    setEdgeStart,
-    edgeEnd,
-    setEdgeEnd,
+    isDraggingConnection,
+    setIsDraggingConnection,
+    connectionStart,
+    setConnectionStart,
+    connectionEnd,
+    setConnectionEnd,
     justDraggedRef,
     moveModal,
     setMoveModal,
@@ -1349,7 +1349,7 @@ export function useGridInteraction({
     handleColumnCellClick,
 
     // Edge handlers
-    handleEdgeDragStart,
+    handleConnectionDragStart: handleEdgeDragStart,
     handleDeleteEdge,
     handleUpdateEdge,
 

@@ -264,9 +264,10 @@ export default function MilestoneScheduleAdapter() {
     const apiData = { ...rest };
     if (startColumn != null) apiData.start_index = startColumn;
     const result = await add_milestone(projectId, rowId, apiData);
-    // Return with generic aliases so hooks can use generic field names
-    if (result) return { ...result, row: result.task, startColumn: result.start_index };
-    return result;
+    // API returns { added_milestone: {...}, created: true } — extract the milestone
+    const milestone = result?.added_milestone || result;
+    if (milestone) return { ...milestone, row: milestone.task, startColumn: milestone.start_index };
+    return milestone;
   }, [projectId]);
 
   const persistNodeDelete = useCallback(async (nodeId) => {
@@ -315,7 +316,11 @@ export default function MilestoneScheduleAdapter() {
   }, [projectId]);
 
   const persistColumnPurpose = useCallback(async (colIndex, purpose, purposeLanes) => {
-    await set_day_purpose(projectId, colIndex, purpose, purposeLanes);
+    const result = await set_day_purpose(projectId, colIndex, purpose, purposeLanes);
+    if (result?.success && result.day) {
+      setProjectDays(prev => ({ ...prev, [colIndex]: result.day }));
+    }
+    return result;
   }, [projectId]);
 
   const persistPhaseCreate = useCallback(async (data) => {
@@ -345,7 +350,7 @@ export default function MilestoneScheduleAdapter() {
   // ════════════════════════════════════════════════════════════════════
 
   const fetchViews = useCallback(() => get_all_views(projectId), [projectId]);
-  const createViewApi = useCallback((name, state) => create_view(projectId, { name, state }), [projectId]);
+  const createViewApi = useCallback((data) => create_view(projectId, data), [projectId]);
   const updateViewApi = useCallback((viewId, updates) => update_view(projectId, viewId, updates), [projectId]);
   const deleteViewApi = useCallback((viewId) => delete_view(projectId, viewId), [projectId]);
   const setDefaultViewApi = useCallback((viewId) => set_default_view(projectId, viewId), [projectId]);
@@ -494,6 +499,10 @@ export default function MilestoneScheduleAdapter() {
       // Navigation
       onLaneNavigate={handleLaneNavigate}
       onRowNavigate={handleRowNavigate}
+
+      // Header collapse (adapter owns the DOM effect)
+      headerCollapsed={headerCollapsed}
+      onSetHeaderCollapsed={setHeaderCollapsed}
 
       // Labels (domain-specific)
       laneLabel="Team"

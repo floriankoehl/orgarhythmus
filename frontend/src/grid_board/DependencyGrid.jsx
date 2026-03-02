@@ -166,6 +166,10 @@ function DependencyGridContent({
   onLaneNavigate,
   onRowNavigate,
 
+  // ── Header collapse (adapter-controlled) ──
+  headerCollapsed: headerCollapsedProp,
+  onSetHeaderCollapsed,
+
   // ── Labels ──
   laneLabel = 'Lane',
   rowLabel = 'Row',
@@ -250,7 +254,9 @@ function DependencyGridContent({
   const [rowColumnWidth, setRowColumnWidth]         = useState(DEFAULT_ROWLABELWIDTH_CONSTANT);
   const [hideGlobalPhases, setHideGlobalPhases]     = useState(DEFAULT_HIDE_GLOBAL_PHASES);
   const [toolbarCollapsed, setToolbarCollapsed]     = useState(DEFAULT_TOOLBAR_COLLAPSED);
-  const [headerCollapsed, setHeaderCollapsed]       = useState(false);
+  const [headerCollapsedLocal, setHeaderCollapsedLocal] = useState(false);
+  const headerCollapsed = headerCollapsedProp ?? headerCollapsedLocal;
+  const setHeaderCollapsed = onSetHeaderCollapsed ?? setHeaderCollapsedLocal;
   const [soundEnabled, setSoundEnabled]             = useState(true);
   const [hideColumnHeader, setHideColumnHeader]     = useState(false);
   const [isFullscreen, setIsFullscreen]             = useState(!!document.fullscreenElement);
@@ -1200,7 +1206,7 @@ function DependencyGridContent({
               <VerticalAlignTopIcon style={{ fontSize: 14 }} />
               <span className="text-[10px]">Header</span>
             </button>
-            {toolbarCollapsed && <span className="ml-2 text-[11px] text-slate-400 pb-0.5">{activeViewName}</span>}
+            {toolbarCollapsed && <span className="ml-2 text-[11px] text-slate-400 pb-0.5">{typeof activeViewName === 'string' ? activeViewName : 'Default'}</span>}
           </div>
 
           {!toolbarCollapsed && (
