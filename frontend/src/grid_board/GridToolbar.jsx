@@ -721,7 +721,12 @@ export default function GridToolbar({
                 </button>
               </div>
             </div>
+          </div>
+        </ToolbarSection>
 
+        {/* ─── COL 5b: Advanced (Shortcuts, Safety, Settings) ─── */}
+        <ToolbarSection sectionKey="advanced" label="Advanced" icon={<SettingsIcon style={{ fontSize: 14 }} />} width={280} isOpen={openSections.has('advanced')} {...sectionProps}>
+          <div className="flex gap-2 items-start">
             {/* Shortcuts button */}
             <div className="flex-shrink-0 self-stretch flex">
               <button
@@ -751,7 +756,7 @@ export default function GridToolbar({
               </button>
             </div>
 
-            {/* Right: Advanced button (tall, like Delete) */}
+            {/* Settings button with dropdown */}
             <div className="relative flex-shrink-0 self-stretch flex">
               <button
                 onClick={(e) => { e.stopPropagation(); setShowSettingsDropdown(!showSettingsDropdown); }}
@@ -762,7 +767,7 @@ export default function GridToolbar({
                 }`}
               >
                 <SettingsIcon style={{ fontSize: 18 }} />
-                <span>Advanced</span>
+                <span>Settings</span>
               </button>
               
               {showSettingsDropdown && (
