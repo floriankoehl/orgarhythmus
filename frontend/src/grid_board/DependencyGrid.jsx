@@ -814,7 +814,9 @@ function DependencyGridContent({
     onLoadDefaultView: () => handleLoadView(null),
     // Persist callbacks
     persistNodeCreate, persistNodeMove, persistNodeResize, persistNodeDelete,
-    persistEdgeCreate, persistEdgeDelete, persistNodeTaskChange,
+    persistNodeRename,
+    persistEdgeCreate, persistEdgeDelete, persistEdgeUpdate, persistNodeTaskChange,
+    persistLaneOrder, persistRowOrder,
   });
 
   const getRowDropIndicatorY = () =>

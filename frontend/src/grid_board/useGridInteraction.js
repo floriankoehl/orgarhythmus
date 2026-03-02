@@ -142,9 +142,13 @@ export function useGridInteraction({
   persistNodeMove,
   persistNodeResize,
   persistNodeDelete,
+  persistNodeRename,
   persistEdgeCreate,
   persistEdgeDelete,
+  persistEdgeUpdate,
   persistNodeTaskChange,
+  persistLaneOrder,
+  persistRowOrder,
 }) {
   // ── Context ──
   const {
@@ -228,6 +232,9 @@ export function useGridInteraction({
     layoutConstants,
     columnLayout,
     collapsedColumns,
+    // Persist callbacks
+    persistLaneOrder,
+    persistRowOrder,
   });
 
   // ── Node interactions ──
@@ -255,6 +262,13 @@ export function useGridInteraction({
     onWeakEdgeConflict: setWeakEdgeModal,
     collapsedColumns,
     columnLayout,
+    // Persist callbacks
+    persistNodeMove,
+    persistNodeResize,
+    persistNodeRename,
+    persistNodeDelete,
+    persistNodeCreate,
+    persistEdgeCreate,
   });
 
   // ── Edge interactions ──
@@ -292,6 +306,10 @@ export function useGridInteraction({
     defaultEdgeWeight,
     columnLayout,
     getLanePhaseRowHeight,
+    // Persist callbacks
+    persistEdgeCreate,
+    persistEdgeDelete,
+    persistEdgeUpdate,
   });
 
   // ── Copy/Paste logic ──
