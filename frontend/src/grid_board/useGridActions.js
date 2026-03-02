@@ -192,7 +192,7 @@ export function useGridActions({
           ...prev,
           [rowId]: {
             ...prev[rowId],
-            nodes: [...(prev[rowId]?.nodes || []), created]
+            milestones: [...(prev[rowId]?.milestones || []), created]
           }
         }));
         playSound('milestoneCreate');
@@ -204,7 +204,7 @@ export function useGridActions({
             setNodes(prev => { const u = { ...prev }; delete u[newId]; return u; });
             setRows(prev => ({
               ...prev,
-              [rowId]: { ...prev[rowId], nodes: (prev[rowId]?.nodes || []).filter(n => n.id !== newId) }
+              [rowId]: { ...prev[rowId], milestones: (prev[rowId]?.milestones || []).filter(n => n.id !== newId) }
             }));
           },
           redo: async () => {
@@ -213,7 +213,7 @@ export function useGridActions({
               setNodes(prev => ({ ...prev, [r.id]: { ...r, display: "default" } }));
               setRows(prev => ({
                 ...prev,
-                [rowId]: { ...prev[rowId], nodes: [...(prev[rowId]?.nodes || []), r] }
+                [rowId]: { ...prev[rowId], milestones: [...(prev[rowId]?.milestones || []), r] }
               }));
             }
           },
@@ -249,7 +249,7 @@ export function useGridActions({
           ...prev,
           [rowId]: {
             ...prev[rowId],
-            nodes: [...(prev[rowId]?.nodes || []), newNode]
+            milestones: [...(prev[rowId]?.milestones || []), newNode]
           }
         }));
         playSound('milestoneCreate');
@@ -261,7 +261,7 @@ export function useGridActions({
             setNodes(prev => { const u = { ...prev }; delete u[newId]; return u; });
             setRows(prev => ({
               ...prev,
-              [rowId]: { ...prev[rowId], nodes: (prev[rowId]?.nodes || []).filter(n => n.id !== newId) }
+              [rowId]: { ...prev[rowId], milestones: (prev[rowId]?.milestones || []).filter(n => n.id !== newId) }
             }));
           },
           redo: async () => {
@@ -272,7 +272,7 @@ export function useGridActions({
               setNodes(prev => ({ ...prev, [r.id]: ns }));
               setRows(prev => ({
                 ...prev,
-                [rowId]: { ...prev[rowId], nodes: [...(prev[rowId]?.nodes || []), ns] }
+                [rowId]: { ...prev[rowId], milestones: [...(prev[rowId]?.milestones || []), ns] }
               }));
             }
           },
@@ -668,13 +668,13 @@ export function useGridActions({
             if (updated[change.from]) {
               updated[change.from] = {
                 ...updated[change.from],
-                nodes: (updated[change.from].nodes || []).filter(ref => String(ref.id) !== String(nId)),
+                milestones: (updated[change.from].milestones || []).filter(ref => String(ref.id) !== String(nId)),
               };
             }
             if (updated[change.to]) {
               updated[change.to] = {
                 ...updated[change.to],
-                nodes: [...(updated[change.to].nodes || []), { id: parseInt(nId) || nId }],
+                milestones: [...(updated[change.to].milestones || []), { id: parseInt(nId) || nId }],
               };
             }
             return updated;
@@ -704,13 +704,13 @@ export function useGridActions({
                 if (updated[change.to]) {
                   updated[change.to] = {
                     ...updated[change.to],
-                    nodes: (updated[change.to].nodes || []).filter(ref => String(ref.id) !== String(nId)),
+                    milestones: (updated[change.to].milestones || []).filter(ref => String(ref.id) !== String(nId)),
                   };
                 }
                 if (updated[change.from]) {
                   updated[change.from] = {
                     ...updated[change.from],
-                    nodes: [...(updated[change.from].nodes || []), { id: parseInt(nId) || nId }],
+                    milestones: [...(updated[change.from].milestones || []), { id: parseInt(nId) || nId }],
                   };
                 }
                 return updated;
@@ -746,13 +746,13 @@ export function useGridActions({
                 if (updated[change.from]) {
                   updated[change.from] = {
                     ...updated[change.from],
-                    nodes: (updated[change.from].nodes || []).filter(ref => String(ref.id) !== String(nId)),
+                    milestones: (updated[change.from].milestones || []).filter(ref => String(ref.id) !== String(nId)),
                   };
                 }
                 if (updated[change.to]) {
                   updated[change.to] = {
                     ...updated[change.to],
-                    nodes: [...(updated[change.to].nodes || []), { id: parseInt(nId) || nId }],
+                    milestones: [...(updated[change.to].milestones || []), { id: parseInt(nId) || nId }],
                   };
                 }
                 return updated;
