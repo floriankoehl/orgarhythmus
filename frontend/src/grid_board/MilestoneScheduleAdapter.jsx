@@ -63,7 +63,7 @@ import { daysBetween } from './layoutMath';
 //  MilestoneScheduleAdapter
 // ═══════════════════════════════════════════════════════════════════════════
 
-export default function MilestoneScheduleAdapter({ isFloating = false }) {
+export default function MilestoneScheduleAdapter({ isFloating = false, windowPos, windowSize, setWindowPos, setWindowSize, isMaximized, setIsMaximized }) {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { buildClipboardText } = usePromptSettings();
@@ -591,6 +591,14 @@ export default function MilestoneScheduleAdapter({ isFloating = false }) {
 
       // Floating mode
       isFloating={isFloating}
+
+      // Window state (for view persistence when floating)
+      windowPos={windowPos}
+      windowSize={windowSize}
+      setWindowPos={setWindowPos}
+      setWindowSize={setWindowSize}
+      isMaximized={isMaximized}
+      setIsMaximized={setIsMaximized}
 
       // Labels (domain-specific)
       laneLabel="Team"

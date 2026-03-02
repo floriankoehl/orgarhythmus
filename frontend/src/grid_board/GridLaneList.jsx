@@ -314,6 +314,7 @@ export default function GridLaneList({
                     width: `${LANEWIDTH}px`,
                     height: `${laneRowHeight}px`,
                     backgroundColor: isVirtual ? '#f1f5f9' : lightenColor(laneColor, 0.92),
+                    overflow: LANEWIDTH === 0 ? 'hidden' : undefined,
                     ...(isVirtual ? { borderLeft: '2px dashed #94a3b8' } : {}),
                   }}
                   onMouseDown={(e) => {
@@ -422,6 +423,7 @@ export default function GridLaneList({
                             width: `${ROWLABELWIDTH}px`,
                             borderBottom: isLastVisible ? "none" : "1px solid #e2e8f0",
                             opacity: rowGhost?.rowKey === row_key ? 0.3 : 1,
+                            overflow: ROWLABELWIDTH === 0 ? 'hidden' : undefined,
                           }}
                           key={`${row_key}_container`}
                         >

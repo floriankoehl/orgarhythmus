@@ -158,6 +158,7 @@ export default function GridCanvas({
     toggleLaneLabels,
     toggleRowLabels,
     toggleRowActions,
+    toggleColumnHeader,
     // Navigation callbacks (optional, forwarded to GridLaneList)
     onLaneNavigate,
     onRowNavigate,
@@ -171,7 +172,8 @@ export default function GridCanvas({
   const hasGlobalPhases = globalPhases.length > 0;
   const showGlobalPhases = hasGlobalPhases && !hideGlobalPhases;
   const showColumnHeader = !hideColumnHeader;
-  const totalHeaderHeight = (showColumnHeader ? HEADER_HEIGHT : 0) + (showGlobalPhases ? PHASE_HEADER_HEIGHT : 0);
+  const COLLAPSED_HEADER_BAR_HEIGHT = 18;
+  const totalHeaderHeight = (showColumnHeader ? HEADER_HEIGHT : COLLAPSED_HEADER_BAR_HEIGHT) + (showGlobalPhases ? PHASE_HEADER_HEIGHT : 0);
   const totalColumnsWidth = columnLayout?.totalColumnsWidth ?? (totalColumns || 0) * COLUMNWIDTH;
   const SIDEBAR_WIDTH = LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH;
   const totalWidth = SIDEBAR_WIDTH + totalColumnsWidth;
@@ -487,6 +489,34 @@ export default function GridCanvas({
               </div>
             )}
 
+            {/* Column header toggle bar — shown when header is hidden */}
+            {!showColumnHeader && (
+              <div className="flex" style={{ height: '18px', position: 'relative', zIndex: 50 }}>
+                <div
+                  className="border-b bg-slate-50"
+                  style={{
+                    width: `${SIDEBAR_WIDTH}px`,
+                    height: '18px',
+                    position: 'sticky',
+                    left: 0,
+                    zIndex: 50,
+                  }}
+                />
+                <div className="flex-1 border-b bg-slate-50 relative" style={{ width: `${totalColumnsWidth}px`, height: '18px' }}>
+                  <button
+                    onClick={() => toggleColumnHeader?.()}
+                    className="absolute left-1/2 -translate-x-1/2 top-0 h-full px-3 flex items-center gap-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50/60 transition-colors rounded-b"
+                    title="Show column header row"
+                  >
+                    <svg width="10" height="8" viewBox="0 0 10 8">
+                      <path d="M5 7L1 2h8z" fill="currentColor" />
+                    </svg>
+                    <span className="text-[9px] font-medium">Show Header</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Column header row */}
             {showColumnHeader && (
               <div className="flex" style={{ height: `${HEADER_HEIGHT}px`, position: 'relative', zIndex: 50 }}>
@@ -581,6 +611,20 @@ export default function GridCanvas({
                     >
                       <svg width="8" height="10" viewBox="0 0 8 10" className={`transition-transform ${hideRowActions ? 'rotate-180' : ''}`}>
                         <path d="M6 5L1 1v8z" fill="currentColor" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Column header hide toggle (triangle pointing up) */}
+                  <div className="absolute right-2 top-0 h-full flex items-center z-[52]">
+                    <button
+                      onClick={() => toggleColumnHeader?.()}
+                      className="flex items-center justify-center text-slate-300 hover:text-blue-600 hover:bg-blue-50/60 transition-colors rounded px-0.5"
+                      title="Hide column header row"
+                      style={{ height: '14px' }}
+                    >
+                      <svg width="10" height="8" viewBox="0 0 10 8">
+                        <path d="M5 1L1 6h8z" fill="currentColor" />
                       </svg>
                     </button>
                   </div>

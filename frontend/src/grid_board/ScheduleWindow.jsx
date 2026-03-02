@@ -131,7 +131,15 @@ export default function ScheduleWindow() {
                 height: "100%",
               }}
             >
-              <MilestoneScheduleAdapter isFloating />
+              <MilestoneScheduleAdapter
+                isFloating
+                windowPos={windowPos}
+                windowSize={windowSize}
+                setWindowPos={setWindowPos}
+                setWindowSize={setWindowSize}
+                isMaximized={isMaximized}
+                setIsMaximized={setIsMaximized}
+              />
             </div>
           </div>
         </div>

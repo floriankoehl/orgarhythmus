@@ -193,6 +193,14 @@ function DependencyGridContent({
 
   /** When true, rendered inside a floating window — uses compact padding, hides header toggle */
   isFloating = false,
+
+  // ── Window state (for view persistence when floating) ──
+  windowPos,
+  windowSize,
+  setWindowPos,
+  setWindowSize,
+  isMaximized,
+  setIsMaximized,
 }) {
 
   const {
@@ -554,6 +562,10 @@ function DependencyGridContent({
     hideRowLabels,
     hideRowActions,
     isFullscreen,
+    // Window position/size (floating mode)
+    ...(windowPos  ? { windowPos }  : {}),
+    ...(windowSize ? { windowSize } : {}),
+    ...(isMaximized !== undefined ? { isMaximized } : {}),
   }), [
     rowDisplaySettings, laneDisplaySettings, viewMode, mode,
     collapsedColumns, selectedColumns, edgeSettings, showPhaseColorsInGrid,
@@ -564,6 +576,7 @@ function DependencyGridContent({
     autoSelectBlocking, warningDuration, resizeAllSelected, refactorMode,
     hideGlobalPhases, toolbarCollapsed, headerCollapsed,
     soundEnabled, hideColumnHeader, hideLaneLabels, hideRowLabels, hideRowActions, isFullscreen,
+    windowPos, windowSize, isMaximized,
   ]);
 
   const applyViewState = useCallback((state) => {
@@ -629,6 +642,11 @@ function DependencyGridContent({
     const wantFs = state.isFullscreen ?? d.isFullscreen;
     if (wantFs && !document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
     else if (!wantFs && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+
+    // Window position/size (floating mode)
+    if (state.windowPos && setWindowPos)   setWindowPos(state.windowPos);
+    if (state.windowSize && setWindowSize) setWindowSize(state.windowSize);
+    if (state.isMaximized !== undefined && setIsMaximized) setIsMaximized(state.isMaximized);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─────────────────────────
@@ -1003,9 +1021,10 @@ function DependencyGridContent({
     onColumnSelect: handleColumnSelect,
     onUncollapseColumns: uncollapseColumns,
     // Column visibility toggles (for header triangle buttons)
-    toggleLaneLabels: () => setHideLaneLabels(h => !h),
-    toggleRowLabels:  () => setHideRowLabels(h => !h),
-    toggleRowActions: () => setHideRowActions(h => !h),
+    toggleLaneLabels:    () => setHideLaneLabels(h => !h),
+    toggleRowLabels:     () => setHideRowLabels(h => !h),
+    toggleRowActions:    () => setHideRowActions(h => !h),
+    toggleColumnHeader:  () => setHideColumnHeader(h => !h),
     // Navigation (adapter-injected)
     onLaneNavigate,
     onRowNavigate,
