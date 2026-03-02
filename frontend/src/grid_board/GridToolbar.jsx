@@ -96,6 +96,8 @@ function ToolbarSection({ sectionKey, label, icon, width, children, flex, classN
 export default function GridToolbar({
   // ── Floating window mode ──
   isFloating = false,
+  /** When true, toolbar uses vertical accordion layout (narrow window). When false in floating, uses horizontal. */
+  compactToolbar = false,
   // ── Customisable labels ──
   laneLabel   = 'Lane',
   rowLabel    = 'Row',
@@ -339,12 +341,12 @@ export default function GridToolbar({
   }, []);
 
   // Helper: shorthand props threaded to every ToolbarSection
-  const sectionProps = { isFloating, onToggle: toggleSection };
+  const sectionProps = { isFloating: compactToolbar, onToggle: toggleSection };
 
   return (
     <>
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className={isFloating ? "flex flex-col" : "flex divide-x divide-slate-200"}>
+      <div className={compactToolbar ? "flex flex-col" : "flex divide-x divide-slate-200"}>
 
         {/* ─── COL 1: Mode (2×2 grid) ─── */}
         <ToolbarSection sectionKey="mode" label="Mode" icon={<VisibilityIcon style={{ fontSize: 14 }} />} width={170} isOpen={openSections.has('mode')} {...sectionProps}>

@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from "react";
-import { Minus, Maximize2, Minimize2, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Save, Star, Plus } from "lucide-react";
+import { Minus, Maximize2, Minimize2, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Save, Star, Plus, PanelTop, PanelTopClose } from "lucide-react";
 
 /**
  * Title bar for the Schedule floating window — mirrors IdeaBinTitleBar / TaskStructureTitleBar.
  *
- * Contains: drag handle, icon + title, view selector, window controls (minimize, maximize/restore).
+ * Contains: drag handle, icon + title, view selector, toolbar toggle, window controls.
  */
 export default function ScheduleTitleBar({
   handleWindowDrag,
@@ -22,6 +22,8 @@ export default function ScheduleTitleBar({
     onNextView,
     onPrevView,
     onCreateView,
+    toolbarCollapsed,
+    toggleToolbar,
   } = viewBar;
 
   const [showDropdown, setShowDropdown] = useState(false);
@@ -194,6 +196,21 @@ export default function ScheduleTitleBar({
 
       {/* Spacer */}
       <div className="flex-1" />
+
+      {/* Toolbar toggle */}
+      <div className="flex items-center" onMouseDown={(e) => e.stopPropagation()}>
+        <button
+          onClick={() => toggleToolbar?.()}
+          className={`p-1 rounded transition-colors ${
+            toolbarCollapsed
+              ? "hover:bg-white/20 text-white/60 hover:text-white"
+              : "bg-white/20 text-white hover:bg-white/30"
+          }`}
+          title={toolbarCollapsed ? "Show toolbar" : "Hide toolbar"}
+        >
+          {toolbarCollapsed ? <PanelTop size={13} /> : <PanelTopClose size={13} />}
+        </button>
+      </div>
 
       {/* Window controls */}
       <div className="flex items-center gap-0.5" onMouseDown={(e) => e.stopPropagation()}>

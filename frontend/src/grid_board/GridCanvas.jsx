@@ -699,13 +699,13 @@ export default function GridCanvas({
                 </div>
               </div>
             ) : (
-              /* Collapsed header: show-toggle overlay sitting at top-left, taking no layout height */
-              <div style={{ position: 'sticky', left: 0, width: 0, height: 0, zIndex: 52, overflow: 'visible' }}>
+              /* Collapsed header: show-toggle overlay pinned to top-right of the grid border */
+              <div style={{ position: 'sticky', left: 0, width: `${totalWidth}px`, height: 0, zIndex: 52, overflow: 'visible' }}>
                 <button
                   onClick={() => toggleColumnHeader?.()}
-                  className="flex items-center gap-1 px-1.5 py-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50/80 bg-white/80 border border-slate-200 rounded shadow-sm transition-colors"
+                  className="flex items-center gap-1 px-1.5 py-0.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50/80 bg-white/90 border border-slate-200 rounded-b shadow-sm transition-colors"
                   title="Show column header row"
-                  style={{ position: 'absolute', top: 0, left: 2, zIndex: 52 }}
+                  style={{ position: 'absolute', top: 0, right: 4, zIndex: 52 }}
                 >
                   <svg width="10" height="8" viewBox="0 0 10 8">
                     <path d="M5 7L1 2h8z" fill="currentColor" />

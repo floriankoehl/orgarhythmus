@@ -707,9 +707,11 @@ function DependencyGridContent({
       viewShortcuts,
       onNextView: handleNextView,
       onPrevView: handlePrevView,
+      toolbarCollapsed,
+      toggleToolbar: () => { setToolbarCollapsed(v => !v); playSound('uiClick'); },
     };
   }
-  useEffect(() => { triggerViewBarRender?.(); }, [savedViews, activeViewId, activeViewName, triggerViewBarRender]);
+  useEffect(() => { triggerViewBarRender?.(); }, [savedViews, activeViewId, activeViewName, toolbarCollapsed, triggerViewBarRender]);
 
   // ─────────────────────────
   //  Snapshot management (inline — no separate hook needed since it's all callbacks)
@@ -1253,7 +1255,9 @@ function DependencyGridContent({
           setPopupCloseSignal(c => c + 1);
         }}
       >
-        <div className="mb-4">
+        <div className={isFloating ? 'mb-2' : 'mb-4'}>
+          {/* In-grid toolbar tabs — hidden in floating mode (title bar controls it) */}
+          {!isFloating && (
           <div className="flex items-end gap-0.5 ml-1">
             <button
               onClick={(e) => { e.stopPropagation(); setToolbarCollapsed(!toolbarCollapsed); playSound('uiClick'); }}
@@ -1278,10 +1282,12 @@ function DependencyGridContent({
             )}
             {toolbarCollapsed && <span className="ml-2 text-[11px] text-slate-400 pb-0.5">{typeof activeViewName === 'string' ? activeViewName : 'Default'}</span>}
           </div>
+          )}
 
           {!toolbarCollapsed && (
             <GridToolbar
               isFloating={isFloating}
+              compactToolbar={isFloating && (windowSize?.w ?? Infinity) < 1000}
               laneLabel={laneLabel}
               rowLabel={rowLabel}
               nodeLabel={nodeLabel}
