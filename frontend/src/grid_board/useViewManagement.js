@@ -40,9 +40,14 @@ export function useViewManagement({
   const viewFlashTimerRef = useRef(null);
   const viewFlashCounterRef = useRef(0);
 
-  // ── Auto-load the default view on mount ──
+  // ── Auto-load the default view on mount / project change ──
 
   useEffect(() => {
+    // Reset stale state immediately when the data source (project) changes
+    setSavedViews([]);
+    setActiveViewId(null);
+    setActiveViewName('Default');
+
     if (!fetchViews) return;
     fetchViews()
       .then(views => {
