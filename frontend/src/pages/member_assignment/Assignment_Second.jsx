@@ -20,28 +20,28 @@ import {
   get_all_phases,
   get_all_dependencies,
 } from '../../api/dependencies_api.js';
-import { useViewManagement } from '../dependency/useViewManagement.js';
-import { getDefaultViewState } from '../dependency/viewDefaults.js';
+import { useViewManagement } from '../../grid_board/useViewManagement.js';
+import { getDefaultViewState } from '../../grid_board/viewDefaults.js';
 import {
-  DEFAULT_TASKHEIGHT_NORMAL,
-  DEFAULT_TASKHEIGHT_SMALL,
-  TASKWIDTH as DEFAULT_TASKWIDTH,
-  TEAMWIDTH as DEFAULT_TEAMWIDTH,
-  DEFAULT_DAYWIDTH,
+  DEFAULT_ROWHEIGHT_NORMAL as DEFAULT_TASKHEIGHT_NORMAL,
+  DEFAULT_ROWHEIGHT_SMALL as DEFAULT_TASKHEIGHT_SMALL,
+  ROWLABELWIDTH as DEFAULT_TASKWIDTH,
+  LANEWIDTH as DEFAULT_TEAMWIDTH,
+  DEFAULT_COLUMNWIDTH as DEFAULT_DAYWIDTH,
   HEADER_HEIGHT,
-  TEAM_DRAG_HIGHLIGHT_HEIGHT,
-  MARIGN_BETWEEN_DRAG_HIGHLIGHT,
-  TEAM_HEADER_LINE_HEIGHT,
-  TEAM_HEADER_GAP,
-  TEAM_COLLAPSED_HEIGHT,
-  TEAM_PHASE_ROW_HEIGHT,
-  DAY_NAME_WIDTH_THRESHOLD,
+  LANE_DRAG_HIGHLIGHT_HEIGHT as TEAM_DRAG_HIGHLIGHT_HEIGHT,
+  MARGIN_BETWEEN_DRAG_HIGHLIGHT as MARIGN_BETWEEN_DRAG_HIGHLIGHT,
+  LANE_HEADER_LINE_HEIGHT as TEAM_HEADER_LINE_HEIGHT,
+  LANE_HEADER_GAP as TEAM_HEADER_GAP,
+  LANE_COLLAPSED_HEIGHT as TEAM_COLLAPSED_HEIGHT,
+  LANE_PHASE_ROW_HEIGHT as TEAM_PHASE_ROW_HEIGHT,
+  COLUMN_LABEL_WIDTH_THRESHOLD as DAY_NAME_WIDTH_THRESHOLD,
   daysBetween,
   lightenColor,
   getContrastTextColor,
-  getVisibleTasks,
-  isTaskVisible,
-} from '../dependency/layoutMath.js';
+  getVisibleRows as getVisibleTasks,
+  isRowVisible as isTaskVisible,
+} from '../../grid_board/layoutMath.js';
 
 // 3D engine module
 import {
