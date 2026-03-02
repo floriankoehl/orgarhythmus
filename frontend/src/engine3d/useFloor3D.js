@@ -20,9 +20,9 @@ import {
   worldToBoardPixel,
 } from './floor3DMapping.js';
 import {
-  DEFAULT_TASKHEIGHT_SMALL,
-  DEFAULT_TASKHEIGHT_NORMAL,
-} from '../pages/dependency/layoutMath.js';
+  DEFAULT_ROWHEIGHT_SMALL as DEFAULT_TASKHEIGHT_SMALL,
+  DEFAULT_ROWHEIGHT_NORMAL as DEFAULT_TASKHEIGHT_NORMAL,
+} from '../grid_board/layoutMath.js';
 
 /**
  * useFloor3D — builds and exposes the floor entity registry.

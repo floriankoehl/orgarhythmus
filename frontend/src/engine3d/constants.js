@@ -2,21 +2,21 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import {
-  DEFAULT_TASKHEIGHT_NORMAL,
-  DEFAULT_TASKHEIGHT_SMALL,
+  DEFAULT_ROWHEIGHT_NORMAL as DEFAULT_TASKHEIGHT_NORMAL,
+  DEFAULT_ROWHEIGHT_SMALL as DEFAULT_TASKHEIGHT_SMALL,
   HEADER_HEIGHT,
-  TEAM_DRAG_HIGHLIGHT_HEIGHT,
-  MARIGN_BETWEEN_DRAG_HIGHLIGHT,
-  TEAM_HEADER_LINE_HEIGHT,
-  TEAM_HEADER_GAP,
-  TEAM_COLLAPSED_HEIGHT,
-  TEAM_PHASE_ROW_HEIGHT,
-  getTaskHeight as getTaskHeightBase,
-  getVisibleTasks,
-  getTaskYOffset as getTaskYOffsetBase,
-  isTaskVisible,
-  getRawTeamHeight,
-} from '../pages/dependency/layoutMath.js';
+  LANE_DRAG_HIGHLIGHT_HEIGHT as TEAM_DRAG_HIGHLIGHT_HEIGHT,
+  MARGIN_BETWEEN_DRAG_HIGHLIGHT as MARIGN_BETWEEN_DRAG_HIGHLIGHT,
+  LANE_HEADER_LINE_HEIGHT as TEAM_HEADER_LINE_HEIGHT,
+  LANE_HEADER_GAP as TEAM_HEADER_GAP,
+  LANE_COLLAPSED_HEIGHT as TEAM_COLLAPSED_HEIGHT,
+  LANE_PHASE_ROW_HEIGHT as TEAM_PHASE_ROW_HEIGHT,
+  getRowHeight as getTaskHeightBase,
+  getVisibleRows as getVisibleTasks,
+  getRowYOffset as getTaskYOffsetBase,
+  isRowVisible as isTaskVisible,
+  getRawLaneHeight as getRawTeamHeight,
+} from '../grid_board/layoutMath.js';
 
 // ── Phase header height ──────────────────────────────────────────
 export const PHASE_HEADER_HEIGHT = 26;

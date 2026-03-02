@@ -25,18 +25,18 @@
 //   boardPixelX = boardDims.w / 2 - worldZ - boardDims.offsetX
 
 import {
-  TEAM_DRAG_HIGHLIGHT_HEIGHT,
-  MARIGN_BETWEEN_DRAG_HIGHLIGHT,
-  TEAM_HEADER_LINE_HEIGHT,
-  TEAM_HEADER_GAP,
-  TEAM_PHASE_ROW_HEIGHT,
-  TEAM_COLLAPSED_HEIGHT,
-  getVisibleTasks,
-  isTaskVisible,
-  getTaskHeight as getTaskHeightBase,
-  getTaskYOffset as getTaskYOffsetBase,
-  getRawTeamHeight,
-} from '../pages/dependency/layoutMath.js';
+  LANE_DRAG_HIGHLIGHT_HEIGHT as TEAM_DRAG_HIGHLIGHT_HEIGHT,
+  MARGIN_BETWEEN_DRAG_HIGHLIGHT as MARIGN_BETWEEN_DRAG_HIGHLIGHT,
+  LANE_HEADER_LINE_HEIGHT as TEAM_HEADER_LINE_HEIGHT,
+  LANE_HEADER_GAP as TEAM_HEADER_GAP,
+  LANE_PHASE_ROW_HEIGHT as TEAM_PHASE_ROW_HEIGHT,
+  LANE_COLLAPSED_HEIGHT as TEAM_COLLAPSED_HEIGHT,
+  getVisibleRows as getVisibleTasks,
+  isRowVisible as isTaskVisible,
+  getRowHeight as getTaskHeightBase,
+  getRowYOffset as getTaskYOffsetBase,
+  getRawLaneHeight as getRawTeamHeight,
+} from '../grid_board/layoutMath.js';
 import { SCROLL_Y_PAD } from './constants.js';
 
 // ══════════════════════════════════════════════════════════════════

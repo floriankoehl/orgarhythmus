@@ -84,9 +84,10 @@ export const getRowHeight = (rowId, rowDisplaySettings, ROWHEIGHT_SMALL, ROWHEIG
 
 export const getRawLaneHeight = (lane, rowDisplaySettings, ROWHEIGHT_SMALL, ROWHEIGHT_NORMAL) => {
     if (!lane) return 0;
+    const rowIds = lane.rows || lane.tasks || [];
     
     let height = 0;
-    for (const rowId of lane.rows) {
+    for (const rowId of rowIds) {
       height += getRowHeight(rowId, rowDisplaySettings, ROWHEIGHT_SMALL, ROWHEIGHT_NORMAL);
     }
     return height;
@@ -104,7 +105,8 @@ export const getLaneHeightBase = (lane, laneDisplaySettings, rowDisplaySettings,
     }
     
     let height = 0;
-    for (const rowId of lane.rows) {
+    const rowIds = lane.rows || lane.tasks || [];
+    for (const rowId of rowIds) {
       height += getRowHeight(rowId, rowDisplaySettings, ROWHEIGHT_SMALL, ROWHEIGHT_NORMAL);
     }
     return Math.max(height, LANE_MIN_HEIGHT) + lanePhaseRowHeight;
@@ -125,8 +127,9 @@ export const getLaneYOffset = (laneId, laneOrder, isLaneVisibleFn, getLaneHeight
 
 export const getRowYOffset = (rowId, lane, isRowVisibleFn, getRowHeightFn, rowDisplaySettings) => {
     if (!lane) return 0;
+    const rowIds = lane.rows || lane.tasks || [];
     let offset = 0;
-    for (const tid of lane.rows) {
+    for (const tid of rowIds) {
       if (tid === rowId) break;
       if (!isRowVisibleFn(tid, rowDisplaySettings)) continue;
       offset += getRowHeightFn(tid, rowDisplaySettings);
@@ -140,7 +143,8 @@ export const getRowYOffset = (rowId, lane, isRowVisibleFn, getRowHeightFn, rowDi
 
 export const getVisibleRows = (lane, rowDisplaySettings) => {
     if (!lane) return [];
-    return lane.rows.filter(rowId => isRowVisible(rowId, rowDisplaySettings));
+    const rowIds = lane.rows || lane.tasks || [];
+    return rowIds.filter(rowId => isRowVisible(rowId, rowDisplaySettings));
 };
 
 export const getVisibleLaneIndex = (laneId, laneOrder, isLaneVisibleFn) => {
@@ -160,11 +164,11 @@ export const isLaneVisibleBase = (laneId, laneDisplaySettings, lanes, rowDisplay
     if (!showEmptyLanes && nodes) {
       const lane = lanes[laneId];
       if (lane) {
-        const laneRows = lane.rows || [];
+        const laneRows = lane.rows || lane.tasks || [];
         const hasNode = laneRows.some(rowKey => {
           const rowSetting = rowDisplaySettings[rowKey];
           // Check if any node belongs to this row
-          return Object.values(nodes).some(m => String(m.row) === String(rowKey));
+          return Object.values(nodes).some(m => String(m.row ?? m.task) === String(rowKey));
         });
         if (!hasNode) return false;
       }
@@ -299,12 +303,12 @@ export function computeNodePixelPositions({
             const rowY = rowsStartY + rowYOff;
 
             const rowNodes = Object.values(nodes).filter(
-                (ms) => String(ms.row) === String(rowId),
+                (ms) => String(ms.row ?? ms.task) === String(rowId),
             );
             for (const m of rowNodes) {
                 result.push({
                     ...m,
-                    x: LANEWIDTH + ROWLABELWIDTH + m.startColumn * COLUMNWIDTH,
+                    x: LANEWIDTH + ROWLABELWIDTH + (m.startColumn ?? m.start_index ?? 0) * COLUMNWIDTH,
                     y: rowY,
                     w: (m.duration || 1) * COLUMNWIDTH,
                     h: th,
