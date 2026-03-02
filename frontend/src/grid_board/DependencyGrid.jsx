@@ -11,6 +11,7 @@ import {
   DEFAULT_ROWHEIGHT_SMALL,
   ROWLABELWIDTH  as DEFAULT_ROWLABELWIDTH_CONSTANT,
   LANEWIDTH      as DEFAULT_LANEWIDTH_CONSTANT,
+  ROW_ACTIONS_WIDTH as DEFAULT_ROW_ACTIONS_WIDTH_CONSTANT,
   DEFAULT_COLUMNWIDTH,
   HEADER_HEIGHT,
   LANE_COLLAPSED_HEIGHT,
@@ -189,6 +190,9 @@ function DependencyGridContent({
 
   /** Refactor drag handler — adapter-supplied for domain-specific refactor mode */
   handleRefactorDrag,
+
+  /** When true, rendered inside a floating window — uses compact padding, hides header toggle */
+  isFloating = false,
 }) {
 
   const {
@@ -255,6 +259,9 @@ function DependencyGridContent({
   const [collapseAllLanePhases, setCollapseAllLanePhases]   = useState(false);
   const [laneColumnWidth, setLaneColumnWidth]       = useState(DEFAULT_LANEWIDTH_CONSTANT);
   const [rowColumnWidth, setRowColumnWidth]         = useState(DEFAULT_ROWLABELWIDTH_CONSTANT);
+  const [hideLaneLabels, setHideLaneLabels]         = useState(false);
+  const [hideRowLabels, setHideRowLabels]           = useState(false);
+  const [hideRowActions, setHideRowActions]         = useState(false);
   const [hideGlobalPhases, setHideGlobalPhases]     = useState(DEFAULT_HIDE_GLOBAL_PHASES);
   const [toolbarCollapsed, setToolbarCollapsed]     = useState(DEFAULT_TOOLBAR_COLLAPSED);
   const [headerCollapsedLocal, setHeaderCollapsedLocal] = useState(false);
@@ -318,8 +325,9 @@ function DependencyGridContent({
   // Dynamic constants
   // ─────────────────────────
   const COLUMNWIDTH             = customColumnWidth;
-  const LANEWIDTH               = laneColumnWidth;
-  const ROWLABELWIDTH           = rowColumnWidth;
+  const LANEWIDTH               = hideLaneLabels ? 0 : laneColumnWidth;
+  const ROWLABELWIDTH           = hideRowLabels  ? 0 : rowColumnWidth;
+  const ROWACTIONSWIDTH         = hideRowActions  ? 0 : DEFAULT_ROW_ACTIONS_WIDTH_CONSTANT;
   const ROWHEIGHT_NORMAL        = customRowHeightNormal;
   const ROWHEIGHT_SMALL         = customRowHeightSmall;
   const COLLAPSED_COLUMN_WIDTH  = 6;
@@ -542,6 +550,9 @@ function DependencyGridContent({
     headerCollapsed,
     soundEnabled,
     hideColumnHeader,
+    hideLaneLabels,
+    hideRowLabels,
+    hideRowActions,
     isFullscreen,
   }), [
     rowDisplaySettings, laneDisplaySettings, viewMode, mode,
@@ -552,7 +563,7 @@ function DependencyGridContent({
     collapseAllLanePhases, laneColumnWidth, rowColumnWidth,
     autoSelectBlocking, warningDuration, resizeAllSelected, refactorMode,
     hideGlobalPhases, toolbarCollapsed, headerCollapsed,
-    soundEnabled, hideColumnHeader, isFullscreen,
+    soundEnabled, hideColumnHeader, hideLaneLabels, hideRowLabels, hideRowActions, isFullscreen,
   ]);
 
   const applyViewState = useCallback((state) => {
@@ -612,6 +623,9 @@ function DependencyGridContent({
     setHeaderCollapsed(state.headerCollapsed ?? d.headerCollapsed);
     setSoundEnabled(state.soundEnabled ?? d.soundEnabled);
     setHideColumnHeader(state.hideColumnHeader ?? d.hideColumnHeader);
+    setHideLaneLabels(state.hideLaneLabels ?? d.hideLaneLabels);
+    setHideRowLabels(state.hideRowLabels ?? d.hideRowLabels);
+    setHideRowActions(state.hideRowActions ?? d.hideRowActions);
     const wantFs = state.isFullscreen ?? d.isFullscreen;
     if (wantFs && !document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
     else if (!wantFs && document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -797,7 +811,7 @@ function DependencyGridContent({
     setDeleteConfirmModal, setOpenLaneSettings, setShowFilterDropdown,
     setRowDisplaySettings, setLaneDisplaySettings,
     setNodeCreateModal, setIsAddingNode, setRows,
-    COLUMNWIDTH, LANEWIDTH, ROWLABELWIDTH,
+    COLUMNWIDTH, LANEWIDTH, ROWLABELWIDTH, ROWACTIONSWIDTH,
     getRowHeight, getLaneHeight: getLaneHeight, isLaneVisible, getVisibleLaneIndex, getLaneYOffset, getRowYOffset, getVisibleRows,
     columnLayout, collapsedColumns,
     safeMode,
@@ -908,7 +922,7 @@ function DependencyGridContent({
     getRowDropIndicatorY,
     getNodeHandlePosition,
     getLanePhaseRowHeight,
-    LANEWIDTH, ROWLABELWIDTH, COLUMNWIDTH,
+    LANEWIDTH, ROWLABELWIDTH, ROWACTIONSWIDTH, COLUMNWIDTH,
     COLLAPSED_COLUMN_WIDTH,
     LANE_DRAG_HIGHLIGHT_HEIGHT,
     MARGIN_BETWEEN_DRAG_HIGHLIGHT,
@@ -946,6 +960,9 @@ function DependencyGridContent({
     collapsedLanePhaseRows,
     hideGlobalPhases,
     hideColumnHeader,
+    hideLaneLabels,
+    hideRowLabels,
+    hideRowActions,
     marqueeRect,
   };
 
@@ -985,6 +1002,10 @@ function DependencyGridContent({
     focusOnPhase,
     onColumnSelect: handleColumnSelect,
     onUncollapseColumns: uncollapseColumns,
+    // Column visibility toggles (for header triangle buttons)
+    toggleLaneLabels: () => setHideLaneLabels(h => !h),
+    toggleRowLabels:  () => setHideRowLabels(h => !h),
+    toggleRowActions: () => setHideRowActions(h => !h),
     // Navigation (adapter-injected)
     onLaneNavigate,
     onRowNavigate,
@@ -1170,7 +1191,7 @@ function DependencyGridContent({
 
       {/* Page wrapper */}
       <div
-        className="p-10 w-full min-w-0 select-none"
+        className={`${isFloating ? 'p-3' : 'p-10'} w-full min-w-0 select-none`}
         style={{
           background: 'linear-gradient(160deg, #f8f9fb 0%, #f6f7fa 50%, #f7f6f5 100%)',
           ...(viewTransition === 'out' ? { transition: 'transform 0.2s ease-in, opacity 0.2s ease-in', transform: 'translateX(-50px)', opacity: 0 }
@@ -1199,22 +1220,25 @@ function DependencyGridContent({
               {toolbarCollapsed ? <UnfoldMoreIcon style={{ fontSize: 14 }} /> : <UnfoldLessIcon style={{ fontSize: 14 }} />}
               <span className="text-[10px]">{toolbarCollapsed ? 'Show' : 'Hide'}</span>
             </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); setHeaderCollapsed(!headerCollapsed); playSound('uiClick'); }}
-              className={`px-3 py-1 flex items-center gap-1 rounded-t-md border border-b-0 text-xs transition ${
-                headerCollapsed ? 'bg-slate-700 border-slate-600 text-white hover:bg-slate-600'
-                  : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50'
-              }`}
-              title={headerCollapsed ? 'Show header' : 'Hide header'}
-            >
-              <VerticalAlignTopIcon style={{ fontSize: 14 }} />
-              <span className="text-[10px]">Header</span>
-            </button>
+            {!isFloating && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setHeaderCollapsed(!headerCollapsed); playSound('uiClick'); }}
+                className={`px-3 py-1 flex items-center gap-1 rounded-t-md border border-b-0 text-xs transition ${
+                  headerCollapsed ? 'bg-slate-700 border-slate-600 text-white hover:bg-slate-600'
+                    : 'bg-white border-slate-200 text-slate-400 hover:text-slate-600 hover:bg-slate-50'
+                }`}
+                title={headerCollapsed ? 'Show header' : 'Hide header'}
+              >
+                <VerticalAlignTopIcon style={{ fontSize: 14 }} />
+                <span className="text-[10px]">Header</span>
+              </button>
+            )}
             {toolbarCollapsed && <span className="ml-2 text-[11px] text-slate-400 pb-0.5">{typeof activeViewName === 'string' ? activeViewName : 'Default'}</span>}
           </div>
 
           {!toolbarCollapsed && (
             <GridToolbar
+              isFloating={isFloating}
               laneLabel={laneLabel}
               rowLabel={rowLabel}
               nodeLabel={nodeLabel}
@@ -1315,6 +1339,12 @@ function DependencyGridContent({
               setSoundEnabled={setSoundEnabled}
               hideColumnHeader={hideColumnHeader}
               setHideColumnHeader={setHideColumnHeader}
+              hideLaneLabels={hideLaneLabels}
+              setHideLaneLabels={setHideLaneLabels}
+              hideRowLabels={hideRowLabels}
+              setHideRowLabels={setHideRowLabels}
+              hideRowActions={hideRowActions}
+              setHideRowActions={setHideRowActions}
               isFullscreen={isFullscreen}
               toggleFullscreen={toggleFullscreen}
               allRowsSmall={laneOrder.every(lid => {

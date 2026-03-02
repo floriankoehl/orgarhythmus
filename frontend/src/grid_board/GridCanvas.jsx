@@ -52,6 +52,7 @@ export default function GridCanvas({
     getLanePhaseRowHeight,
     LANEWIDTH,
     ROWLABELWIDTH,
+    ROWACTIONSWIDTH = 0,
     COLUMNWIDTH,
     COLLAPSED_COLUMN_WIDTH = 6,
     LANE_DRAG_HIGHLIGHT_HEIGHT,
@@ -110,6 +111,9 @@ export default function GridCanvas({
     collapsedLanePhaseRows = new Set(),
     hideGlobalPhases = false,
     hideColumnHeader = false,
+    hideLaneLabels = false,
+    hideRowLabels = false,
+    hideRowActions = false,
     marqueeRect,
   } = displayState;
 
@@ -150,6 +154,10 @@ export default function GridCanvas({
     focusOnPhase,
     onColumnSelect,
     onUncollapseColumns,
+    // Column visibility toggles
+    toggleLaneLabels,
+    toggleRowLabels,
+    toggleRowActions,
     // Navigation callbacks (optional, forwarded to GridLaneList)
     onLaneNavigate,
     onRowNavigate,
@@ -165,7 +173,8 @@ export default function GridCanvas({
   const showColumnHeader = !hideColumnHeader;
   const totalHeaderHeight = (showColumnHeader ? HEADER_HEIGHT : 0) + (showGlobalPhases ? PHASE_HEADER_HEIGHT : 0);
   const totalColumnsWidth = columnLayout?.totalColumnsWidth ?? (totalColumns || 0) * COLUMNWIDTH;
-  const totalWidth = LANEWIDTH + ROWLABELWIDTH + totalColumnsWidth;
+  const SIDEBAR_WIDTH = LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH;
+  const totalWidth = SIDEBAR_WIDTH + totalColumnsWidth;
 
   return (
     <>
@@ -189,7 +198,7 @@ export default function GridCanvas({
             if (!scrollContainer) return;
             const scrollContainerRect = scrollContainer.getBoundingClientRect();
             const clickXInViewport = e.clientX - scrollContainerRect.left;
-            if (clickXInViewport > LANEWIDTH + ROWLABELWIDTH) {
+            if (clickXInViewport > SIDEBAR_WIDTH) {
               handleMarqueeStart?.(e);
             }
           }}
@@ -206,7 +215,7 @@ export default function GridCanvas({
               position: 'sticky',
               left: 0,
               top: 0,
-              width: `${LANEWIDTH + ROWLABELWIDTH}px`,
+              width: `${SIDEBAR_WIDTH}px`,
               height: 0,
               zIndex: 150,
               pointerEvents: 'none',
@@ -296,7 +305,7 @@ export default function GridCanvas({
                     nW += columnLayout?.columnWidth?.(n.startColumn + d) ?? COLUMNWIDTH;
                   }
                   if (!nW) nW = COLUMNWIDTH;
-                  const nX = LANEWIDTH + ROWLABELWIDTH + nStartX;
+                  const nX = SIDEBAR_WIDTH + nStartX;
                   const rh = getRowHeight(n.row, rowDisplaySettings);
                   const nY = phaseRowH + (rowYMap[n.row] ?? 0);
                   return (
@@ -329,7 +338,7 @@ export default function GridCanvas({
                 <div
                   className="bg-slate-50 border-b border-r border-slate-200 flex items-center justify-center text-[10px] font-semibold text-slate-400"
                   style={{
-                    width: `${LANEWIDTH + ROWLABELWIDTH}px`,
+                    width: `${SIDEBAR_WIDTH}px`,
                     height: `${PHASE_HEADER_HEIGHT}px`,
                     position: 'sticky',
                     left: 0,
@@ -484,50 +493,96 @@ export default function GridCanvas({
                 <div
                   className="flex border-b bg-slate-100 text-sm font-semibold text-slate-700"
                   style={{
-                    width: `${LANEWIDTH + ROWLABELWIDTH}px`,
+                    width: `${SIDEBAR_WIDTH}px`,
                     height: `${HEADER_HEIGHT}px`,
                     position: 'sticky',
                     left: 0,
                     zIndex: 50,
                   }}
                 >
+                  {/* Lane header cell — show collapse triangle even when width is 0 */}
                   <div
-                    className="flex items-center justify-center border-r border-slate-300"
-                    style={{ width: `${LANEWIDTH}px`, position: 'relative' }}
+                    className="flex items-center justify-center border-r border-slate-300 relative overflow-visible"
+                    style={{ width: `${LANEWIDTH}px`, minWidth: hideLaneLabels ? '18px' : undefined }}
                   >
-                    Lane
-                    <div
-                      onMouseDown={(e) => handleColumnResize('lane', e)}
-                      style={{
-                        position: 'absolute',
-                        right: -2,
-                        top: 0,
-                        width: '5px',
-                        height: '100%',
-                        cursor: 'col-resize',
-                        zIndex: 60,
-                      }}
-                      className="hover:bg-blue-400/40 transition-colors"
-                    />
+                    {!hideLaneLabels && 'Lane'}
+                    {/* Triangle toggle */}
+                    <button
+                      onClick={() => toggleLaneLabels?.()}
+                      className="absolute right-0 top-0 h-full w-4 flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50/60 transition-colors z-[61]"
+                      title={hideLaneLabels ? 'Show lane labels' : 'Hide lane labels'}
+                      style={hideLaneLabels ? { right: -1 } : undefined}
+                    >
+                      <svg width="8" height="10" viewBox="0 0 8 10" className={`transition-transform ${hideLaneLabels ? 'rotate-180' : ''}`}>
+                        <path d="M6 5L1 1v8z" fill="currentColor" />
+                      </svg>
+                    </button>
+                    {!hideLaneLabels && (
+                      <div
+                        onMouseDown={(e) => handleColumnResize('lane', e)}
+                        style={{
+                          position: 'absolute',
+                          right: -2,
+                          top: 0,
+                          width: '5px',
+                          height: '100%',
+                          cursor: 'col-resize',
+                          zIndex: 60,
+                        }}
+                        className="hover:bg-blue-400/40 transition-colors"
+                      />
+                    )}
                   </div>
+
+                  {/* Row names header cell */}
                   <div
-                    className="flex items-center justify-center border-r border-slate-300"
-                    style={{ width: `${ROWLABELWIDTH}px`, position: 'relative' }}
+                    className="flex items-center justify-center border-r border-slate-300 relative overflow-visible"
+                    style={{ width: `${ROWLABELWIDTH}px`, minWidth: hideRowLabels ? '18px' : undefined }}
                   >
-                    Rows
-                    <div
-                      onMouseDown={(e) => handleColumnResize('row', e)}
-                      style={{
-                        position: 'absolute',
-                        right: -2,
-                        top: 0,
-                        width: '5px',
-                        height: '100%',
-                        cursor: 'col-resize',
-                        zIndex: 60,
-                      }}
-                      className="hover:bg-blue-400/40 transition-colors"
-                    />
+                    {!hideRowLabels && 'Rows'}
+                    <button
+                      onClick={() => toggleRowLabels?.()}
+                      className="absolute right-0 top-0 h-full w-4 flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50/60 transition-colors z-[61]"
+                      title={hideRowLabels ? 'Show row names' : 'Hide row names'}
+                      style={hideRowLabels ? { right: -1 } : undefined}
+                    >
+                      <svg width="8" height="10" viewBox="0 0 8 10" className={`transition-transform ${hideRowLabels ? 'rotate-180' : ''}`}>
+                        <path d="M6 5L1 1v8z" fill="currentColor" />
+                      </svg>
+                    </button>
+                    {!hideRowLabels && (
+                      <div
+                        onMouseDown={(e) => handleColumnResize('row', e)}
+                        style={{
+                          position: 'absolute',
+                          right: -2,
+                          top: 0,
+                          width: '5px',
+                          height: '100%',
+                          cursor: 'col-resize',
+                          zIndex: 60,
+                        }}
+                        className="hover:bg-blue-400/40 transition-colors"
+                      />
+                    )}
+                  </div>
+
+                  {/* Row actions header cell */}
+                  <div
+                    className="flex items-center justify-center border-r border-slate-300 relative overflow-visible"
+                    style={{ width: `${ROWACTIONSWIDTH}px`, minWidth: hideRowActions ? '18px' : undefined }}
+                  >
+                    {!hideRowActions && <span className="text-[10px] text-slate-400">Acts</span>}
+                    <button
+                      onClick={() => toggleRowActions?.()}
+                      className="absolute right-0 top-0 h-full w-4 flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50/60 transition-colors z-[61]"
+                      title={hideRowActions ? 'Show row actions' : 'Hide row actions'}
+                      style={hideRowActions ? { right: -1 } : undefined}
+                    >
+                      <svg width="8" height="10" viewBox="0 0 8 10" className={`transition-transform ${hideRowActions ? 'rotate-180' : ''}`}>
+                        <path d="M6 5L1 1v8z" fill="currentColor" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
 
@@ -646,6 +701,7 @@ export default function GridCanvas({
             isRowVisible={isRowVisible}
             LANEWIDTH={LANEWIDTH}
             ROWLABELWIDTH={ROWLABELWIDTH}
+            ROWACTIONSWIDTH={ROWACTIONSWIDTH}
             COLUMNWIDTH={COLUMNWIDTH}
             LANE_DRAG_HIGHLIGHT_HEIGHT={LANE_DRAG_HIGHLIGHT_HEIGHT}
             MARGIN_BETWEEN_DRAG_HIGHLIGHT={MARGIN_BETWEEN_DRAG_HIGHLIGHT}
@@ -931,6 +987,7 @@ export default function GridCanvas({
             hideCollapsedNodes={hideCollapsedNodes}
             LANEWIDTH={LANEWIDTH}
             ROWLABELWIDTH={ROWLABELWIDTH}
+            ROWACTIONSWIDTH={ROWACTIONSWIDTH}
             COLUMNWIDTH={COLUMNWIDTH}
             LANE_DRAG_HIGHLIGHT_HEIGHT={LANE_DRAG_HIGHLIGHT_HEIGHT}
             MARGIN_BETWEEN_DRAG_HIGHLIGHT={MARGIN_BETWEEN_DRAG_HIGHLIGHT}

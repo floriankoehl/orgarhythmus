@@ -36,6 +36,7 @@ export function useEdgeInteractions({
   COLUMNWIDTH,
   LANEWIDTH,
   ROWLABELWIDTH,
+  ROWACTIONSWIDTH = 0,
   getRowHeight,
   isLaneVisible,
   getLaneYOffset,
@@ -92,8 +93,8 @@ export function useEdgeInteractions({
       const headerOffset = LANE_HEADER_LINE_HEIGHT + LANE_HEADER_GAP;
 
       const nodeX = columnLayout
-        ? LANEWIDTH + ROWLABELWIDTH + columnLayout.columnXOffset(node.startColumn)
-        : LANEWIDTH + ROWLABELWIDTH + node.startColumn * COLUMNWIDTH;
+        ? LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH + columnLayout.columnXOffset(node.startColumn)
+        : LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH + node.startColumn * COLUMNWIDTH;
       const phaseRowOff = getLanePhaseRowHeight ? getLanePhaseRowHeight(row.lane) : 0;
       const nodeTopY = laneYOff + dropHighlightOffset + headerOffset + phaseRowOff + rowYOff;
       const nodeWidth = columnLayout
@@ -141,7 +142,7 @@ export function useEdgeInteractions({
 
     let nodeX, nodeWidth;
     if (node.x !== undefined) {
-      nodeX = LANEWIDTH + ROWLABELWIDTH + node.x;
+      nodeX = LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH + node.x;
       if (columnLayout) {
         const startX = columnLayout.columnXOffset(node.startColumn);
         const endIdx = node.startColumn + (node.duration || 1);
@@ -153,14 +154,14 @@ export function useEdgeInteractions({
         nodeWidth = COLUMNWIDTH * node.duration;
       }
     } else if (columnLayout) {
-      nodeX = LANEWIDTH + ROWLABELWIDTH + columnLayout.columnXOffset(node.startColumn);
+      nodeX = LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH + columnLayout.columnXOffset(node.startColumn);
       const endIdx = node.startColumn + (node.duration || 1);
       const endX = endIdx < (columnLayout.offsets?.length ?? Infinity)
         ? columnLayout.columnXOffset(endIdx)
         : columnLayout.totalColumnsWidth;
       nodeWidth = endX - columnLayout.columnXOffset(node.startColumn);
     } else {
-      nodeX = LANEWIDTH + ROWLABELWIDTH + node.startColumn * COLUMNWIDTH;
+      nodeX = LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH + node.startColumn * COLUMNWIDTH;
       nodeWidth = COLUMNWIDTH * node.duration;
     }
     const nodeY = laneYOff + dropHighlightOffset + headerOffset + (getLanePhaseRowHeight ? getLanePhaseRowHeight(row.lane) : 0) + rowYOff + rowHeightVal / 2;

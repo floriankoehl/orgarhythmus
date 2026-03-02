@@ -28,6 +28,7 @@ export default function GridNodeLayer({
   hideCollapsedNodes,
   LANEWIDTH,
   ROWLABELWIDTH,
+  ROWACTIONSWIDTH = 0,
   COLUMNWIDTH,
   LANE_DRAG_HIGHLIGHT_HEIGHT,
   MARGIN_BETWEEN_DRAG_HIGHLIGHT,
@@ -64,8 +65,9 @@ export default function GridNodeLayer({
 }) {
   // Helper: get pixel X offset for a column index using columnLayout
   const getColumnX = (colIndex) => {
-    if (columnLayout) return LANEWIDTH + ROWLABELWIDTH + columnLayout.columnXOffset(colIndex);
-    return LANEWIDTH + ROWLABELWIDTH + colIndex * COLUMNWIDTH;
+    const sidebarW = LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH;
+    if (columnLayout) return sidebarW + columnLayout.columnXOffset(colIndex);
+    return sidebarW + colIndex * COLUMNWIDTH;
   };
 
   // Helper: get pixel width for a node spanning startColumn..startColumn+duration
@@ -289,7 +291,7 @@ export default function GridNodeLayer({
             // Use node.x (pixel offset) during drag for smooth visual feedback,
             // otherwise use columnLayout-based position
             const nodeLeft = node.x !== undefined
-              ? (LANEWIDTH + ROWLABELWIDTH + node.x)
+              ? (LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH + node.x)
               : getColumnX(node.startColumn);
             const nodeWidth = getNodePixelWidth(node.startColumn, node.duration || 1);
 

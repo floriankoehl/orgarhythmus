@@ -37,6 +37,7 @@ export default function GridLaneList({
   // Constants
   LANEWIDTH,
   ROWLABELWIDTH,
+  ROWACTIONSWIDTH = 0,
   COLUMNWIDTH,
   LANE_DRAG_HIGHLIGHT_HEIGHT,
   MARGIN_BETWEEN_DRAG_HIGHLIGHT,
@@ -127,7 +128,7 @@ export default function GridLaneList({
                   marginBottom: `${MARGIN_BETWEEN_DRAG_HIGHLIGHT}px`,
                   marginTop: `${MARGIN_BETWEEN_DRAG_HIGHLIGHT}px`,
                   height: `${LANE_DRAG_HIGHLIGHT_HEIGHT}px`,
-                  width: `${LANEWIDTH + ROWLABELWIDTH}px`,
+                  width: `${LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH}px`,
                   opacity: dropIndex === visibleIndex ? 1 : 0,
                   position: 'sticky',
                   left: 0,
@@ -170,7 +171,7 @@ export default function GridLaneList({
                   <div
                     className="flex items-center border-r border-slate-200"
                     style={{
-                      width: `${LANEWIDTH + ROWLABELWIDTH}px`,
+                      width: `${LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH}px`,
                       height: `${LANE_PHASE_ROW_HEIGHT}px`,
                       position: 'sticky',
                       left: 0,
@@ -295,7 +296,7 @@ export default function GridLaneList({
                   position: 'sticky',
                   left: 0,
                   zIndex: 30,
-                  width: `${LANEWIDTH + ROWLABELWIDTH}px`,
+                  width: `${LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH}px`,
                   height: `${laneRowHeight}px`,
                   opacity: ghost?.id === lane_key ? 0.3 : 1,
                   backgroundColor: 'white',
@@ -479,9 +480,35 @@ export default function GridLaneList({
                               {rows[row_key]?.name}
                             </span>
                           </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
-                          {/* Row Controls */}
-                          <div className="flex items-center gap-0.5 pr-1.5 opacity-60 hover:opacity-100 transition-opacity">
+                {/* Row Actions column — separate from row labels, independently collapsible */}
+                {!isCollapsed && visibleRows_.length > 0 && ROWACTIONSWIDTH > 0 && (
+                  <div className="flex flex-col border-r border-slate-200" style={{ backgroundColor: 'rgba(255,255,255,0.97)' }}>
+                    {(lane.rows || []).map((row_key) => {
+                      if (!isRowVisible(row_key, rowDisplaySettings)) return null;
+
+                      const rowHeight = getRowHeight(row_key, rowDisplaySettings);
+                      const isSmall = rowDisplaySettings[row_key]?.size === 'small';
+                      const visibleRowIndex = visibleRows_.indexOf(row_key);
+                      const isLastVisible = visibleRowIndex === visibleRows_.length - 1;
+
+                      return (
+                        <div
+                          className="flex items-center justify-center"
+                          style={{
+                            height: `${rowHeight}px`,
+                            width: `${ROWACTIONSWIDTH}px`,
+                            borderBottom: isLastVisible ? "none" : "1px solid #e2e8f0",
+                            opacity: rowGhost?.rowKey === row_key ? 0.3 : 1,
+                          }}
+                          key={`${row_key}_actions`}
+                        >
+                          <div className="flex items-center gap-0.5 opacity-60 hover:opacity-100 transition-opacity">
                             {/* Size Toggle */}
                             <button
                               onClick={() => toggleRowSize(row_key)}
@@ -525,7 +552,7 @@ export default function GridLaneList({
                   <div
                     className="border-l border-slate-200 flex flex-col items-center justify-center"
                     style={{
-                      width: `${ROWLABELWIDTH}px`,
+                      width: `${ROWLABELWIDTH + ROWACTIONSWIDTH}px`,
                       height: `${laneRowHeight}px`,
                       backgroundColor: hasNoRows ? 'rgba(241,245,249,0.6)' : 'rgba(241,245,249,0.4)',
                       borderLeft: hasNoRows ? '2px dashed #cbd5e1' : '1px solid #e2e8f0',
@@ -547,7 +574,7 @@ export default function GridLaneList({
                   <div
                     className="border-l border-r border-slate-200 flex items-center px-2"
                     style={{
-                      width: `${ROWLABELWIDTH}px`,
+                      width: `${ROWLABELWIDTH + ROWACTIONSWIDTH}px`,
                       height: `${laneRowHeight}px`,
                       backgroundColor: 'rgba(248,250,252,0.97)',
                     }}
@@ -598,7 +625,7 @@ export default function GridLaneList({
             marginBottom: `${MARGIN_BETWEEN_DRAG_HIGHLIGHT}px`,
             marginTop: `${MARGIN_BETWEEN_DRAG_HIGHLIGHT}px`,
             height: `${LANE_DRAG_HIGHLIGHT_HEIGHT}px`,
-            width: `${LANEWIDTH + ROWLABELWIDTH}px`,
+            width: `${LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH}px`,
             opacity: dropIndex === visibleLaneCount ? 1 : 0,
             backgroundColor: dropIndex === visibleLaneCount ? 'black' : 'white',
             position: 'sticky',

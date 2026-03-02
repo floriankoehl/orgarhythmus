@@ -2,6 +2,7 @@
 import { Outlet, useParams } from "react-router-dom";
 import ProjectHeader from "../components/ProjectHeader"
 import TaskStructure from "../components/tasks_classification/TaskStructure";
+import ScheduleWindow from "../grid_board/ScheduleWindow";
 
 export default function ProjectLayout() {
   const { projectId } = useParams();
@@ -18,6 +19,9 @@ export default function ProjectLayout() {
 
       {/* Floating Task Structure — persists across all project subpages */}
       <TaskStructure />
+
+      {/* Floating Schedule Window — persists across all project subpages */}
+      <ScheduleWindow />
     </div>
   );
 }

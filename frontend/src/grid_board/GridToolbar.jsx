@@ -35,6 +35,58 @@ import {
 } from './layoutMath';
 
 /**
+ * ToolbarSection — stable component (defined outside GridToolbar) that renders
+ * a toolbar section either inline (full-page) or as a collapsible accordion
+ * (floating window).  Being top-level means React keeps a stable reference
+ * and never unmounts sections just because the parent re-renders.
+ */
+function ToolbarSection({ sectionKey, label, icon, width, children, flex, className = '', isFloating, isOpen, onToggle }) {
+  if (!isFloating) {
+    return (
+      <div
+        className={`p-2.5 flex-shrink-0 ${flex ? 'flex-1 min-w-0' : ''} ${className}`}
+        style={!flex && width ? { width } : undefined}
+      >
+        {label && (
+          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+            {label}
+          </h3>
+        )}
+        {children}
+      </div>
+    );
+  }
+  return (
+    <div className="flex-shrink-0 w-full border-b border-slate-100 last:border-b-0">
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggle(sectionKey); }}
+        className={`flex items-center gap-1.5 w-full px-2.5 py-1.5 text-xs font-medium transition ${
+          isOpen ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
+        }`}
+      >
+        {icon}
+        <span>{label}</span>
+        <svg
+          width="10" height="10" viewBox="0 0 10 10"
+          className={`ml-auto transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`}
+        >
+          <path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {isOpen && (
+        <div
+          className={`px-2.5 pb-2 pt-1 ${className}`}
+          style={width ? { minWidth: width } : undefined}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * Generic toolbar for the grid board.
  *
  * All domain-specific labels are injected via *Label props so the
@@ -42,6 +94,8 @@ import {
  * or any other vocabulary the adapter supplies.
  */
 export default function GridToolbar({
+  // ── Floating window mode ──
+  isFloating = false,
   // ── Customisable labels ──
   laneLabel   = 'Lane',
   rowLabel    = 'Row',
@@ -173,6 +227,14 @@ export default function GridToolbar({
   // Column header toggle
   hideColumnHeader,
   setHideColumnHeader,
+  // Lane / row label column collapse
+  hideLaneLabels,
+  setHideLaneLabels,
+  hideRowLabels,
+  setHideRowLabels,
+  // Row actions column collapse
+  hideRowActions,
+  setHideRowActions,
   // Fullscreen
   isFullscreen,
   toggleFullscreen,
@@ -207,6 +269,7 @@ export default function GridToolbar({
     if (popupCloseSignal > 0) {
       setShowViewDropdown(false);
       setShowSnapshotDropdown(false);
+      setOpenSections(new Set());
     }
   }, [popupCloseSignal]);
 
@@ -264,14 +327,27 @@ export default function GridToolbar({
     return `Select ${pl(nodeLabel.toLowerCase(), 2)} or ${pl(edgeLabel.toLowerCase(), 2)} to delete`;
   };
 
+  // ── Expanded sections for floating mode (accordion) ──
+  const [openSections, setOpenSections] = useState(new Set());
+
+  const toggleSection = useCallback((key) => {
+    setOpenSections(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
+
+  // Helper: shorthand props threaded to every ToolbarSection
+  const sectionProps = { isFloating, onToggle: toggleSection };
+
   return (
     <>
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex divide-x divide-slate-200">
+      <div className={isFloating ? "flex flex-col" : "flex divide-x divide-slate-200"}>
 
         {/* ─── COL 1: Mode (2×2 grid) ─── */}
-        <div className="p-2.5 flex-shrink-0">
-          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Mode</h3>
+        <ToolbarSection sectionKey="mode" label="Mode" icon={<VisibilityIcon style={{ fontSize: 14 }} />} width={170} isOpen={openSections.has('mode')} {...sectionProps}>
           <div className="grid grid-cols-2 gap-1 p-0.5 bg-slate-100 rounded-lg" style={{ width: 170 }}>
             {[
               { key: 'inspection', icon: <VisibilityIcon style={{ fontSize: 15 }} />, label: 'View',    shortcut: 'V' },
@@ -303,11 +379,10 @@ export default function GridToolbar({
               );
             })}
           </div>
-        </div>
+        </ToolbarSection>
 
         {/* ─── COL 2: Create (no delete) ─── */}
-        <div className="p-2.5 flex-shrink-0">
-          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Create</h3>
+        <ToolbarSection sectionKey="create" label="Create" icon={<AddIcon style={{ fontSize: 14 }} />} width={130} isOpen={openSections.has('create')} {...sectionProps}>
           <div className="grid grid-cols-2 gap-1" style={{ width: 130 }}>
             <button
               onClick={(e) => { e.stopPropagation(); setShowCreateLaneModal(true); }}
@@ -355,10 +430,10 @@ export default function GridToolbar({
           {isAddingNode && (
             <p className="text-[10px] text-blue-600 mt-1 leading-tight" style={{ width: 130 }}>Click a {columnLabel.toLowerCase()} cell to place.</p>
           )}
-        </div>
+        </ToolbarSection>
 
         {/* ─── COL 3: Delete (narrow) ─── */}
-        <div className="p-2.5 flex-shrink-0 flex flex-col justify-center" style={{ width: 70 }}>
+        <ToolbarSection sectionKey="delete" label="Delete" icon={<DeleteIcon style={{ fontSize: 14 }} />} width={70} className="flex flex-col justify-center" isOpen={openSections.has('delete')} {...sectionProps}>
           <button
             onClick={(e) => { e.stopPropagation(); if (hasSelection) onDeleteSelected(); }}
             disabled={!hasSelection}
@@ -372,11 +447,10 @@ export default function GridToolbar({
             <DeleteIcon style={{ fontSize: 18 }} />
             <span className="text-[10px]">{hasSelection ? getDeleteLabel() : 'Delete'}</span>
           </button>
-        </div>
+        </ToolbarSection>
 
         {/* ─── COL 3.5: Selected (contextual) ─── */}
-        <div className="p-2.5 flex-shrink-0" style={{ width: 100 }}>
-          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Selected</h3>
+        <ToolbarSection sectionKey="selected" label="Selected" icon={<VisibilityIcon style={{ fontSize: 14 }} />} width={100} isOpen={openSections.has('selected')} {...sectionProps}>
           <div className="flex flex-col gap-1">
             {/* Show hidden lanes */}
             {hiddenLaneCount > 0 && (
@@ -458,11 +532,10 @@ export default function GridToolbar({
               </button>
             )}
           </div>
-        </div>
+        </ToolbarSection>
 
         {/* ─── COL 4: Filter ─── */}
-        <div className="p-2.5 flex-shrink-0" style={{ width: 90 }}>
-          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Filter</h3>
+        <ToolbarSection sectionKey="filter" label="Filter" icon={<FilterListIcon style={{ fontSize: 14 }} />} width={90} isOpen={openSections.has('filter')} {...sectionProps}>
           <div className="relative">
             <button
               onClick={(e) => { e.stopPropagation(); setShowFilterDropdown(!showFilterDropdown); }}
@@ -534,11 +607,10 @@ export default function GridToolbar({
               </div>
             )}
           </div>
-        </div>
+        </ToolbarSection>
 
         {/* ─── COL 5: Display (flex area) ─── */}
-        <div className="p-2.5 flex-1 min-w-0">
-          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Display</h3>
+        <ToolbarSection sectionKey="display" label="Display" icon={<ViewTimelineIcon style={{ fontSize: 14 }} />} flex isOpen={openSections.has('display')} {...sectionProps}>
           <div className="flex gap-2 items-start">
             {/* Left sub-column: Rows + Lanes stacked vertically */}
             <div className="flex flex-col gap-1 flex-shrink-0">
@@ -715,6 +787,18 @@ export default function GridToolbar({
                         <input type="checkbox" checked={!hideColumnHeader} onChange={(e) => { setHideColumnHeader(!e.target.checked); playSound('settingToggle'); }} className="rounded border-slate-300" />
                         <span>Show {columnLabel.toLowerCase()} header row</span>
                       </label>
+                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                        <input type="checkbox" checked={!hideLaneLabels} onChange={(e) => { setHideLaneLabels(!e.target.checked); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                        <span>Show {laneLabel.toLowerCase()} labels column</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                        <input type="checkbox" checked={!hideRowLabels} onChange={(e) => { setHideRowLabels(!e.target.checked); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                        <span>Show {rowLabel.toLowerCase()} labels column</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                        <input type="checkbox" checked={!hideRowActions} onChange={(e) => { setHideRowActions(!e.target.checked); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                        <span>Show {rowLabel.toLowerCase()} actions column</span>
+                      </label>
                     </div>
 
                     <div className="border-t border-slate-100 pt-3">
@@ -859,11 +943,10 @@ export default function GridToolbar({
               )}
             </div>
           </div>
-        </div>
+        </ToolbarSection>
 
         {/* ─── COL 6: Sizing ─── */}
-        <div className="p-2.5 flex-shrink-0" style={{ width: 210 }}>
-          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Sizing</h3>
+        <ToolbarSection sectionKey="sizing" label="Sizing" icon={<SettingsIcon style={{ fontSize: 14 }} />} width={210} isOpen={openSections.has('sizing')} {...sectionProps}>
           <div className="space-y-1">
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] text-slate-500 w-12 flex-shrink-0">{columnLabel} W</span>
@@ -890,11 +973,10 @@ export default function GridToolbar({
               </button>
             </div>
           </div>
-        </div>
+        </ToolbarSection>
 
         {/* ─── COL 7: Views + Snapshots ─── */}
-        <div className="p-2.5 flex-shrink-0" style={{ width: 175 }}>
-          <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Views</h3>
+        <ToolbarSection sectionKey="views" label="Views" icon={<ViewListIcon style={{ fontSize: 14 }} />} width={175} isOpen={openSections.has('views')} {...sectionProps}>
           <div className="relative">
             <div className="flex items-center gap-1">
               <button
@@ -1101,7 +1183,7 @@ export default function GridToolbar({
               </div>
             )}
           </div>
-        </div>
+        </ToolbarSection>
       </div>
     </div>
 

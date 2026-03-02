@@ -63,7 +63,7 @@ import { daysBetween } from './layoutMath';
 //  MilestoneScheduleAdapter
 // ═══════════════════════════════════════════════════════════════════════════
 
-export default function MilestoneScheduleAdapter() {
+export default function MilestoneScheduleAdapter({ isFloating = false }) {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { buildClipboardText } = usePromptSettings();
@@ -83,9 +83,10 @@ export default function MilestoneScheduleAdapter() {
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
   }, [projectId, navigate]);
 
-  // ── Header collapse DOM effect (specific to this app shell) ──
+  // ── Header collapse DOM effect (specific to this app shell, skipped when floating) ──
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   useEffect(() => {
+    if (isFloating) return; // floating window has its own chrome
     const projectHeaderEl = document.querySelector('[data-project-header]');
     const orgaHeaderEl = document.querySelector('[data-orga-header]');
     const projectMainEl = projectHeaderEl?.closest('.min-h-screen')?.querySelector('main');
@@ -114,7 +115,7 @@ export default function MilestoneScheduleAdapter() {
       if (orgaMainEl) { orgaMainEl.style.marginTop = ''; orgaMainEl.style.transition = ''; }
       if (projectMainEl) { projectMainEl.style.marginTop = ''; projectMainEl.style.transition = ''; }
     };
-  }, [headerCollapsed]);
+  }, [headerCollapsed, isFloating]);
 
   // ════════════════════════════════════════════════════════════════════
   //  Data state (adapter owns state, grid gets controlled props)
@@ -491,10 +492,10 @@ export default function MilestoneScheduleAdapter() {
             setRows(prev => {
               const updated = { ...prev };
               if (updated[oldRow]) {
-                updated[oldRow] = { ...updated[oldRow], nodes: (updated[oldRow].nodes || []).filter(ref => String(ref.id || ref) !== String(nId)) };
+                updated[oldRow] = { ...updated[oldRow], milestones: (updated[oldRow].milestones || []).filter(ref => String(ref.id || ref) !== String(nId)) };
               }
               if (updated[targetRowId]) {
-                updated[targetRowId] = { ...updated[targetRowId], nodes: [...(updated[targetRowId].nodes || []), { id: nId }] };
+                updated[targetRowId] = { ...updated[targetRowId], milestones: [...(updated[targetRowId].milestones || []), { id: nId }] };
               }
               return updated;
             });
@@ -587,6 +588,9 @@ export default function MilestoneScheduleAdapter() {
       // Header collapse (adapter owns the DOM effect)
       headerCollapsed={headerCollapsed}
       onSetHeaderCollapsed={setHeaderCollapsed}
+
+      // Floating mode
+      isFloating={isFloating}
 
       // Labels (domain-specific)
       laneLabel="Team"

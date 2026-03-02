@@ -4,6 +4,7 @@
 export const DEFAULT_ROWHEIGHT_NORMAL = 32;
 export const DEFAULT_ROWHEIGHT_SMALL = 22;
 export const ROWLABELWIDTH = 200;
+export const ROW_ACTIONS_WIDTH = 72;
 export const LANEWIDTH = 150;
 export const LANE_DRAG_HIGHLIGHT_HEIGHT = 5;
 export const MARGIN_BETWEEN_DRAG_HIGHLIGHT = 5;
@@ -237,7 +238,7 @@ export const getStraightPath = (x1, y1, x2, y2) => {
  * Compute the 2D pixel position of every node in the layout.
  *
  * Returns an array of node objects enriched with:
- *   x         — left edge (px) in content-space (includes LANEWIDTH + ROWLABELWIDTH offset)
+ *   x         — left edge (px) in content-space (includes LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH offset)
  *   y         — top edge (px) aligned to the row's top
  *   w         — pixel width of the node block
  *   h         — pixel height (equals the full row row height)
@@ -261,6 +262,7 @@ export function computeNodePixelPositions({
     effectiveHeaderH,
     LANEWIDTH,
     ROWLABELWIDTH,
+    ROWACTIONSWIDTH = 0,
     COLUMNWIDTH,
     ROWHEIGHT_SMALL = DEFAULT_ROWHEIGHT_SMALL,
     ROWHEIGHT_NORMAL = DEFAULT_ROWHEIGHT_NORMAL,
@@ -308,7 +310,7 @@ export function computeNodePixelPositions({
             for (const m of rowNodes) {
                 result.push({
                     ...m,
-                    x: LANEWIDTH + ROWLABELWIDTH + (m.startColumn ?? m.start_index ?? 0) * COLUMNWIDTH,
+                    x: LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH + (m.startColumn ?? m.start_index ?? 0) * COLUMNWIDTH,
                     y: rowY,
                     w: (m.duration || 1) * COLUMNWIDTH,
                     h: th,

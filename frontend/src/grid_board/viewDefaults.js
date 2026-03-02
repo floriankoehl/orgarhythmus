@@ -51,6 +51,9 @@ export const DEFAULT_TOOLBAR_COLLAPSED         = false;  // show the control-boa
 export const DEFAULT_HEADER_COLLAPSED          = false;  // show the app/project header
 export const DEFAULT_SOUND_ENABLED             = true;   // play UI sounds
 export const DEFAULT_HIDE_COLUMN_HEADER        = false;  // show the column header row
+export const DEFAULT_HIDE_LANE_LABELS           = false;  // show lane labels column
+export const DEFAULT_HIDE_ROW_LABELS            = false;  // show row labels column
+export const DEFAULT_HIDE_ROW_ACTIONS           = false;  // show row action buttons column
 export const DEFAULT_IS_FULLSCREEN             = false;  // not fullscreen by default
 
 // ── Numeric settings ─────────────────────────────────────────
@@ -105,6 +108,9 @@ export function getDefaultViewState() {
     headerCollapsed:         DEFAULT_HEADER_COLLAPSED,
     soundEnabled:            DEFAULT_SOUND_ENABLED,
     hideColumnHeader:        DEFAULT_HIDE_COLUMN_HEADER,
+    hideLaneLabels:          DEFAULT_HIDE_LANE_LABELS,
+    hideRowLabels:           DEFAULT_HIDE_ROW_LABELS,
+    hideRowActions:          DEFAULT_HIDE_ROW_ACTIONS,
     isFullscreen:            DEFAULT_IS_FULLSCREEN,
   };
 }

@@ -36,6 +36,7 @@ export function useDragInteractions({
   COLUMNWIDTH,
   LANEWIDTH,
   ROWLABELWIDTH,
+  ROWACTIONSWIDTH = 0,
   getRowHeight,
   getLaneHeight,
   isLaneVisible,
@@ -449,7 +450,7 @@ export function useDragInteractions({
         const laneYOff = getLaneYOffset(row.lane);
         const rowYOff = getRowYOffset(node.row, row.lane);
 
-        const nodeX = LANEWIDTH + ROWLABELWIDTH + node.startColumn * COLUMNWIDTH;
+        const nodeX = LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH + node.startColumn * COLUMNWIDTH;
         const phaseRowOff = getLanePhaseRowHeight ? getLanePhaseRowHeight(row.lane) : 0;
         const nodeY = laneYOff + dropHighlightOffset + headerOffset + phaseRowOff + rowYOff + 2;
         const nodeW = COLUMNWIDTH * (node.duration || 1);
