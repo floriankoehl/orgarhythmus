@@ -21,7 +21,8 @@ import Tasks from './pages/overview/Tasks.jsx';
 import TeamDetail from './pages/detail/TeamDetail.jsx';
 import TaskDetail from './pages/detail/TaskDetail.jsx';
 import Calendar from './pages/general/Calender.jsx';
-import Dependencies from './pages/dependency/Dependencies';
+// import Dependencies from './pages/dependency/Dependencies'; // old implementation (kept intact)
+import MilestoneScheduleAdapter from './grid_board/MilestoneScheduleAdapter';
 import AssignmentSecond from './pages/member_assignment/Assignment_Second';
 import MyIdeas from './pages/user/MyIdeas';
 import MobileIdeaBin from './pages/user/MobileIdeaBin';
@@ -50,7 +51,7 @@ const router = createBrowserRouter([
           { path: 'teams/:teamId', element: <TeamDetail /> },
           { path: 'tasks', element: <Tasks /> },
           { path: 'tasks/:taskId', element: <TaskDetail /> },
-          { path: 'dependencies', element: <Dependencies /> },
+          { path: 'dependencies', element: <MilestoneScheduleAdapter /> },
           { path: 'assignment', element: <AssignmentSecond /> },
           { path: 'calender', element: <Calendar /> },
         ],
