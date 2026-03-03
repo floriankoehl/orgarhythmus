@@ -1,6 +1,6 @@
 // orgarhythmus/org_layouts/ProjectLayout.jsx
 import { Outlet, useParams } from "react-router-dom";
-import ProjectHeader from "../components/ProjectHeader"
+import { PipelineProvider } from "../components/shared/PipelineContext";
 import WindowManager from "../components/shared/WindowManager";
 import IdeaBin from "../components/ideas/IdeaBin";
 import ProfileWindow from "../pages/user/ProfileWindow";
@@ -11,43 +11,41 @@ import CalendarWindow from "../pages/general/CalendarWindow";
 import OverviewWindow from "../pages/general/OverviewWindow";
 
 /**
- * Ordered window definitions — determines icon dock layout (top → bottom).
- * The first 3 are org-level windows absorbed into the project manager;
- * the last 4 are project-specific.
+ * Ordered window definitions — determines inventory bar slot order (left → right).
  */
 const PROJECT_WINDOWS = [
   { id: "ideaBin" },
-  { id: "profile" },
-  { id: "notifications" },
   { id: "taskStructure" },
   { id: "schedule" },
   { id: "calendar" },
   { id: "overview" },
+  { id: "profile" },
+  { id: "notifications" },
 ];
 
 export default function ProjectLayout() {
   const { projectId } = useParams();
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-b from-slate-50 to-slate-100">
-      {/* Header always visible */}
-      <ProjectHeader projectId={projectId} />
+    <PipelineProvider>
+      <div className="min-h-screen w-full bg-gradient-to-b from-slate-50 to-slate-100">
+        {/* Page content */}
+        <main className="relative w-full flex justify-center">
+          <Outlet />
+        </main>
 
-      {/* Page content below header — pt-16 on wrapper clears the fixed header */}
-      <main className="relative w-full flex justify-center">
-        <Outlet />
-      </main>
-
-      {/* WindowManager orchestrates ALL floating windows inside a project */}
-      <WindowManager windows={PROJECT_WINDOWS} dockStartY={60}>
-        <IdeaBin />
-        <ProfileWindow />
-        <NotificationsWindow />
-        <TaskStructure />
-        <ScheduleWindow />
-        <CalendarWindow />
-        <OverviewWindow />
-      </WindowManager>
-    </div>
+        {/* WindowManager orchestrates ALL floating windows inside a project.
+            InventoryBar is rendered automatically by WindowManager. */}
+        <WindowManager windows={PROJECT_WINDOWS}>
+          <IdeaBin />
+          <ProfileWindow />
+          <NotificationsWindow />
+          <TaskStructure />
+          <ScheduleWindow />
+          <CalendarWindow />
+          <OverviewWindow />
+        </WindowManager>
+      </div>
+    </PipelineProvider>
   );
 }

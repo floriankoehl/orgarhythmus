@@ -3,7 +3,6 @@ import { useAuth } from './auth/AuthContext';
 import { AuthProvider } from './auth/AuthContext';
 import { NotificationProvider } from './auth/NotificationContext';
 import { DemoDateProvider } from './auth/DemoDateContext';
-import { PipelineProvider } from './components/shared/PipelineContext';
 
 import OrgaLayout from './layouts/OrgaLayout.jsx';
 import Login from './pages/user/Login.jsx';
@@ -65,9 +64,7 @@ export default function App() {
 
     return (
       <>
-        <PipelineProvider>
-          <RouterProvider router={router} />
-        </PipelineProvider>
+        <RouterProvider router={router} />
       </>
     );
   }

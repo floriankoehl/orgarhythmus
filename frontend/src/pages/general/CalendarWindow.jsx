@@ -39,6 +39,7 @@ export default function CalendarWindow() {
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag,
     handleWindowResize, handleEdgeResize,
+    managed,
   } = useFloatingWindow({
     id: "calendar",
     openSound: "ideaOpen",
@@ -76,8 +77,8 @@ export default function CalendarWindow() {
 
   return (
     <>
-      {/* ───── COLLAPSED: Floating icon ───── */}
-      {!isOpen && (
+      {/* ───── COLLAPSED: Floating icon (hidden when managed) ───── */}
+      {!isOpen && !managed && (
         <div
           ref={iconRef}
           onMouseDown={handleIconDrag}

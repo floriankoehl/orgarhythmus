@@ -32,6 +32,7 @@ export default function NotificationsWindow() {
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag,
     handleWindowResize, handleEdgeResize,
+    managed,
   } = useFloatingWindow({
     id: "notifications",
     openSound: "ideaOpen",
@@ -42,8 +43,8 @@ export default function NotificationsWindow() {
 
   return (
     <>
-      {/* ───── COLLAPSED: Floating icon ───── */}
-      {!isOpen && (
+      {/* ───── COLLAPSED: Floating icon (hidden when managed) ───── */}
+      {!isOpen && !managed && (
         <div
           ref={iconRef}
           onMouseDown={handleIconDrag}

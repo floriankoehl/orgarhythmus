@@ -23,9 +23,7 @@ export default function useIdeaBinWindow(headlineInputRef) {
   // ── Manager integration (optional) ──
   const manager = useWindowManager();
   const managed = !!(manager);
-  const defaultIcon = managed
-    ? manager.getIconPosition("ideaBin")
-    : STANDALONE_ICON;
+  const defaultIcon = STANDALONE_ICON;
 
   const [isOpen, setIsOpen] = useState(false);
   const [windowPos, setWindowPos] = useState({ x: 0, y: 0 });
@@ -59,6 +57,39 @@ export default function useIdeaBinWindow(headlineInputRef) {
     lastMinAllRef.current = ver;
   }, [managed, manager?.minimizeAllVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── React to manager's per-window requestOpen signal ──
+  const lastOpenReqRef = useRef(manager?.openRequests?.["ideaBin"] ?? 0);
+  useEffect(() => {
+    if (!managed) return;
+    const ver = manager.openRequests?.["ideaBin"] ?? 0;
+    if (ver > lastOpenReqRef.current && !isOpen) {
+      setWindowPos({
+        x: Math.max(4, (window.innerWidth - windowSize.w) / 2),
+        y: Math.max(60, (window.innerHeight - windowSize.h) / 2 - 30),
+      });
+      setIsOpen(true);
+      setZIndex(getNextZIndex());
+      playSound("ideaOpen");
+      setTimeout(() => headlineInputRef.current?.focus(), 100);
+    }
+    lastOpenReqRef.current = ver;
+  }, [managed, manager?.openRequests]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── React to manager's per-window requestMinimize signal ──
+  const lastMinReqRef = useRef(manager?.minimizeRequests?.["ideaBin"] ?? 0);
+  useEffect(() => {
+    if (!managed) return;
+    const ver = manager.minimizeRequests?.["ideaBin"] ?? 0;
+    if (ver > lastMinReqRef.current && isOpen) {
+      setIconPos({ ...defaultIcon });
+      setIsOpen(false);
+      setIsMaximized(false);
+      setPreMaxState(null);
+      playSound("ideaClose");
+    }
+    lastMinReqRef.current = ver;
+  }, [managed, manager?.minimizeRequests]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Bring this window to front (call on mousedown / focus) */
   const bringToFront = useCallback(() => {
     setZIndex(getNextZIndex());
@@ -86,6 +117,8 @@ export default function useIdeaBinWindow(headlineInputRef) {
   }, [defaultIcon]);
 
   const toggleMaximize = useCallback(() => {
+    const topY = 60;
+    const bottomReserve = managed ? 128 : 68;
     if (isMaximized) {
       if (preMaxState) {
         setWindowPos(preMaxState.pos);
@@ -95,22 +128,24 @@ export default function useIdeaBinWindow(headlineInputRef) {
       setPreMaxState(null);
     } else {
       setPreMaxState({ pos: { ...windowPos }, size: { ...windowSize } });
-      setWindowPos({ x: 4, y: 60 });
-      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - 68 });
+      setWindowPos({ x: 4, y: topY });
+      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - bottomReserve });
       setIsMaximized(true);
     }
-  }, [isMaximized, preMaxState, windowPos, windowSize]);
+  }, [isMaximized, preMaxState, windowPos, windowSize, managed]);
 
   // ── Keep maximized window in sync with browser viewport size ──
   useEffect(() => {
     if (!isMaximized) return;
+    const topY = 60;
+    const bottomReserve = managed ? 128 : 68;
     const onResize = () => {
-      setWindowPos({ x: 4, y: 60 });
-      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - 68 });
+      setWindowPos({ x: 4, y: topY });
+      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - bottomReserve });
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [isMaximized]);
+  }, [isMaximized, managed]);
 
   // ── Icon drag (direct DOM for performance) ──
   const handleIconDrag = useCallback((e) => {
@@ -257,5 +292,7 @@ export default function useIdeaBinWindow(headlineInputRef) {
     windowRef, iconRef,
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag, handleWindowResize, handleEdgeResize,
+    /** true when inside a WindowManager — the InventoryBar owns icon rendering */
+    managed,
   };
 }

@@ -76,6 +76,7 @@ export default function IdeaBin() {
     windowRef, iconRef,
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag, handleWindowResize, handleEdgeResize,
+    managed,
   } = useIdeaBinWindow(headlineInputRef);
 
   // ───── Selected idea(s) ─────
@@ -1138,8 +1139,8 @@ export default function IdeaBin() {
           box-shadow: 0 0 8px 2px rgba(16, 185, 129, 0.4) !important;
         }
       `}</style>
-      {/* ───── COLLAPSED: Floating icon ───── */}
-      {!isOpen && (
+      {/* ───── COLLAPSED: Floating icon (hidden when managed — InventoryBar owns icons) ───── */}
+      {!isOpen && !managed && (
         <div
           ref={iconRef}
           onMouseDown={handleIconDrag}

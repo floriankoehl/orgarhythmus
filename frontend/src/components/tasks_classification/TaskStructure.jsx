@@ -57,6 +57,7 @@ export default function TaskStructure() {
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag,
     handleWindowResize, handleEdgeResize,
+    managed,
   } = useFloatingWindow({
     id: "taskStructure",
     openSound: "ideaOpen",
@@ -727,8 +728,8 @@ export default function TaskStructure() {
 
   return (
     <>
-      {/* ── COLLAPSED: Floating icon ── */}
-      {!isOpen && (
+      {/* ── COLLAPSED: Floating icon (hidden when managed) ── */}
+      {!isOpen && !managed && (
         <div
           ref={iconRef}
           onMouseDown={handleIconDrag}

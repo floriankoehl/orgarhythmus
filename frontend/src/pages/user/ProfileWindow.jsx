@@ -35,6 +35,7 @@ export default function ProfileWindow() {
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag,
     handleWindowResize, handleEdgeResize,
+    managed,
   } = useFloatingWindow({
     id: "profile",
     openSound: "ideaOpen",
@@ -58,8 +59,8 @@ export default function ProfileWindow() {
 
   return (
     <>
-      {/* ───── COLLAPSED: Floating icon ───── */}
-      {!isOpen && (
+      {/* ───── COLLAPSED: Floating icon (hidden when managed) ───── */}
+      {!isOpen && !managed && (
         <div
           ref={iconRef}
           onMouseDown={handleIconDrag}

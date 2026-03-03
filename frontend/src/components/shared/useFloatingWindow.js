@@ -9,9 +9,11 @@ import { useWindowManager } from "./WindowManager";
  *
  * When used inside a <WindowManager> and an `id` is provided, the hook
  * automatically integrates:
- *   – default icon position comes from the manager's dock config
  *   – open/close state is reported to the manager
  *   – the manager's `minimizeAll` signal is respected
+ *   – the manager's `requestOpen` / `requestMinimize` signals are respected
+ *   – returns `managed = true` so the component can hide its own floating icon
+ *     (the InventoryBar takes over icon rendering)
  *
  * Falls back to standalone behaviour (hardcoded `defaultIcon`) when no
  * manager is present — fully backward-compatible.
@@ -38,10 +40,9 @@ export default function useFloatingWindow(opts = {}) {
   const manager = useWindowManager();
   const managed = !!(manager && id);
 
-  // Resolve default icon position: prefer manager slot, fallback to prop
-  const defaultIcon = managed
-    ? manager.getIconPosition(id)
-    : defaultIconFallback;
+  // Resolve default icon position: fallback for standalone; managed mode
+  // no longer uses dock positions (InventoryBar owns icons).
+  const defaultIcon = defaultIconFallback;
 
   const MIN_W = minSize.w;
   const MIN_H = minSize.h;
@@ -82,6 +83,42 @@ export default function useFloatingWindow(opts = {}) {
     lastMinAllRef.current = ver;
   }, [managed, manager?.minimizeAllVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── React to manager's per-window requestOpen signal ──
+  const lastOpenReqRef = useRef(manager?.openRequests?.[id] ?? 0);
+  useEffect(() => {
+    if (!managed) return;
+    const ver = manager.openRequests?.[id] ?? 0;
+    if (ver > lastOpenReqRef.current && !isOpen) {
+      // Open at a sensible default position (centered)
+      const w = windowSize.w;
+      const h = windowSize.h;
+      setWindowPos({
+        x: Math.max(4, (window.innerWidth - w) / 2),
+        y: Math.max(60, (window.innerHeight - h) / 2 - 30),
+      });
+      setIsOpen(true);
+      setZIndex(getNextZIndex());
+      playSound(openSound);
+      if (focusRef) setTimeout(() => focusRef.current?.focus(), 100);
+    }
+    lastOpenReqRef.current = ver;
+  }, [managed, manager?.openRequests, id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── React to manager's per-window requestMinimize signal ──
+  const lastMinReqRef = useRef(manager?.minimizeRequests?.[id] ?? 0);
+  useEffect(() => {
+    if (!managed) return;
+    const ver = manager.minimizeRequests?.[id] ?? 0;
+    if (ver > lastMinReqRef.current && isOpen) {
+      setIconPos({ ...defaultIcon });
+      setIsOpen(false);
+      setIsMaximized(false);
+      setPreMaxState(null);
+      playSound(closeSound);
+    }
+    lastMinReqRef.current = ver;
+  }, [managed, manager?.minimizeRequests, id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Bring this window to front (call on mousedown / focus) */
   const bringToFront = useCallback(() => {
     setZIndex(getNextZIndex());
@@ -108,6 +145,9 @@ export default function useFloatingWindow(opts = {}) {
   }, [closeSound, defaultIcon]);
 
   const toggleMaximize = useCallback(() => {
+    // When managed (inside project), leave room for inventory bar at bottom (~64px)
+    const topY = 60;
+    const bottomReserve = managed ? 128 : 68;
     if (isMaximized) {
       if (preMaxState) {
         setWindowPos(preMaxState.pos);
@@ -117,22 +157,24 @@ export default function useFloatingWindow(opts = {}) {
       setPreMaxState(null);
     } else {
       setPreMaxState({ pos: { ...windowPos }, size: { ...windowSize } });
-      setWindowPos({ x: 4, y: 60 });
-      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - 68 });
+      setWindowPos({ x: 4, y: topY });
+      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - bottomReserve });
       setIsMaximized(true);
     }
-  }, [isMaximized, preMaxState, windowPos, windowSize]);
+  }, [isMaximized, preMaxState, windowPos, windowSize, managed]);
 
   // ── Keep maximized window in sync with viewport ──
   useEffect(() => {
     if (!isMaximized) return;
+    const topY = 60;
+    const bottomReserve = managed ? 128 : 68;
     const onResize = () => {
-      setWindowPos({ x: 4, y: 60 });
-      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - 68 });
+      setWindowPos({ x: 4, y: topY });
+      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - bottomReserve });
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [isMaximized]);
+  }, [isMaximized, managed]);
 
   // ── Icon drag (direct DOM for performance) ──
   const handleIconDrag = useCallback((e) => {
@@ -250,5 +292,7 @@ export default function useFloatingWindow(opts = {}) {
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag,
     handleWindowResize, handleEdgeResize,
+    /** true when inside a WindowManager — the InventoryBar owns icon rendering */
+    managed,
   };
 }
