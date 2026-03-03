@@ -52,6 +52,10 @@ import ideaConvertSound from './ideas/convert_idea_to_task.wav';
 import ideaCoinSound from './ideas/mixkit-space-coin-win-notification-271.wav';
 import ideaNotifSound from './ideas/mixkit-quick-positive-video-game-notification-interface-265.wav';
 
+// -- Human / Orbit-mode sounds --
+import breathingSound from './human/cutted_breathing.wav';
+import heartbeatSound from './human/single_heart_beat.wav';
+
 // ==========================================
 //  SOUND MAP — edit this to reassign sounds
 // ==========================================
@@ -265,4 +269,118 @@ export function stopLoopSound(key) {
     audio.currentTime = 0;
     delete loopingAudios[key];
   }
+}
+
+// ==========================================
+// Orbit Mode — Breathing Sound
+// ==========================================
+// The breathing audio is exactly ORBIT_BREATH_TOTAL seconds long.
+// It loops seamlessly while orbit mode is active.
+// The orbit radius pulses in sync:
+//   breath-in  (first half)  → radius grows
+//   breath-out (second half) → radius shrinks
+//
+// Adjust these two values to re-time the animation.
+// They MUST sum to the audio file length.
+// ==========================================
+
+/** Duration of the breath-in phase (seconds). */
+export const ORBIT_BREATH_IN_TIME  = 1.25;
+
+/** Duration of the breath-out phase (seconds). */
+export const ORBIT_BREATH_OUT_TIME = 1.25;
+
+/** Total breathing cycle length — must equal audio file duration. */
+export const ORBIT_BREATH_TOTAL = ORBIT_BREATH_IN_TIME + ORBIT_BREATH_OUT_TIME;
+
+/** Volume for the breathing loop (0-1). */
+export const ORBIT_BREATH_VOLUME = 0.18;
+
+let _orbitAudio = null;
+
+/**
+ * Start the breathing sound loop for orbit mode.
+ * Safe to call multiple times — only one instance plays.
+ */
+export function startOrbitBreathing() {
+  if (_orbitAudio) return; // already running
+  try {
+    const audio = new Audio(breathingSound);
+    audio.loop = true;
+    audio.volume = muted ? 0 : ORBIT_BREATH_VOLUME;
+    audio.play().catch(() => {});
+    _orbitAudio = audio;
+  } catch (e) {
+    // fail silently
+  }
+}
+
+/**
+ * Stop the breathing sound loop.
+ */
+export function stopOrbitBreathing() {
+  if (_orbitAudio) {
+    _orbitAudio.pause();
+    _orbitAudio.currentTime = 0;
+    _orbitAudio = null;
+  }
+}
+
+// ==========================================
+// Orbit Mode — Heartbeat Sound
+// ==========================================
+// Precise duration measured from the WAV file (48537 frames @ 44100 Hz).
+// The heartbeat "thump" doesn't start at 0 — ORBIT_HEARTBEAT_OFFSET
+// lets you fine-tune exactly when the visual wiggle fires.
+// ==========================================
+
+/** Exact duration of single_heart_beat.wav in seconds. */
+export const ORBIT_HEARTBEAT_DURATION = 1.100612;
+
+/**
+ * Offset (seconds) from the start of the audio file to the
+ * perceptible heartbeat thump. Adjust this to align the
+ * visual wiggle with the audible beat.
+ */
+export const ORBIT_HEARTBEAT_OFFSET = 0.50;
+
+/** Volume for the heartbeat loop (0-1). */
+export const ORBIT_HEARTBEAT_VOLUME = 0.30;
+
+let _heartbeatAudio = null;
+
+/**
+ * Start the heartbeat sound loop for orbit mode.
+ * Safe to call multiple times — only one instance plays.
+ */
+export function startOrbitHeartbeat() {
+  if (_heartbeatAudio) return;
+  try {
+    const audio = new Audio(heartbeatSound);
+    audio.loop = true;
+    audio.volume = muted ? 0 : ORBIT_HEARTBEAT_VOLUME;
+    audio.play().catch(() => {});
+    _heartbeatAudio = audio;
+  } catch (e) {
+    // fail silently
+  }
+}
+
+/**
+ * Stop the heartbeat sound loop.
+ */
+export function stopOrbitHeartbeat() {
+  if (_heartbeatAudio) {
+    _heartbeatAudio.pause();
+    _heartbeatAudio.currentTime = 0;
+    _heartbeatAudio = null;
+  }
+}
+
+/**
+ * Get current playback position of the heartbeat audio (seconds).
+ * Returns 0 when not playing.
+ */
+export function getHeartbeatTime() {
+  return _heartbeatAudio ? _heartbeatAudio.currentTime : 0;
 }
