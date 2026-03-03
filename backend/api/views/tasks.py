@@ -111,11 +111,6 @@ def project_tasks(request, project_id):
         payload = request.data
 
         name = (payload.get("name") or "").strip()
-        if not name:
-            return Response(
-                {"detail": "Name is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
 
         priority = payload.get("priority") or ""
         difficulty = payload.get("difficulty") or ""

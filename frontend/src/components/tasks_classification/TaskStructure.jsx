@@ -31,6 +31,9 @@ const MIN_SIDEBAR_W = 200;
 const DEFAULT_SIDEBAR_W = 260;
 const LAYOUT_BREAKPOINT = 520;
 const COLLAPSED_STRIP_W = 28;
+const DEFAULT_FORM_H = 140;
+const MIN_FORM_H = 80;
+const MAX_FORM_H = 400;
 
 /**
  * TaskStructure — the main floating workspace for task structural management.
@@ -110,6 +113,8 @@ export default function TaskStructure() {
   const [groupBy, setGroupBy] = useState("team");
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [quickAddCollapsed, setQuickAddCollapsed] = useState(false);
+  const [formHeight, setFormHeight] = useState(DEFAULT_FORM_H);
 
   // ── Views / formations (API-backed) ──
   const {
@@ -965,8 +970,8 @@ export default function TaskStructure() {
                   <PanelLeftClose size={12} className="text-gray-500" />
                 </button>
               )}
-              {/* Auto-assign team indicator */}
-              {autoAssignTeamId && teams[autoAssignTeamId] && (
+              {/* Auto-assign team indicator (only for edit panel mode) */}
+              {(editingTask || isCreatingTask) && autoAssignTeamId && teams[autoAssignTeamId] && (
                 <div
                   className="px-3 py-1 text-[10px] font-medium flex items-center gap-1.5 border-b flex-shrink-0"
                   style={{
@@ -1008,12 +1013,20 @@ export default function TaskStructure() {
                     onEditTask={onEditTask}
                     onDeleteTask={onDeleteTask}
                     onCreateTask={onCreateTask}
+                    onQuickCreateTask={handleCreateTaskFromForm}
                     setConfirmModal={setConfirmModal}
                     taskListRef={taskListRef}
                     sidebarWidth={(isNarrow || rightCollapsed) ? "100%" : sidebarWidth}
                     taskMode={taskMode}
                     viewMode={viewMode}
                     onToggleCriterion={onToggleCriterion}
+                    quickAddCollapsed={quickAddCollapsed}
+                    setQuickAddCollapsed={setQuickAddCollapsed}
+                    autoAssignTeamId={autoAssignTeamId}
+                    formHeight={formHeight}
+                    setFormHeight={setFormHeight}
+                    minFormH={MIN_FORM_H}
+                    maxFormH={MAX_FORM_H}
                   />
 
                   {/* Legend panel */}
@@ -1026,12 +1039,38 @@ export default function TaskStructure() {
             </div>
             )}
 
-            {/* Sidebar resize handle */}
+            {/* Sidebar resize handle + intersection dot */}
             {!isNarrow && !leftCollapsed && !rightCollapsed && (
-              <div
-                onMouseDown={handleSidebarResize}
-                className="w-1 cursor-col-resize hover:bg-indigo-300 active:bg-indigo-400 transition-colors flex-shrink-0"
-              />
+              <div className="relative flex-shrink-0" style={{ width: 6 }}>
+                {/* Corner anchor — controls both form height AND sidebar width */}
+                {!quickAddCollapsed && (
+                  <div
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const startX = e.clientX;
+                      const startY = e.clientY;
+                      const startW = sidebarWidth;
+                      const startH = formHeight;
+                      const onMove = (ev) => {
+                        setSidebarWidth(Math.max(MIN_SIDEBAR_W, Math.min(startW + (ev.clientX - startX), windowSize.w - 200)));
+                        setFormHeight(Math.min(MAX_FORM_H, Math.max(MIN_FORM_H, startH + (ev.clientY - startY))));
+                      };
+                      const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+                      document.addEventListener("mousemove", onMove);
+                      document.addEventListener("mouseup", onUp);
+                    }}
+                    className="absolute bg-gray-300 hover:bg-indigo-500 transition-colors duration-150 z-10 rounded-sm"
+                    style={{ width: 10, height: 10, left: -2, top: formHeight - 2, cursor: "nwse-resize" }}
+                    title="Drag to resize form and sidebar"
+                  />
+                )}
+                {/* Normal horizontal resize strip */}
+                <div
+                  onMouseDown={handleSidebarResize}
+                  className="w-full h-full bg-gray-200 hover:bg-indigo-400 cursor-col-resize transition-colors duration-150"
+                />
+              </div>
             )}
 
             {/* ── RIGHT: Collapsed strip ── */}

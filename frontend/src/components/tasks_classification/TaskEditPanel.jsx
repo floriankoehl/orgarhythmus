@@ -68,7 +68,6 @@ export default function TaskEditPanel({
   const handleSave = useCallback(async () => {
     if (saving) return;
     const trimmedName = name.trim();
-    if (!trimmedName) { nameRef.current?.focus(); return; }
     setSaving(true);
     try {
       const payload = {
