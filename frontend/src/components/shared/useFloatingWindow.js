@@ -65,7 +65,7 @@ export default function useFloatingWindow(opts = {}) {
     if (!managed) return;
     if (isOpen) manager.reportOpen(id);
     else manager.reportClose(id);
-  }, [isOpen, managed, manager, id]);
+  }, [isOpen, managed, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── React to manager's minimizeAll signal ──
   const lastMinAllRef = useRef(manager?.minimizeAllVersion ?? 0);
@@ -94,7 +94,7 @@ export default function useFloatingWindow(opts = {}) {
       const h = windowSize.h;
       setWindowPos({
         x: Math.max(4, (window.innerWidth - w) / 2),
-        y: Math.max(60, (window.innerHeight - h) / 2 - 30),
+        y: Math.max(4, (window.innerHeight - h) / 2 - 30),
       });
       setIsOpen(true);
       setZIndex(getNextZIndex());
@@ -145,9 +145,9 @@ export default function useFloatingWindow(opts = {}) {
   }, [closeSound, defaultIcon]);
 
   const toggleMaximize = useCallback(() => {
-    // When managed (inside project), leave room for inventory bar at bottom (~64px)
-    const topY = 60;
-    const bottomReserve = managed ? 128 : 68;
+    // When managed (inside project): no header, leave room for inventory bar at bottom
+    const topY = managed ? 4 : 60;
+    const bottomReserve = managed ? 80 : 68;
     if (isMaximized) {
       if (preMaxState) {
         setWindowPos(preMaxState.pos);
@@ -166,8 +166,8 @@ export default function useFloatingWindow(opts = {}) {
   // ── Keep maximized window in sync with viewport ──
   useEffect(() => {
     if (!isMaximized) return;
-    const topY = 60;
-    const bottomReserve = managed ? 128 : 68;
+    const topY = managed ? 4 : 60;
+    const bottomReserve = managed ? 80 : 68;
     const onResize = () => {
       setWindowPos({ x: 4, y: topY });
       setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - bottomReserve });

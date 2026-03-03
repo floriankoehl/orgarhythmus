@@ -13,12 +13,19 @@ export default function OrgaLayout() {
 
   return (
     <>
+      {/* Hide the header when inside a project — ProjectLayout handles navigation */}
+      {!insideProject && (
+        <header data-orga-header className="fixed flex items-center justify-center w-screen z-20">
+          <OrgaHeader />
+        </header>
+      )}
 
-      <header data-orga-header className=" fixed flex  items-center justify-center w-screen z-20 ">
-        <OrgaHeader />
-      </header>
-
-      <main data-orga-main className="mt-15 min-h-screen   flex  justify-center items-center w-full items-stretch">
+      <main
+        data-orga-main
+        className={`min-h-screen flex justify-center items-center w-full items-stretch ${
+          insideProject ? '' : 'mt-15'
+        }`}
+      >
         <Outlet />
       </main>
 

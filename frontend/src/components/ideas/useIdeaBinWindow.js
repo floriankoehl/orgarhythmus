@@ -40,7 +40,7 @@ export default function useIdeaBinWindow(headlineInputRef) {
     if (!managed) return;
     if (isOpen) manager.reportOpen("ideaBin");
     else manager.reportClose("ideaBin");
-  }, [isOpen, managed, manager]);
+  }, [isOpen, managed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── React to manager's minimizeAll signal ──
   const lastMinAllRef = useRef(manager?.minimizeAllVersion ?? 0);
@@ -117,8 +117,8 @@ export default function useIdeaBinWindow(headlineInputRef) {
   }, [defaultIcon]);
 
   const toggleMaximize = useCallback(() => {
-    const topY = 60;
-    const bottomReserve = managed ? 128 : 68;
+    const topY = managed ? 4 : 60;
+    const bottomReserve = managed ? 80 : 68;
     if (isMaximized) {
       if (preMaxState) {
         setWindowPos(preMaxState.pos);
@@ -137,8 +137,8 @@ export default function useIdeaBinWindow(headlineInputRef) {
   // ── Keep maximized window in sync with browser viewport size ──
   useEffect(() => {
     if (!isMaximized) return;
-    const topY = 60;
-    const bottomReserve = managed ? 128 : 68;
+    const topY = managed ? 4 : 60;
+    const bottomReserve = managed ? 80 : 68;
     const onResize = () => {
       setWindowPos({ x: 4, y: topY });
       setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - bottomReserve });

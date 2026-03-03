@@ -46,11 +46,13 @@ export default function WindowManager({
   const [openWindows, setOpenWindows] = useState(() => new Set());
 
   const reportOpen = useCallback((id) => {
+    if (openSetRef.current.has(id)) return; // already tracked — avoid needless re-render
     openSetRef.current.add(id);
     setOpenWindows(new Set(openSetRef.current));
   }, []);
 
   const reportClose = useCallback((id) => {
+    if (!openSetRef.current.has(id)) return; // already removed — avoid needless re-render
     openSetRef.current.delete(id);
     setOpenWindows(new Set(openSetRef.current));
   }, []);
