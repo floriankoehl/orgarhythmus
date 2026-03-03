@@ -140,7 +140,7 @@ export default function TeamContainer({
         height: minimized ? "auto" : (position.h || 300),
         zIndex: position.z || 0,
       }}
-      className={`flex flex-col rounded-lg shadow-md border overflow-hidden transition-shadow ${
+      className={`flex flex-col rounded-lg shadow-md border transition-shadow bg-white ${
         isDropTarget ? "ring-2 ring-indigo-400 shadow-lg" : isTeamSelected ? "ring-2 ring-violet-400 shadow-md" : ""
       }`}
       style-border-color={teamColor}
@@ -197,14 +197,8 @@ export default function TeamContainer({
             style={{ color: teamColor }}
             onDoubleClick={(e) => {
               e.stopPropagation();
-              if (taskMode) {
-                // Edit mode: rename
-                setEditingTeamId(team.id);
-                setEditingTeamName(team.name || "");
-              } else {
-                // Spectator mode: collapse to chip
-                onCollapseTeam?.(team.id);
-              }
+              // Double-click → collapse to chip at top of canvas
+              onCollapseTeam?.(team.id);
             }}
           >
             {team.name || "Unnamed Team"}
@@ -239,7 +233,7 @@ export default function TeamContainer({
       {/* ── Settings dropdown ── */}
       {showSettings && (
         <div
-          className="absolute left-2 top-8 bg-white rounded shadow-lg border border-gray-200 py-1 min-w-[120px] z-50"
+          className="absolute right-0 top-8 bg-white rounded shadow-lg border border-gray-200 py-1 min-w-[140px] z-[200]"
           onMouseLeave={() => setShowSettings(false)}
         >
           <div className="px-2 py-1 flex items-center gap-1">

@@ -31,7 +31,7 @@ export default function TaskConfirmModal({ modal }) {
   if (!modal) return null;
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 rounded-lg">
+    <div className="absolute inset-0 z-[9000] flex items-center justify-center bg-black/20 rounded-lg">
       <div className="bg-white rounded-lg shadow-xl border border-gray-200 p-4 max-w-[320px] mx-4">
         <div className="mb-3">{modal.message}</div>
         <div className="flex items-center justify-between gap-2">

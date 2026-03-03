@@ -25,10 +25,12 @@ export default function useTaskViews({ projectId, deps }) {
     windowPos, windowSize, isMaximized, viewMode, teamViewOverrides,
     sidebarWidth, legendPanelCollapsed, groupBy,
     collapsedTeamIds, teamPositions,
+    leftCollapsed, rightCollapsed,
     // write
     setWindowPos, setWindowSize, setIsMaximized, setViewMode,
     setTeamViewOverrides, setSidebarWidth, setLegendPanelCollapsed,
     setGroupBy, setCollapsedTeamIds, setTeamPositions,
+    setLeftCollapsed, setRightCollapsed,
   } = deps || {};
 
   const [views, setViews] = useState([]);
@@ -66,11 +68,13 @@ export default function useTaskViews({ projectId, deps }) {
       group_by: groupBy,
       collapsed_team_ids: collapsedTeamIds ? [...collapsedTeamIds] : [],
       team_positions: teamPositions || {},
+      left_collapsed: !!leftCollapsed,
+      right_collapsed: !!rightCollapsed,
     };
   }, [
     windowPos, windowSize, isMaximized, viewMode, teamViewOverrides,
     sidebarWidth, legendPanelCollapsed, groupBy,
-    collapsedTeamIds, teamPositions,
+    collapsedTeamIds, teamPositions, leftCollapsed, rightCollapsed,
   ]);
 
   // ── Apply a saved state ──
@@ -86,11 +90,14 @@ export default function useTaskViews({ projectId, deps }) {
     if (state.group_by && setGroupBy) setGroupBy(state.group_by);
     if (state.collapsed_team_ids && setCollapsedTeamIds) setCollapsedTeamIds(new Set(state.collapsed_team_ids));
     if (state.team_positions && setTeamPositions) setTeamPositions(state.team_positions);
+    if (state.left_collapsed !== undefined && setLeftCollapsed) setLeftCollapsed(state.left_collapsed);
+    if (state.right_collapsed !== undefined && setRightCollapsed) setRightCollapsed(state.right_collapsed);
     playSound("ideaOpen");
   }, [
     setWindowPos, setWindowSize, setIsMaximized, setViewMode,
     setTeamViewOverrides, setSidebarWidth, setLegendPanelCollapsed,
     setGroupBy, setCollapsedTeamIds, setTeamPositions,
+    setLeftCollapsed, setRightCollapsed,
   ]);
 
   // ── Save new view ──

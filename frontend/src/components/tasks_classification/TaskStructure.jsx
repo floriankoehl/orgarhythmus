@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useParams, useLocation } from "react-router-dom";
-import { LayoutGrid } from "lucide-react";
+import { LayoutGrid, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { playSound } from "../../assets/sound_registry";
 import { createTaskForProject, bulk_delete_tasks } from "../../api/org_API";
 
@@ -30,6 +30,7 @@ import TeamDetailPanel from "./TeamDetailPanel";
 const MIN_SIDEBAR_W = 200;
 const DEFAULT_SIDEBAR_W = 260;
 const LAYOUT_BREAKPOINT = 520;
+const COLLAPSED_STRIP_W = 28;
 
 /**
  * TaskStructure — the main floating workspace for task structural management.
@@ -107,6 +108,8 @@ export default function TaskStructure() {
   const [viewMode, setViewMode] = useState("compact");
   const [teamViewOverrides, setTeamViewOverrides] = useState({});
   const [groupBy, setGroupBy] = useState("team");
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
 
   // ── Views / formations (API-backed) ──
   const {
@@ -123,9 +126,11 @@ export default function TaskStructure() {
       windowPos, windowSize, isMaximized, viewMode, teamViewOverrides,
       sidebarWidth, legendPanelCollapsed, groupBy,
       collapsedTeamIds, teamPositions,
+      leftCollapsed, rightCollapsed,
       setWindowPos, setWindowSize, setIsMaximized, setViewMode,
       setTeamViewOverrides, setSidebarWidth, setLegendPanelCollapsed,
       setGroupBy, setCollapsedTeamIds, setTeamPositions,
+      setLeftCollapsed, setRightCollapsed,
     },
   });
 
@@ -133,6 +138,7 @@ export default function TaskStructure() {
   const taskListRef = useRef(null);
   const teamCanvasRef = useRef(null);
   const triggerDeleteSelectedRef = useRef(null);
+  const triggerDeleteSelectedTeamsRef = useRef(null);
 
   // ── Drag hook ──
   const {
@@ -147,7 +153,8 @@ export default function TaskStructure() {
   });
 
   // ── Keyboard: "t" toggles task mode, 1/2/3 changes view mode, Escape cancels draw mode ──
-  //    Ctrl+T selects all displayed tasks, Delete triggers delete selected, Enter confirms modal
+  //    Ctrl+A selects all tasks, Ctrl+Shift+A selects all expanded teams
+  //    Delete triggers delete for selected tasks or teams, Enter confirms modal
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e) => {
@@ -157,7 +164,23 @@ export default function TaskStructure() {
       const tag = e.target.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable) return;
 
-      // Ctrl+T  → select all displayed tasks
+      // Ctrl+Shift+A → select all expanded (visible) teams
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "a" || e.key === "A")) {
+        e.preventDefault();
+        const expandedIds = teamOrder.filter((tid) => !collapsedTeamIds.has(tid));
+        setSelectedTeamIds(new Set(expandedIds));
+        return;
+      }
+
+      // Ctrl+A → select all tasks
+      if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
+        e.preventDefault();
+        const allIds = Object.keys(tasks).map(Number);
+        setSelectedTaskIds(new Set(allIds));
+        return;
+      }
+
+      // Ctrl+T  → select all displayed tasks (legacy, kept for compat)
       if ((e.ctrlKey || e.metaKey) && (e.key === "t" || e.key === "T")) {
         e.preventDefault();
         const allIds = Object.keys(tasks).map(Number);
@@ -178,18 +201,19 @@ export default function TaskStructure() {
           setDrawTeamMode(false);
         }
       }
-      // Delete key → trigger delete for selected tasks
+      // Delete key → trigger delete for selected teams first, then tasks
       if (e.key === "Delete") {
         e.preventDefault();
-        if (selectedTaskIds.size > 0) {
-          // We need to call triggerDeleteSelected from the ref
+        if (selectedTeamIds.size > 0) {
+          triggerDeleteSelectedTeamsRef.current?.();
+        } else if (selectedTaskIds.size > 0) {
           triggerDeleteSelectedRef.current?.();
         }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isOpen, activeTab, detailView, drawTeamMode, editingTaskId, isCreatingTask, tasks, selectedTaskIds]);
+  }, [isOpen, activeTab, detailView, drawTeamMode, editingTaskId, isCreatingTask, tasks, selectedTaskIds, selectedTeamIds, teamOrder, collapsedTeamIds]);
 
   // ── Load default view every time the window opens ──
   const prevOpenRef = useRef(false);
@@ -510,6 +534,64 @@ export default function TaskStructure() {
 
   // Keep ref in sync so the keyboard handler can call it without stale closure
   useEffect(() => { triggerDeleteSelectedRef.current = triggerDeleteSelected; }, [triggerDeleteSelected]);
+
+  // ── Bulk-delete selected teams (with confirmation) ──
+  const triggerDeleteSelectedTeams = useCallback(() => {
+    const ids = [...selectedTeamIds];
+    if (ids.length === 0) return;
+
+    const teamItems = ids.map((id) => teams[id]).filter(Boolean);
+    if (teamItems.length === 0) return;
+
+    // Count affected tasks
+    const affectedTaskCount = ids.reduce((sum, tid) => sum + (tasksByTeamMap[tid]?.length || 0), 0);
+
+    setConfirmModal({
+      message: (
+        <div>
+          <p className="text-sm font-medium mb-2">
+            Delete {teamItems.length} team{teamItems.length > 1 ? 's' : ''}?
+          </p>
+          <ul className="text-xs text-gray-600 space-y-0.5 max-h-[120px] overflow-y-auto pr-1">
+            {teamItems.map((t) => {
+              const count = tasksByTeamMap[t.id]?.length || 0;
+              return (
+                <li key={t.id} className="flex items-start gap-1">
+                  <div className="w-2 h-2 rounded-full mt-0.5 flex-shrink-0" style={{ backgroundColor: t.color || '#6366f1' }} />
+                  <span className="font-semibold" style={{ color: t.color || '#6366f1' }}>{t.name || '(unnamed)'}</span>
+                  {count > 0 && <span className="text-gray-400 ml-1">({count} task{count > 1 ? 's' : ''})</span>}
+                </li>
+              );
+            })}
+          </ul>
+          {affectedTaskCount > 0 && (
+            <p className="text-[10px] text-gray-500 mt-2 border-t border-gray-100 pt-1.5">
+              {affectedTaskCount} task{affectedTaskCount > 1 ? 's' : ''} will become unassigned (not deleted).
+            </p>
+          )}
+        </div>
+      ),
+      confirmLabel: `Delete${teamItems.length > 1 ? ` (${teamItems.length})` : ''}`,
+      confirmColor: 'bg-red-500 hover:bg-red-600',
+      onConfirm: async () => {
+        setConfirmModal(null);
+        try {
+          for (const tid of ids) {
+            await deleteTeam(tid);
+          }
+          setSelectedTeamIds(new Set());
+          // Refetch tasks since they become unassigned
+          fetchTasks();
+        } catch (e) {
+          console.error('Bulk delete teams failed', e);
+        }
+      },
+      onCancel: () => setConfirmModal(null),
+    });
+  }, [selectedTeamIds, teams, tasksByTeamMap, deleteTeam, fetchTasks]);
+
+  // Keep ref in sync
+  useEffect(() => { triggerDeleteSelectedTeamsRef.current = triggerDeleteSelectedTeams; }, [triggerDeleteSelectedTeams]);
 
   const onRenameTeam = useCallback(async (teamId, newName) => {
     await updateTeamApi(teamId, { name: newName });
@@ -856,8 +938,33 @@ export default function TaskStructure() {
 
           {/* ── Main content area ── */}
           <div className="flex flex-1 min-h-0 overflow-hidden">
+
+            {/* ── LEFT: Collapsed strip ── */}
+            {leftCollapsed && !isNarrow && (
+              <div className="flex flex-col items-center flex-shrink-0 bg-gray-50 border-r border-gray-200" style={{ width: COLLAPSED_STRIP_W }}>
+                <button
+                  onClick={() => setLeftCollapsed(false)}
+                  className="mt-2 p-1 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors"
+                  title="Expand task panel"
+                >
+                  <PanelLeftOpen size={16} />
+                </button>
+              </div>
+            )}
+
             {/* Left sidebar: Task form OR Task list + Legend */}
-            <div className="flex flex-col" style={{ width: isNarrow ? "100%" : sidebarWidth }}>
+            {(!leftCollapsed || isNarrow) && (
+            <div className={`flex flex-col relative ${rightCollapsed && !isNarrow ? "flex-1" : ""}`} style={{ width: isNarrow ? "100%" : (rightCollapsed ? undefined : sidebarWidth), minWidth: rightCollapsed ? 0 : undefined }}>
+              {/* Collapse task panel button — top-right corner */}
+              {!isNarrow && !rightCollapsed && (
+                <button
+                  onClick={() => setLeftCollapsed(true)}
+                  className="absolute top-1.5 right-0 z-30 bg-white border border-gray-300 rounded-l px-1 py-1 flex items-center justify-center shadow-sm hover:bg-gray-100 hover:border-gray-400 transition-colors"
+                  title="Collapse task panel"
+                >
+                  <PanelLeftClose size={12} className="text-gray-500" />
+                </button>
+              )}
               {/* Auto-assign team indicator */}
               {autoAssignTeamId && teams[autoAssignTeamId] && (
                 <div
@@ -917,17 +1024,31 @@ export default function TaskStructure() {
                 </>
               )}
             </div>
+            )}
 
             {/* Sidebar resize handle */}
-            {!isNarrow && (
+            {!isNarrow && !leftCollapsed && !rightCollapsed && (
               <div
                 onMouseDown={handleSidebarResize}
                 className="w-1 cursor-col-resize hover:bg-indigo-300 active:bg-indigo-400 transition-colors flex-shrink-0"
               />
             )}
 
+            {/* ── RIGHT: Collapsed strip ── */}
+            {!isNarrow && rightCollapsed && (
+              <div className="flex flex-col items-center flex-shrink-0 bg-gray-50 border-l border-gray-200" style={{ width: COLLAPSED_STRIP_W, minWidth: COLLAPSED_STRIP_W, maxWidth: COLLAPSED_STRIP_W }}>
+                <button
+                  onClick={() => setRightCollapsed(false)}
+                  className="mt-2 p-1 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors"
+                  title="Expand team canvas"
+                >
+                  <PanelRightOpen size={16} />
+                </button>
+              </div>
+            )}
+
             {/* Right canvas: Team containers */}
-            {!isNarrow && (
+            {!isNarrow && !rightCollapsed && (
               <TeamCanvas
                 tasks={tasks}
                 teams={teams}
@@ -974,6 +1095,8 @@ export default function TaskStructure() {
                 teamViewOverrides={teamViewOverrides}
                 setTeamViewOverride={setTeamViewOverride}
                 onToggleCriterion={onToggleCriterion}
+                onCollapseRight={() => setRightCollapsed(true)}
+                showCollapseRight={!leftCollapsed}
               />
             )}
           </div>

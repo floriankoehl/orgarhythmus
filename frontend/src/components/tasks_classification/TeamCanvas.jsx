@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from "react";
+import { PanelRightClose } from "lucide-react";
 import TeamContainer from "./TeamContainer";
 
 /**
@@ -49,6 +50,8 @@ export default function TeamCanvas({
   teamViewOverrides = {},
   setTeamViewOverride,
   onToggleCriterion,
+  onCollapseRight,
+  showCollapseRight,
 }) {
   // ── Draw-to-create marquee state ──
   const [marquee, setMarquee] = useState(null); // { startX, startY, currentX, currentY }
@@ -148,7 +151,8 @@ export default function TeamCanvas({
     window.addEventListener("mouseup", handleMouseUp);
   }, [teamCanvasRef, createTeamAt, setEditingTeamId, setEditingTeamName, setDrawTeamMode, teamOrder, teamPositions, setSelectedTeamIds]);
 
-  // Calculate canvas bounds to fit all containers
+  // Calculate canvas bounds to fit all containers (capped at a reasonable max)
+  const CANVAS_MAX = 6000;
   let maxX = 600, maxY = 400;
   for (const pos of Object.values(teamPositions)) {
     const right = (pos.x || 0) + (pos.w || 240) + 40;
@@ -156,6 +160,8 @@ export default function TeamCanvas({
     if (right > maxX) maxX = right;
     if (bottom > maxY) maxY = bottom;
   }
+  maxX = Math.min(maxX, CANVAS_MAX);
+  maxY = Math.min(maxY, CANVAS_MAX);
 
   return (
     <div
@@ -167,6 +173,16 @@ export default function TeamCanvas({
       <div
         style={{ width: maxX, height: maxY, position: "relative" }}
       >
+        {/* Collapse team canvas button — top-left corner */}
+        {showCollapseRight && (
+          <button
+            onClick={onCollapseRight}
+            className="absolute top-1.5 left-0 z-[60] bg-white border border-gray-300 rounded-r px-1 py-1 flex items-center justify-center shadow-sm hover:bg-gray-100 hover:border-gray-400 transition-colors"
+            title="Collapse team canvas"
+          >
+            <PanelRightClose size={12} className="text-gray-500" />
+          </button>
+        )}
         {/* Draw-mode hint */}
         {drawTeamMode && !marquee && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[9998] bg-amber-100 text-amber-800 text-[11px] font-medium px-3 py-1.5 rounded-lg border border-amber-300 shadow-sm pointer-events-none animate-pulse">
