@@ -7,12 +7,51 @@ from ..models import PromptSettings
 
 
 VALID_SCENARIO_KEYS = {
+    # ── Legacy keys (kept for backwards compatibility) ──
     "ideabin_single_category",
     "ideabin_multi_categories",
     "task_single_team",
     "task_multi_teams",
     "task_single_task",
     "dep_selected_tasks",
+
+    # ── IdeaBin prompt-engine scenarios ──
+    # Ideas — Add
+    "ideas_add_blank",
+    "ideas_add_with_context",
+    "ideas_add_to_categories",
+    "ideas_add_for_teams",
+    "ideas_add_with_new_teams",
+    # Ideas — Overwork
+    "ideas_overwork_selected",
+    "ideas_overwork_with_teams",
+    "ideas_overwork_assign_legends",
+    "ideas_overwork_all",
+    # Categories — Add
+    "categories_add_blank",
+    "categories_add_with_ideas",
+    # Categories — Overwork
+    "categories_overwork_structure",
+    "categories_overwork_with_ideas",
+    # Categories & Ideas
+    "combined_overwork_all",
+    "combined_add_ideas_only",
+    "combined_add_ideas_and_categories",
+    # Legends & Filters
+    "legends_add_new",
+    "legends_overwork_all",
+    "filters_add_for_existing",
+    "filters_add_with_legends",
+    "filters_overwork_all",
+    # Entire Context
+    "context_add_to_existing",
+    "context_overwork_all",
+    # Analysis
+    "ideas_deduplicate",
+    "ideas_prioritize",
+    "ideas_auto_categorize",
+    "ideas_gap_analysis",
+    "context_summarize",
 }
 
 

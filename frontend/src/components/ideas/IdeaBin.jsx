@@ -25,6 +25,7 @@ import IdeaBinContextView from "./IdeaBinContextView";
 import IdeaBinToolbar from "./IdeaBinToolbar";
 import IdeaBinTitleBar from "./IdeaBinTitleBar";
 import IdeaBinInputForm from "./IdeaBinInputForm";
+import IdeaBinIOPopup from "./IdeaBinIOPopup";
 import { useAuth } from "../../auth/AuthContext";
 
 // Extracted hooks
@@ -37,11 +38,12 @@ import useIdeaBinKeyboard from "./hooks/useIdeaBinKeyboard";
 import useIdeaBinContext from "./hooks/useIdeaBinContext";
 import useIdeaBinTransform from "./hooks/useIdeaBinTransform.jsx";
 import usePromptSettings from "../usePromptSettings";
+import { IDEABIN_SCENARIOS, IDEABIN_GROUPS, assemblePrompt } from "../shared/promptEngine";
 
 // Extracted API helpers
 
 import { fetchContextsApi, assignCategoryToContextApi } from "./api/contextApi";
-import { mergeIdeasApi } from "./api/ideaApi";
+import { mergeIdeasApi, createIdeaApi, assignIdeaToCategoryApi } from "./api/ideaApi";
 import { authFetch, API } from "./api/authFetch";
 import { exportIdeabinApi, importIdeabinApi, exportCategoryApi, exportMultipleCategoriesApi, importCategoryApi, insertIdeasIntoCategoryApi } from "./api/exportApi";
 import { delete_task } from "../../api/dependencies_api";
@@ -64,7 +66,7 @@ export default function IdeaBin() {
   const { projectId } = useParams();   // optional — only present inside a project
   const { user } = useAuth();
   const currentUserId = user?.id;
-  const { buildClipboardText } = usePromptSettings();
+  const { buildClipboardText, settings: promptSettings, settingsRef: promptSettingsRef, projectDescRef } = usePromptSettings();
 
   // ───── Window state (extracted) ─────
   const headlineInputRef = useRef(null);
@@ -202,6 +204,9 @@ export default function IdeaBin() {
   const [exportScenarioKey, setExportScenarioKey] = useState('ideabin_single_category');
   const [showCategoryImport, setShowCategoryImport] = useState(false);
   const [insertIdeasTarget, setInsertIdeasTarget] = useState(null); // { id, name } or null
+
+  // ───── I/O Prompt panel ─────
+  const [showIOPanel, setShowIOPanel] = useState(false);
 
   // Refs
   const IdeaListRef = useRef(null);
@@ -622,6 +627,84 @@ export default function IdeaBin() {
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   }, [paintType, assign_idea_legend_type, dims, setSelectedIdeaIds, setPaintType]);
+
+  // ═══════════════════════════════════════════════════════
+  // ═══════════  I/O PROMPT ENGINE CONTEXT  ═══════════════
+  // ═══════════════════════════════════════════════════════
+
+  const ioCtx = useMemo(() => ({
+    ideas,
+    categories,
+    categoryOrders,
+    unassignedOrder,
+    dims,
+    selectedIdeaIds,
+    selectedCategoryIds,
+    legendFilters,
+    filterCombineMode,
+    stackedFilters,
+    stackCombineMode,
+    globalTypeFilter,
+    filterPresets,
+    activeContext,
+    projectTeams: projectTeams || [],
+    projectDescription: projectDescRef.current || "",
+  }), [
+    ideas, categories, categoryOrders, unassignedOrder, dims,
+    selectedIdeaIds, selectedCategoryIds,
+    legendFilters, filterCombineMode, stackedFilters, stackCombineMode,
+    globalTypeFilter, filterPresets, activeContext, projectTeams,
+    projectDescRef,
+  ]);
+
+  // Helper: create a legend type on any legend (bypasses active-legend restriction)
+  const createTypeOnLegend = useCallback(async (legendId, name, color, icon = null) => {
+    const res = await authFetch(`${API}/user/legends/${legendId}/types/create/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, color, ...(icon ? { icon } : {}) }),
+    });
+    return (await res.json()).type;
+  }, []);
+
+  // Context object with API functions for the response applier
+  const applyCtx = useMemo(() => ({
+    createIdea: createIdeaApi,
+    importCategories: importCategoryApi,
+    insertIdeas: insertIdeasIntoCategoryApi,
+    createCategory: createCategoryApi,
+    createLegend: dims.create_legend,
+    createTypeOnLegend,
+    assignIdeaToCategory: assignIdeaToCategoryApi,
+    setFilterPresets,
+    refreshAll: async () => {
+      await fetch_categories();
+      await fetch_all_ideas();
+      dims.fetch_legends?.(activeContext?.id);
+    },
+    activeContextId: activeContext?.id ?? null,
+    ideas,
+    categories,
+    dims,
+  }), [
+    createTypeOnLegend, dims, ideas, categories, activeContext?.id,
+    fetch_categories, fetch_all_ideas, setFilterPresets,
+  ]);
+
+  const ioPopupContent = useMemo(() => (
+    showIOPanel ? (
+      <IdeaBinIOPopup
+        scenarios={IDEABIN_SCENARIOS}
+        groups={IDEABIN_GROUPS}
+        ctx={ioCtx}
+        settings={promptSettingsRef.current}
+        assemblePrompt={assemblePrompt}
+        applyCtx={applyCtx}
+        onClose={() => setShowIOPanel(false)}
+        iconColor={activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 65%, #333)` : "#92400e"}
+      />
+    ) : null
+  ), [showIOPanel, ioCtx, applyCtx, activeContext?.color]);
 
   // ═══════════════════════════════════════════════════════
   // ═══════════  EXPORT BACKUP  ═══════════════════════════
@@ -1243,6 +1326,8 @@ export default function IdeaBin() {
             save_formation={save_formation} update_formation_state={update_formation_state}
             rename_formation={rename_formation} load_formation={load_formation}
             delete_formation={delete_formation} toggle_default_formation={toggle_default_formation}
+            showIOPanel={showIOPanel} setShowIOPanel={setShowIOPanel}
+            ioPopupContent={ioPopupContent}
           />
 
           {/* ── Toolbar ── */}

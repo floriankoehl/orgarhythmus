@@ -12,12 +12,14 @@ import {
   ChevronUp,
   ChevronDown,
   Layers,
+  Sparkles,
 } from "lucide-react";
 import { useWindowManager } from "./WindowManager";
 import { usePipeline } from "./PipelineContext";
 import { useNotifications } from "../../auth/NotificationContext";
 import useWorkspace from "./useWorkspace";
 import WorkspacePopup from "./WorkspacePopup";
+import AISettingsPopup from "./AISettingsPopup";
 
 /**
  * Inventory bar configuration for each window slot.
@@ -60,6 +62,9 @@ export default function InventoryBar() {
     nextWorkspace, prevWorkspace,
     wsFlashName,
   } = useWorkspace({ projectId });
+
+  // ── AI settings popup state ──
+  const [showAISettings, setShowAISettings] = useState(false);
 
   if (!manager) return null;
 
@@ -376,6 +381,45 @@ export default function InventoryBar() {
             onToggleDefault={toggleWorkspaceDefault}
             onClose={() => setShowWorkspacePanel(false)}
           />
+        )}
+      </div>
+
+      {/* ── AI Settings toggle ── */}
+      <div className="relative flex flex-col items-center">
+        <button
+          onClick={() => setShowAISettings((v) => !v)}
+          className={`
+            group relative flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl
+            transition-all duration-200 outline-none
+            ${showAISettings ? "opacity-100 scale-105" : "opacity-50 hover:opacity-80"}
+          `}
+          title="AI Prompt Settings"
+        >
+          <div
+            className={`
+              w-10 h-10 rounded-xl flex items-center justify-center shadow-lg
+              transition-all duration-300
+              ${
+                showAISettings
+                  ? "bg-gradient-to-br from-amber-400 to-orange-500 ring-2 ring-amber-300/40"
+                  : "bg-gradient-to-br from-gray-500 to-gray-600"
+              }
+            `}
+          >
+            <Sparkles size={20} className="text-white drop-shadow" />
+          </div>
+          <span
+            className={`text-[9px] font-medium leading-none ${
+              showAISettings ? "text-amber-300" : "text-slate-500"
+            }`}
+          >
+            AI
+          </span>
+        </button>
+
+        {/* Popup */}
+        {showAISettings && (
+          <AISettingsPopup onClose={() => setShowAISettings(false)} />
         )}
       </div>
 

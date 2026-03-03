@@ -1,6 +1,7 @@
 import {
   Lightbulb, Minus, Maximize2, Minimize2, List, Save, FolderOpen,
   Trash2, Pencil, Check, Palette, Layers, ChevronDown, Star,
+  Sparkles,
 } from "lucide-react";
 import WindowTitleBar from "../shared/WindowTitleBar";
 
@@ -31,6 +32,9 @@ export default function IdeaBinTitleBar({
   editingFormationName, setEditingFormationName,
   save_formation, update_formation_state, rename_formation,
   load_formation, delete_formation, toggle_default_formation,
+  // I/O prompt panel
+  showIOPanel, setShowIOPanel,
+  ioPopupContent,
 }) {
   const iconColor = activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 65%, #333)` : "#92400e";
 
@@ -54,6 +58,17 @@ export default function IdeaBinTitleBar({
           Paste{selectedCategoryIds.size === 1 && categories[[...selectedCategoryIds][0]] ? ` → ${categories[[...selectedCategoryIds][0]].name}` : ""}
         </button>
       )}
+      {/* ── I/O Prompt button ── */}
+      <div className="relative">
+        <button
+          onClick={() => setShowIOPanel(v => !v)}
+          className={`p-1 rounded transition-colors ${showIOPanel ? "bg-black/10" : "hover:bg-black/10"}`}
+          title="AI Prompt Scenarios (I/O)"
+        >
+          <Sparkles size={13} style={{ color: iconColor }} />
+        </button>
+        {showIOPanel && ioPopupContent}
+      </div>
       {/* ── Formations dropdown ── */}
       <div className="relative">
         <button
