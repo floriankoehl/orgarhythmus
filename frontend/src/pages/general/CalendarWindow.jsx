@@ -40,6 +40,7 @@ export default function CalendarWindow() {
     handleIconDrag, handleWindowDrag,
     handleWindowResize, handleEdgeResize,
     managed,
+    setExtraStateCollector, setExtraStateApplier,
   } = useFloatingWindow({
     id: "calendar",
     openSound: "ideaOpen",
@@ -50,6 +51,15 @@ export default function CalendarWindow() {
   // ── View mode state ──
   const [viewMode, setViewMode] = useState("auto"); // "auto" | "3d" | "7d" | "1m"
   const [transposed, setTransposed] = useState(false);
+
+  // ── Register extra state for workspace ──
+  useEffect(() => {
+    setExtraStateCollector(() => ({ view_mode: viewMode, transposed }));
+    setExtraStateApplier((state) => {
+      if (state.view_mode !== undefined) setViewMode(state.view_mode);
+      if (state.transposed !== undefined) setTransposed(state.transposed);
+    });
+  }, [viewMode, transposed, setExtraStateCollector, setExtraStateApplier]);
 
   // ── Resolve effective view when mode is "auto" ──
   const effectiveView = (() => {

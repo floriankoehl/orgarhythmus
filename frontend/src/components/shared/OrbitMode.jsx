@@ -83,6 +83,7 @@ export default function OrbitMode() {
   const lastBeatCycleRef = useRef(-1);
   const beatFlashStartRef = useRef(null); // breathing-time when beat fired
   const breathEaseRef = useRef(0);
+  const heartDotRef = useRef(null);
 
   // ── Mirror hover into ref (avoids re-creating effect) ──
   useEffect(() => { hoveredRef.current = hovered; }, [hovered]);
@@ -166,6 +167,14 @@ export default function OrbitMode() {
         containerRef.current.style.backgroundColor = bgColor(beatT);
       }
 
+      // ── Pulse the centre heart dot ──
+      if (heartDotRef.current) {
+        const scale = 1 + beatT * 0.35;
+        const opacity = 0.5 + beatT * 0.5;
+        heartDotRef.current.style.transform = `translate(-50%, -50%) scale(${scale})`;
+        heartDotRef.current.style.opacity = opacity;
+      }
+
       rafRef.current = requestAnimationFrame(tick);
     };
 
@@ -221,6 +230,22 @@ export default function OrbitMode() {
       {/* Subtle radial glow behind the orbit */}
       <div className="absolute w-[340px] h-[340px] rounded-full bg-slate-800/50 blur-3xl pointer-events-none"
            style={{ transform: `translateY(${ORBIT_VERTICAL_SHIFT}px)` }} />
+
+      {/* Centre heartbeat dot */}
+      <div
+        ref={heartDotRef}
+        className="absolute rounded-full bg-white/50 pointer-events-none"
+        style={{
+          width: 10,
+          height: 10,
+          left: '50%',
+          top: `calc(50% + ${ORBIT_VERTICAL_SHIFT}px)`,
+          transform: 'translate(-50%, -50%) scale(1)',
+          opacity: 0.5,
+          boxShadow: '0 0 8px 2px rgba(255,255,255,0.25)',
+          transition: 'none',
+        }}
+      />
 
       {/* Rotating container — shifted slightly down */}
       <div

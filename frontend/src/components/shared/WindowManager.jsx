@@ -9,6 +9,7 @@ import OrbitMode from "./OrbitMode";
  * Responsibilities:
  * ─ Track which windows are open / closed (passive — windows report their state).
  * ─ Provide coordination APIs: minimizeAll, requestOpen, requestMinimize, etc.
+ * ─ Workspace state collection/application via per-window collectors/appliers.
  * ─ Render the InventoryBar (bottom-center hotbar with all window icons).
  *
  * The icon dock positions are no longer used for standalone floating icons —
@@ -85,6 +86,65 @@ export default function WindowManager({
   // ── Derived: orbit mode when no windows are open ──
   const allCollapsed = openWindows.size === 0;
 
+  // ── Workspace: per-window state collectors & appliers ──
+  const stateCollectorsRef = useRef({});   // { [windowId]: () => stateObj }
+  const stateAppliersRef = useRef({});     // { [windowId]: (state) => void }
+
+  // ── View savers: per-window "save current view" callbacks ──
+  const viewSaversRef = useRef({});        // { [windowId]: () => Promise<void> }
+
+  const registerCollector = useCallback((id, fn) => {
+    stateCollectorsRef.current[id] = fn;
+  }, []);
+  const unregisterCollector = useCallback((id) => {
+    delete stateCollectorsRef.current[id];
+  }, []);
+  const registerApplier = useCallback((id, fn) => {
+    stateAppliersRef.current[id] = fn;
+  }, []);
+  const unregisterApplier = useCallback((id) => {
+    delete stateAppliersRef.current[id];
+  }, []);
+
+  const registerViewSaver = useCallback((id, fn) => {
+    viewSaversRef.current[id] = fn;
+  }, []);
+  const unregisterViewSaver = useCallback((id) => {
+    delete viewSaversRef.current[id];
+  }, []);
+
+  /** Trigger "save current view" for a set of window ids. */
+  const saveViews = useCallback(async (ids) => {
+    const promises = [];
+    for (const id of ids) {
+      const saver = viewSaversRef.current[id];
+      if (saver) {
+        try { promises.push(saver()); } catch (_) { /* skip */ }
+      }
+    }
+    await Promise.allSettled(promises);
+  }, []);
+
+  /** Collect all window states → { [windowId]: stateObj } */
+  const collectAllStates = useCallback(() => {
+    const states = {};
+    for (const [id, fn] of Object.entries(stateCollectorsRef.current)) {
+      try { states[id] = fn(); } catch (_) { /* skip broken collectors */ }
+    }
+    return { version: 1, windows: states };
+  }, []);
+
+  /** Apply a workspace state object to all windows. */
+  const applyAllStates = useCallback((workspaceState) => {
+    const windowStates = workspaceState?.windows || {};
+    for (const [id, state] of Object.entries(windowStates)) {
+      const applier = stateAppliersRef.current[id];
+      if (applier) {
+        try { applier(state); } catch (_) { /* skip broken appliers */ }
+      }
+    }
+  }, []);
+
   // ── Context value ──
   const value = useMemo(
     () => ({
@@ -110,6 +170,19 @@ export default function WindowManager({
       requestOpenFullScreen,
       openFullScreenRequests,
       allCollapsed,
+
+      // Workspace state registry
+      registerCollector,
+      unregisterCollector,
+      registerApplier,
+      unregisterApplier,
+      collectAllStates,
+      applyAllStates,
+
+      // View saver registry
+      registerViewSaver,
+      unregisterViewSaver,
+      saveViews,
     }),
     [
       windows, openWindows,
@@ -119,6 +192,10 @@ export default function WindowManager({
       openRequests, minimizeRequests,
       requestOpenFullScreen, openFullScreenRequests,
       allCollapsed,
+      registerCollector, unregisterCollector,
+      registerApplier, unregisterApplier,
+      collectAllStates, applyAllStates,
+      registerViewSaver, unregisterViewSaver, saveViews,
     ],
   );
 

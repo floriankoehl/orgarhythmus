@@ -264,6 +264,15 @@ urlpatterns = [
     # IdeaBin backup export
     path("ideabin/export/", views.export_ideabin, name="export_ideabin"),
     path("ideabin/import/", views.import_ideabin, name="import_ideabin"),
+
+    # Workspaces (saved multi-window layout — scoped to a project, shared)
+    path("projects/<int:project_id>/workspaces/", views.list_workspaces, name="list_workspaces"),
+    path("projects/<int:project_id>/workspaces/create/", views.create_workspace, name="create_workspace"),
+    path("projects/<int:project_id>/workspaces/default/", views.get_default_workspace, name="get_default_workspace"),
+    path("workspaces/<int:workspace_id>/", views.get_workspace, name="get_workspace"),
+    path("workspaces/<int:workspace_id>/update/", views.update_workspace, name="update_workspace"),
+    path("workspaces/<int:workspace_id>/delete/", views.delete_workspace, name="delete_workspace"),
+    path("workspaces/<int:workspace_id>/set-default/", views.set_default_workspace, name="set_default_workspace"),
 ]
 
 

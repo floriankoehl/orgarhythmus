@@ -257,3 +257,13 @@ from .prompt_settings import (
     get_prompt_settings,
     update_prompt_settings,
 )
+
+from .workspaces import (
+    list_workspaces,
+    create_workspace,
+    get_workspace,
+    update_workspace,
+    delete_workspace,
+    set_default_workspace,
+    get_default_workspace,
+)

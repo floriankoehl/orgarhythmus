@@ -34,6 +34,35 @@ export default function useIdeaBinWindow(headlineInputRef) {
   const windowRef = useRef(null);
   const iconRef = useRef(null);
 
+  // ── Extra state extensions for workspace integration ──
+  const extraCollectorRef = useRef(null);
+  const extraApplierRef = useRef(null);
+  const setExtraStateCollector = useCallback((fn) => { extraCollectorRef.current = fn; }, []);
+  const setExtraStateApplier = useCallback((fn) => { extraApplierRef.current = fn; }, []);
+
+  // Refs that stay current for the collector closure
+  const stateRef = useRef({ isOpen: false, windowPos: { x: 0, y: 0 }, windowSize: { w: 0, h: 0 }, isMaximized: false });
+  useEffect(() => {
+    stateRef.current = { isOpen, windowPos, windowSize, isMaximized };
+  }, [isOpen, windowPos, windowSize, isMaximized]);
+
+  const collectState = useCallback(() => ({
+    is_open: stateRef.current.isOpen,
+    window_pos: stateRef.current.windowPos,
+    window_size: stateRef.current.windowSize,
+    is_maximized: stateRef.current.isMaximized,
+    ...(extraCollectorRef.current?.() || {}),
+  }), []);
+
+  const applyState = useCallback((state) => {
+    if (!state) return;
+    if (state.window_pos) setWindowPos(state.window_pos);
+    if (state.window_size) setWindowSize(state.window_size);
+    if (state.is_maximized !== undefined) setIsMaximized(state.is_maximized);
+    if (state.is_open !== undefined) setIsOpen(state.is_open);
+    extraApplierRef.current?.(state);
+  }, []);
+
   // ── Custom size tracking (persists across maximize/minimize cycles) ──
   const customSizeRef = useRef({
     pos: { x: 0, y: 0 },
@@ -53,6 +82,17 @@ export default function useIdeaBinWindow(headlineInputRef) {
     if (isOpen) manager.reportOpen("ideaBin");
     else manager.reportClose("ideaBin");
   }, [isOpen, managed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Register state collector/applier with WindowManager for workspaces ──
+  useEffect(() => {
+    if (!managed) return;
+    manager.registerCollector("ideaBin", collectState);
+    manager.registerApplier("ideaBin", applyState);
+    return () => {
+      manager.unregisterCollector("ideaBin");
+      manager.unregisterApplier("ideaBin");
+    };
+  }, [managed, collectState, applyState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── React to manager's minimizeAll signal ──
   const lastMinAllRef = useRef(manager?.minimizeAllVersion ?? 0);
@@ -323,7 +363,8 @@ export default function useIdeaBinWindow(headlineInputRef) {
     windowRef, iconRef,
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag, handleWindowResize, handleEdgeResize,
-    /** true when inside a WindowManager — the InventoryBar owns icon rendering */
     managed,
+    setExtraStateCollector,
+    setExtraStateApplier,
   };
 }

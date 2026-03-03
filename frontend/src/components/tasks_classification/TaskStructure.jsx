@@ -5,6 +5,7 @@ import { playSound } from "../../assets/sound_registry";
 import { createTaskForProject, bulk_delete_tasks } from "../../api/org_API";
 
 import useFloatingWindow from "../shared/useFloatingWindow";
+import { useWindowManager } from "../shared/WindowManager";
 import useTaskData from "./hooks/useTaskData";
 import useTaskTeams from "./hooks/useTaskTeams";
 import useTaskDrag from "./hooks/useTaskDrag";
@@ -62,6 +63,7 @@ export default function TaskStructure() {
     handleIconDrag, handleWindowDrag,
     handleWindowResize, handleEdgeResize,
     managed,
+    setExtraStateCollector, setExtraStateApplier,
   } = useFloatingWindow({
     id: "taskStructure",
     openSound: "ideaOpen",
@@ -122,12 +124,15 @@ export default function TaskStructure() {
   // ── Views / formations (API-backed) ──
   const {
     views, showViewPanel, setShowViewPanel,
+    activeViewId: tsActiveViewId,
     viewName, setViewName,
     editingViewId, setEditingViewId,
     editingViewName, setEditingViewName,
     fetchViews, saveView, updateViewState,
     renameView, loadView, deleteView,
     toggleDefault, loadDefaultView,
+    collectViewState, applyViewState,
+    saveActiveView,
   } = useTaskViews({
     projectId,
     deps: {
@@ -143,6 +148,20 @@ export default function TaskStructure() {
       setToolbarCollapsed, setQuickAddCollapsed, setFormHeight, setTaskMode, setFocusedTeamId,
     },
   });
+
+  // ── Wire view state into workspace collector/applier ──
+  useEffect(() => {
+    setExtraStateCollector(() => collectViewState());
+    setExtraStateApplier((state) => applyViewState(state));
+  }, [collectViewState, applyViewState, setExtraStateCollector, setExtraStateApplier]);
+
+  // ── Register view saver with WindowManager (for "xy" save shortcut) ──
+  const _wm = useWindowManager();
+  useEffect(() => {
+    if (!_wm || !managed) return;
+    _wm.registerViewSaver("taskStructure", saveActiveView);
+    return () => _wm.unregisterViewSaver("taskStructure");
+  }, [_wm, managed, saveActiveView]);
 
   // ── Refs ──
   const taskListRef = useRef(null);

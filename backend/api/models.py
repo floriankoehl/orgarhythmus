@@ -852,6 +852,52 @@ class TaskStructureView(models.Model):
 
 
 # ═══════════════════════════════════════════════
+#  WORKSPACE (saved multi-window layout snapshot)
+# ═══════════════════════════════════════════════
+
+class Workspace(models.Model):
+    """
+    A saved workspace for a project — captures the position, size, and
+    window-specific state of every floating window at once.
+
+    Unlike individual views (Formation, TaskStructureView, DependencyView)
+    which save one window's state, a Workspace saves **all** windows
+    combined, giving a full desktop layout.
+
+    Project-scoped (not user-scoped): every project member can see and
+    use the same workspaces.
+
+    The ``state`` JSON field schema:
+    {
+        "version": 1,
+        "windows": {
+            "<window_id>": {
+                "is_open": bool,
+                "window_pos": {"x": int, "y": int},
+                "window_size": {"w": int, "h": int},
+                "is_maximized": bool,
+                // ... window-specific extra state
+            },
+            ...
+        }
+    }
+    """
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="workspaces")
+    name = models.CharField(max_length=200)
+    state = models.JSONField(default=dict)
+    is_default = models.BooleanField(default=False)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_workspaces")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.project.name})"
+
+
+# ═══════════════════════════════════════════════
 #  PROMPT SETTINGS (per-user AI prompt configuration)
 # ═══════════════════════════════════════════════
 

@@ -87,7 +87,7 @@ export default function TaskStructureTitleBar({
 
       {showViewPanel && (
         <div
-          className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50"
+          className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-[9999]"
           style={{ minWidth: 260, maxHeight: 400, overflowY: "auto" }}
         >
           {/* ── Save new view ── */}

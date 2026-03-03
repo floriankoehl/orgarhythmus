@@ -5,6 +5,7 @@ import { Lightbulb, Copy, List, X, Settings, Paintbrush, RotateCcw, ArrowDownUp,
 import { BASE_URL } from "../../config/api";
 
 import { playSound } from "../../assets/sound_registry";
+import { useWindowManager } from "../shared/WindowManager";
 import { useLegends } from "./useLegends";
 import { renderLegendTypeIcon } from "./legendTypeIcons";
 import IdeaBinConfirmModal from "./IdeaBinConfirmModal";
@@ -77,6 +78,7 @@ export default function IdeaBin() {
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag, handleWindowResize, handleEdgeResize,
     managed,
+    setExtraStateCollector, setExtraStateApplier,
   } = useIdeaBinWindow(headlineInputRef);
 
   // ───── Selected idea(s) ─────
@@ -491,6 +493,8 @@ export default function IdeaBin() {
     editingFormationId, setEditingFormationId,
     editingFormationName, setEditingFormationName,
     fetch_formations,
+    collectFormationState,
+    applyFormationState,
     save_formation,
     update_formation_state,
     rename_formation,
@@ -498,6 +502,7 @@ export default function IdeaBin() {
     delete_formation,
     toggle_default_formation,
     toggle_default_context,
+    saveActiveFormation,
   } = useIdeaBinFormations({
     windowPos, windowSize, isMaximized, viewMode, sidebarWidth,
     sidebarHeadlineOnly, showSidebarMeta, listFilter, showArchive,
@@ -514,6 +519,20 @@ export default function IdeaBin() {
     setCategories, setFormHeight,
     enterContext: enterContextRef,
   });
+
+  // ── Wire formation state into workspace collector/applier ──
+  useEffect(() => {
+    setExtraStateCollector(() => collectFormationState());
+    setExtraStateApplier((state) => applyFormationState(state));
+  }, [collectFormationState, applyFormationState, setExtraStateCollector, setExtraStateApplier]);
+
+  // ── Register view saver with WindowManager (for "xy" save shortcut) ──
+  const _wm = useWindowManager();
+  useEffect(() => {
+    if (!_wm || !managed) return;
+    _wm.registerViewSaver("ideaBin", saveActiveFormation);
+    return () => _wm.unregisterViewSaver("ideaBin");
+  }, [_wm, managed, saveActiveFormation]);
 
   // ═══════════════════════════════════════════════════════
   // ═══════════  WRAPPER CALLBACKS  ═══════════════════════

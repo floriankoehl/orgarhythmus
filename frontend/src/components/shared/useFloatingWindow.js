@@ -59,6 +59,39 @@ export default function useFloatingWindow(opts = {}) {
   const windowRef = useRef(null);
   const iconRef = useRef(null);
 
+  // ── Extra state extensions for workspace integration ──
+  const extraCollectorRef = useRef(null);
+  const extraApplierRef = useRef(null);
+
+  /** Let the window component register an extra state collector (e.g. Calendar's viewMode). */
+  const setExtraStateCollector = useCallback((fn) => { extraCollectorRef.current = fn; }, []);
+  /** Let the window component register an extra state applier. */
+  const setExtraStateApplier = useCallback((fn) => { extraApplierRef.current = fn; }, []);
+
+  // Refs that stay current for the collector closure
+  const stateRef = useRef({ isOpen: false, windowPos: { x: 0, y: 0 }, windowSize: { w: 0, h: 0 }, isMaximized: false });
+  useEffect(() => {
+    stateRef.current = { isOpen, windowPos, windowSize, isMaximized };
+  }, [isOpen, windowPos, windowSize, isMaximized]);
+
+  // Stable collect/apply functions for workspace registry
+  const collectState = useCallback(() => ({
+    is_open: stateRef.current.isOpen,
+    window_pos: stateRef.current.windowPos,
+    window_size: stateRef.current.windowSize,
+    is_maximized: stateRef.current.isMaximized,
+    ...(extraCollectorRef.current?.() || {}),
+  }), []);
+
+  const applyState = useCallback((state) => {
+    if (!state) return;
+    if (state.window_pos) setWindowPos(state.window_pos);
+    if (state.window_size) setWindowSize(state.window_size);
+    if (state.is_maximized !== undefined) setIsMaximized(state.is_maximized);
+    if (state.is_open !== undefined) setIsOpen(state.is_open);
+    extraApplierRef.current?.(state);
+  }, []);
+
   // ── Custom size tracking (persists across maximize/minimize cycles) ──
   const customSizeRef = useRef({
     pos: { x: 0, y: 0 },
@@ -78,6 +111,17 @@ export default function useFloatingWindow(opts = {}) {
     if (isOpen) manager.reportOpen(id);
     else manager.reportClose(id);
   }, [isOpen, managed, id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Register state collector/applier with WindowManager for workspaces ──
+  useEffect(() => {
+    if (!managed) return;
+    manager.registerCollector(id, collectState);
+    manager.registerApplier(id, applyState);
+    return () => {
+      manager.unregisterCollector(id);
+      manager.unregisterApplier(id);
+    };
+  }, [managed, id, collectState, applyState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── React to manager's minimizeAll signal ──
   const lastMinAllRef = useRef(manager?.minimizeAllVersion ?? 0);
@@ -340,5 +384,9 @@ export default function useFloatingWindow(opts = {}) {
     handleWindowResize, handleEdgeResize,
     /** true when inside a WindowManager — the InventoryBar owns icon rendering */
     managed,
+    /** Register extra state collector for workspace (call once from the window component) */
+    setExtraStateCollector,
+    /** Register extra state applier for workspace (call once from the window component) */
+    setExtraStateApplier,
   };
 }

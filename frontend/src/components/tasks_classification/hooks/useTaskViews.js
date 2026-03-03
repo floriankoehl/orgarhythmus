@@ -36,6 +36,7 @@ export default function useTaskViews({ projectId, deps }) {
   } = deps || {};
 
   const [views, setViews] = useState([]);
+  const [activeViewId, setActiveViewId] = useState(null);
   const [showViewPanel, setShowViewPanel] = useState(false);
   const [viewName, setViewName] = useState("");
   const [editingViewId, setEditingViewId] = useState(null);
@@ -147,7 +148,10 @@ export default function useTaskViews({ projectId, deps }) {
   const loadView = useCallback(async (viewId) => {
     try {
       const data = await getTsViewApi(viewId);
-      if (data?.state) applyViewState(data.state);
+      if (data?.state) {
+        setActiveViewId(viewId);
+        applyViewState(data.state);
+      }
     } catch (err) { console.error("Load TS view failed", err); }
   }, [applyViewState]);
 
@@ -180,6 +184,7 @@ export default function useTaskViews({ projectId, deps }) {
     try {
       const data = await getDefaultTsViewApi(projectId);
       if (data?.view?.state) {
+        setActiveViewId(data.view.id ?? null);
         applyViewState(data.view.state);
       }
     } catch (err) { /* no default — that's fine */ }
@@ -191,8 +196,15 @@ export default function useTaskViews({ projectId, deps }) {
     loadDefaultView();
   }, [loadDefaultView]);
 
+  /** Parameterless save — updates the currently active (last-loaded) view. */
+  const saveActiveView = useCallback(async () => {
+    if (!activeViewId) return;
+    await updateViewState(activeViewId);
+  }, [activeViewId, updateViewState]);
+
   return {
     views, setViews,
+    activeViewId, setActiveViewId,
     showViewPanel, setShowViewPanel,
     viewName, setViewName,
     editingViewId, setEditingViewId,
@@ -208,6 +220,7 @@ export default function useTaskViews({ projectId, deps }) {
     deleteView,
     toggleDefault,
     loadDefaultView,
+    saveActiveView,
     groupBy, setGroupBy: deps?.setGroupBy,
   };
 }

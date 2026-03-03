@@ -4,6 +4,7 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { playSound, setMuted } from '../assets/sound_registry';
+import { useWindowManager } from '../components/shared/WindowManager';
 
 // Layout math
 import {
@@ -674,6 +675,14 @@ function DependencyGridContent({
     handleDeleteView,
     handleSetDefaultView,
   } = useViewManagement({ collectViewState, applyViewState, fetchViews, createViewApi, updateViewApi, deleteViewApi, setDefaultViewApi });
+
+  // ── Register view saver with WindowManager (for "xy" save shortcut) ──
+  const _wm = useWindowManager();
+  useEffect(() => {
+    if (!_wm || !isFloating) return;
+    _wm.registerViewSaver("schedule", handleSaveView);
+    return () => _wm.unregisterViewSaver("schedule");
+  }, [_wm, isFloating, handleSaveView]);
 
   // ── Per-user view shortcuts ──
   const viewShortcuts = useMemo(() => userShortcuts?._viewShortcuts?.['_grid'] || {}, [userShortcuts]);
