@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Plus, Save, Pencil, Trash2, Eye, Hand, Move, Download, Upload, MoreVertical, Copy, ClipboardPaste, List, AlignLeft, FileText, Minimize2 } from "lucide-react";
 
 /**
@@ -44,6 +44,14 @@ export default function TaskStructureToolbar({
 
   const hasSelectedTeams = selectedTeamIds?.size > 0;
   const hasSelectedTasks = selectedTaskIds?.size > 0;
+
+  // Auto-close team form when draw-to-create completes (drawTeamMode goes false externally)
+  useEffect(() => {
+    if (!drawTeamMode && showTeamForm) {
+      setShowTeamForm(false);
+      setNewTeamName("");
+    }
+  }, [drawTeamMode]);
 
   const handleCreateTeam = () => {
     if (!newTeamName.trim()) return;

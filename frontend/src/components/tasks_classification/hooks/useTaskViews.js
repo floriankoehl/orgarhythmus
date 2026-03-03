@@ -26,11 +26,13 @@ export default function useTaskViews({ projectId, deps }) {
     sidebarWidth, legendPanelCollapsed, groupBy,
     collapsedTeamIds, teamPositions,
     leftCollapsed, rightCollapsed,
+    toolbarCollapsed, quickAddCollapsed, formHeight, taskMode, focusedTeamId,
     // write
     setWindowPos, setWindowSize, setIsMaximized, setViewMode,
     setTeamViewOverrides, setSidebarWidth, setLegendPanelCollapsed,
     setGroupBy, setCollapsedTeamIds, setTeamPositions,
     setLeftCollapsed, setRightCollapsed,
+    setToolbarCollapsed, setQuickAddCollapsed, setFormHeight, setTaskMode, setFocusedTeamId,
   } = deps || {};
 
   const [views, setViews] = useState([]);
@@ -70,11 +72,17 @@ export default function useTaskViews({ projectId, deps }) {
       team_positions: teamPositions || {},
       left_collapsed: !!leftCollapsed,
       right_collapsed: !!rightCollapsed,
+      toolbar_collapsed: !!toolbarCollapsed,
+      quick_add_collapsed: !!quickAddCollapsed,
+      form_height: formHeight,
+      task_mode: !!taskMode,
+      focused_team_id: focusedTeamId || null,
     };
   }, [
     windowPos, windowSize, isMaximized, viewMode, teamViewOverrides,
     sidebarWidth, legendPanelCollapsed, groupBy,
     collapsedTeamIds, teamPositions, leftCollapsed, rightCollapsed,
+    toolbarCollapsed, quickAddCollapsed, formHeight, taskMode, focusedTeamId,
   ]);
 
   // ── Apply a saved state ──
@@ -92,12 +100,18 @@ export default function useTaskViews({ projectId, deps }) {
     if (state.team_positions && setTeamPositions) setTeamPositions(state.team_positions);
     if (state.left_collapsed !== undefined && setLeftCollapsed) setLeftCollapsed(state.left_collapsed);
     if (state.right_collapsed !== undefined && setRightCollapsed) setRightCollapsed(state.right_collapsed);
+    if (state.toolbar_collapsed !== undefined && setToolbarCollapsed) setToolbarCollapsed(state.toolbar_collapsed);
+    if (state.quick_add_collapsed !== undefined && setQuickAddCollapsed) setQuickAddCollapsed(state.quick_add_collapsed);
+    if (state.form_height && setFormHeight) setFormHeight(state.form_height);
+    if (state.task_mode !== undefined && setTaskMode) setTaskMode(state.task_mode);
+    if (state.focused_team_id !== undefined && setFocusedTeamId) setFocusedTeamId(state.focused_team_id || null);
     playSound("ideaOpen");
   }, [
     setWindowPos, setWindowSize, setIsMaximized, setViewMode,
     setTeamViewOverrides, setSidebarWidth, setLegendPanelCollapsed,
     setGroupBy, setCollapsedTeamIds, setTeamPositions,
     setLeftCollapsed, setRightCollapsed,
+    setToolbarCollapsed, setQuickAddCollapsed, setFormHeight, setTaskMode, setFocusedTeamId,
   ]);
 
   // ── Save new view ──

@@ -141,7 +141,7 @@ export default function TaskCard({
             ? "bg-indigo-50 border border-indigo-300 shadow-sm"
             : insideTeam
               ? "bg-white border border-gray-200 shadow-xs hover:border-gray-300"
-              : "hover:bg-gray-50 border border-transparent"
+              : "bg-white hover:bg-gray-100 border border-transparent"
           }`}
         style={{
           borderLeftWidth: teamColor ? 3 : undefined,

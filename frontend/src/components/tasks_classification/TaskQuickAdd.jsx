@@ -20,6 +20,10 @@ export default function TaskQuickAdd({
   const [description, setDescription] = useState("");
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
+  const [teamCleared, setTeamCleared] = useState(false);
+
+  // Reset team override when the external selection changes
+  useEffect(() => { setTeamCleared(false); }, [defaultTeamId]);
 
   const descRef = useRef(null);
 
@@ -39,7 +43,7 @@ export default function TaskQuickAdd({
       const payload = {
         name: title.trim() || "",
         description: description.trim(),
-        team_id: defaultTeamId || null,
+        team_id: teamCleared ? null : (defaultTeamId || null),
       };
       const task = await onCreate(payload);
       if (task) {
@@ -51,7 +55,7 @@ export default function TaskQuickAdd({
     } finally {
       setSaving(false);
     }
-  }, [saving, canSubmit, title, description, defaultTeamId, onCreate]);
+  }, [saving, canSubmit, title, description, defaultTeamId, teamCleared, onCreate]);
 
   const handleKeyDown = useCallback(
     (e) => {
@@ -63,13 +67,14 @@ export default function TaskQuickAdd({
     [handleSubmit]
   );
 
+  const effectiveTeamId = teamCleared ? null : defaultTeamId;
   const teamName =
-    defaultTeamId && teams?.[defaultTeamId]
-      ? teams[defaultTeamId].name
+    effectiveTeamId && teams?.[effectiveTeamId]
+      ? teams[effectiveTeamId].name
       : null;
   const teamColor =
-    defaultTeamId && teams?.[defaultTeamId]
-      ? teams[defaultTeamId].color || "#6366f1"
+    effectiveTeamId && teams?.[effectiveTeamId]
+      ? teams[effectiveTeamId].color || "#6366f1"
       : null;
 
   return (
@@ -107,6 +112,13 @@ export default function TaskQuickAdd({
                 style={{ backgroundColor: teamColor }}
               />
               <span className="truncate">→ {teamName}</span>
+              <button
+                onClick={() => setTeamCleared(true)}
+                className="ml-auto text-[9px] opacity-50 hover:opacity-100 transition-opacity"
+                title="Remove team assignment"
+              >
+                ✕
+              </button>
             </div>
           )}
 

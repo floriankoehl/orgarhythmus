@@ -135,10 +135,12 @@ export default function TaskStructure() {
       sidebarWidth, legendPanelCollapsed, groupBy,
       collapsedTeamIds, teamPositions,
       leftCollapsed, rightCollapsed,
+      toolbarCollapsed, quickAddCollapsed, formHeight, taskMode, focusedTeamId,
       setWindowPos, setWindowSize, setIsMaximized, setViewMode,
       setTeamViewOverrides, setSidebarWidth, setLegendPanelCollapsed,
       setGroupBy, setCollapsedTeamIds, setTeamPositions,
       setLeftCollapsed, setRightCollapsed,
+      setToolbarCollapsed, setQuickAddCollapsed, setFormHeight, setTaskMode, setFocusedTeamId,
     },
   });
 
@@ -1014,20 +1016,7 @@ export default function TaskStructure() {
                   <PanelLeftClose size={12} className="text-gray-500" />
                 </button>
               )}
-              {/* Auto-assign team indicator (only for edit panel mode) */}
-              {(editingTask || isCreatingTask) && autoAssignTeamId && teams[autoAssignTeamId] && (
-                <div
-                  className="px-3 py-1 text-[10px] font-medium flex items-center gap-1.5 border-b flex-shrink-0"
-                  style={{
-                    backgroundColor: `color-mix(in srgb, ${teams[autoAssignTeamId].color || "#6366f1"} 10%, white)`,
-                    borderColor: `color-mix(in srgb, ${teams[autoAssignTeamId].color || "#6366f1"} 30%, white)`,
-                    color: teams[autoAssignTeamId].color || "#6366f1",
-                  }}
-                >
-                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: teams[autoAssignTeamId].color || "#6366f1" }} />
-                  <span className="truncate">Selected: {teams[autoAssignTeamId].name}</span>
-                </div>
-              )}
+              {/* Auto-assign team indicator (only for edit panel mode) — purely informational */}
               {(editingTask || isCreatingTask) ? (
                 <TaskEditPanel
                   task={editingTask}

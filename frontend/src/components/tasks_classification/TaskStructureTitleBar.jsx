@@ -153,7 +153,7 @@ export default function TaskStructureTitleBar({
                   <>
                     {/* Name — click to load */}
                     <button
-                      onClick={() => loadView(v.id)}
+                      onClick={() => { loadView(v.id); setShowViewPanel(false); }}
                       className="flex-1 text-left text-[11px] text-gray-700 hover:text-indigo-600 truncate font-medium"
                       title={`Load "${v.name}"`}
                     >
