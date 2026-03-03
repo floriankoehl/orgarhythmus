@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback } from "react";
-import { Pencil, Trash2, GripVertical, Minimize2, ChevronDown, Upload, Download, Eye, Settings } from "lucide-react";
+import { Pencil, Trash2, GripVertical, Minimize2, Maximize2, ChevronDown, Upload, Download, Eye, Settings } from "lucide-react";
 import TaskCard from "./TaskCard";
 
 /**
@@ -45,11 +45,15 @@ export default function TeamContainer({
   viewMode = "compact",
   setTeamViewOverride,
   onToggleCriterion,
+  isFocused = false,
+  onEnterTeamFocus,
+  onExitTeamFocus,
 }) {
   const [minimized, setMinimized] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [taskMarquee, setTaskMarquee] = useState(null); // { startY, currentY }
   const taskListRef = useRef(null);
+  const lastClickedTaskRef = useRef(null);
   const isEditing = editingTeamId === team.id;
   const isDropTarget = hoverTeamId != null && String(hoverTeamId) === String(team.id);
   const teamColor = team.color || "#6366f1";
@@ -221,6 +225,16 @@ export default function TeamContainer({
           <Settings size={11} />
         </button>
 
+        {/* Focus mode toggle */}
+        <button
+          onClick={(e) => { e.stopPropagation(); isFocused ? onExitTeamFocus?.() : onEnterTeamFocus?.(team.id); }}
+          onMouseDown={(e) => e.stopPropagation()}
+          className={`p-0.5 rounded hover:bg-white/50 transition-colors ${isFocused ? "text-indigo-500" : "text-gray-400 hover:text-gray-600"}`}
+          title={isFocused ? "Exit focus mode" : "Focus — expand team to fill canvas"}
+        >
+          {isFocused ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+        </button>
+
         {/* Minimize toggle */}
         <button
           onClick={(e) => { e.stopPropagation(); setMinimized((p) => !p); }}
@@ -251,6 +265,12 @@ export default function TeamContainer({
             className="w-full text-left px-2 py-1 text-[10px] text-gray-700 hover:bg-gray-100 flex items-center gap-1"
           >
             <Pencil size={10} /> Rename
+          </button>
+          <button
+            onClick={() => { isFocused ? onExitTeamFocus?.() : onEnterTeamFocus?.(team.id); setShowSettings(false); }}
+            className={`w-full text-left px-2 py-1 text-[10px] flex items-center gap-1 ${isFocused ? "text-indigo-700 bg-indigo-50 font-medium" : "text-gray-700 hover:bg-gray-100"}`}
+          >
+            {isFocused ? <><Minimize2 size={10} /> Exit Focus</> : <><Maximize2 size={10} /> Focus Mode</>}
           </button>
           <button
             onClick={() => { handleDelete(); setShowSettings(false); }}
@@ -321,6 +341,8 @@ export default function TeamContainer({
                 taskMode={taskMode}
                 viewMode={viewMode}
                 onToggleCriterion={onToggleCriterion}
+                displayedTaskIds={taskIds}
+                lastClickedTaskRef={lastClickedTaskRef}
               />
             ))
           )}
@@ -342,8 +364,8 @@ export default function TeamContainer({
         </div>
       )}
 
-      {/* ── Resize handle (bottom-right) ── */}
-      {!minimized && (
+      {/* ── Resize handle (bottom-right) — hidden in focus mode ── */}
+      {!minimized && !isFocused && (
         <div
           onMouseDown={(e) => handleTeamResize(e, team.id)}
           className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize"

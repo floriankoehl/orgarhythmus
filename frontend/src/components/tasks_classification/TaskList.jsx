@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { Plus, ChevronDown, ChevronRight, Search, Filter } from "lucide-react";
 import TaskCard from "./TaskCard";
 import TaskQuickAdd from "./TaskQuickAdd";
@@ -38,6 +38,9 @@ export default function TaskList({
   setFormHeight,
   minFormH,
   maxFormH,
+  focusedPanel,
+  setFocusedPanel,
+  displayedTaskIdsRef,
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAllTasks, setShowAllTasks] = useState(false);
@@ -56,6 +59,11 @@ export default function TaskList({
 
   const displayTasks = showAllTasks ? allTasks : unassignedTasks;
   const displayedTaskIds = useMemo(() => displayTasks.map((t) => t.id), [displayTasks]);
+
+  // Keep parent ref in sync so Ctrl+A in TaskStructure can read displayed IDs
+  useEffect(() => {
+    if (displayedTaskIdsRef) displayedTaskIdsRef.current = displayedTaskIds;
+  }, [displayedTaskIds, displayedTaskIdsRef]);
 
   return (
     <div

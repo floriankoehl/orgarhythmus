@@ -114,8 +114,11 @@ export default function TaskStructure() {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [quickAddCollapsed, setQuickAddCollapsed] = useState(false);
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const [formHeight, setFormHeight] = useState(DEFAULT_FORM_H);
-
+  const [focusedPanel, setFocusedPanel] = useState(null); // "tasks" | "canvas" | null
+  const [focusedTeamId, setFocusedTeamId] = useState(null); // team id in focus mode, or null
+  const displayedTaskIdsRef = useRef([]); // kept in sync by TaskList
   // ── Views / formations (API-backed) ──
   const {
     views, showViewPanel, setShowViewPanel,
@@ -177,11 +180,26 @@ export default function TaskStructure() {
         return;
       }
 
-      // Ctrl+A → select all tasks
+      // Ctrl+A → select tasks (focus-aware)
+      //   task list focused  → only displayed (filtered) tasks
+      //   canvas focused + teams selected → only tasks inside those teams
+      //   otherwise → all tasks
       if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
         e.preventDefault();
-        const allIds = Object.keys(tasks).map(Number);
-        setSelectedTaskIds(new Set(allIds));
+        if (focusedPanel === "tasks" && displayedTaskIdsRef.current.length > 0) {
+          setSelectedTaskIds(new Set(displayedTaskIdsRef.current));
+        } else if (focusedPanel === "canvas" && selectedTeamIds.size > 0) {
+          const map = tasksByTeam();
+          const ids = [];
+          for (const tid of selectedTeamIds) {
+            const teamTasks = map[tid];
+            if (teamTasks) teamTasks.forEach((t) => ids.push(t.id));
+          }
+          setSelectedTaskIds(new Set(ids));
+        } else {
+          const allIds = Object.keys(tasks).map(Number);
+          setSelectedTaskIds(new Set(allIds));
+        }
         return;
       }
 
@@ -201,7 +219,10 @@ export default function TaskStructure() {
       if (e.key === "2") { e.preventDefault(); setViewMode("compact"); }
       if (e.key === "3") { e.preventDefault(); setViewMode("full"); }
       if (e.key === "Escape") {
-        if (drawTeamMode) {
+        if (focusedTeamId) {
+          e.preventDefault();
+          exitTeamFocus();
+        } else if (drawTeamMode) {
           e.preventDefault();
           setDrawTeamMode(false);
         }
@@ -218,7 +239,7 @@ export default function TaskStructure() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isOpen, activeTab, detailView, drawTeamMode, editingTaskId, isCreatingTask, tasks, selectedTaskIds, selectedTeamIds, teamOrder, collapsedTeamIds]);
+  }, [isOpen, activeTab, detailView, drawTeamMode, editingTaskId, isCreatingTask, tasks, selectedTaskIds, selectedTeamIds, teamOrder, collapsedTeamIds, focusedPanel, tasksByTeam, focusedTeamId, exitTeamFocus]);
 
   // ── Load default view every time the window opens ──
   const prevOpenRef = useRef(false);
@@ -384,11 +405,27 @@ export default function TaskStructure() {
   const editingTask = editingTaskId ? tasks[editingTaskId] : null;
   const isNarrow = windowSize.w < LAYOUT_BREAKPOINT;
 
+  // ── Team focus mode ──
+  // Entering focus: team fills the canvas, left sidebar + toolbar collapse.
+  // Exiting: any contradicting action auto-clears focus (but doesn't re-expand collapsed panels).
+  const enterTeamFocus = useCallback((teamId) => {
+    setFocusedTeamId(teamId);
+    setLeftCollapsed(true);
+    setToolbarCollapsed(true);
+    setSelectedTeamIds(new Set([teamId]));
+    playSound('uiClick');
+  }, []);
+
+  const exitTeamFocus = useCallback(() => {
+    setFocusedTeamId(null);
+  }, []);
+
   // ── Handlers ──
   const onCreateTask = useCallback(() => {
+    exitTeamFocus();
     setIsCreatingTask(true);
     setEditingTaskId(null);
-  }, []);
+  }, [exitTeamFocus]);
 
   const handleCreateTaskFromForm = useCallback(async (payload) => {
     const task = await createTask(payload);
@@ -413,6 +450,7 @@ export default function TaskStructure() {
   }, []);
 
   const onCreateTeam = useCallback(async (name, color) => {
+    exitTeamFocus();
     await createTeam(name, color);
     // Refetch tasks to update team assignments display
     fetchTasks();
@@ -869,8 +907,10 @@ export default function TaskStructure() {
             isMaximized={isMaximized}
             minimizeWindow={minimizeWindow}
             activeTeamColor="#6366f1"
+            toolbarCollapsed={toolbarCollapsed}
+            toggleToolbar={() => { setToolbarCollapsed(v => { if (v) exitTeamFocus(); return !v; }); playSound('uiClick'); }}
             activeTab={activeTab}
-            setActiveTab={(tab) => { setActiveTab(tab); setDetailView(null); }}
+            setActiveTab={(tab) => { exitTeamFocus(); setActiveTab(tab); setDetailView(null); }}
             detailView={detailView}
             onBackFromDetail={() => setDetailView(null)}
             groupBy={groupBy}
@@ -917,7 +957,7 @@ export default function TaskStructure() {
           ) : (
             <>
           {/* ── Toolbar ── */}
-          <TaskStructureToolbar
+          {!toolbarCollapsed && <TaskStructureToolbar
             onCreateTeam={onCreateTeam}
             groupBy={groupBy}
             views={views}
@@ -939,7 +979,7 @@ export default function TaskStructure() {
             viewMode={viewMode}
             setViewMode={setViewMode}
             onFitAllTeams={fitAllTeams}
-          />
+          />}
 
           {/* ── Main content area ── */}
           <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -948,7 +988,7 @@ export default function TaskStructure() {
             {leftCollapsed && !isNarrow && (
               <div className="flex flex-col items-center flex-shrink-0 bg-gray-50 border-r border-gray-200" style={{ width: COLLAPSED_STRIP_W }}>
                 <button
-                  onClick={() => setLeftCollapsed(false)}
+                  onClick={() => { exitTeamFocus(); setLeftCollapsed(false); }}
                   className="mt-2 p-1 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors"
                   title="Expand task panel"
                 >
@@ -959,8 +999,11 @@ export default function TaskStructure() {
 
             {/* Left sidebar: Task form OR Task list + Legend */}
             {(!leftCollapsed || isNarrow) && (
-            <div className={`flex flex-col relative ${rightCollapsed && !isNarrow ? "flex-1" : ""}`} style={{ width: isNarrow ? "100%" : (rightCollapsed ? undefined : sidebarWidth), minWidth: rightCollapsed ? 0 : undefined }}>
-              {/* Collapse task panel button — top-right corner */}
+            <div
+              className={`flex flex-col relative ${rightCollapsed && !isNarrow ? "flex-1" : ""} ${focusedPanel === "tasks" ? "ring-2 ring-indigo-300/60 ring-inset" : ""}`}
+              style={{ width: isNarrow ? "100%" : (rightCollapsed ? undefined : sidebarWidth), minWidth: rightCollapsed ? 0 : undefined }}
+              onMouseDown={() => setFocusedPanel("tasks")}
+            >  {/* Collapse task panel button — top-right corner */}
               {!isNarrow && !rightCollapsed && (
                 <button
                   onClick={() => setLeftCollapsed(true)}
@@ -1027,6 +1070,9 @@ export default function TaskStructure() {
                     setFormHeight={setFormHeight}
                     minFormH={MIN_FORM_H}
                     maxFormH={MAX_FORM_H}
+                    focusedPanel={focusedPanel}
+                    setFocusedPanel={setFocusedPanel}
+                    displayedTaskIdsRef={displayedTaskIdsRef}
                   />
 
                   {/* Legend panel */}
@@ -1088,6 +1134,7 @@ export default function TaskStructure() {
 
             {/* Right canvas: Team containers */}
             {!isNarrow && !rightCollapsed && (
+              <div className={`flex-1 min-w-0 min-h-0 flex flex-col ${focusedPanel === "canvas" ? "ring-2 ring-indigo-300/60 ring-inset" : ""}`} onMouseDown={() => setFocusedPanel("canvas")}>
               <TeamCanvas
                 tasks={tasks}
                 teams={teams}
@@ -1136,7 +1183,11 @@ export default function TaskStructure() {
                 onToggleCriterion={onToggleCriterion}
                 onCollapseRight={() => setRightCollapsed(true)}
                 showCollapseRight={!leftCollapsed}
+                focusedTeamId={focusedTeamId}
+                onEnterTeamFocus={enterTeamFocus}
+                onExitTeamFocus={exitTeamFocus}
               />
+              </div>
             )}
           </div>
             </>

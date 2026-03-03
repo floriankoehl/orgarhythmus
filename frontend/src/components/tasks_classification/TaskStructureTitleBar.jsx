@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Star, Pencil, Trash2, Save, Check, ArrowLeft, Users, ListTodo, LayoutGrid } from "lucide-react";
+import { Star, Pencil, Trash2, Save, Check, ArrowLeft, Users, ListTodo, LayoutGrid, PanelTop, PanelTopClose } from "lucide-react";
 import WindowTitleBar from "../shared/WindowTitleBar";
 
 const TAB_CONFIG = [
@@ -20,6 +20,9 @@ export default function TaskStructureTitleBar({
   isMaximized,
   minimizeWindow,
   activeTeamColor,
+  // Toolbar collapse
+  toolbarCollapsed,
+  toggleToolbar,
   // Tab navigation
   activeTab,
   setActiveTab,
@@ -211,7 +214,27 @@ export default function TaskStructureTitleBar({
       style={{
         background: `linear-gradient(135deg, ${accentColor}, color-mix(in srgb, ${accentColor} 70%, #333))`,
       }}
-      rightContent={viewsPanel}
+      rightContent={
+        <div className="flex items-center gap-1">
+          {viewsPanel}
+          {/* Toolbar toggle — only show on canvas tab */}
+          {activeTab === "canvas" && !detailView && (
+            <div onMouseDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={() => toggleToolbar?.()}
+                className={`p-1 rounded transition-colors ${
+                  toolbarCollapsed
+                    ? "hover:bg-white/20 text-white/60 hover:text-white"
+                    : "bg-white/20 text-white hover:bg-white/30"
+                }`}
+                title={toolbarCollapsed ? "Show toolbar" : "Hide toolbar"}
+              >
+                {toolbarCollapsed ? <PanelTop size={13} /> : <PanelTopClose size={13} />}
+              </button>
+            </div>
+          )}
+        </div>
+      }
     >
       {/* Icon */}
       <LayoutGrid size={16} className="text-white/90 flex-shrink-0" />
