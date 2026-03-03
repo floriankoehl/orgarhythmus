@@ -11,7 +11,8 @@ import { PipelineProvider } from './components/shared/PipelineContext';
 
 import OrgaLayout from './layouts/OrgaLayout.jsx';
 import Login from './pages/user/Login.jsx';
-import Profile from './pages/user/Profile.jsx';
+// Profile page replaced by ProfileWindow (floating window in OrgaLayout)
+// import Profile from './pages/user/Profile.jsx';
 import RegisterPage from './pages/user/Register.jsx';
 import ProjectLayout from './layouts/ProjectLayout.jsx';
 // ProjectMain replaced by OverviewWindow (floating window in ProjectLayout)
@@ -37,7 +38,7 @@ const router = createBrowserRouter([
       { index: true, element: <AllProjects /> },
       { path: '/login', element: <Login /> },
       { path: '/register', element: <RegisterPage /> },
-      { path: '/profile', element: <Profile /> },
+      { path: '/profile', element: <></> /* ProfileWindow auto-opens from OrgaLayout */ },
       { path: '/my-ideas', element: <MyIdeas /> },
       { path: '/mobile-ideas', element: <MobileIdeaBin /> },
       {

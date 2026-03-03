@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 import OrgaHeader from "../components/OrgaHeader";
 import IdeaBin from "../components/ideas/IdeaBin";
+import ProfileWindow from "../pages/user/ProfileWindow";
 
 export default function OrgaLayout() {
   return (
@@ -16,6 +17,9 @@ export default function OrgaLayout() {
 
       {/* Floating Idea Bin — persists across all pages */}
       <IdeaBin />
+
+      {/* Floating Profile — persists across all pages */}
+      <ProfileWindow />
     </>
   );
 }
