@@ -67,8 +67,8 @@ export default function InventoryBar() {
         className="fixed bottom-2 left-1/2 -translate-x-1/2
           flex items-center justify-center
           w-10 h-5 rounded-full
-          bg-slate-900/80 backdrop-blur-xl border border-slate-700/40 shadow-lg
-          hover:bg-slate-800 hover:scale-110 active:scale-95
+          bg-slate-700/80 backdrop-blur-xl border border-slate-500/40 shadow-lg
+          hover:bg-slate-600 hover:scale-110 active:scale-95
           transition-all duration-200 cursor-pointer"
         title="Show inventory"
       >
@@ -83,7 +83,7 @@ export default function InventoryBar() {
       style={{ zIndex: 99990 }}
       className="fixed bottom-3 left-1/2 -translate-x-1/2 flex items-end gap-0.5
         px-2 py-1.5 rounded-2xl
-        bg-slate-900/90 backdrop-blur-xl border border-slate-700/50 shadow-2xl"
+        bg-slate-700/90 backdrop-blur-xl border border-slate-500/50 shadow-2xl"
     >
       {/* ── Leave project ── */}
       <button

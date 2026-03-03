@@ -28,7 +28,7 @@ export default function ProjectLayout() {
 
   return (
     <PipelineProvider>
-      <div className="min-h-screen w-full bg-gradient-to-b from-slate-50 to-slate-100">
+        <div className="min-h-screen w-full bg-slate-900">
         {/* Page content */}
         <main className="relative w-full flex justify-center">
           <Outlet />

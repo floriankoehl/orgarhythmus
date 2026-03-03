@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Lightbulb,
@@ -47,17 +47,14 @@ const ORBIT_RADIUS_BASE = 130;
 const ORBIT_RADIUS_PULSE = 4;        // ±px added during breathing (subtle)
 const ORBIT_VERTICAL_SHIFT = 18;     // push orbit centre slightly down (px)
 const ROTATION_SPEED = 50;           // seconds per full rotation
-const HEARTBEAT_SCALE_BOOST = 0.045; // extra scale on each beat
-const HEARTBEAT_SCALE_DECAY = 0.14;  // seconds – derived from audio, kept short
 
-// ── Background colour shifts ──
+// ── Background colour shifts (heartbeat only) ──
 const BG_BASE = [15, 23, 42]; // slate-900
-const BG_BREATH_LIFT = 10;
 const BG_BEAT_LIFT = 18;
 const BG_BEAT_DECAY_S = 0.20; // seconds (not ms) — keeps everything in audio-time
 
-function bgColor(breathT, beatT) {
-  const lift = BG_BREATH_LIFT * breathT + BG_BEAT_LIFT * beatT;
+function bgColor(beatT) {
+  const lift = BG_BEAT_LIFT * beatT;
   const r = Math.round(BG_BASE[0] + lift);
   const g = Math.round(BG_BASE[1] + lift);
   const b = Math.round(BG_BASE[2] + lift * 0.7);
@@ -80,7 +77,6 @@ export default function OrbitMode() {
   const [hovered, setHovered] = useState(false);
   const [hoveredId, setHoveredId] = useState(null);
   const [radius, setRadius] = useState(ORBIT_RADIUS_BASE);
-  const [beatScale, setBeatScale] = useState(1);
   const [projectName, setProjectName] = useState("");
   const rafRef = useRef(null);
   const hoveredRef = useRef(false);
@@ -147,9 +143,8 @@ export default function OrbitMode() {
         beatFlashStartRef.current = hbt;
       }
 
-      // Compute beat-driven values from heartbeat audio time (no drift)
+      // Compute beat-driven background flash from heartbeat audio time (no drift)
       let beatT = 0; // background flash intensity 0-1
-      let scale = 1; // icon scale
       if (beatFlashStartRef.current !== null) {
         // Elapsed since beat, wrapping back through audio loop
         let dt = hbt - beatFlashStartRef.current;
@@ -160,20 +155,15 @@ export default function OrbitMode() {
           beatT = 1 - dt / BG_BEAT_DECAY_S;
           beatT = beatT * beatT;
         }
-        // Icon scale — sine half-wave
-        if (dt < HEARTBEAT_SCALE_DECAY) {
-          scale = 1 + HEARTBEAT_SCALE_BOOST * Math.sin(Math.PI * (dt / HEARTBEAT_SCALE_DECAY));
-        }
-        // Clear when both animations are done
-        if (dt >= Math.max(BG_BEAT_DECAY_S, HEARTBEAT_SCALE_DECAY)) {
+        // Clear when animation is done
+        if (dt >= BG_BEAT_DECAY_S) {
           beatFlashStartRef.current = null;
         }
       }
-      setBeatScale(scale);
 
-      // ── Paint background directly ──
+      // ── Paint background directly (heartbeat only) ──
       if (containerRef.current) {
-        containerRef.current.style.backgroundColor = bgColor(breathEase, beatT);
+        containerRef.current.style.backgroundColor = bgColor(beatT);
       }
 
       rafRef.current = requestAnimationFrame(tick);
@@ -202,11 +192,11 @@ export default function OrbitMode() {
   return (
     <div
       ref={containerRef}
-      style={{ zIndex: 99980, backgroundColor: bgColor(0, 0) }}
+      style={{ zIndex: 99980, backgroundColor: bgColor(0) }}
       className="fixed inset-0 flex flex-col items-center justify-center"
     >
-      {/* ── Header: back button + project name ── */}
-      <div className="absolute top-10 flex items-center gap-4 select-none">
+      {/* ── Header: back button above centred project name ── */}
+      <div className="absolute top-10 flex flex-col items-center gap-2 select-none">
         <button
           onClick={() => navigate("/")}
           className="flex items-center gap-1.5 rounded-lg px-3 py-1.5
@@ -273,7 +263,6 @@ export default function OrbitMode() {
                 style={{
                   left: `calc(50% + ${cx}px - 28px)`,
                   top: `calc(50% + ${cy}px - 28px)`,
-                  transform: isHovered ? undefined : `scale(${beatScale})`,
                   transition: "transform 0.08s ease-out",
                   animation: `orbit-counter-spin ${ROTATION_SPEED}s linear infinite`,
                   animationPlayState: hovered ? "paused" : "running",
