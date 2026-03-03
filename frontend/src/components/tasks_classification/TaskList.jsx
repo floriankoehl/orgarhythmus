@@ -133,7 +133,7 @@ export default function TaskList({
       {/* Task list */}
       <div
         ref={taskListRef}
-        className={`flex-1 overflow-y-auto px-1 py-0.5 ${hoverUnassigned ? "bg-indigo-50/40" : ""}`}
+        className={`flex-1 overflow-y-auto px-1 py-0.5 bg-gray-50/80 ${hoverUnassigned ? "bg-indigo-50/40" : ""}`}
       >
         {displayTasks.length === 0 ? (
           <div className="text-center text-[10px] text-gray-400 py-6 italic">

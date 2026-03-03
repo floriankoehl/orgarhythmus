@@ -1,5 +1,6 @@
-import { useRef, useState, useCallback } from "react";
-import { Pencil, Trash2, GripVertical, Minimize2, Maximize2, ChevronDown, Upload, Download, Eye, Settings } from "lucide-react";
+import { useRef, useState, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { Pencil, Trash2, Minimize2, Maximize2, Scan, Shrink, ChevronDown, Upload, Download, Eye, Settings } from "lucide-react";
 import TaskCard from "./TaskCard";
 
 /**
@@ -48,10 +49,14 @@ export default function TeamContainer({
   isFocused = false,
   onEnterTeamFocus,
   onExitTeamFocus,
+  onReorderTask,         // (teamId, taskId, fromIdx, toIdx) => void
 }) {
   const [minimized, setMinimized] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [taskMarquee, setTaskMarquee] = useState(null); // { startY, currentY }
+  const [reorderIdx, setReorderIdx] = useState(null);       // drop indicator index
+  const [reorderDragging, setReorderDragging] = useState(false);
+  const [reorderGhost, setReorderGhost] = useState(null);    // { task, x, y }
   const taskListRef = useRef(null);
   const lastClickedTaskRef = useRef(null);
   const isEditing = editingTeamId === team.id;
@@ -132,6 +137,92 @@ export default function TeamContainer({
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
   }, [setSelectedTaskIds]);
+
+  // ── Intra-team drag-to-reorder handler ──
+  // Starts as reorder within team; if cursor leaves team bounds, escalates to cross-panel drag.
+  const handleIntraTeamDrag = useCallback((e, taskId, fromIdx) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let moved = false;
+    let currentIdx = null;
+    let escalated = false;
+
+    // Get team container element for boundary detection
+    const containerEl = taskListRef.current?.closest("[data-team-container]");
+
+    const getItems = () =>
+      taskListRef.current ? [...taskListRef.current.querySelectorAll("[data-task-item]")] : [];
+
+    const onMove = (ev) => {
+      if (escalated) return;
+
+      if (!moved && (Math.abs(ev.clientY - startY) > 4 || Math.abs(ev.clientX - startX) > 4)) {
+        moved = true;
+        setReorderDragging(true);
+        setReorderGhost({ task: tasks[taskId], x: ev.clientX, y: ev.clientY });
+      }
+      if (!moved) return;
+
+      // Update ghost position
+      setReorderGhost((prev) => prev ? { ...prev, x: ev.clientX, y: ev.clientY } : null);
+
+      // Check if cursor has left the team container → escalate to cross-panel drag
+      if (containerEl) {
+        const rect = containerEl.getBoundingClientRect();
+        const margin = 10; // some tolerance
+        if (ev.clientX < rect.left - margin || ev.clientX > rect.right + margin ||
+            ev.clientY < rect.top - margin || ev.clientY > rect.bottom + margin) {
+          escalated = true;
+          setReorderIdx(null);
+          setReorderDragging(false);
+          setReorderGhost(null);
+          // Remove our listeners and start the cross-panel drag
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          const task = tasks[taskId];
+          if (task && handleTaskDrag) {
+            handleTaskDrag(ev, task, fromIdx, { type: "team", teamId: team.id });
+          }
+          return;
+        }
+      }
+
+      const items = getItems();
+      if (!items.length) return;
+
+      let idx = items.length; // default: after last
+      for (let i = 0; i < items.length; i++) {
+        const r = items[i].getBoundingClientRect();
+        const midY = r.top + r.height / 2;
+        if (ev.clientY < midY) {
+          idx = i;
+          break;
+        }
+      }
+      if (idx !== currentIdx) {
+        currentIdx = idx;
+        setReorderIdx(idx);
+      }
+    };
+
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      setReorderIdx(null);
+      setReorderDragging(false);
+      setReorderGhost(null);
+
+      if (moved && !escalated && currentIdx != null && currentIdx !== fromIdx) {
+        onReorderTask?.(team.id, taskId, fromIdx, currentIdx);
+      }
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [team.id, onReorderTask, tasks, handleTaskDrag]);
 
   return (
     <div
@@ -232,7 +323,7 @@ export default function TeamContainer({
           className={`p-0.5 rounded hover:bg-white/50 transition-colors ${isFocused ? "text-indigo-500" : "text-gray-400 hover:text-gray-600"}`}
           title={isFocused ? "Exit focus mode" : "Focus — expand team to fill canvas"}
         >
-          {isFocused ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+          {isFocused ? <Shrink size={11} /> : <Scan size={11} />}
         </button>
 
         {/* Minimize toggle */}
@@ -270,7 +361,7 @@ export default function TeamContainer({
             onClick={() => { isFocused ? onExitTeamFocus?.() : onEnterTeamFocus?.(team.id); setShowSettings(false); }}
             className={`w-full text-left px-2 py-1 text-[10px] flex items-center gap-1 ${isFocused ? "text-indigo-700 bg-indigo-50 font-medium" : "text-gray-700 hover:bg-gray-100"}`}
           >
-            {isFocused ? <><Minimize2 size={10} /> Exit Focus</> : <><Maximize2 size={10} /> Focus Mode</>}
+            {isFocused ? <><Shrink size={10} /> Exit Focus</> : <><Scan size={10} /> Focus Mode</>}
           </button>
           <button
             onClick={() => { handleDelete(); setShowSettings(false); }}
@@ -321,29 +412,49 @@ export default function TeamContainer({
             </div>
           ) : (
             taskIds.map((taskId, i) => (
-              <TaskCard
-                key={taskId}
-                task={tasks[taskId]}
-                index={i}
-                source={{ type: "team", teamId: team.id }}
-                insideTeam
-                teams={teams}
-                dragging={dragging}
-                dragSource={dragSource}
-                hoverIndex={null}
-                prevIndex={null}
-                handleTaskDrag={handleTaskDrag}
-                selectedTaskIds={selectedTaskIds}
-                setSelectedTaskIds={setSelectedTaskIds}
-                onEditTask={onEditTask}
-                onDeleteTask={onDeleteTask}
-                setConfirmModal={setConfirmModal}
-                taskMode={taskMode}
-                viewMode={viewMode}
-                onToggleCriterion={onToggleCriterion}
-                displayedTaskIds={taskIds}
-                lastClickedTaskRef={lastClickedTaskRef}
-              />
+              <div key={taskId} className="relative">
+                {/* Drop indicator line — before this card */}
+                {reorderIdx === i && (
+                  <div className="absolute left-1 right-1 -top-[1px] z-50 flex items-center pointer-events-none"
+                       style={{ height: 0 }}>
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: teamColor }} />
+                    <div className="flex-1 h-[2px] rounded" style={{ backgroundColor: teamColor }} />
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: teamColor }} />
+                  </div>
+                )}
+                <TaskCard
+                  task={tasks[taskId]}
+                  index={i}
+                  source={{ type: "team", teamId: team.id }}
+                  insideTeam
+                  teams={teams}
+                  dragging={dragging}
+                  dragSource={dragSource}
+                  hoverIndex={null}
+                  prevIndex={null}
+                  handleTaskDrag={handleTaskDrag}
+                  selectedTaskIds={selectedTaskIds}
+                  setSelectedTaskIds={setSelectedTaskIds}
+                  onEditTask={onEditTask}
+                  onDeleteTask={onDeleteTask}
+                  setConfirmModal={setConfirmModal}
+                  taskMode={taskMode}
+                  viewMode={viewMode}
+                  onToggleCriterion={onToggleCriterion}
+                  displayedTaskIds={taskIds}
+                  lastClickedTaskRef={lastClickedTaskRef}
+                  onIntraTeamDrag={handleIntraTeamDrag}
+                />
+                {/* Drop indicator line — after last card */}
+                {reorderIdx === taskIds.length && i === taskIds.length - 1 && (
+                  <div className="absolute left-1 right-1 -bottom-[1px] z-50 flex items-center pointer-events-none"
+                       style={{ height: 0 }}>
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: teamColor }} />
+                    <div className="flex-1 h-[2px] rounded" style={{ backgroundColor: teamColor }} />
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: teamColor }} />
+                  </div>
+                )}
+              </div>
             ))
           )}
 
@@ -375,6 +486,30 @@ export default function TeamContainer({
             borderRadius: "0 0 8px 0",
           }}
         />
+      )}
+
+      {/* ── Reorder drag ghost ── */}
+      {reorderGhost && createPortal(
+        <div
+          style={{
+            position: "fixed",
+            left: reorderGhost.x - 20,
+            top: reorderGhost.y - 12,
+            pointerEvents: "none",
+            zIndex: 99999,
+          }}
+        >
+          <div className="relative bg-white rounded shadow-lg border px-2 py-1 max-w-[200px] opacity-90"
+               style={{ borderColor: teamColor }}>
+            <div className="text-[10px] font-semibold text-gray-800 truncate">
+              {reorderGhost.task?.name || "Untitled Task"}
+            </div>
+            <div className="text-[9px] font-medium truncate" style={{ color: teamColor }}>
+              {team.name || "Team"}
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

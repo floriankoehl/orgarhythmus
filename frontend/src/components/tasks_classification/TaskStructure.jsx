@@ -78,7 +78,7 @@ export default function TaskStructure() {
     tasks, setTasks, taskOrder, setTaskOrder,
     loading: tasksLoading,
     fetchTasks, createTask, updateTaskApi, deleteTask,
-    assignTaskToTeam, reorderUnassigned, tasksByTeam,
+    assignTaskToTeam, reorderUnassigned, reorderTeamTasks, tasksByTeam,
     toggleCriterionApi,
   } = useTaskData({ projectId });
 
@@ -221,7 +221,7 @@ export default function TaskStructure() {
       if (e.key === "Escape") {
         if (focusedTeamId) {
           e.preventDefault();
-          exitTeamFocus();
+          setFocusedTeamId(null);
         } else if (drawTeamMode) {
           e.preventDefault();
           setDrawTeamMode(false);
@@ -239,7 +239,7 @@ export default function TaskStructure() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isOpen, activeTab, detailView, drawTeamMode, editingTaskId, isCreatingTask, tasks, selectedTaskIds, selectedTeamIds, teamOrder, collapsedTeamIds, focusedPanel, tasksByTeam, focusedTeamId, exitTeamFocus]);
+  }, [isOpen, activeTab, detailView, drawTeamMode, editingTaskId, isCreatingTask, tasks, selectedTaskIds, selectedTeamIds, teamOrder, collapsedTeamIds, focusedPanel, tasksByTeam, focusedTeamId]);
 
   // ── Load default view every time the window opens ──
   const prevOpenRef = useRef(false);
@@ -403,7 +403,8 @@ export default function TaskStructure() {
   // ── Derived data ──
   const tasksByTeamMap = useMemo(() => tasksByTeam(), [tasksByTeam]);
   const editingTask = editingTaskId ? tasks[editingTaskId] : null;
-  const isNarrow = windowSize.w < LAYOUT_BREAKPOINT;
+  const isNarrowRaw = windowSize.w < LAYOUT_BREAKPOINT;
+  const isNarrow = isNarrowRaw && !focusedTeamId;  // focus mode overrides narrow layout
 
   // ── Team focus mode ──
   // Entering focus: team fills the canvas, left sidebar + toolbar collapse.
@@ -1186,6 +1187,7 @@ export default function TaskStructure() {
                 focusedTeamId={focusedTeamId}
                 onEnterTeamFocus={enterTeamFocus}
                 onExitTeamFocus={exitTeamFocus}
+                onReorderTask={reorderTeamTasks}
               />
               </div>
             )}

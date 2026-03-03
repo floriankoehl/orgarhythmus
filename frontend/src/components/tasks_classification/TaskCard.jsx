@@ -33,6 +33,7 @@ export default function TaskCard({
   onToggleCriterion,       // (taskId, criterionId) => void
   displayedTaskIds = null, // ordered array of task IDs for shift-click range select
   lastClickedTaskRef = null, // ref to last-clicked task ID for shift anchor
+  onIntraTeamDrag = null,  // (e, taskId, index) => void — intra-team reorder
 }) {
   const [showActions, setShowActions] = useState(false);
   const moreRef = useRef(null);
@@ -134,6 +135,7 @@ export default function TaskCard({
 
       <div
         onClick={handleClick}
+        onDoubleClick={(e) => { e.stopPropagation(); onEditTask?.(task.id); }}
         className={`group relative flex items-start gap-1.5 px-2 py-1.5 rounded-md cursor-pointer transition-all text-[11px]
           ${isSelected
             ? "bg-indigo-50 border border-indigo-300 shadow-sm"
@@ -151,7 +153,12 @@ export default function TaskCard({
           onMouseDown={(e) => {
             if (!taskMode) return;
             e.stopPropagation();
-            handleTaskDrag(e, task, index, source);
+            // Inside a team: start intra-team reorder (can escalate to cross-panel on leave)
+            if (insideTeam && onIntraTeamDrag) {
+              onIntraTeamDrag(e, task.id, index);
+            } else {
+              handleTaskDrag(e, task, index, source);
+            }
           }}
           className={`mt-0.5 flex-shrink-0 rounded p-0.5 transition-colors ${
             taskMode
