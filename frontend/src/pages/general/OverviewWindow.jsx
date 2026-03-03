@@ -1,5 +1,4 @@
-import { useEffect, useRef } from "react";
-import { useParams, useLocation } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { LayoutDashboard } from "lucide-react";
 import useFloatingWindow from "../../components/shared/useFloatingWindow";
 import OverviewTitleBar from "./OverviewTitleBar";
@@ -17,14 +16,13 @@ import OverviewContent from "./OverviewContent";
  * dates (editable), members, context linking — same as old ProjectMain page.
  *
  * Mounted in ProjectLayout so it persists across all project sub-pages.
- * Automatically opens when the user navigates to the project index route.
+ * Opens via the inventory bar or OrbitMode (project index lands in orbit).
  */
 
 const MIN_CONTENT_H = 200;
 
 export default function OverviewWindow() {
   const { projectId } = useParams();
-  const location = useLocation();
 
   const {
     isOpen, setIsOpen,
@@ -45,20 +43,8 @@ export default function OverviewWindow() {
     minSize: { w: 380, h: 320 },
   });
 
-  // ── Auto-open when navigating to the project index route ──
-  const prevPathRef = useRef(null);
-  useEffect(() => {
-    // Match /projects/:id  or  /projects/:id/
-    const isIndexRoute =
-      /\/projects\/[^/]+\/?$/.test(location.pathname);
-    if (isIndexRoute && !isOpen) {
-      setWindowPos({ x: 4, y: 60 });
-      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - 68 });
-      setIsMaximized(true);
-      setIsOpen(true);
-    }
-    prevPathRef.current = location.pathname;
-  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ── Auto-open removed: project index route now lands in OrbitMode. ──
+  // Overview opens only when explicitly triggered via the inventory bar.
 
   if (!projectId) return null;
 

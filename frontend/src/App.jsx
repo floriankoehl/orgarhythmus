@@ -43,7 +43,7 @@ const router = createBrowserRouter([
         children: [
           {
             index: true,
-            element: <></>, /* OverviewWindow auto-opens from ProjectLayout */
+            element: <></>, /* Lands in OrbitMode (all windows collapsed) */
           },
           { path: 'teams', element: <></> /* TaskStructure auto-opens Teams tab */ },
           { path: 'teams/:teamId', element: <></> /* TaskStructure auto-opens Team detail */ },

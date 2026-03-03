@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useParams } from "react-router-dom";
 import {
   Lightbulb,
   LayoutGrid,
@@ -9,6 +10,7 @@ import {
   Bell,
 } from "lucide-react";
 import { useWindowManager } from "./WindowManager";
+import { fetch_project_detail } from "../../api/org_API";
 import {
   ORBIT_BREATH_IN_TIME,
   ORBIT_BREATH_OUT_TIME,
@@ -38,15 +40,15 @@ const ICON_CONFIG = {
 const ORBIT_RADIUS_BASE = 130;
 const ORBIT_RADIUS_PULSE = 4;   // ±px added during breathing (subtle)
 const ROTATION_SPEED = 50;      // seconds per full rotation
-const HEARTBEAT_WIGGLE_PX = 1.8; // vertical wiggle intensity (very subtle)
-const HEARTBEAT_WIGGLE_MS = 120; // how long the wiggle lasts
+const HEARTBEAT_SCALE_BOOST = 0.045; // extra scale on each beat (very subtle)
+const HEARTBEAT_SCALE_MS = 160;      // how long the scale pulse lasts
 
 // ── Background colour shifts ──
 // Base slate-900 = rgb(15, 23, 42)
 const BG_BASE = [15, 23, 42];
-const BG_BREATH_LIFT = 6;       // max RGB lift during breath-in (smooth)
-const BG_BEAT_LIFT = 12;        // max RGB lift on heartbeat (sharper)
-const BG_BEAT_DECAY_MS = 180;   // how fast the beat flash fades
+const BG_BREATH_LIFT = 10;      // max RGB lift during breath-in (smooth)
+const BG_BEAT_LIFT = 18;        // max RGB lift on heartbeat (sharper)
+const BG_BEAT_DECAY_MS = 200;   // how fast the beat flash fades
 
 /** Blend base colour with breathing + beat intensities (both 0→1). */
 function bgColor(breathT, beatT) {
@@ -61,18 +63,22 @@ function bgColor(breathT, beatT) {
  * OrbitMode — renders when all windows are collapsed.
  *
  * Visual layers:
- *   1. Breathing pulse — orbit radius grows/shrinks in sync with breathing audio
- *   2. Heartbeat wiggle — tiny vertical jitter on each icon when the beat hits
+ *   1. Project title — large centred heading above the orbit.
+ *   2. Breathing pulse — orbit radius grows/shrinks in sync with breathing audio.
+ *   3. Heartbeat scale — icons briefly grow slightly on each beat.
+ *   4. Background shifts — smooth for breathing, snappier for heartbeat.
  *
- * Both animations freeze when the user hovers (rotation paused).
+ * All animations freeze when the user hovers (rotation paused).
  */
 export default function OrbitMode() {
   const manager = useWindowManager();
+  const { projectId } = useParams();
   const containerRef = useRef(null);
   const [hovered, setHovered] = useState(false);
   const [hoveredId, setHoveredId] = useState(null);
   const [radius, setRadius] = useState(ORBIT_RADIUS_BASE);
-  const [wiggleY, setWiggleY] = useState(0);
+  const [beatScale, setBeatScale] = useState(1);
+  const [projectName, setProjectName] = useState("");
   const rafRef = useRef(null);
   const breathStartRef = useRef(null);
   const breathPausedAtRef = useRef(null);   // elapsed-seconds when paused
@@ -83,6 +89,16 @@ export default function OrbitMode() {
 
   // Keep hoveredRef in sync
   useEffect(() => { hoveredRef.current = hovered; }, [hovered]);
+
+  // ── Fetch project name ──
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    fetch_project_detail(projectId)
+      .then((p) => { if (!cancelled) setProjectName(p.name || ""); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   // ── Breathing sound + radius pulse + heartbeat ──
   useEffect(() => {
@@ -123,14 +139,12 @@ export default function OrbitMode() {
         }
       }
 
-      // ── Heartbeat wiggle + beat flash ──
+      // ── Heartbeat scale pulse + beat flash ──
       if (!hoveredRef.current) {
         const hbt = getHeartbeatTime();
-        // Which beat cycle are we in?
         const beatIndex = Math.floor(hbt / ORBIT_HEARTBEAT_DURATION);
         const posInCycle = hbt % ORBIT_HEARTBEAT_DURATION;
 
-        // Fire wiggle when we cross the offset point in a new cycle
         if (
           beatIndex !== lastBeatIndexRef.current &&
           posInCycle >= ORBIT_HEARTBEAT_OFFSET &&
@@ -138,22 +152,20 @@ export default function OrbitMode() {
         ) {
           lastBeatIndexRef.current = beatIndex;
           beatFlashRef.current = { start: now };
-          // Quick up-down wiggle using a short sine burst
-          const wiggleStart = performance.now();
-          const runWiggle = () => {
-            const dt = performance.now() - wiggleStart;
-            if (dt > HEARTBEAT_WIGGLE_MS) {
-              setWiggleY(0);
+          // Quick scale bump on icons
+          const scaleStart = performance.now();
+          const runScale = () => {
+            const dt = performance.now() - scaleStart;
+            if (dt > HEARTBEAT_SCALE_MS) {
+              setBeatScale(1);
               return;
             }
-            // sine burst: one full oscillation over HEARTBEAT_WIGGLE_MS
-            const progress = dt / HEARTBEAT_WIGGLE_MS;
-            setWiggleY(
-              Math.sin(progress * Math.PI * 2) * HEARTBEAT_WIGGLE_PX
-            );
-            requestAnimationFrame(runWiggle);
+            // sine half-wave: smooth up then down
+            const progress = dt / HEARTBEAT_SCALE_MS;
+            setBeatScale(1 + HEARTBEAT_SCALE_BOOST * Math.sin(Math.PI * progress));
+            requestAnimationFrame(runScale);
           };
-          runWiggle();
+          runScale();
         }
       }
 
@@ -163,9 +175,8 @@ export default function OrbitMode() {
         if (beatFlashRef.current) {
           const dt = now - beatFlashRef.current.start;
           if (dt < BG_BEAT_DECAY_MS) {
-            // sharp attack, exponential-ish decay
             beatT = 1 - dt / BG_BEAT_DECAY_MS;
-            beatT = beatT * beatT; // quadratic decay for snappy feel
+            beatT = beatT * beatT;
           } else {
             beatFlashRef.current = null;
           }
@@ -203,8 +214,18 @@ export default function OrbitMode() {
     <div
       ref={containerRef}
       style={{ zIndex: 99980, backgroundColor: bgColor(0, 0) }}
-      className="fixed inset-0 flex items-center justify-center"
+      className="fixed inset-0 flex flex-col items-center justify-center"
     >
+      {/* ── Project name title ── */}
+      {projectName && (
+        <h1
+          className="absolute top-12 text-4xl font-bold tracking-wide text-slate-300/80 select-none pointer-events-none"
+          style={{ textShadow: "0 2px 12px rgba(0,0,0,0.4)" }}
+        >
+          {projectName}
+        </h1>
+      )}
+
       {/* Subtle radial glow behind the orbit */}
       <div className="absolute w-[340px] h-[340px] rounded-full bg-slate-800/50 blur-3xl pointer-events-none" />
 
@@ -238,12 +259,14 @@ export default function OrbitMode() {
                 onClick={() => handleClick(id)}
                 onMouseEnter={() => setHoveredId(id)}
                 onMouseLeave={() => setHoveredId(null)}
-                className={`absolute flex flex-col items-center gap-1 transition-transform duration-200 outline-none ${
-                  isHovered ? "scale-125" : "scale-100"
+                className={`absolute flex flex-col items-center gap-1 outline-none ${
+                  isHovered ? "scale-125" : ""
                 }`}
                 style={{
                   left: `calc(50% + ${cx}px - 28px)`,
-                  top: `calc(50% + ${cy + wiggleY}px - 28px)`,
+                  top: `calc(50% + ${cy}px - 28px)`,
+                  transform: isHovered ? undefined : `scale(${beatScale})`,
+                  transition: "transform 0.1s ease-out",
                   /* Counter-rotate each icon so they stay upright */
                   animation: `orbit-counter-spin ${ROTATION_SPEED}s linear infinite`,
                   animationPlayState: hovered ? "paused" : "running",
