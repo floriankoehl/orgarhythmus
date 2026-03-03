@@ -115,8 +115,9 @@ export default function TeamCanvas({
       } else {
         // Selection marquee for teams
         if (w * h < 100) {
-          // Just a click — deselect all
+          // Just a click on empty canvas — deselect all teams AND tasks
           setSelectedTeamIds?.(new Set());
+          setSelectedTaskIds?.(new Set());
           return;
         }
         const hit = [];

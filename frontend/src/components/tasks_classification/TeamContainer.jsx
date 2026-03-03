@@ -148,7 +148,7 @@ export default function TeamContainer({
       {/* ── Team header ── */}
       <div
         onMouseDown={(e) => handleTeamDrag(e, team.id, () => {
-          // Click (no drag) — select/toggle team
+          // Click (no drag) — select/toggle team & clear task selection
           if (e.ctrlKey || e.metaKey) {
             setSelectedTeamIds?.((prev) => {
               const next = new Set(prev);
@@ -161,8 +161,9 @@ export default function TeamContainer({
               prev.size === 1 && prev.has(team.id) ? new Set() : new Set([team.id])
             );
           }
+          setSelectedTaskIds?.(new Set());
         })}
-        className="flex items-center gap-1.5 px-2 py-1.5 cursor-grab active:cursor-grabbing flex-shrink-0"
+        className="flex items-center gap-1.5 px-2 py-1.5 cursor-grab active:cursor-grabbing flex-shrink-0 overflow-hidden rounded-t-lg"
         style={{
           backgroundColor: `color-mix(in srgb, ${teamColor} 15%, white)`,
           borderBottom: `2px solid ${teamColor}`,
@@ -290,7 +291,7 @@ export default function TeamContainer({
       {!minimized && (
         <div
           ref={taskListRef}
-          className="flex-1 overflow-y-auto px-1 py-0.5 relative"
+          className="flex-1 overflow-y-auto overflow-x-hidden px-1 py-0.5 relative rounded-b-lg"
           style={{ backgroundColor: `color-mix(in srgb, ${teamColor} 5%, white)` }}
           onMouseDown={handleTaskMarqueeStart}
         >

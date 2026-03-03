@@ -71,7 +71,10 @@ export default function TaskCard({
         return next;
       });
     } else {
-      setSelectedTaskIds(new Set([task.id]));
+      // Toggle: deselect if already sole selection, otherwise select
+      setSelectedTaskIds((prev) =>
+        prev.size === 1 && prev.has(task.id) ? new Set() : new Set([task.id])
+      );
     }
   };
 
