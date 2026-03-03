@@ -4,6 +4,7 @@ import ProjectHeader from "../components/ProjectHeader"
 import TaskStructure from "../components/tasks_classification/TaskStructure";
 import ScheduleWindow from "../grid_board/ScheduleWindow";
 import CalendarWindow from "../pages/general/CalendarWindow";
+import OverviewWindow from "../pages/general/OverviewWindow";
 
 export default function ProjectLayout() {
   const { projectId } = useParams();
@@ -26,6 +27,9 @@ export default function ProjectLayout() {
 
       {/* Floating Calendar Window — persists across all project subpages */}
       <CalendarWindow />
+
+      {/* Floating Overview Window — persists across all project subpages */}
+      <OverviewWindow />
     </div>
   );
 }

@@ -14,7 +14,8 @@ import Login from './pages/user/Login.jsx';
 import Profile from './pages/user/Profile.jsx';
 import RegisterPage from './pages/user/Register.jsx';
 import ProjectLayout from './layouts/ProjectLayout.jsx';
-import ProjectMain, { project_loader } from './pages/general/ProjectMain.jsx';
+// ProjectMain replaced by OverviewWindow (floating window in ProjectLayout)
+// import ProjectMain, { project_loader } from './pages/general/ProjectMain.jsx';
 import AllProjects from './pages/AllProjects.jsx';
 import Teams from './pages/overview/Teams.jsx';
 import Tasks from './pages/overview/Tasks.jsx';
@@ -45,8 +46,7 @@ const router = createBrowserRouter([
         children: [
           {
             index: true,
-            element: <ProjectMain />,
-            loader: project_loader,
+            element: <></>, /* OverviewWindow auto-opens from ProjectLayout */
           },
           { path: 'teams', element: <Teams /> },
           { path: 'teams/:teamId', element: <TeamDetail /> },
