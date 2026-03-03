@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { Plus, ChevronDown, ChevronRight, Search, Filter } from "lucide-react";
 import TaskCard from "./TaskCard";
 
@@ -32,6 +32,7 @@ export default function TaskList({
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAllTasks, setShowAllTasks] = useState(false);
+  const lastClickedTaskRef = useRef(null);
 
   // Unassigned tasks (in display order)
   const unassignedTasks = taskOrder
@@ -45,6 +46,7 @@ export default function TaskList({
   );
 
   const displayTasks = showAllTasks ? allTasks : unassignedTasks;
+  const displayedTaskIds = useMemo(() => displayTasks.map((t) => t.id), [displayTasks]);
 
   return (
     <div
@@ -113,6 +115,8 @@ export default function TaskList({
               taskMode={taskMode}
               viewMode={viewMode}
               onToggleCriterion={onToggleCriterion}
+              displayedTaskIds={displayedTaskIds}
+              lastClickedTaskRef={lastClickedTaskRef}
             />
           ))
         )}

@@ -1010,7 +1010,7 @@ export default function TaskStructure() {
                     onCreateTask={onCreateTask}
                     setConfirmModal={setConfirmModal}
                     taskListRef={taskListRef}
-                    sidebarWidth={isNarrow ? "100%" : sidebarWidth}
+                    sidebarWidth={(isNarrow || rightCollapsed) ? "100%" : sidebarWidth}
                     taskMode={taskMode}
                     viewMode={viewMode}
                     onToggleCriterion={onToggleCriterion}

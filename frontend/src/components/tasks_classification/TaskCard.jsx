@@ -31,6 +31,8 @@ export default function TaskCard({
   insideTeam = false,      // when true, hide team badge (already visible in container header)
   viewMode = "compact",    // "titles" | "compact" | "full"
   onToggleCriterion,       // (taskId, criterionId) => void
+  displayedTaskIds = null, // ordered array of task IDs for shift-click range select
+  lastClickedTaskRef = null, // ref to last-clicked task ID for shift anchor
 }) {
   const [showActions, setShowActions] = useState(false);
   const moreRef = useRef(null);
@@ -63,6 +65,28 @@ export default function TaskCard({
   const criteriaDone = criteria.filter((c) => c.done).length;
 
   const handleClick = (e) => {
+    if (e.shiftKey && displayedTaskIds && lastClickedTaskRef) {
+      // Range select: select all tasks between anchor and current
+      const anchorId = lastClickedTaskRef.current;
+      const anchorIdx = anchorId != null ? displayedTaskIds.indexOf(anchorId) : -1;
+      const currentIdx = displayedTaskIds.indexOf(task.id);
+      if (anchorIdx !== -1 && currentIdx !== -1) {
+        const start = Math.min(anchorIdx, currentIdx);
+        const end = Math.max(anchorIdx, currentIdx);
+        const rangeIds = displayedTaskIds.slice(start, end + 1);
+        setSelectedTaskIds((prev) => {
+          const next = new Set(prev);
+          rangeIds.forEach((id) => next.add(id));
+          return next;
+        });
+      } else {
+        // No anchor yet — treat as normal click
+        setSelectedTaskIds(new Set([task.id]));
+        if (lastClickedTaskRef) lastClickedTaskRef.current = task.id;
+      }
+      return;
+    }
+
     if (e.ctrlKey || e.metaKey) {
       setSelectedTaskIds((prev) => {
         const next = new Set(prev);
@@ -76,6 +100,8 @@ export default function TaskCard({
         prev.size === 1 && prev.has(task.id) ? new Set() : new Set([task.id])
       );
     }
+    // Update anchor for shift-select
+    if (lastClickedTaskRef) lastClickedTaskRef.current = task.id;
   };
 
   const handleDelete = () => {
