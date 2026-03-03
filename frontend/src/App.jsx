@@ -20,7 +20,8 @@ import Teams from './pages/overview/Teams.jsx';
 import Tasks from './pages/overview/Tasks.jsx';
 import TeamDetail from './pages/detail/TeamDetail.jsx';
 import TaskDetail from './pages/detail/TaskDetail.jsx';
-import Calendar from './pages/general/Calender.jsx';
+// Calendar page replaced by CalendarWindow (floating window in ProjectLayout)
+// import Calendar from './pages/general/Calender.jsx';
 // import Dependencies from './pages/dependency/Dependencies'; // old implementation (kept intact)
 // MilestoneScheduleAdapter now lives inside ScheduleWindow (floating window in ProjectLayout)
 import AssignmentSecond from './pages/member_assignment/Assignment_Second';
@@ -53,7 +54,7 @@ const router = createBrowserRouter([
           { path: 'tasks/:taskId', element: <TaskDetail /> },
           { path: 'dependencies', element: <></> /* ScheduleWindow auto-opens from ProjectLayout */ },
           { path: 'assignment', element: <AssignmentSecond /> },
-          { path: 'calender', element: <Calendar /> },
+          { path: 'calender', element: <></> /* CalendarWindow auto-opens from ProjectLayout */ },
         ],
       },
     ],
