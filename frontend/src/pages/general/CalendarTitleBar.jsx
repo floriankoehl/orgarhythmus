@@ -1,17 +1,15 @@
 import {
-  Minus,
-  Maximize2,
-  Minimize2,
   Calendar as CalendarIcon,
   ArrowLeftRight,
   ArrowUpDown,
 } from "lucide-react";
+import WindowTitleBar from "../../components/shared/WindowTitleBar";
 
 /**
  * CalendarTitleBar — title bar for CalendarWindow.
  *
- * Contains: drag handle, icon + title, view-mode button group,
- * transpose toggle (for 3d/7d), window controls (minimize/maximize).
+ * Contains: icon + title, view-mode button group,
+ * transpose toggle (for 3d/7d), standardized window controls.
  */
 
 const VIEW_OPTIONS = [
@@ -35,11 +33,12 @@ export default function CalendarTitleBar({
   const showTranspose = effectiveView === "3d" || effectiveView === "7d";
 
   return (
-    <div
-      onMouseDown={handleWindowDrag}
-      onDoubleClick={toggleMaximize}
-      className="flex items-center gap-2 px-3 py-1.5 cursor-grab active:cursor-grabbing flex-shrink-0 select-none
-        bg-gradient-to-r from-emerald-500 to-teal-600 border-b border-emerald-600/30"
+    <WindowTitleBar
+      handleWindowDrag={handleWindowDrag}
+      toggleMaximize={toggleMaximize}
+      isMaximized={isMaximized}
+      minimizeWindow={minimizeWindow}
+      className="bg-gradient-to-r from-emerald-500 to-teal-600 border-b border-emerald-600/30"
     >
       {/* Icon */}
       <CalendarIcon size={16} className="text-white/90 flex-shrink-0" />
@@ -53,6 +52,7 @@ export default function CalendarTitleBar({
       <div
         className="flex items-center ml-2 rounded-md overflow-hidden border border-white/20"
         onMouseDown={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
       >
         {VIEW_OPTIONS.map(({ key, label }) => {
           const isActive = viewMode === key;
@@ -67,7 +67,6 @@ export default function CalendarTitleBar({
               }`}
             >
               {label}
-              {/* Show resolved view in auto mode */}
               {key === "auto" && viewMode === "auto" && (
                 <span className="ml-0.5 text-[9px] opacity-70">
                   ({effectiveView === "3d" ? "3D" : effectiveView === "7d" ? "7D" : "M"})
@@ -83,6 +82,7 @@ export default function CalendarTitleBar({
         <button
           onClick={() => setTransposed((t) => !t)}
           onMouseDown={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
           className={`p-1 rounded transition-colors ml-1 ${
             transposed
               ? "bg-white/30 text-white"
@@ -93,27 +93,6 @@ export default function CalendarTitleBar({
           {transposed ? <ArrowUpDown size={13} /> : <ArrowLeftRight size={13} />}
         </button>
       )}
-
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* Window controls */}
-      <div className="flex items-center gap-0.5" onMouseDown={(e) => e.stopPropagation()}>
-        <button
-          onClick={minimizeWindow}
-          className="p-1 rounded hover:bg-white/20 text-white/80 hover:text-white transition-colors"
-          title="Minimize"
-        >
-          <Minus size={14} />
-        </button>
-        <button
-          onClick={toggleMaximize}
-          className="p-1 rounded hover:bg-white/20 text-white/80 hover:text-white transition-colors"
-          title={isMaximized ? "Restore" : "Maximize"}
-        >
-          {isMaximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-        </button>
-      </div>
-    </div>
+    </WindowTitleBar>
   );
 }

@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from "react";
-import { Minus, Maximize2, Minimize2, CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Save, Star, Plus, PanelTop, PanelTopClose } from "lucide-react";
+import { CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Save, Star, Plus, PanelTop, PanelTopClose } from "lucide-react";
+import WindowTitleBar from "../components/shared/WindowTitleBar";
 
 /**
- * Title bar for the Schedule floating window — mirrors IdeaBinTitleBar / TaskStructureTitleBar.
+ * Title bar for the Schedule floating window.
  *
- * Contains: drag handle, icon + title, view selector, toolbar toggle, window controls.
+ * Contains: icon + title, view selector, toolbar toggle, standardized window controls.
  */
 export default function ScheduleTitleBar({
   handleWindowDrag,
@@ -47,12 +48,30 @@ export default function ScheduleTitleBar({
 
   const hasViews = savedViews.length > 0 || activeViewId;
 
+  const toolbarToggle = (
+    <div className="flex items-center" onMouseDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={() => toggleToolbar?.()}
+        className={`p-1 rounded transition-colors ${
+          toolbarCollapsed
+            ? "hover:bg-white/20 text-white/60 hover:text-white"
+            : "bg-white/20 text-white hover:bg-white/30"
+        }`}
+        title={toolbarCollapsed ? "Show toolbar" : "Hide toolbar"}
+      >
+        {toolbarCollapsed ? <PanelTop size={13} /> : <PanelTopClose size={13} />}
+      </button>
+    </div>
+  );
+
   return (
-    <div
-      onMouseDown={handleWindowDrag}
-      onDoubleClick={toggleMaximize}
-      className="flex items-center gap-2 px-3 py-1.5 cursor-grab active:cursor-grabbing flex-shrink-0 select-none
-        bg-gradient-to-r from-sky-500 to-blue-600 border-b border-sky-600/30"
+    <WindowTitleBar
+      handleWindowDrag={handleWindowDrag}
+      toggleMaximize={toggleMaximize}
+      isMaximized={isMaximized}
+      minimizeWindow={minimizeWindow}
+      className="bg-gradient-to-r from-sky-500 to-blue-600 border-b border-sky-600/30"
+      rightContent={toolbarToggle}
     >
       {/* Icon */}
       <CalendarRange size={16} className="text-white/90 flex-shrink-0" />
@@ -63,7 +82,7 @@ export default function ScheduleTitleBar({
       </span>
 
       {/* ── View selector ── */}
-      <div className="relative flex items-center gap-0.5 ml-2" onMouseDown={(e) => e.stopPropagation()} ref={dropdownRef}>
+      <div className="relative flex items-center gap-0.5 ml-2" onMouseDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} ref={dropdownRef}>
         {/* Prev arrow */}
         {hasViews && (
           <button
@@ -193,42 +212,6 @@ export default function ScheduleTitleBar({
           </div>
         )}
       </div>
-
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* Toolbar toggle */}
-      <div className="flex items-center" onMouseDown={(e) => e.stopPropagation()}>
-        <button
-          onClick={() => toggleToolbar?.()}
-          className={`p-1 rounded transition-colors ${
-            toolbarCollapsed
-              ? "hover:bg-white/20 text-white/60 hover:text-white"
-              : "bg-white/20 text-white hover:bg-white/30"
-          }`}
-          title={toolbarCollapsed ? "Show toolbar" : "Hide toolbar"}
-        >
-          {toolbarCollapsed ? <PanelTop size={13} /> : <PanelTopClose size={13} />}
-        </button>
-      </div>
-
-      {/* Window controls */}
-      <div className="flex items-center gap-0.5" onMouseDown={(e) => e.stopPropagation()}>
-        <button
-          onClick={minimizeWindow}
-          className="p-1 rounded hover:bg-white/20 text-white/80 hover:text-white transition-colors"
-          title="Minimize"
-        >
-          <Minus size={13} />
-        </button>
-        <button
-          onClick={toggleMaximize}
-          className="p-1 rounded hover:bg-white/20 text-white/80 hover:text-white transition-colors"
-          title={isMaximized ? "Restore" : "Maximize"}
-        >
-          {isMaximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-        </button>
-      </div>
-    </div>
+    </WindowTitleBar>
   );
 }

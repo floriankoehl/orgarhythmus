@@ -55,10 +55,22 @@ export default function useFloatingWindow(opts = {}) {
   });
   const [iconPos, setIconPos] = useState(() => ({ ...defaultIcon }));
   const [isMaximized, setIsMaximized] = useState(false);
-  const [preMaxState, setPreMaxState] = useState(null);
   const [zIndex, setZIndex] = useState(() => getNextZIndex());
   const windowRef = useRef(null);
   const iconRef = useRef(null);
+
+  // ── Custom size tracking (persists across maximize/minimize cycles) ──
+  const customSizeRef = useRef({
+    pos: { x: 0, y: 0 },
+    size: { w: window.innerWidth - 16, h: window.innerHeight - 68 },
+  });
+
+  // Continuously track custom (non-maximized) size
+  useEffect(() => {
+    if (isOpen && !isMaximized) {
+      customSizeRef.current = { pos: { ...windowPos }, size: { ...windowSize } };
+    }
+  }, [windowPos, windowSize, isMaximized, isOpen]);
 
   // ── Report open/close to manager ──
   useEffect(() => {
@@ -77,7 +89,6 @@ export default function useFloatingWindow(opts = {}) {
       setIconPos({ ...defaultIcon });
       setIsOpen(false);
       setIsMaximized(false);
-      setPreMaxState(null);
       playSound(closeSound);
     }
     lastMinAllRef.current = ver;
@@ -89,14 +100,15 @@ export default function useFloatingWindow(opts = {}) {
     if (!managed) return;
     const ver = manager.openRequests?.[id] ?? 0;
     if (ver > lastOpenReqRef.current && !isOpen) {
-      // Open at a sensible default position (centered)
-      const w = windowSize.w;
-      const h = windowSize.h;
+      // Restore custom size, centered on screen
+      const cs = customSizeRef.current;
+      setWindowSize({ ...cs.size });
       setWindowPos({
-        x: Math.max(4, (window.innerWidth - w) / 2),
-        y: Math.max(4, (window.innerHeight - h) / 2 - 30),
+        x: Math.max(4, (window.innerWidth - cs.size.w) / 2),
+        y: Math.max(4, (window.innerHeight - cs.size.h) / 2 - 30),
       });
       setIsOpen(true);
+      setIsMaximized(false);
       setZIndex(getNextZIndex());
       playSound(openSound);
       if (focusRef) setTimeout(() => focusRef.current?.focus(), 100);
@@ -113,11 +125,29 @@ export default function useFloatingWindow(opts = {}) {
       setIconPos({ ...defaultIcon });
       setIsOpen(false);
       setIsMaximized(false);
-      setPreMaxState(null);
       playSound(closeSound);
     }
     lastMinReqRef.current = ver;
   }, [managed, manager?.minimizeRequests, id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── React to manager's per-window requestOpenFullScreen signal ──
+  const lastFullReqRef = useRef(manager?.openFullScreenRequests?.[id] ?? 0);
+  useEffect(() => {
+    if (!managed) return;
+    const ver = manager.openFullScreenRequests?.[id] ?? 0;
+    if (ver > lastFullReqRef.current && !isOpen) {
+      const topY = managed ? 4 : 60;
+      const bottomReserve = managed ? 80 : 68;
+      setWindowPos({ x: 4, y: topY });
+      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - bottomReserve });
+      setIsOpen(true);
+      setIsMaximized(true);
+      setZIndex(getNextZIndex());
+      playSound(openSound);
+      if (focusRef) setTimeout(() => focusRef.current?.focus(), 100);
+    }
+    lastFullReqRef.current = ver;
+  }, [managed, manager?.openFullScreenRequests, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Bring this window to front (call on mousedown / focus) */
   const bringToFront = useCallback(() => {
@@ -126,42 +156,42 @@ export default function useFloatingWindow(opts = {}) {
 
   // ── Open / minimise / maximise ──
   const openWindow = useCallback(() => {
+    const cs = customSizeRef.current;
+    setWindowSize({ ...cs.size });
     setWindowPos({
-      x: Math.max(0, Math.min(iconPos.x - windowSize.w + 48, window.innerWidth - windowSize.w)),
-      y: Math.max(0, Math.min(iconPos.y - windowSize.h + 48, window.innerHeight - windowSize.h)),
+      x: Math.max(0, Math.min(iconPos.x - cs.size.w + 48, window.innerWidth - cs.size.w)),
+      y: Math.max(0, Math.min(iconPos.y - cs.size.h + 48, window.innerHeight - cs.size.h)),
     });
     setIsOpen(true);
+    setIsMaximized(false);
     setZIndex(getNextZIndex());
     playSound(openSound);
     if (focusRef) setTimeout(() => focusRef.current?.focus(), 100);
-  }, [iconPos, windowSize, openSound, focusRef]);
+  }, [iconPos, openSound, focusRef]);
 
   const minimizeWindow = useCallback(() => {
     setIconPos({ ...defaultIcon });
     setIsOpen(false);
     setIsMaximized(false);
-    setPreMaxState(null);
     playSound(closeSound);
   }, [closeSound, defaultIcon]);
 
   const toggleMaximize = useCallback(() => {
-    // When managed (inside project): no header, leave room for inventory bar at bottom
     const topY = managed ? 4 : 60;
     const bottomReserve = managed ? 80 : 68;
     if (isMaximized) {
-      if (preMaxState) {
-        setWindowPos(preMaxState.pos);
-        setWindowSize(preMaxState.size);
-      }
+      // Restore to last custom size
+      const cs = customSizeRef.current;
+      setWindowPos({ ...cs.pos });
+      setWindowSize({ ...cs.size });
       setIsMaximized(false);
-      setPreMaxState(null);
     } else {
-      setPreMaxState({ pos: { ...windowPos }, size: { ...windowSize } });
+      // Go fullscreen (customSizeRef already tracks current state)
       setWindowPos({ x: 4, y: topY });
       setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - bottomReserve });
       setIsMaximized(true);
     }
-  }, [isMaximized, preMaxState, windowPos, windowSize, managed]);
+  }, [isMaximized, managed]);
 
   // ── Keep maximized window in sync with viewport ──
   useEffect(() => {
@@ -209,10 +239,24 @@ export default function useFloatingWindow(opts = {}) {
 
   // ── Window title-bar drag ──
   const handleWindowDrag = useCallback((e) => {
-    if (isMaximized) return;
     e.preventDefault();
-    const startX = e.clientX - windowPos.x;
-    const startY = e.clientY - windowPos.y;
+    let startPosX, startPosY;
+
+    if (isMaximized) {
+      // Auto-unmaximize: restore custom size, centered on cursor
+      const cs = customSizeRef.current;
+      startPosX = Math.max(0, Math.min(e.clientX - cs.size.w / 2, window.innerWidth - cs.size.w));
+      startPosY = Math.max(0, e.clientY - 12);
+      setWindowPos({ x: startPosX, y: startPosY });
+      setWindowSize({ ...cs.size });
+      setIsMaximized(false);
+    } else {
+      startPosX = windowPos.x;
+      startPosY = windowPos.y;
+    }
+
+    const startX = e.clientX - startPosX;
+    const startY = e.clientY - startPosY;
 
     const onMove = (ev) => {
       setWindowPos({
@@ -231,6 +275,7 @@ export default function useFloatingWindow(opts = {}) {
   // ── Window resize (corner handle) ──
   const handleWindowResize = useCallback((e) => {
     e.preventDefault();
+    if (isMaximized) setIsMaximized(false);
     const startX = e.clientX;
     const startY = e.clientY;
     const startW = windowSize.w;
@@ -248,12 +293,13 @@ export default function useFloatingWindow(opts = {}) {
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [windowSize, MIN_W, MIN_H]);
+  }, [windowSize, isMaximized, MIN_W, MIN_H]);
 
   // ── Edge resize ──
   const handleEdgeResize = useCallback((e, edge) => {
     e.preventDefault();
     e.stopPropagation();
+    if (isMaximized) setIsMaximized(false);
     const startX = e.clientX;
     const startY = e.clientY;
     const startPos = { ...windowPos };
@@ -279,7 +325,7 @@ export default function useFloatingWindow(opts = {}) {
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [windowPos, windowSize, MIN_W, MIN_H]);
+  }, [windowPos, windowSize, isMaximized, MIN_W, MIN_H]);
 
   return {
     isOpen, setIsOpen,

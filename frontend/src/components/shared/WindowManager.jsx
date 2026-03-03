@@ -1,5 +1,6 @@
 import { createContext, useContext, useCallback, useMemo, useRef, useState } from "react";
 import InventoryBar from "./InventoryBar";
+import OrbitMode from "./OrbitMode";
 
 /**
  * WindowManager — a standalone, layout-agnostic orchestrator for a set of
@@ -75,6 +76,15 @@ export default function WindowManager({
     setMinimizeRequests((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }));
   }, []);
 
+  // ── Coordination: per-window open-full-screen requests (OrbitMode → window) ──
+  const [openFullScreenRequests, setOpenFullScreenRequests] = useState({});
+  const requestOpenFullScreen = useCallback((id) => {
+    setOpenFullScreenRequests((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }));
+  }, []);
+
+  // ── Derived: orbit mode when no windows are open ──
+  const allCollapsed = openWindows.size === 0;
+
   // ── Context value ──
   const value = useMemo(
     () => ({
@@ -97,6 +107,9 @@ export default function WindowManager({
       requestMinimize,
       openRequests,
       minimizeRequests,
+      requestOpenFullScreen,
+      openFullScreenRequests,
+      allCollapsed,
     }),
     [
       windows, openWindows,
@@ -104,12 +117,15 @@ export default function WindowManager({
       minimizeAll, minimizeAllVersion,
       requestOpen, requestMinimize,
       openRequests, minimizeRequests,
+      requestOpenFullScreen, openFullScreenRequests,
+      allCollapsed,
     ],
   );
 
   return (
     <WindowManagerContext.Provider value={value}>
       {children}
+      {allCollapsed && <OrbitMode />}
       <InventoryBar />
     </WindowManagerContext.Provider>
   );
