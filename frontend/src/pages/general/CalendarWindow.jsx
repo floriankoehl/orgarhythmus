@@ -40,9 +40,9 @@ export default function CalendarWindow() {
     handleIconDrag, handleWindowDrag,
     handleWindowResize, handleEdgeResize,
   } = useFloatingWindow({
+    id: "calendar",
     openSound: "ideaOpen",
     closeSound: "ideaClose",
-    defaultIcon: { x: 8, y: 164 }, // below ScheduleWindow icon
     minSize: { w: 360, h: 300 },
   });
 

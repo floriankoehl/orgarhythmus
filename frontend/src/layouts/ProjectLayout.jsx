@@ -1,10 +1,29 @@
 // orgarhythmus/org_layouts/ProjectLayout.jsx
 import { Outlet, useParams } from "react-router-dom";
 import ProjectHeader from "../components/ProjectHeader"
+import WindowManager from "../components/shared/WindowManager";
+import IdeaBin from "../components/ideas/IdeaBin";
+import ProfileWindow from "../pages/user/ProfileWindow";
+import NotificationsWindow from "../components/NotificationsWindow";
 import TaskStructure from "../components/tasks_classification/TaskStructure";
 import ScheduleWindow from "../grid_board/ScheduleWindow";
 import CalendarWindow from "../pages/general/CalendarWindow";
 import OverviewWindow from "../pages/general/OverviewWindow";
+
+/**
+ * Ordered window definitions — determines icon dock layout (top → bottom).
+ * The first 3 are org-level windows absorbed into the project manager;
+ * the last 4 are project-specific.
+ */
+const PROJECT_WINDOWS = [
+  { id: "ideaBin" },
+  { id: "profile" },
+  { id: "notifications" },
+  { id: "taskStructure" },
+  { id: "schedule" },
+  { id: "calendar" },
+  { id: "overview" },
+];
 
 export default function ProjectLayout() {
   const { projectId } = useParams();
@@ -19,17 +38,16 @@ export default function ProjectLayout() {
         <Outlet />
       </main>
 
-      {/* Floating Task Structure — persists across all project subpages */}
-      <TaskStructure />
-
-      {/* Floating Schedule Window — persists across all project subpages */}
-      <ScheduleWindow />
-
-      {/* Floating Calendar Window — persists across all project subpages */}
-      <CalendarWindow />
-
-      {/* Floating Overview Window — persists across all project subpages */}
-      <OverviewWindow />
+      {/* WindowManager orchestrates ALL floating windows inside a project */}
+      <WindowManager windows={PROJECT_WINDOWS} dockStartY={60}>
+        <IdeaBin />
+        <ProfileWindow />
+        <NotificationsWindow />
+        <TaskStructure />
+        <ScheduleWindow />
+        <CalendarWindow />
+        <OverviewWindow />
+      </WindowManager>
     </div>
   );
 }

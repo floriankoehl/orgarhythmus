@@ -1,9 +1,16 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import OrgaHeader from "../components/OrgaHeader";
 import IdeaBin from "../components/ideas/IdeaBin";
 import ProfileWindow from "../pages/user/ProfileWindow";
+import NotificationsWindow from "../components/NotificationsWindow";
 
 export default function OrgaLayout() {
+  const location = useLocation();
+
+  // When inside a project, the ProjectLayout's WindowManager takes over
+  // all floating windows (including IdeaBin, Profile, Notifications).
+  const insideProject = /\/projects\/\d+/.test(location.pathname);
+
   return (
     <>
 
@@ -15,11 +22,14 @@ export default function OrgaLayout() {
         <Outlet />
       </main>
 
-      {/* Floating Idea Bin — persists across all pages */}
-      <IdeaBin />
-
-      {/* Floating Profile — persists across all pages */}
-      <ProfileWindow />
+      {/* Floating windows — only when NOT inside a project (project has its own manager) */}
+      {!insideProject && (
+        <>
+          <IdeaBin />
+          <ProfileWindow />
+          <NotificationsWindow />
+        </>
+      )}
     </>
   );
 }

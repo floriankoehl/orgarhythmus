@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { playSound } from "../../assets/sound_registry";
 import { getNextZIndex } from "../shared/windowZIndex";
+import { useWindowManager } from "../shared/WindowManager";
 
 // ───────────────────── Constants ─────────────────────
 const MIN_W = 290;
@@ -8,23 +9,55 @@ const MIN_H = 220;
 const DEFAULT_W = 340;
 const DEFAULT_H = 460;
 
+/** Default icon position when not managed by a WindowManager. */
+const STANDALONE_ICON = { x: 8, y: 8 };
+
 /**
  * Manages IdeaBin floating-window state:
  * position, size, icon position, maximize/minimize, and all drag/resize handlers.
+ *
+ * When inside a <WindowManager> the icon dock position comes automatically from
+ * the manager config (id = "ideaBin"). Outside a manager it falls back to STANDALONE_ICON.
  */
 export default function useIdeaBinWindow(headlineInputRef) {
+  // ── Manager integration (optional) ──
+  const manager = useWindowManager();
+  const managed = !!(manager);
+  const defaultIcon = managed
+    ? manager.getIconPosition("ideaBin")
+    : STANDALONE_ICON;
+
   const [isOpen, setIsOpen] = useState(false);
   const [windowPos, setWindowPos] = useState({ x: 0, y: 0 });
   const [windowSize, setWindowSize] = useState({ w: window.innerWidth - 16, h: window.innerHeight - 68 });
-  const [iconPos, setIconPos] = useState(() => ({
-    x: 8,
-    y: 8,
-  }));
+  const [iconPos, setIconPos] = useState(() => ({ ...defaultIcon }));
   const [isMaximized, setIsMaximized] = useState(false);
   const [preMaxState, setPreMaxState] = useState(null);
   const [zIndex, setZIndex] = useState(() => getNextZIndex());
   const windowRef = useRef(null);
   const iconRef = useRef(null);
+
+  // ── Report open/close to manager ──
+  useEffect(() => {
+    if (!managed) return;
+    if (isOpen) manager.reportOpen("ideaBin");
+    else manager.reportClose("ideaBin");
+  }, [isOpen, managed, manager]);
+
+  // ── React to manager's minimizeAll signal ──
+  const lastMinAllRef = useRef(manager?.minimizeAllVersion ?? 0);
+  useEffect(() => {
+    if (!managed) return;
+    const ver = manager.minimizeAllVersion;
+    if (ver > lastMinAllRef.current && isOpen) {
+      setIconPos({ ...defaultIcon });
+      setIsOpen(false);
+      setIsMaximized(false);
+      setPreMaxState(null);
+      playSound("ideaClose");
+    }
+    lastMinAllRef.current = ver;
+  }, [managed, manager?.minimizeAllVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Bring this window to front (call on mousedown / focus) */
   const bringToFront = useCallback(() => {
@@ -44,15 +77,13 @@ export default function useIdeaBinWindow(headlineInputRef) {
 
   const minimizeWindow = useCallback(() => {
     // Collapse to top-left corner (over header)
-    setIconPos({
-      x: 8,
-      y: 8,
-    });
+    // Collapse to dock position (manager-aware or standalone)
+    setIconPos({ ...defaultIcon });
     setIsOpen(false);
     setIsMaximized(false);
     setPreMaxState(null);
     playSound('ideaClose');
-  }, [windowPos, windowSize]);
+  }, [defaultIcon]);
 
   const toggleMaximize = useCallback(() => {
     if (isMaximized) {

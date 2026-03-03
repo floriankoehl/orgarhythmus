@@ -36,9 +36,10 @@ export default function ProfileWindow() {
     handleIconDrag, handleWindowDrag,
     handleWindowResize, handleEdgeResize,
   } = useFloatingWindow({
+    id: "profile",
     openSound: "ideaOpen",
     closeSound: "ideaClose",
-    defaultIcon: { x: 8, y: 60 }, // below IdeaBin icon (IdeaBin is at y≈8)
+    defaultIcon: { x: 8, y: 60 }, // fallback when outside a WindowManager
     minSize: { w: 400, h: 340 },
   });
 

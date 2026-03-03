@@ -1,10 +1,17 @@
 import { useState, useRef } from "react";
-import { Minus, Maximize2, Minimize2, X, LayoutGrid, Star, Pencil, Trash2, Save, Check } from "lucide-react";
+import { Minus, Maximize2, Minimize2, X, LayoutGrid, Star, Pencil, Trash2, Save, Check, ArrowLeft, Users, ListTodo } from "lucide-react";
+
+const TAB_CONFIG = [
+  { key: "canvas", label: "Canvas", Icon: LayoutGrid },
+  { key: "tasks", label: "Tasks", Icon: ListTodo },
+  { key: "teams", label: "Teams", Icon: Users },
+];
 
 /**
  * Title bar for TaskStructure floating window — mirrors IdeaBinTitleBar.
  *
- * Contains: drag handle, title, view selector + management panel, window controls.
+ * Contains: drag handle, tabs (Canvas|Tasks|Teams) or back-nav for detail views,
+ * view selector + management panel (canvas tab only), window controls.
  */
 export default function TaskStructureTitleBar({
   handleWindowDrag,
@@ -12,6 +19,12 @@ export default function TaskStructureTitleBar({
   isMaximized,
   minimizeWindow,
   activeTeamColor,
+  // Tab navigation
+  activeTab,
+  setActiveTab,
+  detailView,
+  onBackFromDetail,
+  // View management (canvas tab only)
   groupBy,
   setGroupBy,
   teams,
@@ -63,13 +76,40 @@ export default function TaskStructureTitleBar({
       {/* Icon */}
       <LayoutGrid size={16} className="text-white/90 flex-shrink-0" />
 
-      {/* Title */}
-      <span className="text-[12px] font-semibold text-white truncate">
-        Task Structure
-      </span>
+      {detailView ? (
+        /* ── Detail mode: back button + detail type label ── */
+        <button
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={onBackFromDetail}
+          className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-white/90 hover:bg-white/20 transition-colors"
+        >
+          <ArrowLeft size={14} />
+          <span className="font-medium">
+            {detailView.type === "task" ? "Task Detail" : "Team Detail"}
+          </span>
+        </button>
+      ) : (
+        /* ── Tab buttons ── */
+        <div className="flex items-center gap-0.5 ml-1" onMouseDown={(e) => e.stopPropagation()}>
+          {TAB_CONFIG.map(({ key, label, Icon }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] transition-colors ${
+                activeTab === key
+                  ? "bg-white/25 text-white font-semibold"
+                  : "text-white/60 hover:bg-white/15 hover:text-white/90"
+              }`}
+            >
+              <Icon size={12} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* ── View selector ── */}
-      <div className="relative ml-auto">
+      {/* ── View selector (canvas tab only, no detail) ── */}
+      <div className={`relative ml-auto ${activeTab !== "canvas" || detailView ? "invisible" : ""}`}>
         <button
           onMouseDown={(e) => e.stopPropagation()}
           onClick={() => setShowViewPanel((p) => !p)}

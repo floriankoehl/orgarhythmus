@@ -38,9 +38,9 @@ export default function ScheduleWindow() {
     handleIconDrag, handleWindowDrag,
     handleWindowResize, handleEdgeResize,
   } = useFloatingWindow({
+    id: "schedule",
     openSound: "ideaOpen",
     closeSound: "ideaClose",
-    defaultIcon: { x: 8, y: 112 }, // below TaskStructure icon
     minSize: { w: 480, h: 360 },
   });
 

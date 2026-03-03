@@ -1,28 +1,47 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { playSound } from "../../assets/sound_registry";
 import { getNextZIndex } from "./windowZIndex";
+import { useWindowManager } from "./WindowManager";
 
 /**
  * Generic floating-window hook — manages position, size, icon position,
  * maximize/minimize, z-index focus, and all drag/resize handlers.
  *
- * Extracted from useIdeaBinWindow so both IdeaBin and TaskStructure can share it.
+ * When used inside a <WindowManager> and an `id` is provided, the hook
+ * automatically integrates:
+ *   – default icon position comes from the manager's dock config
+ *   – open/close state is reported to the manager
+ *   – the manager's `minimizeAll` signal is respected
+ *
+ * Falls back to standalone behaviour (hardcoded `defaultIcon`) when no
+ * manager is present — fully backward-compatible.
  *
  * @param {Object}  opts
+ * @param {string}  [opts.id]          unique id — required for manager integration
  * @param {string}  opts.openSound     sound key on open  (default "ideaOpen")
  * @param {string}  opts.closeSound    sound key on close (default "ideaClose")
- * @param {Object}  opts.defaultIcon   default icon pos   (default {x:8, y:8})
+ * @param {Object}  opts.defaultIcon   fallback icon pos  (default {x:8, y:8})
  * @param {Object}  opts.minSize       {w, h}             (default {w:290, h:220})
  * @param {React.RefObject} [opts.focusRef]  ref to focus after open
  */
 export default function useFloatingWindow(opts = {}) {
   const {
+    id,
     openSound = "ideaOpen",
     closeSound = "ideaClose",
-    defaultIcon = { x: 8, y: 8 },
+    defaultIcon: defaultIconFallback = { x: 8, y: 8 },
     minSize = { w: 290, h: 220 },
     focusRef,
   } = opts;
+
+  // ── Manager integration (optional) ──
+  const manager = useWindowManager();
+  const managed = !!(manager && id);
+
+  // Resolve default icon position: prefer manager slot, fallback to prop
+  const defaultIcon = managed
+    ? manager.getIconPosition(id)
+    : defaultIconFallback;
 
   const MIN_W = minSize.w;
   const MIN_H = minSize.h;
@@ -39,6 +58,29 @@ export default function useFloatingWindow(opts = {}) {
   const [zIndex, setZIndex] = useState(() => getNextZIndex());
   const windowRef = useRef(null);
   const iconRef = useRef(null);
+
+  // ── Report open/close to manager ──
+  useEffect(() => {
+    if (!managed) return;
+    if (isOpen) manager.reportOpen(id);
+    else manager.reportClose(id);
+  }, [isOpen, managed, manager, id]);
+
+  // ── React to manager's minimizeAll signal ──
+  const lastMinAllRef = useRef(manager?.minimizeAllVersion ?? 0);
+  useEffect(() => {
+    if (!managed) return;
+    const ver = manager.minimizeAllVersion;
+    if (ver > lastMinAllRef.current && isOpen) {
+      // Trigger minimize
+      setIconPos({ ...defaultIcon });
+      setIsOpen(false);
+      setIsMaximized(false);
+      setPreMaxState(null);
+      playSound(closeSound);
+    }
+    lastMinAllRef.current = ver;
+  }, [managed, manager?.minimizeAllVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Bring this window to front (call on mousedown / focus) */
   const bringToFront = useCallback(() => {

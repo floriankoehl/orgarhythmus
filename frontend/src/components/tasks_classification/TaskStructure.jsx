@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useLocation } from "react-router-dom";
 import { LayoutGrid } from "lucide-react";
 import { playSound } from "../../assets/sound_registry";
 import { createTaskForProject, bulk_delete_tasks } from "../../api/org_API";
@@ -21,6 +21,10 @@ import TaskDragGhosts from "./TaskDragGhosts";
 import TaskExportModal from "./TaskExportModal";
 import TaskImportModal from "./TaskImportModal";
 import usePromptSettings from "../usePromptSettings";
+import TeamsTabContent from "./TeamsTabContent";
+import TasksTabContent from "./TasksTabContent";
+import TaskDetailPanel from "./TaskDetailPanel";
+import TeamDetailPanel from "./TeamDetailPanel";
 
 // ── Layout constants (mirror IdeaBin) ──
 const MIN_SIDEBAR_W = 200;
@@ -37,9 +41,14 @@ const LAYOUT_BREAKPOINT = 520;
  */
 export default function TaskStructure() {
   const { projectId } = useParams();
+  const location = useLocation();
 
   // ── Prompt settings (for AI prepend on export) ──
   const { buildClipboardText } = usePromptSettings();
+
+  // ── Tab navigation ──
+  const [activeTab, setActiveTab] = useState("canvas"); // "canvas" | "tasks" | "teams"
+  const [detailView, setDetailView] = useState(null);   // null | { type: "task"|"team", id: number }
 
   // ── Floating window ──
   const {
@@ -49,9 +58,9 @@ export default function TaskStructure() {
     handleIconDrag, handleWindowDrag,
     handleWindowResize, handleEdgeResize,
   } = useFloatingWindow({
+    id: "taskStructure",
     openSound: "ideaOpen",
     closeSound: "ideaClose",
-    defaultIcon: { x: 8, y: 60 }, // offset below IdeaBin icon
     minSize: { w: 360, h: 280 },
   });
 
@@ -141,6 +150,8 @@ export default function TaskStructure() {
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e) => {
+      // Only handle keyboard shortcuts on canvas tab
+      if (activeTab !== "canvas" || detailView) return;
       // Ignore if user is typing in an input/textarea
       const tag = e.target.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable) return;
@@ -177,7 +188,7 @@ export default function TaskStructure() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isOpen, drawTeamMode, editingTaskId, isCreatingTask, tasks, selectedTaskIds]);
+  }, [isOpen, activeTab, detailView, drawTeamMode, editingTaskId, isCreatingTask, tasks, selectedTaskIds]);
 
   // ── Load default view every time the window opens ──
   const prevOpenRef = useRef(false);
@@ -187,6 +198,33 @@ export default function TaskStructure() {
     }
     prevOpenRef.current = isOpen;
   }, [isOpen, loadDefaultView]);
+
+  // ── Route-based auto-open: /teams, /teams/:id, /tasks, /tasks/:id ──
+  useEffect(() => {
+    const path = location.pathname;
+    const match = path.match(/\/projects\/\d+\/(teams|tasks)(?:\/(\d+))?$/);
+    if (!match) return;
+
+    const [, section, id] = match;
+    if (!isOpen) openWindow();
+
+    if (id) {
+      setDetailView({ type: section === "teams" ? "team" : "task", id: parseInt(id) });
+    } else {
+      setActiveTab(section === "teams" ? "teams" : "tasks");
+      setDetailView(null);
+    }
+  }, [location.pathname]);
+
+  // ── Refetch canvas data when returning from other tabs ──
+  const prevTabRef = useRef(activeTab);
+  useEffect(() => {
+    if (activeTab === "canvas" && prevTabRef.current !== "canvas" && isOpen) {
+      fetchTasks();
+      fetchTeams();
+    }
+    prevTabRef.current = activeTab;
+  }, [activeTab, isOpen]);
 
   // ── Pipeline: idea → task (listen for drops from IdeaBin) ──
   useEffect(() => {
@@ -743,6 +781,10 @@ export default function TaskStructure() {
             isMaximized={isMaximized}
             minimizeWindow={minimizeWindow}
             activeTeamColor="#6366f1"
+            activeTab={activeTab}
+            setActiveTab={(tab) => { setActiveTab(tab); setDetailView(null); }}
+            detailView={detailView}
+            onBackFromDetail={() => setDetailView(null)}
             groupBy={groupBy}
             setGroupBy={setGroupBy}
             teams={teams}
@@ -763,6 +805,29 @@ export default function TaskStructure() {
             setEditingViewName={setEditingViewName}
           />
 
+          {/* ── Content: detail view, tab content, or canvas ── */}
+          {detailView ? (
+            detailView.type === "task" ? (
+              <TaskDetailPanel
+                taskId={detailView.id}
+                onViewTeamDetail={(id) => setDetailView({ type: "team", id })}
+              />
+            ) : (
+              <TeamDetailPanel
+                teamId={detailView.id}
+                onViewTaskDetail={(id) => setDetailView({ type: "task", id })}
+              />
+            )
+          ) : activeTab === "tasks" ? (
+            <TasksTabContent
+              onViewTaskDetail={(id) => setDetailView({ type: "task", id })}
+            />
+          ) : activeTab === "teams" ? (
+            <TeamsTabContent
+              onViewTeamDetail={(id) => setDetailView({ type: "team", id })}
+            />
+          ) : (
+            <>
           {/* ── Toolbar ── */}
           <TaskStructureToolbar
             onCreateTeam={onCreateTeam}
@@ -911,6 +976,8 @@ export default function TaskStructure() {
               />
             )}
           </div>
+            </>
+          )}
 
           {/* ── Confirm modal ── */}
           <TaskConfirmModal modal={confirmModal} />
@@ -936,8 +1003,8 @@ export default function TaskStructure() {
             />
           )}
 
-          {/* ── Loading overlay ── */}
-          {(tasksLoading || teamsLoading) && (
+          {/* ── Loading overlay (canvas tab only) ── */}
+          {activeTab === "canvas" && !detailView && (tasksLoading || teamsLoading) && (
             <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-30 rounded-lg">
               <div className="text-[11px] text-gray-400 animate-pulse">Loading…</div>
             </div>

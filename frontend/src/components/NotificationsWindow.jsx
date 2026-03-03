@@ -1,30 +1,25 @@
-import { useEffect, useRef } from "react";
-import { useParams, useLocation } from "react-router-dom";
-import { LayoutDashboard } from "lucide-react";
-import useFloatingWindow from "../../components/shared/useFloatingWindow";
-import OverviewTitleBar from "./OverviewTitleBar";
-import OverviewContent from "./OverviewContent";
+import { useRef } from "react";
+import { Bell } from "lucide-react";
+import { useNotifications } from "../auth/NotificationContext";
+import useFloatingWindow from "./shared/useFloatingWindow";
+import NotificationsTitleBar from "./NotificationsTitleBar";
+import NotificationsContent from "./NotificationsContent";
 
 /**
- * OverviewWindow — floating, resizable, movable window for the project overview.
+ * NotificationsWindow — floating, resizable, movable window for notifications.
  *
- * Mirrors ScheduleWindow / CalendarWindow / TaskStructure pattern:
- *   collapsed  → small draggable icon
+ * Mirrors the ProfileWindow / CalendarWindow pattern:
+ *   collapsed  → small draggable icon (with unread badge)
  *   expanded   → draggable + resizable floating window with title bar
  *   maximized  → near-fullscreen
  *
- * Shows: project name (editable), description, team count, task count,
- * dates (editable), members, context linking — same as old ProjectMain page.
- *
- * Mounted in ProjectLayout so it persists across all project sub-pages.
- * Automatically opens when the user navigates to the project index route.
+ * Mounted in OrgaLayout so it persists across all pages.
  */
 
 const MIN_CONTENT_H = 200;
 
-export default function OverviewWindow() {
-  const { projectId } = useParams();
-  const location = useLocation();
+export default function NotificationsWindow() {
+  const { unreadCount } = useNotifications();
 
   const {
     isOpen, setIsOpen,
@@ -38,28 +33,12 @@ export default function OverviewWindow() {
     handleIconDrag, handleWindowDrag,
     handleWindowResize, handleEdgeResize,
   } = useFloatingWindow({
-    id: "overview",
+    id: "notifications",
     openSound: "ideaOpen",
     closeSound: "ideaClose",
-    minSize: { w: 380, h: 320 },
+    defaultIcon: { x: 8, y: 112 }, // fallback when outside a WindowManager
+    minSize: { w: 360, h: 320 },
   });
-
-  // ── Auto-open when navigating to the project index route ──
-  const prevPathRef = useRef(null);
-  useEffect(() => {
-    // Match /projects/:id  or  /projects/:id/
-    const isIndexRoute =
-      /\/projects\/[^/]+\/?$/.test(location.pathname);
-    if (isIndexRoute && !isOpen) {
-      setWindowPos({ x: 4, y: 60 });
-      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - 68 });
-      setIsMaximized(true);
-      setIsOpen(true);
-    }
-    prevPathRef.current = location.pathname;
-  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (!projectId) return null;
 
   return (
     <>
@@ -74,12 +53,19 @@ export default function OverviewWindow() {
             top: iconPos.y,
             zIndex: zIndex,
           }}
-          className="w-12 h-12 rounded-full shadow-lg bg-gradient-to-br from-amber-400 to-orange-600 border-2 border-amber-300
+          className="w-12 h-12 rounded-full shadow-lg bg-gradient-to-br from-slate-700 to-slate-900 border-2 border-slate-500
             flex items-center justify-center cursor-pointer select-none
             hover:scale-110 hover:shadow-xl active:scale-95 transition-shadow duration-150"
-          title="Open Overview"
+          title="Open Notifications"
         >
-          <LayoutDashboard size={22} className="text-white drop-shadow" />
+          <Bell size={20} className="text-white drop-shadow" />
+
+          {/* Unread badge */}
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 h-5 w-5 bg-red-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow-lg border-2 border-slate-900 animate-bounce">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
         </div>
       )}
 
@@ -87,7 +73,7 @@ export default function OverviewWindow() {
       {isOpen && (
         <div
           ref={windowRef}
-          data-overview-window
+          data-notifications-window
           onMouseDown={bringToFront}
           style={{
             position: "fixed",
@@ -111,11 +97,12 @@ export default function OverviewWindow() {
           <div onMouseDown={(e) => handleEdgeResize(e, "bottom-right")} className="absolute bottom-0 right-0 w-3 h-3 cursor-nwse-resize z-20" />
 
           {/* ── Title bar ── */}
-          <OverviewTitleBar
+          <NotificationsTitleBar
             handleWindowDrag={handleWindowDrag}
             toggleMaximize={toggleMaximize}
             isMaximized={isMaximized}
             minimizeWindow={minimizeWindow}
+            unreadCount={unreadCount}
           />
 
           {/* ── Content area ── */}
@@ -129,7 +116,7 @@ export default function OverviewWindow() {
                 height: "100%",
               }}
             >
-              <OverviewContent />
+              <NotificationsContent />
             </div>
           </div>
         </div>
