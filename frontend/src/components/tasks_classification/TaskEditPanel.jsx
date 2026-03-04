@@ -23,6 +23,7 @@ export default function TaskEditPanel({
   const [priority, setPriority] = useState(task?.priority || "");
   const [difficulty, setDifficulty] = useState(task?.difficulty || "");
   const [teamId, setTeamId] = useState(task?.team?.id || task?.team || defaultTeamId || "");
+  const [teamOverridden, setTeamOverridden] = useState(false);
   const [criteria, setCriteria] = useState(() => {
     return (task?.acceptance_criteria || []).map((c) => ({
       title: c.title || "",
@@ -60,15 +61,15 @@ export default function TaskEditPanel({
   }, [task?.id]);
 
   // Sync defaultTeamId for creation mode when team selection changes
+  // (only if user hasn't manually overridden the team in the form)
   useEffect(() => {
-    if (isNew && defaultTeamId) setTeamId(defaultTeamId);
-  }, [isNew, defaultTeamId]);
+    if (isNew && defaultTeamId && !teamOverridden) setTeamId(defaultTeamId);
+  }, [isNew, defaultTeamId, teamOverridden]);
 
   // ── Save handler ──
   const handleSave = useCallback(async () => {
     if (saving) return;
     const trimmedName = name.trim();
-    if (!trimmedName) { nameRef.current?.focus(); return; }
     setSaving(true);
     try {
       const payload = {
@@ -178,7 +179,7 @@ export default function TaskEditPanel({
           <label className="text-[9px] font-medium text-gray-500 uppercase">Team</label>
           <select
             value={teamId}
-            onChange={(e) => setTeamId(e.target.value ? parseInt(e.target.value, 10) : "")}
+            onChange={(e) => { setTeamId(e.target.value ? parseInt(e.target.value, 10) : ""); setTeamOverridden(true); }}
             className="w-full text-[11px] border border-gray-200 rounded px-2 py-1 mt-0.5 focus:outline-none focus:border-indigo-300"
           >
             <option value="">Unassigned</option>

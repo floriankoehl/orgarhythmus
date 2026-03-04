@@ -52,6 +52,10 @@ import ideaConvertSound from './ideas/convert_idea_to_task.wav';
 import ideaCoinSound from './ideas/mixkit-space-coin-win-notification-271.wav';
 import ideaNotifSound from './ideas/mixkit-quick-positive-video-game-notification-interface-265.wav';
 
+// -- Human / Orbit-mode sounds --
+import breathingSound from './human/cutted_breathing.wav';
+import heartbeatSound from './human/single_heart_beat.wav';
+
 // ==========================================
 //  SOUND MAP — edit this to reassign sounds
 // ==========================================
@@ -265,4 +269,111 @@ export function stopLoopSound(key) {
     audio.currentTime = 0;
     delete loopingAudios[key];
   }
+}
+
+// ==========================================
+// Orbit Mode — Breathing Sound
+// ==========================================
+// Exact duration: 110250 frames @ 44100 Hz = 2.5000000000 s
+// The audio file IS the clock — animations read currentTime
+// directly so they can never drift out of sync.
+//
+//   breath-in  (first half)  → radius grows
+//   breath-out (second half) → radius shrinks
+// ==========================================
+
+/** Duration of the breath-in phase (seconds). */
+export const ORBIT_BREATH_IN_TIME  = 1.25;
+
+/** Duration of the breath-out phase (seconds). */
+export const ORBIT_BREATH_OUT_TIME = 1.25;
+
+/** Total breathing cycle = exact audio file length. */
+export const ORBIT_BREATH_TOTAL = 2.5; // 110250 / 44100
+
+/** Volume for the breathing loop (0-1). */
+export const ORBIT_BREATH_VOLUME = 0.18;
+
+let _orbitAudio = null;
+
+export function startOrbitBreathing() {
+  if (_orbitAudio) return;
+  try {
+    const audio = new Audio(breathingSound);
+    audio.loop = true;
+    audio.volume = muted ? 0 : ORBIT_BREATH_VOLUME;
+    audio.play().catch(() => {});
+    _orbitAudio = audio;
+  } catch (e) { /* fail silently */ }
+}
+
+export function stopOrbitBreathing() {
+  if (_orbitAudio) { _orbitAudio.pause(); _orbitAudio.currentTime = 0; _orbitAudio = null; }
+}
+
+/** Pause the breathing audio in place (keeps currentTime). */
+export function pauseOrbitBreathing() {
+  if (_orbitAudio && !_orbitAudio.paused) _orbitAudio.pause();
+}
+
+/** Resume after pauseOrbitBreathing(). */
+export function resumeOrbitBreathing() {
+  if (_orbitAudio && _orbitAudio.paused) _orbitAudio.play().catch(() => {});
+}
+
+/** Current playback position of the breathing audio (seconds). */
+export function getBreathingTime() {
+  return _orbitAudio ? _orbitAudio.currentTime : 0;
+}
+
+// ==========================================
+// Orbit Mode — Heartbeat Sound
+// ==========================================
+// Exact duration: 48537 frames @ 44100 Hz = 1.1006122449 s
+// ORBIT_HEARTBEAT_OFFSET = fine-tune offset to align the
+// visual pulse with the audible thump inside the file.
+// ==========================================
+
+/** Exact duration of single_heart_beat.wav (seconds). */
+export const ORBIT_HEARTBEAT_DURATION = 48537 / 44100; // 1.1006122449…
+
+/**
+ * Offset (seconds) from the start of the audio file to the
+ * perceptible heartbeat thump. Tweak this to taste.
+ */
+export const ORBIT_HEARTBEAT_OFFSET = 0.50;
+
+/** Volume for the heartbeat loop (0-1). */
+export const ORBIT_HEARTBEAT_VOLUME = 0.30;
+
+let _heartbeatAudio = null;
+
+export function startOrbitHeartbeat() {
+  if (_heartbeatAudio) return;
+  try {
+    const audio = new Audio(heartbeatSound);
+    audio.loop = true;
+    audio.volume = muted ? 0 : ORBIT_HEARTBEAT_VOLUME;
+    audio.play().catch(() => {});
+    _heartbeatAudio = audio;
+  } catch (e) { /* fail silently */ }
+}
+
+export function stopOrbitHeartbeat() {
+  if (_heartbeatAudio) { _heartbeatAudio.pause(); _heartbeatAudio.currentTime = 0; _heartbeatAudio = null; }
+}
+
+/** Pause the heartbeat audio in place (keeps currentTime). */
+export function pauseOrbitHeartbeat() {
+  if (_heartbeatAudio && !_heartbeatAudio.paused) _heartbeatAudio.pause();
+}
+
+/** Resume after pauseOrbitHeartbeat(). */
+export function resumeOrbitHeartbeat() {
+  if (_heartbeatAudio && _heartbeatAudio.paused) _heartbeatAudio.play().catch(() => {});
+}
+
+/** Current playback position of the heartbeat audio (seconds). */
+export function getHeartbeatTime() {
+  return _heartbeatAudio ? _heartbeatAudio.currentTime : 0;
 }

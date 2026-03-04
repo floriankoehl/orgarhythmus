@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from "react";
+import { PanelRightClose } from "lucide-react";
 import TeamContainer from "./TeamContainer";
 
 /**
@@ -49,6 +50,12 @@ export default function TeamCanvas({
   teamViewOverrides = {},
   setTeamViewOverride,
   onToggleCriterion,
+  onCollapseRight,
+  showCollapseRight,
+  focusedTeamId = null,
+  onEnterTeamFocus,
+  onExitTeamFocus,
+  onReorderTask,
 }) {
   // ── Draw-to-create marquee state ──
   const [marquee, setMarquee] = useState(null); // { startX, startY, currentX, currentY }
@@ -112,8 +119,10 @@ export default function TeamCanvas({
       } else {
         // Selection marquee for teams
         if (w * h < 100) {
-          // Just a click — deselect all
+          // Just a click on empty canvas — deselect all teams AND tasks, exit focus
           setSelectedTeamIds?.(new Set());
+          setSelectedTaskIds?.(new Set());
+          onExitTeamFocus?.();
           return;
         }
         const hit = [];
@@ -146,9 +155,11 @@ export default function TeamCanvas({
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
-  }, [teamCanvasRef, createTeamAt, setEditingTeamId, setEditingTeamName, setDrawTeamMode, teamOrder, teamPositions, setSelectedTeamIds]);
+  }, [teamCanvasRef, createTeamAt, setEditingTeamId, setEditingTeamName, setDrawTeamMode, teamOrder, teamPositions, setSelectedTeamIds, onExitTeamFocus]);
 
-  // Calculate canvas bounds to fit all containers
+  // Calculate canvas bounds to fit all containers (capped at a reasonable max)
+  const CANVAS_MAX = 6000;
+  const PAD_FOCUS = 8; // small padding in focus mode
   let maxX = 600, maxY = 400;
   for (const pos of Object.values(teamPositions)) {
     const right = (pos.x || 0) + (pos.w || 240) + 40;
@@ -156,6 +167,8 @@ export default function TeamCanvas({
     if (right > maxX) maxX = right;
     if (bottom > maxY) maxY = bottom;
   }
+  maxX = Math.min(maxX, CANVAS_MAX);
+  maxY = Math.min(maxY, CANVAS_MAX);
 
   return (
     <div
@@ -165,8 +178,18 @@ export default function TeamCanvas({
       onMouseDown={handleMarqueeStart}
     >
       <div
-        style={{ width: maxX, height: maxY, position: "relative" }}
+        style={{ width: focusedTeamId ? "100%" : maxX, height: focusedTeamId ? "100%" : maxY, position: "relative" }}
       >
+        {/* Collapse team canvas button — top-left corner */}
+        {showCollapseRight && (
+          <button
+            onClick={onCollapseRight}
+            className="absolute top-1.5 left-0 z-[60] bg-white border border-gray-300 rounded-r px-1 py-1 flex items-center justify-center shadow-sm hover:bg-gray-100 hover:border-gray-400 transition-colors"
+            title="Collapse team canvas"
+          >
+            <PanelRightClose size={12} className="text-gray-500" />
+          </button>
+        )}
         {/* Draw-mode hint */}
         {drawTeamMode && !marquee && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-[9998] bg-amber-100 text-amber-800 text-[11px] font-medium px-3 py-1.5 rounded-lg border border-amber-300 shadow-sm pointer-events-none animate-pulse">
@@ -228,11 +251,20 @@ export default function TeamCanvas({
         })()}
         {teamOrder.map((teamId) => {
           if (collapsedTeamIds?.has(teamId)) return null;
+          // In focus mode, only render the focused team
+          if (focusedTeamId && teamId !== focusedTeamId) return null;
           const team = teams[teamId];
           const pos = teamPositions[teamId];
           if (!team || !pos) return null;
           const taskIds = tasksByTeamMap[teamId] || [];
           const isTeamSelected = selectedTeamIds?.has(teamId);
+          const isFocused = focusedTeamId === teamId;
+
+          // In focus mode, override position to fill the canvas
+          const canvasEl = teamCanvasRef.current;
+          const effectivePos = isFocused && canvasEl
+            ? { ...pos, x: PAD_FOCUS, y: PAD_FOCUS, w: canvasEl.clientWidth - PAD_FOCUS * 2, h: canvasEl.clientHeight - PAD_FOCUS * 2, z: pos.z }
+            : pos;
 
           return (
             <TeamContainer
@@ -241,9 +273,9 @@ export default function TeamCanvas({
               tasks={tasks}
               taskIds={taskIds}
               teams={teams}
-              position={pos}
-              handleTeamDrag={handleTeamDrag}
-              handleTeamResize={handleTeamResize}
+              position={effectivePos}
+              handleTeamDrag={isFocused ? () => {} : handleTeamDrag}
+              handleTeamResize={isFocused ? () => {} : handleTeamResize}
               editingTeamId={editingTeamId}
               setEditingTeamId={setEditingTeamId}
               editingTeamName={editingTeamName}
@@ -271,6 +303,10 @@ export default function TeamCanvas({
               viewMode={teamViewOverrides[teamId] || viewMode}
               setTeamViewOverride={setTeamViewOverride}
               onToggleCriterion={onToggleCriterion}
+              isFocused={isFocused}
+              onEnterTeamFocus={onEnterTeamFocus}
+              onExitTeamFocus={onExitTeamFocus}
+              onReorderTask={onReorderTask}
             />
           );
         })}

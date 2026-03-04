@@ -1,10 +1,11 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
-import { useParams } from "react-router-dom";
-import { LayoutGrid } from "lucide-react";
+import { useParams, useLocation } from "react-router-dom";
+import { LayoutGrid, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { playSound } from "../../assets/sound_registry";
 import { createTaskForProject, bulk_delete_tasks } from "../../api/org_API";
 
 import useFloatingWindow from "../shared/useFloatingWindow";
+import { useWindowManager } from "../shared/WindowManager";
 import useTaskData from "./hooks/useTaskData";
 import useTaskTeams from "./hooks/useTaskTeams";
 import useTaskDrag from "./hooks/useTaskDrag";
@@ -21,11 +22,19 @@ import TaskDragGhosts from "./TaskDragGhosts";
 import TaskExportModal from "./TaskExportModal";
 import TaskImportModal from "./TaskImportModal";
 import usePromptSettings from "../usePromptSettings";
+import TeamsTabContent from "./TeamsTabContent";
+import TasksTabContent from "./TasksTabContent";
+import TaskDetailPanel from "./TaskDetailPanel";
+import TeamDetailPanel from "./TeamDetailPanel";
 
 // ── Layout constants (mirror IdeaBin) ──
 const MIN_SIDEBAR_W = 200;
 const DEFAULT_SIDEBAR_W = 260;
 const LAYOUT_BREAKPOINT = 520;
+const COLLAPSED_STRIP_W = 28;
+const DEFAULT_FORM_H = 140;
+const MIN_FORM_H = 80;
+const MAX_FORM_H = 400;
 
 /**
  * TaskStructure — the main floating workspace for task structural management.
@@ -37,9 +46,14 @@ const LAYOUT_BREAKPOINT = 520;
  */
 export default function TaskStructure() {
   const { projectId } = useParams();
+  const location = useLocation();
 
   // ── Prompt settings (for AI prepend on export) ──
   const { buildClipboardText } = usePromptSettings();
+
+  // ── Tab navigation ──
+  const [activeTab, setActiveTab] = useState("canvas"); // "canvas" | "tasks" | "teams"
+  const [detailView, setDetailView] = useState(null);   // null | { type: "task"|"team", id: number }
 
   // ── Floating window ──
   const {
@@ -48,10 +62,12 @@ export default function TaskStructure() {
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag,
     handleWindowResize, handleEdgeResize,
+    managed,
+    setExtraStateCollector, setExtraStateApplier,
   } = useFloatingWindow({
+    id: "taskStructure",
     openSound: "ideaOpen",
     closeSound: "ideaClose",
-    defaultIcon: { x: 8, y: 60 }, // offset below IdeaBin icon
     minSize: { w: 360, h: 280 },
   });
 
@@ -64,7 +80,7 @@ export default function TaskStructure() {
     tasks, setTasks, taskOrder, setTaskOrder,
     loading: tasksLoading,
     fetchTasks, createTask, updateTaskApi, deleteTask,
-    assignTaskToTeam, reorderUnassigned, tasksByTeam,
+    assignTaskToTeam, reorderUnassigned, reorderTeamTasks, tasksByTeam,
     toggleCriterionApi,
   } = useTaskData({ projectId });
 
@@ -97,32 +113,61 @@ export default function TaskStructure() {
   const [viewMode, setViewMode] = useState("compact");
   const [teamViewOverrides, setTeamViewOverrides] = useState({});
   const [groupBy, setGroupBy] = useState("team");
-
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [quickAddCollapsed, setQuickAddCollapsed] = useState(false);
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+  const [formHeight, setFormHeight] = useState(DEFAULT_FORM_H);
+  const [focusedPanel, setFocusedPanel] = useState(null); // "tasks" | "canvas" | null
+  const [focusedTeamId, setFocusedTeamId] = useState(null); // team id in focus mode, or null
+  const displayedTaskIdsRef = useRef([]); // kept in sync by TaskList
   // ── Views / formations (API-backed) ──
   const {
     views, showViewPanel, setShowViewPanel,
+    activeViewId: tsActiveViewId,
     viewName, setViewName,
     editingViewId, setEditingViewId,
     editingViewName, setEditingViewName,
     fetchViews, saveView, updateViewState,
     renameView, loadView, deleteView,
     toggleDefault, loadDefaultView,
+    collectViewState, applyViewState,
+    saveActiveView,
   } = useTaskViews({
     projectId,
     deps: {
       windowPos, windowSize, isMaximized, viewMode, teamViewOverrides,
       sidebarWidth, legendPanelCollapsed, groupBy,
       collapsedTeamIds, teamPositions,
+      leftCollapsed, rightCollapsed,
+      toolbarCollapsed, quickAddCollapsed, formHeight, taskMode, focusedTeamId,
       setWindowPos, setWindowSize, setIsMaximized, setViewMode,
       setTeamViewOverrides, setSidebarWidth, setLegendPanelCollapsed,
       setGroupBy, setCollapsedTeamIds, setTeamPositions,
+      setLeftCollapsed, setRightCollapsed,
+      setToolbarCollapsed, setQuickAddCollapsed, setFormHeight, setTaskMode, setFocusedTeamId,
     },
   });
+
+  // ── Wire view state into workspace collector/applier ──
+  useEffect(() => {
+    setExtraStateCollector(() => collectViewState());
+    setExtraStateApplier((state) => applyViewState(state));
+  }, [collectViewState, applyViewState, setExtraStateCollector, setExtraStateApplier]);
+
+  // ── Register view saver with WindowManager (for "xy" save shortcut) ──
+  const _wm = useWindowManager();
+  useEffect(() => {
+    if (!_wm || !managed) return;
+    _wm.registerViewSaver("taskStructure", saveActiveView);
+    return () => _wm.unregisterViewSaver("taskStructure");
+  }, [_wm, managed, saveActiveView]);
 
   // ── Refs ──
   const taskListRef = useRef(null);
   const teamCanvasRef = useRef(null);
   const triggerDeleteSelectedRef = useRef(null);
+  const triggerDeleteSelectedTeamsRef = useRef(null);
 
   // ── Drag hook ──
   const {
@@ -137,15 +182,49 @@ export default function TaskStructure() {
   });
 
   // ── Keyboard: "t" toggles task mode, 1/2/3 changes view mode, Escape cancels draw mode ──
-  //    Ctrl+T selects all displayed tasks, Delete triggers delete selected, Enter confirms modal
+  //    Ctrl+A selects all tasks, Ctrl+Shift+A selects all expanded teams
+  //    Delete triggers delete for selected tasks or teams, Enter confirms modal
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e) => {
+      // Only handle keyboard shortcuts on canvas tab
+      if (activeTab !== "canvas" || detailView) return;
       // Ignore if user is typing in an input/textarea
       const tag = e.target.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable) return;
 
-      // Ctrl+T  → select all displayed tasks
+      // Ctrl+Shift+A → select all expanded (visible) teams
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "a" || e.key === "A")) {
+        e.preventDefault();
+        const expandedIds = teamOrder.filter((tid) => !collapsedTeamIds.has(tid));
+        setSelectedTeamIds(new Set(expandedIds));
+        return;
+      }
+
+      // Ctrl+A → select tasks (focus-aware)
+      //   task list focused  → only displayed (filtered) tasks
+      //   canvas focused + teams selected → only tasks inside those teams
+      //   otherwise → all tasks
+      if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
+        e.preventDefault();
+        if (focusedPanel === "tasks" && displayedTaskIdsRef.current.length > 0) {
+          setSelectedTaskIds(new Set(displayedTaskIdsRef.current));
+        } else if (focusedPanel === "canvas" && selectedTeamIds.size > 0) {
+          const map = tasksByTeam();
+          const ids = [];
+          for (const tid of selectedTeamIds) {
+            const teamTasks = map[tid];
+            if (teamTasks) teamTasks.forEach((t) => ids.push(t.id));
+          }
+          setSelectedTaskIds(new Set(ids));
+        } else {
+          const allIds = Object.keys(tasks).map(Number);
+          setSelectedTaskIds(new Set(allIds));
+        }
+        return;
+      }
+
+      // Ctrl+T  → select all displayed tasks (legacy, kept for compat)
       if ((e.ctrlKey || e.metaKey) && (e.key === "t" || e.key === "T")) {
         e.preventDefault();
         const allIds = Object.keys(tasks).map(Number);
@@ -161,23 +240,27 @@ export default function TaskStructure() {
       if (e.key === "2") { e.preventDefault(); setViewMode("compact"); }
       if (e.key === "3") { e.preventDefault(); setViewMode("full"); }
       if (e.key === "Escape") {
-        if (drawTeamMode) {
+        if (focusedTeamId) {
+          e.preventDefault();
+          setFocusedTeamId(null);
+        } else if (drawTeamMode) {
           e.preventDefault();
           setDrawTeamMode(false);
         }
       }
-      // Delete key → trigger delete for selected tasks
+      // Delete key → trigger delete for selected teams first, then tasks
       if (e.key === "Delete") {
         e.preventDefault();
-        if (selectedTaskIds.size > 0) {
-          // We need to call triggerDeleteSelected from the ref
+        if (selectedTeamIds.size > 0) {
+          triggerDeleteSelectedTeamsRef.current?.();
+        } else if (selectedTaskIds.size > 0) {
           triggerDeleteSelectedRef.current?.();
         }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isOpen, drawTeamMode, editingTaskId, isCreatingTask, tasks, selectedTaskIds]);
+  }, [isOpen, activeTab, detailView, drawTeamMode, editingTaskId, isCreatingTask, tasks, selectedTaskIds, selectedTeamIds, teamOrder, collapsedTeamIds, focusedPanel, tasksByTeam, focusedTeamId]);
 
   // ── Load default view every time the window opens ──
   const prevOpenRef = useRef(false);
@@ -187,6 +270,33 @@ export default function TaskStructure() {
     }
     prevOpenRef.current = isOpen;
   }, [isOpen, loadDefaultView]);
+
+  // ── Route-based auto-open: /teams, /teams/:id, /tasks, /tasks/:id ──
+  useEffect(() => {
+    const path = location.pathname;
+    const match = path.match(/\/projects\/\d+\/(teams|tasks)(?:\/(\d+))?$/);
+    if (!match) return;
+
+    const [, section, id] = match;
+    if (!isOpen) openWindow();
+
+    if (id) {
+      setDetailView({ type: section === "teams" ? "team" : "task", id: parseInt(id) });
+    } else {
+      setActiveTab(section === "teams" ? "teams" : "tasks");
+      setDetailView(null);
+    }
+  }, [location.pathname]);
+
+  // ── Refetch canvas data when returning from other tabs ──
+  const prevTabRef = useRef(activeTab);
+  useEffect(() => {
+    if (activeTab === "canvas" && prevTabRef.current !== "canvas" && isOpen) {
+      fetchTasks();
+      fetchTeams();
+    }
+    prevTabRef.current = activeTab;
+  }, [activeTab, isOpen]);
 
   // ── Pipeline: idea → task (listen for drops from IdeaBin) ──
   useEffect(() => {
@@ -314,13 +424,30 @@ export default function TaskStructure() {
   // ── Derived data ──
   const tasksByTeamMap = useMemo(() => tasksByTeam(), [tasksByTeam]);
   const editingTask = editingTaskId ? tasks[editingTaskId] : null;
-  const isNarrow = windowSize.w < LAYOUT_BREAKPOINT;
+  const isNarrowRaw = windowSize.w < LAYOUT_BREAKPOINT;
+  const isNarrow = isNarrowRaw && !focusedTeamId;  // focus mode overrides narrow layout
+
+  // ── Team focus mode ──
+  // Entering focus: team fills the canvas, left sidebar + toolbar collapse.
+  // Exiting: any contradicting action auto-clears focus (but doesn't re-expand collapsed panels).
+  const enterTeamFocus = useCallback((teamId) => {
+    setFocusedTeamId(teamId);
+    setLeftCollapsed(true);
+    setToolbarCollapsed(true);
+    setSelectedTeamIds(new Set([teamId]));
+    playSound('uiClick');
+  }, []);
+
+  const exitTeamFocus = useCallback(() => {
+    setFocusedTeamId(null);
+  }, []);
 
   // ── Handlers ──
   const onCreateTask = useCallback(() => {
+    exitTeamFocus();
     setIsCreatingTask(true);
     setEditingTaskId(null);
-  }, []);
+  }, [exitTeamFocus]);
 
   const handleCreateTaskFromForm = useCallback(async (payload) => {
     const task = await createTask(payload);
@@ -345,6 +472,7 @@ export default function TaskStructure() {
   }, []);
 
   const onCreateTeam = useCallback(async (name, color) => {
+    exitTeamFocus();
     await createTeam(name, color);
     // Refetch tasks to update team assignments display
     fetchTasks();
@@ -471,6 +599,64 @@ export default function TaskStructure() {
 
   // Keep ref in sync so the keyboard handler can call it without stale closure
   useEffect(() => { triggerDeleteSelectedRef.current = triggerDeleteSelected; }, [triggerDeleteSelected]);
+
+  // ── Bulk-delete selected teams (with confirmation) ──
+  const triggerDeleteSelectedTeams = useCallback(() => {
+    const ids = [...selectedTeamIds];
+    if (ids.length === 0) return;
+
+    const teamItems = ids.map((id) => teams[id]).filter(Boolean);
+    if (teamItems.length === 0) return;
+
+    // Count affected tasks
+    const affectedTaskCount = ids.reduce((sum, tid) => sum + (tasksByTeamMap[tid]?.length || 0), 0);
+
+    setConfirmModal({
+      message: (
+        <div>
+          <p className="text-sm font-medium mb-2">
+            Delete {teamItems.length} team{teamItems.length > 1 ? 's' : ''}?
+          </p>
+          <ul className="text-xs text-gray-600 space-y-0.5 max-h-[120px] overflow-y-auto pr-1">
+            {teamItems.map((t) => {
+              const count = tasksByTeamMap[t.id]?.length || 0;
+              return (
+                <li key={t.id} className="flex items-start gap-1">
+                  <div className="w-2 h-2 rounded-full mt-0.5 flex-shrink-0" style={{ backgroundColor: t.color || '#6366f1' }} />
+                  <span className="font-semibold" style={{ color: t.color || '#6366f1' }}>{t.name || '(unnamed)'}</span>
+                  {count > 0 && <span className="text-gray-400 ml-1">({count} task{count > 1 ? 's' : ''})</span>}
+                </li>
+              );
+            })}
+          </ul>
+          {affectedTaskCount > 0 && (
+            <p className="text-[10px] text-gray-500 mt-2 border-t border-gray-100 pt-1.5">
+              {affectedTaskCount} task{affectedTaskCount > 1 ? 's' : ''} will become unassigned (not deleted).
+            </p>
+          )}
+        </div>
+      ),
+      confirmLabel: `Delete${teamItems.length > 1 ? ` (${teamItems.length})` : ''}`,
+      confirmColor: 'bg-red-500 hover:bg-red-600',
+      onConfirm: async () => {
+        setConfirmModal(null);
+        try {
+          for (const tid of ids) {
+            await deleteTeam(tid);
+          }
+          setSelectedTeamIds(new Set());
+          // Refetch tasks since they become unassigned
+          fetchTasks();
+        } catch (e) {
+          console.error('Bulk delete teams failed', e);
+        }
+      },
+      onCancel: () => setConfirmModal(null),
+    });
+  }, [selectedTeamIds, teams, tasksByTeamMap, deleteTeam, fetchTasks]);
+
+  // Keep ref in sync
+  useEffect(() => { triggerDeleteSelectedTeamsRef.current = triggerDeleteSelectedTeams; }, [triggerDeleteSelectedTeams]);
 
   const onRenameTeam = useCallback(async (teamId, newName) => {
     await updateTeamApi(teamId, { name: newName });
@@ -689,8 +875,8 @@ export default function TaskStructure() {
 
   return (
     <>
-      {/* ── COLLAPSED: Floating icon ── */}
-      {!isOpen && (
+      {/* ── COLLAPSED: Floating icon (hidden when managed) ── */}
+      {!isOpen && !managed && (
         <div
           ref={iconRef}
           onMouseDown={handleIconDrag}
@@ -743,6 +929,12 @@ export default function TaskStructure() {
             isMaximized={isMaximized}
             minimizeWindow={minimizeWindow}
             activeTeamColor="#6366f1"
+            toolbarCollapsed={toolbarCollapsed}
+            toggleToolbar={() => { setToolbarCollapsed(v => { if (v) exitTeamFocus(); return !v; }); playSound('uiClick'); }}
+            activeTab={activeTab}
+            setActiveTab={(tab) => { exitTeamFocus(); setActiveTab(tab); setDetailView(null); }}
+            detailView={detailView}
+            onBackFromDetail={() => setDetailView(null)}
             groupBy={groupBy}
             setGroupBy={setGroupBy}
             teams={teams}
@@ -763,8 +955,31 @@ export default function TaskStructure() {
             setEditingViewName={setEditingViewName}
           />
 
+          {/* ── Content: detail view, tab content, or canvas ── */}
+          {detailView ? (
+            detailView.type === "task" ? (
+              <TaskDetailPanel
+                taskId={detailView.id}
+                onViewTeamDetail={(id) => setDetailView({ type: "team", id })}
+              />
+            ) : (
+              <TeamDetailPanel
+                teamId={detailView.id}
+                onViewTaskDetail={(id) => setDetailView({ type: "task", id })}
+              />
+            )
+          ) : activeTab === "tasks" ? (
+            <TasksTabContent
+              onViewTaskDetail={(id) => setDetailView({ type: "task", id })}
+            />
+          ) : activeTab === "teams" ? (
+            <TeamsTabContent
+              onViewTeamDetail={(id) => setDetailView({ type: "team", id })}
+            />
+          ) : (
+            <>
           {/* ── Toolbar ── */}
-          <TaskStructureToolbar
+          {!toolbarCollapsed && <TaskStructureToolbar
             onCreateTeam={onCreateTeam}
             groupBy={groupBy}
             views={views}
@@ -786,26 +1001,41 @@ export default function TaskStructure() {
             viewMode={viewMode}
             setViewMode={setViewMode}
             onFitAllTeams={fitAllTeams}
-          />
+          />}
 
           {/* ── Main content area ── */}
           <div className="flex flex-1 min-h-0 overflow-hidden">
-            {/* Left sidebar: Task form OR Task list + Legend */}
-            <div className="flex flex-col" style={{ width: isNarrow ? "100%" : sidebarWidth }}>
-              {/* Auto-assign team indicator */}
-              {autoAssignTeamId && teams[autoAssignTeamId] && (
-                <div
-                  className="px-3 py-1 text-[10px] font-medium flex items-center gap-1.5 border-b flex-shrink-0"
-                  style={{
-                    backgroundColor: `color-mix(in srgb, ${teams[autoAssignTeamId].color || "#6366f1"} 10%, white)`,
-                    borderColor: `color-mix(in srgb, ${teams[autoAssignTeamId].color || "#6366f1"} 30%, white)`,
-                    color: teams[autoAssignTeamId].color || "#6366f1",
-                  }}
+
+            {/* ── LEFT: Collapsed strip ── */}
+            {leftCollapsed && !isNarrow && (
+              <div className="flex flex-col items-center flex-shrink-0 bg-gray-50 border-r border-gray-200" style={{ width: COLLAPSED_STRIP_W }}>
+                <button
+                  onClick={() => { exitTeamFocus(); setLeftCollapsed(false); }}
+                  className="mt-2 p-1 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors"
+                  title="Expand task panel"
                 >
-                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: teams[autoAssignTeamId].color || "#6366f1" }} />
-                  <span className="truncate">Selected: {teams[autoAssignTeamId].name}</span>
-                </div>
+                  <PanelLeftOpen size={16} />
+                </button>
+              </div>
+            )}
+
+            {/* Left sidebar: Task form OR Task list + Legend */}
+            {(!leftCollapsed || isNarrow) && (
+            <div
+              className={`flex flex-col relative ${rightCollapsed && !isNarrow ? "flex-1" : ""} ${focusedPanel === "tasks" ? "ring-2 ring-indigo-300/60 ring-inset" : ""}`}
+              style={{ width: isNarrow ? "100%" : (rightCollapsed ? undefined : sidebarWidth), minWidth: rightCollapsed ? 0 : undefined }}
+              onMouseDown={() => setFocusedPanel("tasks")}
+            >  {/* Collapse task panel button — top-right corner */}
+              {!isNarrow && !rightCollapsed && (
+                <button
+                  onClick={() => setLeftCollapsed(true)}
+                  className="absolute top-1.5 right-0 z-30 bg-white border border-gray-300 rounded-l px-1 py-1 flex items-center justify-center shadow-sm hover:bg-gray-100 hover:border-gray-400 transition-colors"
+                  title="Collapse task panel"
+                >
+                  <PanelLeftClose size={12} className="text-gray-500" />
+                </button>
               )}
+              {/* Auto-assign team indicator (only for edit panel mode) — purely informational */}
               {(editingTask || isCreatingTask) ? (
                 <TaskEditPanel
                   task={editingTask}
@@ -835,12 +1065,23 @@ export default function TaskStructure() {
                     onEditTask={onEditTask}
                     onDeleteTask={onDeleteTask}
                     onCreateTask={onCreateTask}
+                    onQuickCreateTask={handleCreateTaskFromForm}
                     setConfirmModal={setConfirmModal}
                     taskListRef={taskListRef}
-                    sidebarWidth={isNarrow ? "100%" : sidebarWidth}
+                    sidebarWidth={(isNarrow || rightCollapsed) ? "100%" : sidebarWidth}
                     taskMode={taskMode}
                     viewMode={viewMode}
                     onToggleCriterion={onToggleCriterion}
+                    quickAddCollapsed={quickAddCollapsed}
+                    setQuickAddCollapsed={setQuickAddCollapsed}
+                    autoAssignTeamId={autoAssignTeamId}
+                    formHeight={formHeight}
+                    setFormHeight={setFormHeight}
+                    minFormH={MIN_FORM_H}
+                    maxFormH={MAX_FORM_H}
+                    focusedPanel={focusedPanel}
+                    setFocusedPanel={setFocusedPanel}
+                    displayedTaskIdsRef={displayedTaskIdsRef}
                   />
 
                   {/* Legend panel */}
@@ -851,17 +1092,58 @@ export default function TaskStructure() {
                 </>
               )}
             </div>
+            )}
 
-            {/* Sidebar resize handle */}
-            {!isNarrow && (
-              <div
-                onMouseDown={handleSidebarResize}
-                className="w-1 cursor-col-resize hover:bg-indigo-300 active:bg-indigo-400 transition-colors flex-shrink-0"
-              />
+            {/* Sidebar resize handle + intersection dot */}
+            {!isNarrow && !leftCollapsed && !rightCollapsed && (
+              <div className="relative flex-shrink-0" style={{ width: 6 }}>
+                {/* Corner anchor — controls both form height AND sidebar width */}
+                {!quickAddCollapsed && (
+                  <div
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const startX = e.clientX;
+                      const startY = e.clientY;
+                      const startW = sidebarWidth;
+                      const startH = formHeight;
+                      const onMove = (ev) => {
+                        setSidebarWidth(Math.max(MIN_SIDEBAR_W, Math.min(startW + (ev.clientX - startX), windowSize.w - 200)));
+                        setFormHeight(Math.min(MAX_FORM_H, Math.max(MIN_FORM_H, startH + (ev.clientY - startY))));
+                      };
+                      const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+                      document.addEventListener("mousemove", onMove);
+                      document.addEventListener("mouseup", onUp);
+                    }}
+                    className="absolute bg-gray-300 hover:bg-indigo-500 transition-colors duration-150 z-10 rounded-sm"
+                    style={{ width: 10, height: 10, left: -2, top: formHeight - 2, cursor: "nwse-resize" }}
+                    title="Drag to resize form and sidebar"
+                  />
+                )}
+                {/* Normal horizontal resize strip */}
+                <div
+                  onMouseDown={handleSidebarResize}
+                  className="w-full h-full bg-gray-200 hover:bg-indigo-400 cursor-col-resize transition-colors duration-150"
+                />
+              </div>
+            )}
+
+            {/* ── RIGHT: Collapsed strip ── */}
+            {!isNarrow && rightCollapsed && (
+              <div className="flex flex-col items-center flex-shrink-0 bg-gray-50 border-l border-gray-200" style={{ width: COLLAPSED_STRIP_W, minWidth: COLLAPSED_STRIP_W, maxWidth: COLLAPSED_STRIP_W }}>
+                <button
+                  onClick={() => setRightCollapsed(false)}
+                  className="mt-2 p-1 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors"
+                  title="Expand team canvas"
+                >
+                  <PanelRightOpen size={16} />
+                </button>
+              </div>
             )}
 
             {/* Right canvas: Team containers */}
-            {!isNarrow && (
+            {!isNarrow && !rightCollapsed && (
+              <div className={`flex-1 min-w-0 min-h-0 flex flex-col ${focusedPanel === "canvas" ? "ring-2 ring-indigo-300/60 ring-inset" : ""}`} onMouseDown={() => setFocusedPanel("canvas")}>
               <TeamCanvas
                 tasks={tasks}
                 teams={teams}
@@ -908,9 +1190,18 @@ export default function TaskStructure() {
                 teamViewOverrides={teamViewOverrides}
                 setTeamViewOverride={setTeamViewOverride}
                 onToggleCriterion={onToggleCriterion}
+                onCollapseRight={() => setRightCollapsed(true)}
+                showCollapseRight={!leftCollapsed}
+                focusedTeamId={focusedTeamId}
+                onEnterTeamFocus={enterTeamFocus}
+                onExitTeamFocus={exitTeamFocus}
+                onReorderTask={reorderTeamTasks}
               />
+              </div>
             )}
           </div>
+            </>
+          )}
 
           {/* ── Confirm modal ── */}
           <TaskConfirmModal modal={confirmModal} />
@@ -936,8 +1227,8 @@ export default function TaskStructure() {
             />
           )}
 
-          {/* ── Loading overlay ── */}
-          {(tasksLoading || teamsLoading) && (
+          {/* ── Loading overlay (canvas tab only) ── */}
+          {activeTab === "canvas" && !detailView && (tasksLoading || teamsLoading) && (
             <div className="absolute inset-0 bg-white/60 flex items-center justify-center z-30 rounded-lg">
               <div className="text-[11px] text-gray-400 animate-pulse">Loading…</div>
             </div>

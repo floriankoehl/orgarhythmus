@@ -7,18 +7,16 @@
 //
 import { useState, useMemo } from 'react';
 import {
-  DEFAULT_TASKHEIGHT_NORMAL,
-  DEFAULT_TASKHEIGHT_SMALL,
-  TEAM_COLLAPSED_HEIGHT,
-  TEAM_PHASE_ROW_HEIGHT,
-  getVisibleTasks,
-  computeMilestonePixelPositions,
+  DEFAULT_ROWHEIGHT_NORMAL as DEFAULT_TASKHEIGHT_NORMAL,
+  DEFAULT_ROWHEIGHT_SMALL as DEFAULT_TASKHEIGHT_SMALL,
+  LANE_COLLAPSED_HEIGHT as TEAM_COLLAPSED_HEIGHT,
+  LANE_PHASE_ROW_HEIGHT as TEAM_PHASE_ROW_HEIGHT,
+  getVisibleRows as getVisibleTasks,
+  computeNodePixelPositions as computeMilestonePixelPositions,
   getContrastTextColor,
-} from '../pages/dependency/layoutMath.js';
-import {
-  DEFAULT_DAYWIDTH,
+  DEFAULT_COLUMNWIDTH as DEFAULT_DAYWIDTH,
   HEADER_HEIGHT,
-} from '../pages/dependency/layoutMath.js';
+} from '../grid_board/layoutMath.js';
 import { getTaskHeight, getTaskYOffset, getTeamRowHeight } from './constants.js';
 
 // ══════════════════════════════════════════════════════════════════
@@ -464,11 +462,12 @@ export function DayGrid({ team, tasks, days, DAYWIDTH, taskDisplaySettings, team
 export function MilestoneLayer({ teamOrder, teams, milestones, taskDisplaySettings, teamDisplaySettings, teamPhasesMap, effectiveHeaderH, TEAMWIDTH, TASKWIDTH, DAYWIDTH, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL }) {
   const positioned = useMemo(() => {
     return computeMilestonePixelPositions({
-      teamOrder, teams, milestones, taskDisplaySettings,
-      teamDisplaySettings,
-      teamPhasesMap, effectiveHeaderH,
-      TEAMWIDTH, TASKWIDTH, DAYWIDTH,
-      TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL,
+      laneOrder: teamOrder, lanes: teams, nodes: milestones,
+      rowDisplaySettings: taskDisplaySettings,
+      laneDisplaySettings: teamDisplaySettings,
+      lanePhasesMap: teamPhasesMap, effectiveHeaderH,
+      LANEWIDTH: TEAMWIDTH, ROWLABELWIDTH: TASKWIDTH, COLUMNWIDTH: DAYWIDTH,
+      ROWHEIGHT_SMALL: TASKHEIGHT_SMALL, ROWHEIGHT_NORMAL: TASKHEIGHT_NORMAL,
     }).map((m) => ({ ...m, y: m.y + 2, h: m.h - 4 }));
   }, [teamOrder, teams, taskDisplaySettings, teamDisplaySettings, milestones, effectiveHeaderH, teamPhasesMap, TEAMWIDTH, TASKWIDTH, DAYWIDTH, TASKHEIGHT_SMALL, TASKHEIGHT_NORMAL]);
 

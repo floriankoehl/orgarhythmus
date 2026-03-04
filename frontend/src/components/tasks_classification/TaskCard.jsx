@@ -31,6 +31,9 @@ export default function TaskCard({
   insideTeam = false,      // when true, hide team badge (already visible in container header)
   viewMode = "compact",    // "titles" | "compact" | "full"
   onToggleCriterion,       // (taskId, criterionId) => void
+  displayedTaskIds = null, // ordered array of task IDs for shift-click range select
+  lastClickedTaskRef = null, // ref to last-clicked task ID for shift anchor
+  onIntraTeamDrag = null,  // (e, taskId, index) => void — intra-team reorder
 }) {
   const [showActions, setShowActions] = useState(false);
   const moreRef = useRef(null);
@@ -63,6 +66,28 @@ export default function TaskCard({
   const criteriaDone = criteria.filter((c) => c.done).length;
 
   const handleClick = (e) => {
+    if (e.shiftKey && displayedTaskIds && lastClickedTaskRef) {
+      // Range select: select all tasks between anchor and current
+      const anchorId = lastClickedTaskRef.current;
+      const anchorIdx = anchorId != null ? displayedTaskIds.indexOf(anchorId) : -1;
+      const currentIdx = displayedTaskIds.indexOf(task.id);
+      if (anchorIdx !== -1 && currentIdx !== -1) {
+        const start = Math.min(anchorIdx, currentIdx);
+        const end = Math.max(anchorIdx, currentIdx);
+        const rangeIds = displayedTaskIds.slice(start, end + 1);
+        setSelectedTaskIds((prev) => {
+          const next = new Set(prev);
+          rangeIds.forEach((id) => next.add(id));
+          return next;
+        });
+      } else {
+        // No anchor yet — treat as normal click
+        setSelectedTaskIds(new Set([task.id]));
+        if (lastClickedTaskRef) lastClickedTaskRef.current = task.id;
+      }
+      return;
+    }
+
     if (e.ctrlKey || e.metaKey) {
       setSelectedTaskIds((prev) => {
         const next = new Set(prev);
@@ -71,8 +96,13 @@ export default function TaskCard({
         return next;
       });
     } else {
-      setSelectedTaskIds(new Set([task.id]));
+      // Toggle: deselect if already sole selection, otherwise select
+      setSelectedTaskIds((prev) =>
+        prev.size === 1 && prev.has(task.id) ? new Set() : new Set([task.id])
+      );
     }
+    // Update anchor for shift-select
+    if (lastClickedTaskRef) lastClickedTaskRef.current = task.id;
   };
 
   const handleDelete = () => {
@@ -105,12 +135,13 @@ export default function TaskCard({
 
       <div
         onClick={handleClick}
+        onDoubleClick={(e) => { e.stopPropagation(); onEditTask?.(task.id); }}
         className={`group relative flex items-start gap-1.5 px-2 py-1.5 rounded-md cursor-pointer transition-all text-[11px]
           ${isSelected
             ? "bg-indigo-50 border border-indigo-300 shadow-sm"
             : insideTeam
               ? "bg-white border border-gray-200 shadow-xs hover:border-gray-300"
-              : "hover:bg-gray-50 border border-transparent"
+              : "bg-white hover:bg-gray-100 border border-transparent"
           }`}
         style={{
           borderLeftWidth: teamColor ? 3 : undefined,
@@ -122,7 +153,12 @@ export default function TaskCard({
           onMouseDown={(e) => {
             if (!taskMode) return;
             e.stopPropagation();
-            handleTaskDrag(e, task, index, source);
+            // Inside a team: start intra-team reorder (can escalate to cross-panel on leave)
+            if (insideTeam && onIntraTeamDrag) {
+              onIntraTeamDrag(e, task.id, index);
+            } else {
+              handleTaskDrag(e, task, index, source);
+            }
           }}
           className={`mt-0.5 flex-shrink-0 rounded p-0.5 transition-colors ${
             taskMode

@@ -1,6 +1,7 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { Plus, ChevronDown, ChevronRight, Search, Filter } from "lucide-react";
 import TaskCard from "./TaskCard";
+import TaskQuickAdd from "./TaskQuickAdd";
 
 /**
  * Left panel — scrollable task list with search/filter and the unassigned pseudo-group.
@@ -23,15 +24,27 @@ export default function TaskList({
   onEditTask,
   onDeleteTask,
   onCreateTask,
+  onQuickCreateTask,
   setConfirmModal,
   taskListRef,
   sidebarWidth,
   taskMode = false,
   viewMode = "compact",
   onToggleCriterion,
+  quickAddCollapsed,
+  setQuickAddCollapsed,
+  autoAssignTeamId,
+  formHeight,
+  setFormHeight,
+  minFormH,
+  maxFormH,
+  focusedPanel,
+  setFocusedPanel,
+  displayedTaskIdsRef,
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAllTasks, setShowAllTasks] = useState(false);
+  const lastClickedTaskRef = useRef(null);
 
   // Unassigned tasks (in display order)
   const unassignedTasks = taskOrder
@@ -45,15 +58,49 @@ export default function TaskList({
   );
 
   const displayTasks = showAllTasks ? allTasks : unassignedTasks;
+  const displayedTaskIds = useMemo(() => displayTasks.map((t) => t.id), [displayTasks]);
+
+  // Keep parent ref in sync so Ctrl+A in TaskStructure can read displayed IDs
+  useEffect(() => {
+    if (displayedTaskIdsRef) displayedTaskIdsRef.current = displayedTaskIds;
+  }, [displayedTaskIds, displayedTaskIdsRef]);
 
   return (
     <div
       className="flex flex-col h-full border-r border-gray-200 bg-white"
       style={{ width: sidebarWidth, minWidth: 200 }}
     >
-      {/* Header */}
+      {/* Quick-add form (always visible, collapsible) — at top so intersection dot aligns */}
+      <TaskQuickAdd
+        onCreate={onQuickCreateTask}
+        defaultTeamId={autoAssignTeamId}
+        teams={teams}
+        collapsed={quickAddCollapsed}
+        setCollapsed={setQuickAddCollapsed}
+        formHeight={formHeight}
+      />
+
+      {/* ── Vertical splitter between form and task list ── */}
+      {!quickAddCollapsed && (
+        <div
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const startY = e.clientY;
+            const startH = formHeight;
+            const onMove = (ev) => {
+              setFormHeight(Math.min(maxFormH, Math.max(minFormH, startH + (ev.clientY - startY))));
+            };
+            const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); };
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+          }}
+          className="h-1.5 flex-shrink-0 bg-gray-200 hover:bg-indigo-400 cursor-row-resize transition-colors duration-150"
+        />
+      )}
+
+      {/* Header — Unassigned / All toggle */}
       <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-100 flex-shrink-0">
-        {/* Toggle all / unassigned */}
         <div className="flex items-center rounded-full bg-gray-100 p-0.5">
           <button
             onClick={() => setShowAllTasks(false)}
@@ -86,7 +133,7 @@ export default function TaskList({
       {/* Task list */}
       <div
         ref={taskListRef}
-        className={`flex-1 overflow-y-auto px-1 py-0.5 ${hoverUnassigned ? "bg-indigo-50/40" : ""}`}
+        className={`flex-1 overflow-y-auto px-1 py-0.5 bg-gray-50/80 ${hoverUnassigned ? "bg-indigo-50/40" : ""}`}
       >
         {displayTasks.length === 0 ? (
           <div className="text-center text-[10px] text-gray-400 py-6 italic">
@@ -113,18 +160,20 @@ export default function TaskList({
               taskMode={taskMode}
               viewMode={viewMode}
               onToggleCriterion={onToggleCriterion}
+              displayedTaskIds={displayedTaskIds}
+              lastClickedTaskRef={lastClickedTaskRef}
             />
           ))
         )}
       </div>
 
-      {/* Quick-add at bottom */}
+      {/* Open full form (for editing) */}
       <div className="px-2 py-1.5 border-t border-gray-100 flex-shrink-0">
         <button
           onClick={onCreateTask}
           className="w-full flex items-center justify-center gap-1 text-[10px] py-1 rounded border border-dashed border-gray-300 text-gray-400 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50/50 transition-colors"
         >
-          <Plus size={10} /> New Task
+          <Plus size={10} /> Full Task Form
         </button>
       </div>
     </div>

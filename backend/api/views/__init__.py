@@ -163,6 +163,7 @@ from .ideas import (
     toggle_archive_idea,
     batch_set_archive,
     get_archived_ideas,
+    delete_all_archived_ideas,
     update_category_filter_config,
     merge_ideas,
 )
@@ -256,4 +257,18 @@ from .category_transfer import (
 from .prompt_settings import (
     get_prompt_settings,
     update_prompt_settings,
+)
+
+from .workspaces import (
+    list_workspaces,
+    create_workspace,
+    get_workspace,
+    update_workspace,
+    delete_workspace,
+    set_default_workspace,
+    get_default_workspace,
+)
+
+from .ai_generate import (
+    ai_generate,
 )

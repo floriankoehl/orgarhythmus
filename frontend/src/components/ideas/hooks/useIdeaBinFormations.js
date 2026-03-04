@@ -54,6 +54,7 @@ export default function useIdeaBinFormations(deps) {
   } = deps;
 
   const [formations, setFormations] = useState([]);
+  const [activeFormationId, setActiveFormationId] = useState(null);
   const [showFormationPanel, setShowFormationPanel] = useState(false);
   const [formationName, setFormationName] = useState("");
   const [editingFormationId, setEditingFormationId] = useState(null);
@@ -85,6 +86,7 @@ export default function useIdeaBinFormations(deps) {
       try {
         const fData = await loadDefaultFormationApi(ctxId);
         if (fData?.formation?.state) {
+          setActiveFormationId(fData.formation.id ?? null);
           await applyFormationState(fData.formation.state);
         }
       } catch (err) { /* no default formation — that's fine */ }
@@ -229,6 +231,7 @@ export default function useIdeaBinFormations(deps) {
   const load_formation = useCallback(async (formationId) => {
     try {
       const data = await loadFormationApi(formationId);
+      setActiveFormationId(formationId);
       await applyFormationState(data.state);
     } catch (err) { console.error("Load formation failed", err); }
   }, [applyFormationState]);
@@ -283,6 +286,7 @@ export default function useIdeaBinFormations(deps) {
           try {
             const fData = await loadDefaultFormationApi(ctx.id);
             if (fData?.formation?.state) {
+              setActiveFormationId(fData.formation.id ?? null);
               await applyFormationState(fData.formation.state);
             }
           } catch (err) { console.error("Load default formation failed", err); }
@@ -290,6 +294,12 @@ export default function useIdeaBinFormations(deps) {
       } catch (err) { console.error("Load default context failed", err); }
     })();
   }, []);
+
+  /** Parameterless save — updates the currently active (last-loaded) formation. */
+  const saveActiveFormation = useCallback(async () => {
+    if (!activeFormationId) return;
+    await update_formation_state(activeFormationId);
+  }, [activeFormationId, update_formation_state]);
 
   return {
     formations, setFormations,
@@ -308,5 +318,7 @@ export default function useIdeaBinFormations(deps) {
     delete_formation,
     toggle_default_formation,
     toggle_default_context,
+    activeFormationId,
+    saveActiveFormation,
   };
 }

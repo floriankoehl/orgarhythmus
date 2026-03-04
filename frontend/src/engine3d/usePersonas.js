@@ -8,10 +8,10 @@ import {
   delete_protopersona,
 } from '../api/dependencies_api.js';
 import {
-  DEFAULT_TASKHEIGHT_NORMAL,
-  DEFAULT_TASKHEIGHT_SMALL,
-} from '../pages/dependency/layoutMath.js';
-import { computeMilestonePixelPositions } from '../pages/dependency/layoutMath.js';
+  DEFAULT_ROWHEIGHT_NORMAL as DEFAULT_TASKHEIGHT_NORMAL,
+  DEFAULT_ROWHEIGHT_SMALL as DEFAULT_TASKHEIGHT_SMALL,
+  computeNodePixelPositions as computeMilestonePixelPositions,
+} from '../grid_board/layoutMath.js';
 import {
   PERSONA_SIZE,
   PERSONA_DRAG_LIFT,
@@ -117,13 +117,13 @@ export function usePersonas({
     const oX = boardDims.offsetX;
     const oY = boardDims.offsetY;
     const positioned = computeMilestonePixelPositions({
-      teamOrder, teams, milestones,
-      taskDisplaySettings: taskDisplaySettings3D,
-      teamDisplaySettings,
-      teamPhasesMap, effectiveHeaderH,
-      TEAMWIDTH, TASKWIDTH, DAYWIDTH,
-      TASKHEIGHT_SMALL: DEFAULT_TASKHEIGHT_SMALL,
-      TASKHEIGHT_NORMAL: DEFAULT_TASKHEIGHT_NORMAL,
+      laneOrder: teamOrder, lanes: teams, nodes: milestones,
+      rowDisplaySettings: taskDisplaySettings3D,
+      laneDisplaySettings: teamDisplaySettings,
+      lanePhasesMap: teamPhasesMap, effectiveHeaderH,
+      LANEWIDTH: TEAMWIDTH, ROWLABELWIDTH: TASKWIDTH, COLUMNWIDTH: DAYWIDTH,
+      ROWHEIGHT_SMALL: DEFAULT_TASKHEIGHT_SMALL,
+      ROWHEIGHT_NORMAL: DEFAULT_TASKHEIGHT_NORMAL,
     });
     return positioned.map((m) => {
       const slotW = Math.max((m.duration || 1) * DAYWIDTH, PERSONA_SIZE + 10);

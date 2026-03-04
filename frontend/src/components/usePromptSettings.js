@@ -2,10 +2,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetchPromptSettings, updatePromptSettings } from '../api/promptSettingsApi';
 import { fetch_project_detail } from '../api/org_API';
+import { ALL_SCENARIOS, ALL_GROUPS, getScenario } from './shared/promptEngine';
+import { assemblePrompt } from './shared/promptEngine';
 
 /**
  * Expected-JSON format strings for each scenario.
- * These match the example snippets shown in the import modals.
+ * 
+ * LEGACY: These are kept for older export modals that still use buildClipboardText().
+ * New code should use the prompt engine's assemblePrompt() instead.
  */
 const EXPECTED_JSON_FORMATS = {
   ideabin_single_category: `{
@@ -131,6 +135,18 @@ export const SCENARIO_GROUPS = [
     scenarios: ['dep_selected_tasks'],
   },
 ];
+
+// ── New prompt-engine labels + groups (used by Profile.jsx for settings editing) ──
+export const ENGINE_SCENARIO_LABELS = Object.fromEntries(
+  ALL_SCENARIOS.map(s => [s.id, s.label])
+);
+export const ENGINE_SCENARIO_GROUPS = ALL_GROUPS.map(groupLabel => ({
+  label: groupLabel,
+  scenarios: ALL_SCENARIOS.filter(s => s.group === groupLabel).map(s => s.id),
+}));
+
+// Re-export for convenience
+export { assemblePrompt, ALL_SCENARIOS, getScenario };
 
 /**
  * Hook to manage prompt settings per user.
@@ -261,5 +277,5 @@ export default function usePromptSettings() {
     return parts.join('\n\n');
   }, []);
 
-  return { settings, loading, error, update, buildClipboardText };
+  return { settings, loading, error, update, buildClipboardText, settingsRef, projectDescRef };
 }

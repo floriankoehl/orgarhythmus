@@ -7,12 +7,75 @@ from ..models import PromptSettings
 
 
 VALID_SCENARIO_KEYS = {
+    # ── Legacy keys (kept for backwards compatibility) ──
     "ideabin_single_category",
     "ideabin_multi_categories",
     "task_single_team",
     "task_multi_teams",
     "task_single_task",
     "dep_selected_tasks",
+    # Legacy v1 prompt-engine keys (superseded by grid v2)
+    "ideas_add_blank",
+    "ideas_add_with_context",
+    "ideas_add_to_categories",
+    "ideas_add_with_new_teams",
+    "ideas_overwork_selected",
+    "ideas_overwork_with_teams",
+    "ideas_overwork_assign_legends",
+    "ideas_overwork_all",
+    "categories_add_blank",
+    "categories_add_with_ideas",
+    "categories_overwork_structure",
+    "ideas_reassign_existing",
+    "ideas_reassign_with_new",
+    "combined_overwork_all",
+    "combined_add_ideas_only",
+    "combined_add_ideas_and_categories",
+    "legends_add_new",
+    "filters_add_for_existing",
+    "filters_add_with_legends",
+    "filters_overwork_all",
+    "context_add_to_existing",
+    "context_overwork_all",
+    "ideas_deduplicate",
+    "ideas_auto_categorize",
+    "ideas_gap_analysis",
+
+    # ── IdeaBin prompt-engine v2 (grid layout) ──
+    # Ideas — Add
+    "ideas_add",
+    "ideas_add_for_teams",
+    # Ideas — Finetune
+    "ideas_finetune_selected",
+    "ideas_finetune_all",
+    # Assign (Ideas ↔ Categories)
+    "assign_unassigned_existing",
+    "assign_unassigned_new",
+    "assign_selected_existing",
+    "assign_selected_new",
+    # Categories — Add
+    "categories_add",
+    "categories_add_for_ideas",
+    # Categories — Finetune
+    "categories_finetune_selected",
+    "categories_finetune_all",
+    # Legends & Filters — Add
+    "legends_add",
+    "filters_add",
+    # Legends & Filters — Finetune
+    "legends_finetune_all",
+    "legends_finetune_single",
+    "legends_overwork_all",
+    # Legends & Filters — Assign
+    "legends_assign_one_selected",
+    "legends_assign_one_all",
+    "legends_assign_all_selected",
+    "legends_assign_all_all",
+    # Specials
+    "special_context_add",
+    "special_context_suggestions",
+    "special_gap_analysis",
+    "special_dedup_merge",
 }
 
 

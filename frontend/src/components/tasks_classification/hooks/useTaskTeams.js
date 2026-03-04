@@ -89,9 +89,18 @@ export default function useTaskTeams({ projectId, selectedTeamIds, tasksRef }) {
       const team = res.team || res;
       setTeams((prev) => ({ ...prev, [team.id]: team }));
       setTeamOrder((prev) => [...prev, team.id]);
-      const x = 20 + Object.keys(teamPositions).length * 260;
+
+      // Place new team in the visible area using a wrapping grid layout
+      const TEAM_W = 240, TEAM_H = 300, GAP = 20, VISIBLE_W = 900;
+      const cols = Math.max(1, Math.floor((VISIBLE_W - GAP) / (TEAM_W + GAP)));
+      const idx = Object.keys(teamPositions).length;
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      const x = GAP + col * (TEAM_W + GAP);
+      const y = GAP + row * (TEAM_H + GAP);
+
       setTeamPositions((prev) => {
-        const next = { ...prev, [team.id]: { x, y: 20, w: 240, h: 300, z: nextZ.current++ } };
+        const next = { ...prev, [team.id]: { x, y, w: TEAM_W, h: TEAM_H, z: nextZ.current++ } };
         saveCanvasState(projectId, next);
         return next;
       });

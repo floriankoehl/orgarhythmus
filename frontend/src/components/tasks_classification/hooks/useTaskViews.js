@@ -25,13 +25,18 @@ export default function useTaskViews({ projectId, deps }) {
     windowPos, windowSize, isMaximized, viewMode, teamViewOverrides,
     sidebarWidth, legendPanelCollapsed, groupBy,
     collapsedTeamIds, teamPositions,
+    leftCollapsed, rightCollapsed,
+    toolbarCollapsed, quickAddCollapsed, formHeight, taskMode, focusedTeamId,
     // write
     setWindowPos, setWindowSize, setIsMaximized, setViewMode,
     setTeamViewOverrides, setSidebarWidth, setLegendPanelCollapsed,
     setGroupBy, setCollapsedTeamIds, setTeamPositions,
+    setLeftCollapsed, setRightCollapsed,
+    setToolbarCollapsed, setQuickAddCollapsed, setFormHeight, setTaskMode, setFocusedTeamId,
   } = deps || {};
 
   const [views, setViews] = useState([]);
+  const [activeViewId, setActiveViewId] = useState(null);
   const [showViewPanel, setShowViewPanel] = useState(false);
   const [viewName, setViewName] = useState("");
   const [editingViewId, setEditingViewId] = useState(null);
@@ -66,11 +71,19 @@ export default function useTaskViews({ projectId, deps }) {
       group_by: groupBy,
       collapsed_team_ids: collapsedTeamIds ? [...collapsedTeamIds] : [],
       team_positions: teamPositions || {},
+      left_collapsed: !!leftCollapsed,
+      right_collapsed: !!rightCollapsed,
+      toolbar_collapsed: !!toolbarCollapsed,
+      quick_add_collapsed: !!quickAddCollapsed,
+      form_height: formHeight,
+      task_mode: !!taskMode,
+      focused_team_id: focusedTeamId || null,
     };
   }, [
     windowPos, windowSize, isMaximized, viewMode, teamViewOverrides,
     sidebarWidth, legendPanelCollapsed, groupBy,
-    collapsedTeamIds, teamPositions,
+    collapsedTeamIds, teamPositions, leftCollapsed, rightCollapsed,
+    toolbarCollapsed, quickAddCollapsed, formHeight, taskMode, focusedTeamId,
   ]);
 
   // ── Apply a saved state ──
@@ -86,11 +99,20 @@ export default function useTaskViews({ projectId, deps }) {
     if (state.group_by && setGroupBy) setGroupBy(state.group_by);
     if (state.collapsed_team_ids && setCollapsedTeamIds) setCollapsedTeamIds(new Set(state.collapsed_team_ids));
     if (state.team_positions && setTeamPositions) setTeamPositions(state.team_positions);
+    if (state.left_collapsed !== undefined && setLeftCollapsed) setLeftCollapsed(state.left_collapsed);
+    if (state.right_collapsed !== undefined && setRightCollapsed) setRightCollapsed(state.right_collapsed);
+    if (state.toolbar_collapsed !== undefined && setToolbarCollapsed) setToolbarCollapsed(state.toolbar_collapsed);
+    if (state.quick_add_collapsed !== undefined && setQuickAddCollapsed) setQuickAddCollapsed(state.quick_add_collapsed);
+    if (state.form_height && setFormHeight) setFormHeight(state.form_height);
+    if (state.task_mode !== undefined && setTaskMode) setTaskMode(state.task_mode);
+    if (state.focused_team_id !== undefined && setFocusedTeamId) setFocusedTeamId(state.focused_team_id || null);
     playSound("ideaOpen");
   }, [
     setWindowPos, setWindowSize, setIsMaximized, setViewMode,
     setTeamViewOverrides, setSidebarWidth, setLegendPanelCollapsed,
     setGroupBy, setCollapsedTeamIds, setTeamPositions,
+    setLeftCollapsed, setRightCollapsed,
+    setToolbarCollapsed, setQuickAddCollapsed, setFormHeight, setTaskMode, setFocusedTeamId,
   ]);
 
   // ── Save new view ──
@@ -126,7 +148,10 @@ export default function useTaskViews({ projectId, deps }) {
   const loadView = useCallback(async (viewId) => {
     try {
       const data = await getTsViewApi(viewId);
-      if (data?.state) applyViewState(data.state);
+      if (data?.state) {
+        setActiveViewId(viewId);
+        applyViewState(data.state);
+      }
     } catch (err) { console.error("Load TS view failed", err); }
   }, [applyViewState]);
 
@@ -159,6 +184,7 @@ export default function useTaskViews({ projectId, deps }) {
     try {
       const data = await getDefaultTsViewApi(projectId);
       if (data?.view?.state) {
+        setActiveViewId(data.view.id ?? null);
         applyViewState(data.view.state);
       }
     } catch (err) { /* no default — that's fine */ }
@@ -170,8 +196,15 @@ export default function useTaskViews({ projectId, deps }) {
     loadDefaultView();
   }, [loadDefaultView]);
 
+  /** Parameterless save — updates the currently active (last-loaded) view. */
+  const saveActiveView = useCallback(async () => {
+    if (!activeViewId) return;
+    await updateViewState(activeViewId);
+  }, [activeViewId, updateViewState]);
+
   return {
     views, setViews,
+    activeViewId, setActiveViewId,
     showViewPanel, setShowViewPanel,
     viewName, setViewName,
     editingViewId, setEditingViewId,
@@ -187,6 +220,7 @@ export default function useTaskViews({ projectId, deps }) {
     deleteView,
     toggleDefault,
     loadDefaultView,
+    saveActiveView,
     groupBy, setGroupBy: deps?.setGroupBy,
   };
 }

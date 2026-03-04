@@ -1,9 +1,9 @@
 import { useState, useRef } from "react";
-import { Layers, ListOrdered, Globe, Lock, Merge, Download, Upload } from "lucide-react";
+import { Layers, ListOrdered, Globe, Lock, Merge, Download, Upload, Sparkles, Loader } from "lucide-react";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
-import { fetchArchivedIdeasApi } from "./api/ideaApi";
+import { fetchArchivedIdeasApi, deleteAllArchivedIdeasApi } from "./api/ideaApi";
 
 // ─── Toolbar strip between title bar and content area ───
 // Houses mode toggles and view switcher — sits in a thin bar.
@@ -42,6 +42,9 @@ export default function IdeaBinToolbar({
   // multi-category export
   selectedCategoryCount,
   onExportSelectedCategories,
+  // AI generate
+  onAiGenerate,
+  aiGenerating,
 }) {
   const ctxColor = activeContext?.color;
   const importInputRef = useRef(null);
@@ -55,6 +58,7 @@ export default function IdeaBinToolbar({
   const [archivedIdeas, setArchivedIdeas] = useState([]);
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null); // idea id pending permanent delete
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
 
   const openArchive = async () => {
     setShowArchive(true);
@@ -76,6 +80,13 @@ export default function IdeaBinToolbar({
     await delete_meta_idea(ideaId);
     setConfirmDeleteId(null);
     try { setArchivedIdeas(await fetchArchivedIdeasApi()); } catch {}
+  };
+
+  const deleteAllArchived = async () => {
+    await deleteAllArchivedIdeasApi();
+    setArchivedIdeas([]);
+    setConfirmDeleteAll(false);
+    fetch_all_ideas();
   };
 
   return (
@@ -215,7 +226,36 @@ export default function IdeaBinToolbar({
                 ) : archivedIdeas.length === 0 ? (
                   <p className="text-[10px] text-gray-400 py-2 text-center">No archived ideas</p>
                 ) : (
-                  archivedIdeas.map(idea => (
+                  <>
+                  {/* Delete All bar */}
+                  <div className="flex items-center justify-between mb-1.5 pb-1.5 border-b border-gray-100">
+                    {confirmDeleteAll ? (
+                      <div className="flex items-center gap-1 w-full">
+                        <span className="text-[9px] text-red-600 flex-1">Delete all {archivedIdeas.length} archived ideas?</span>
+                        <button
+                          onClick={deleteAllArchived}
+                          className="text-[9px] px-1.5 py-0.5 bg-red-500 text-white rounded hover:bg-red-600"
+                        >
+                          Yes, delete all
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteAll(false)}
+                          className="text-[9px] px-1.5 py-0.5 bg-gray-200 rounded hover:bg-gray-300"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeleteAll(true)}
+                        className="text-[9px] px-1.5 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded hover:bg-red-100 flex items-center gap-0.5 ml-auto"
+                      >
+                        <DeleteForeverIcon style={{ fontSize: 11 }} />
+                        Delete All ({archivedIdeas.length})
+                      </button>
+                    )}
+                  </div>
+                  {archivedIdeas.map(idea => (
                     <div key={idea.id} className="flex justify-between items-center p-1 rounded hover:bg-gray-50 mb-0.5 text-[10px] gap-1">
                       <span className="font-medium truncate flex-1" title={idea.title}>
                         {idea.title}
@@ -255,7 +295,8 @@ export default function IdeaBinToolbar({
                         )}
                       </div>
                     </div>
-                  ))
+                  ))}
+                  </>
                 )}
               </div>
             </>
@@ -277,6 +318,22 @@ export default function IdeaBinToolbar({
 
       {/* spacer */}
       <div className="flex-1" />
+
+      {/* ── AI Generate button ── */}
+      {viewMode === "ideas" && (
+        <button
+          onClick={onAiGenerate}
+          disabled={aiGenerating}
+          className="text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 border flex items-center gap-0.5 transition-colors bg-violet-50 text-violet-700 border-violet-300 hover:bg-violet-100 disabled:opacity-50 disabled:cursor-wait"
+          title="Generate new ideas with AI (uses existing context)"
+        >
+          {aiGenerating
+            ? <Loader size={10} className="animate-spin" />
+            : <Sparkles size={10} />
+          }
+          {aiGenerating ? "Generating…" : "Generate"}
+        </button>
+      )}
 
       {/* ── Export selected categories ── */}
       {selectedCategoryCount >= 2 && (

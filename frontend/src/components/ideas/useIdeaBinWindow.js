@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { playSound } from "../../assets/sound_registry";
 import { getNextZIndex } from "../shared/windowZIndex";
+import { useWindowManager } from "../shared/WindowManager";
 
 // ───────────────────── Constants ─────────────────────
 const MIN_W = 290;
@@ -8,23 +9,158 @@ const MIN_H = 220;
 const DEFAULT_W = 340;
 const DEFAULT_H = 460;
 
+/** Default icon position when not managed by a WindowManager. */
+const STANDALONE_ICON = { x: 8, y: 8 };
+
 /**
  * Manages IdeaBin floating-window state:
  * position, size, icon position, maximize/minimize, and all drag/resize handlers.
+ *
+ * When inside a <WindowManager> the icon dock position comes automatically from
+ * the manager config (id = "ideaBin"). Outside a manager it falls back to STANDALONE_ICON.
  */
 export default function useIdeaBinWindow(headlineInputRef) {
+  // ── Manager integration (optional) ──
+  const manager = useWindowManager();
+  const managed = !!(manager);
+  const defaultIcon = STANDALONE_ICON;
+
   const [isOpen, setIsOpen] = useState(false);
   const [windowPos, setWindowPos] = useState({ x: 0, y: 0 });
   const [windowSize, setWindowSize] = useState({ w: window.innerWidth - 16, h: window.innerHeight - 68 });
-  const [iconPos, setIconPos] = useState(() => ({
-    x: 8,
-    y: 8,
-  }));
+  const [iconPos, setIconPos] = useState(() => ({ ...defaultIcon }));
   const [isMaximized, setIsMaximized] = useState(false);
-  const [preMaxState, setPreMaxState] = useState(null);
   const [zIndex, setZIndex] = useState(() => getNextZIndex());
   const windowRef = useRef(null);
   const iconRef = useRef(null);
+
+  // ── Extra state extensions for workspace integration ──
+  const extraCollectorRef = useRef(null);
+  const extraApplierRef = useRef(null);
+  const setExtraStateCollector = useCallback((fn) => { extraCollectorRef.current = fn; }, []);
+  const setExtraStateApplier = useCallback((fn) => { extraApplierRef.current = fn; }, []);
+
+  // Refs that stay current for the collector closure
+  const stateRef = useRef({ isOpen: false, windowPos: { x: 0, y: 0 }, windowSize: { w: 0, h: 0 }, isMaximized: false });
+  useEffect(() => {
+    stateRef.current = { isOpen, windowPos, windowSize, isMaximized };
+  }, [isOpen, windowPos, windowSize, isMaximized]);
+
+  const collectState = useCallback(() => ({
+    is_open: stateRef.current.isOpen,
+    window_pos: stateRef.current.windowPos,
+    window_size: stateRef.current.windowSize,
+    is_maximized: stateRef.current.isMaximized,
+    ...(extraCollectorRef.current?.() || {}),
+  }), []);
+
+  const applyState = useCallback((state) => {
+    if (!state) return;
+    if (state.window_pos) setWindowPos(state.window_pos);
+    if (state.window_size) setWindowSize(state.window_size);
+    if (state.is_maximized !== undefined) setIsMaximized(state.is_maximized);
+    if (state.is_open !== undefined) setIsOpen(state.is_open);
+    extraApplierRef.current?.(state);
+  }, []);
+
+  // ── Custom size tracking (persists across maximize/minimize cycles) ──
+  const customSizeRef = useRef({
+    pos: { x: 0, y: 0 },
+    size: { w: window.innerWidth - 16, h: window.innerHeight - 68 },
+  });
+
+  // Continuously track custom (non-maximized) size
+  useEffect(() => {
+    if (isOpen && !isMaximized) {
+      customSizeRef.current = { pos: { ...windowPos }, size: { ...windowSize } };
+    }
+  }, [windowPos, windowSize, isMaximized, isOpen]);
+
+  // ── Report open/close to manager ──
+  useEffect(() => {
+    if (!managed) return;
+    if (isOpen) manager.reportOpen("ideaBin");
+    else manager.reportClose("ideaBin");
+  }, [isOpen, managed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Register state collector/applier with WindowManager for workspaces ──
+  useEffect(() => {
+    if (!managed) return;
+    manager.registerCollector("ideaBin", collectState);
+    manager.registerApplier("ideaBin", applyState);
+    return () => {
+      manager.unregisterCollector("ideaBin");
+      manager.unregisterApplier("ideaBin");
+    };
+  }, [managed, collectState, applyState]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── React to manager's minimizeAll signal ──
+  const lastMinAllRef = useRef(manager?.minimizeAllVersion ?? 0);
+  useEffect(() => {
+    if (!managed) return;
+    const ver = manager.minimizeAllVersion;
+    if (ver > lastMinAllRef.current && isOpen) {
+      setIconPos({ ...defaultIcon });
+      setIsOpen(false);
+      setIsMaximized(false);
+      playSound("ideaClose");
+    }
+    lastMinAllRef.current = ver;
+  }, [managed, manager?.minimizeAllVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── React to manager's per-window requestOpen signal ──
+  const lastOpenReqRef = useRef(manager?.openRequests?.["ideaBin"] ?? 0);
+  useEffect(() => {
+    if (!managed) return;
+    const ver = manager.openRequests?.["ideaBin"] ?? 0;
+    if (ver > lastOpenReqRef.current && !isOpen) {
+      const cs = customSizeRef.current;
+      setWindowSize({ ...cs.size });
+      setWindowPos({
+        x: Math.max(4, (window.innerWidth - cs.size.w) / 2),
+        y: Math.max(4, (window.innerHeight - cs.size.h) / 2 - 30),
+      });
+      setIsOpen(true);
+      setIsMaximized(false);
+      setZIndex(getNextZIndex());
+      playSound("ideaOpen");
+      setTimeout(() => headlineInputRef.current?.focus(), 100);
+    }
+    lastOpenReqRef.current = ver;
+  }, [managed, manager?.openRequests]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── React to manager's per-window requestMinimize signal ──
+  const lastMinReqRef = useRef(manager?.minimizeRequests?.["ideaBin"] ?? 0);
+  useEffect(() => {
+    if (!managed) return;
+    const ver = manager.minimizeRequests?.["ideaBin"] ?? 0;
+    if (ver > lastMinReqRef.current && isOpen) {
+      setIconPos({ ...defaultIcon });
+      setIsOpen(false);
+      setIsMaximized(false);
+      playSound("ideaClose");
+    }
+    lastMinReqRef.current = ver;
+  }, [managed, manager?.minimizeRequests]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── React to manager's per-window requestOpenFullScreen signal ──
+  const lastFullReqRef = useRef(manager?.openFullScreenRequests?.["ideaBin"] ?? 0);
+  useEffect(() => {
+    if (!managed) return;
+    const ver = manager.openFullScreenRequests?.["ideaBin"] ?? 0;
+    if (ver > lastFullReqRef.current && !isOpen) {
+      const topY = managed ? 4 : 60;
+      const bottomReserve = managed ? 80 : 68;
+      setWindowPos({ x: 4, y: topY });
+      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - bottomReserve });
+      setIsOpen(true);
+      setIsMaximized(true);
+      setZIndex(getNextZIndex());
+      playSound("ideaOpen");
+      setTimeout(() => headlineInputRef.current?.focus(), 100);
+    }
+    lastFullReqRef.current = ver;
+  }, [managed, manager?.openFullScreenRequests]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Bring this window to front (call on mousedown / focus) */
   const bringToFront = useCallback(() => {
@@ -32,54 +168,53 @@ export default function useIdeaBinWindow(headlineInputRef) {
   }, []);
 
   const openWindow = useCallback(() => {
+    const cs = customSizeRef.current;
+    setWindowSize({ ...cs.size });
     setWindowPos({
-      x: Math.max(0, Math.min(iconPos.x - windowSize.w + 48, window.innerWidth - windowSize.w)),
-      y: Math.max(0, Math.min(iconPos.y - windowSize.h + 48, window.innerHeight - windowSize.h)),
+      x: Math.max(0, Math.min(iconPos.x - cs.size.w + 48, window.innerWidth - cs.size.w)),
+      y: Math.max(0, Math.min(iconPos.y - cs.size.h + 48, window.innerHeight - cs.size.h)),
     });
     setIsOpen(true);
+    setIsMaximized(false);
     setZIndex(getNextZIndex());
     playSound('ideaOpen');
     setTimeout(() => headlineInputRef.current?.focus(), 100);
-  }, [iconPos, windowSize, headlineInputRef]);
+  }, [iconPos, headlineInputRef]);
 
   const minimizeWindow = useCallback(() => {
-    // Collapse to top-left corner (over header)
-    setIconPos({
-      x: 8,
-      y: 8,
-    });
+    setIconPos({ ...defaultIcon });
     setIsOpen(false);
     setIsMaximized(false);
-    setPreMaxState(null);
     playSound('ideaClose');
-  }, [windowPos, windowSize]);
+  }, [defaultIcon]);
 
   const toggleMaximize = useCallback(() => {
+    const topY = managed ? 4 : 60;
+    const bottomReserve = managed ? 80 : 68;
     if (isMaximized) {
-      if (preMaxState) {
-        setWindowPos(preMaxState.pos);
-        setWindowSize(preMaxState.size);
-      }
+      const cs = customSizeRef.current;
+      setWindowPos({ ...cs.pos });
+      setWindowSize({ ...cs.size });
       setIsMaximized(false);
-      setPreMaxState(null);
     } else {
-      setPreMaxState({ pos: { ...windowPos }, size: { ...windowSize } });
-      setWindowPos({ x: 4, y: 60 });
-      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - 68 });
+      setWindowPos({ x: 4, y: topY });
+      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - bottomReserve });
       setIsMaximized(true);
     }
-  }, [isMaximized, preMaxState, windowPos, windowSize]);
+  }, [isMaximized, managed]);
 
   // ── Keep maximized window in sync with browser viewport size ──
   useEffect(() => {
     if (!isMaximized) return;
+    const topY = managed ? 4 : 60;
+    const bottomReserve = managed ? 80 : 68;
     const onResize = () => {
-      setWindowPos({ x: 4, y: 60 });
-      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - 68 });
+      setWindowPos({ x: 4, y: topY });
+      setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - bottomReserve });
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [isMaximized]);
+  }, [isMaximized, managed]);
 
   // ── Icon drag (direct DOM for performance) ──
   const handleIconDrag = useCallback((e) => {
@@ -117,13 +252,23 @@ export default function useIdeaBinWindow(headlineInputRef) {
   // ── Window title bar drag ──
   const handleWindowDrag = useCallback((e) => {
     e.preventDefault();
-    // Auto-unmaximize when dragging
+    let startPosX, startPosY;
+
     if (isMaximized) {
+      // Auto-unmaximize: restore custom size, centered on cursor
+      const cs = customSizeRef.current;
+      startPosX = Math.max(0, Math.min(e.clientX - cs.size.w / 2, window.innerWidth - cs.size.w));
+      startPosY = Math.max(0, e.clientY - 12);
+      setWindowPos({ x: startPosX, y: startPosY });
+      setWindowSize({ ...cs.size });
       setIsMaximized(false);
-      setPreMaxState(null);
+    } else {
+      startPosX = windowPos.x;
+      startPosY = windowPos.y;
     }
-    const startX = e.clientX - windowPos.x;
-    const startY = e.clientY - windowPos.y;
+
+    const startX = e.clientX - startPosX;
+    const startY = e.clientY - startPosY;
 
     const onMove = (ev) => {
       setWindowPos({
@@ -143,11 +288,7 @@ export default function useIdeaBinWindow(headlineInputRef) {
   const handleWindowResize = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
-    // Auto-unmaximize when resizing
-    if (isMaximized) {
-      setIsMaximized(false);
-      setPreMaxState(null);
-    }
+    if (isMaximized) setIsMaximized(false);
     const startX = e.clientX;
     const startY = e.clientY;
     const startW = windowSize.w;
@@ -171,11 +312,7 @@ export default function useIdeaBinWindow(headlineInputRef) {
   const handleEdgeResize = useCallback((e, edge) => {
     e.preventDefault();
     e.stopPropagation();
-    // Auto-unmaximize when resizing
-    if (isMaximized) {
-      setIsMaximized(false);
-      setPreMaxState(null);
-    }
+    if (isMaximized) setIsMaximized(false);
     const startX = e.clientX;
     const startY = e.clientY;
     const startW = windowSize.w;
@@ -226,5 +363,8 @@ export default function useIdeaBinWindow(headlineInputRef) {
     windowRef, iconRef,
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag, handleWindowResize, handleEdgeResize,
+    managed,
+    setExtraStateCollector,
+    setExtraStateApplier,
   };
 }

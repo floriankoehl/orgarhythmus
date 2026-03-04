@@ -114,6 +114,7 @@ class TaskSerializer_TeamView(serializers.ModelSerializer):
             "needs_approval",
             "team",
             "acceptance_criteria",
+            "order_index",
         ]
 
 

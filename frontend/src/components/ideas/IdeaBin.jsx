@@ -5,6 +5,7 @@ import { Lightbulb, Copy, List, X, Settings, Paintbrush, RotateCcw, ArrowDownUp,
 import { BASE_URL } from "../../config/api";
 
 import { playSound } from "../../assets/sound_registry";
+import { useWindowManager } from "../shared/WindowManager";
 import { useLegends } from "./useLegends";
 import { renderLegendTypeIcon } from "./legendTypeIcons";
 import IdeaBinConfirmModal from "./IdeaBinConfirmModal";
@@ -24,6 +25,7 @@ import IdeaBinContextView from "./IdeaBinContextView";
 import IdeaBinToolbar from "./IdeaBinToolbar";
 import IdeaBinTitleBar from "./IdeaBinTitleBar";
 import IdeaBinInputForm from "./IdeaBinInputForm";
+import IdeaBinIOPopup from "./IdeaBinIOPopup";
 import { useAuth } from "../../auth/AuthContext";
 
 // Extracted hooks
@@ -36,16 +38,19 @@ import useIdeaBinKeyboard from "./hooks/useIdeaBinKeyboard";
 import useIdeaBinContext from "./hooks/useIdeaBinContext";
 import useIdeaBinTransform from "./hooks/useIdeaBinTransform.jsx";
 import usePromptSettings from "../usePromptSettings";
+import { IDEABIN_SCENARIOS, IDEABIN_GRID, assemblePrompt } from "../shared/promptEngine";
+import { detectResponseContent } from "../shared/promptEngine/responseApplier";
+import ControlledApplyModal from "../shared/promptEngine/ControlledApplyPanel";
 
 // Extracted API helpers
 
 import { fetchContextsApi, assignCategoryToContextApi } from "./api/contextApi";
-import { mergeIdeasApi } from "./api/ideaApi";
+import { mergeIdeasApi, createIdeaApi, assignIdeaToCategoryApi, updateIdeaTitleApi, updateIdeaDescriptionApi, assignIdeaLegendTypeApi } from "./api/ideaApi";
 import { authFetch, API } from "./api/authFetch";
 import { exportIdeabinApi, importIdeabinApi, exportCategoryApi, exportMultipleCategoriesApi, importCategoryApi, insertIdeasIntoCategoryApi } from "./api/exportApi";
 import { delete_task } from "../../api/dependencies_api";
 import { deleteTeamForProject } from "../../api/org_API";
-import { createCategoryApi, syncCategoryIdeas } from "./api/categoryApi";
+import { createCategoryApi, syncCategoryIdeas, renameCategoryApi } from "./api/categoryApi";
 import { passesAllFiltersCheck } from "./ideaBinFilters";
 
 // ───────────────────── Constants ─────────────────────
@@ -63,7 +68,7 @@ export default function IdeaBin() {
   const { projectId } = useParams();   // optional — only present inside a project
   const { user } = useAuth();
   const currentUserId = user?.id;
-  const { buildClipboardText } = usePromptSettings();
+  const { buildClipboardText, settings: promptSettings, settingsRef: promptSettingsRef, projectDescRef } = usePromptSettings();
 
   // ───── Window state (extracted) ─────
   const headlineInputRef = useRef(null);
@@ -76,6 +81,8 @@ export default function IdeaBin() {
     windowRef, iconRef,
     openWindow, minimizeWindow, toggleMaximize,
     handleIconDrag, handleWindowDrag, handleWindowResize, handleEdgeResize,
+    managed,
+    setExtraStateCollector, setExtraStateApplier,
   } = useIdeaBinWindow(headlineInputRef);
 
   // ───── Selected idea(s) ─────
@@ -199,6 +206,13 @@ export default function IdeaBin() {
   const [exportScenarioKey, setExportScenarioKey] = useState('ideabin_single_category');
   const [showCategoryImport, setShowCategoryImport] = useState(false);
   const [insertIdeasTarget, setInsertIdeasTarget] = useState(null); // { id, name } or null
+
+  // ───── I/O Prompt panel ─────
+  const [showIOPanel, setShowIOPanel] = useState(false);
+
+  // ───── AI Direct Generate ─────
+  const [aiDetected, setAiDetected] = useState(null);
+  const [aiGenerating, setAiGenerating] = useState(false);
 
   // Refs
   const IdeaListRef = useRef(null);
@@ -490,6 +504,8 @@ export default function IdeaBin() {
     editingFormationId, setEditingFormationId,
     editingFormationName, setEditingFormationName,
     fetch_formations,
+    collectFormationState,
+    applyFormationState,
     save_formation,
     update_formation_state,
     rename_formation,
@@ -497,6 +513,7 @@ export default function IdeaBin() {
     delete_formation,
     toggle_default_formation,
     toggle_default_context,
+    saveActiveFormation,
   } = useIdeaBinFormations({
     windowPos, windowSize, isMaximized, viewMode, sidebarWidth,
     sidebarHeadlineOnly, showSidebarMeta, listFilter, showArchive,
@@ -513,6 +530,20 @@ export default function IdeaBin() {
     setCategories, setFormHeight,
     enterContext: enterContextRef,
   });
+
+  // ── Wire formation state into workspace collector/applier ──
+  useEffect(() => {
+    setExtraStateCollector(() => collectFormationState());
+    setExtraStateApplier((state) => applyFormationState(state));
+  }, [collectFormationState, applyFormationState, setExtraStateCollector, setExtraStateApplier]);
+
+  // ── Register view saver with WindowManager (for "xy" save shortcut) ──
+  const _wm = useWindowManager();
+  useEffect(() => {
+    if (!_wm || !managed) return;
+    _wm.registerViewSaver("ideaBin", saveActiveFormation);
+    return () => _wm.unregisterViewSaver("ideaBin");
+  }, [_wm, managed, saveActiveFormation]);
 
   // ═══════════════════════════════════════════════════════
   // ═══════════  WRAPPER CALLBACKS  ═══════════════════════
@@ -602,6 +633,131 @@ export default function IdeaBin() {
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   }, [paintType, assign_idea_legend_type, dims, setSelectedIdeaIds, setPaintType]);
+
+  // ═══════════════════════════════════════════════════════
+  // ═══════════  I/O PROMPT ENGINE CONTEXT  ═══════════════
+  // ═══════════════════════════════════════════════════════
+
+  const ioCtx = useMemo(() => ({
+    ideas,
+    categories,
+    categoryOrders,
+    unassignedOrder,
+    contextIdeaOrders,
+    dims,
+    selectedIdeaIds,
+    selectedCategoryIds,
+    legendFilters,
+    filterCombineMode,
+    stackedFilters,
+    stackCombineMode,
+    globalTypeFilter,
+    filterPresets,
+    activeContext,
+    projectTeams: projectTeams || [],
+    projectDescription: projectDescRef.current || "",
+  }), [
+    ideas, categories, categoryOrders, unassignedOrder, contextIdeaOrders, dims,
+    selectedIdeaIds, selectedCategoryIds,
+    legendFilters, filterCombineMode, stackedFilters, stackCombineMode,
+    globalTypeFilter, filterPresets, activeContext, projectTeams,
+    projectDescRef,
+  ]);
+
+  // Helper: create a legend type on any legend (bypasses active-legend restriction)
+  const createTypeOnLegend = useCallback(async (legendId, name, color, icon = null) => {
+    const res = await authFetch(`${API}/user/legends/${legendId}/types/create/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, color, ...(icon ? { icon } : {}) }),
+    });
+    return (await res.json()).type;
+  }, []);
+
+  // Context object with API functions for the response applier
+  const applyCtx = useMemo(() => ({
+    createIdea: createIdeaApi,
+    importCategories: importCategoryApi,
+    insertIdeas: insertIdeasIntoCategoryApi,
+    createCategory: createCategoryApi,
+    renameCategory: renameCategoryApi,
+    createLegend: dims.create_legend,
+    createTypeOnLegend,
+    assignIdeaToCategory: assignIdeaToCategoryApi,
+    assignCategoryToContext: assignCategoryToContextApi,
+    updateIdeaTitle: updateIdeaTitleApi,
+    updateIdeaDescription: updateIdeaDescriptionApi,
+    assignLegendType: assignIdeaLegendTypeApi,
+    setFilterPresets,
+    refreshAll: async () => {
+      await fetch_categories();
+      await fetch_all_ideas();
+      dims.fetch_legends?.(activeContext?.id);
+    },
+    activeContextId: activeContext?.id ?? null,
+    ideas,
+    categories,
+    dims,
+  }), [
+    createTypeOnLegend, dims, ideas, categories, activeContext?.id,
+    fetch_categories, fetch_all_ideas, setFilterPresets,
+  ]);
+
+  const ioPopupContent = useMemo(() => (
+    showIOPanel ? (
+      <IdeaBinIOPopup
+        scenarios={IDEABIN_SCENARIOS}
+        grid={IDEABIN_GRID}
+        ctx={ioCtx}
+        settings={promptSettingsRef.current}
+        assemblePrompt={assemblePrompt}
+        applyCtx={applyCtx}
+        onClose={() => setShowIOPanel(false)}
+        iconColor={activeContext?.color ? `color-mix(in srgb, ${activeContext.color} 65%, #333)` : "#92400e"}
+      />
+    ) : null
+  ), [showIOPanel, ioCtx, applyCtx, activeContext?.color]);
+
+  // ═══════════════════════════════════════════════════════
+  // ═══════════  AI DIRECT GENERATE  ══════════════════════
+  // ═══════════════════════════════════════════════════════
+
+  const handleAiGenerate = useCallback(async () => {
+    setAiGenerating(true);
+    try {
+      const { text } = assemblePrompt("ideas_add", { ...ioCtx, _withContext: true }, promptSettingsRef.current);
+      const res = await authFetch(`${API}/ai/generate/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: text }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Server error ${res.status}`);
+      }
+      const { content } = await res.json();
+
+      // Parse: strip markdown code fences, then JSON.parse
+      let jsonStr = (content || "").trim();
+      const fenceMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
+      if (fenceMatch) jsonStr = fenceMatch[1].trim();
+
+      let parsed;
+      try { parsed = JSON.parse(jsonStr); }
+      catch (e) { throw new Error(`AI returned invalid JSON: ${e.message}`); }
+
+      const detected = detectResponseContent(parsed);
+      if (!detected || detected.length === 0) {
+        throw new Error("No actionable content detected in AI response");
+      }
+      setAiDetected(detected);
+    } catch (e) {
+      console.error("AI generate failed:", e);
+      alert(`AI generation failed: ${e.message}`);
+    } finally {
+      setAiGenerating(false);
+    }
+  }, [ioCtx]);
 
   // ═══════════════════════════════════════════════════════
   // ═══════════  EXPORT BACKUP  ═══════════════════════════
@@ -1138,8 +1294,8 @@ export default function IdeaBin() {
           box-shadow: 0 0 8px 2px rgba(16, 185, 129, 0.4) !important;
         }
       `}</style>
-      {/* ───── COLLAPSED: Floating icon ───── */}
-      {!isOpen && (
+      {/* ───── COLLAPSED: Floating icon (hidden when managed — InventoryBar owns icons) ───── */}
+      {!isOpen && !managed && (
         <div
           ref={iconRef}
           onMouseDown={handleIconDrag}
@@ -1223,6 +1379,8 @@ export default function IdeaBin() {
             save_formation={save_formation} update_formation_state={update_formation_state}
             rename_formation={rename_formation} load_formation={load_formation}
             delete_formation={delete_formation} toggle_default_formation={toggle_default_formation}
+            showIOPanel={showIOPanel} setShowIOPanel={setShowIOPanel}
+            ioPopupContent={ioPopupContent}
           />
 
           {/* ── Toolbar ── */}
@@ -1249,7 +1407,19 @@ export default function IdeaBin() {
             onImportBackup={handleImportBackup}
             selectedCategoryCount={selectedCategoryIds.size}
             onExportSelectedCategories={handleExportSelectedCategories}
+            onAiGenerate={handleAiGenerate}
+            aiGenerating={aiGenerating}
           />
+
+          {/* ── AI Generate review modal ── */}
+          {aiDetected && (
+            <ControlledApplyModal
+              detected={aiDetected}
+              applyCtx={applyCtx}
+              onResult={(result) => { setAiDetected(null); }}
+              onClose={() => setAiDetected(null)}
+            />
+          )}
 
           {/* ── Content area ── */}
           <div className="flex-1 flex overflow-hidden relative">
