@@ -2,14 +2,10 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from "react"
 import {
   Copy, Download, Check, ChevronRight, ChevronDown,
   Plus, RefreshCw, Search as SearchIcon, AlertCircle, Sparkles,
-  ClipboardPaste, ArrowLeft, Loader, X, ArrowUpFromLine,
+  ClipboardPaste,
 } from "lucide-react";
-import {
-  detectResponseContent,
-  buildPreviewLabels,
-  hasActionableContent,
-  applyDetected,
-} from "../shared/promptEngine/responseApplier";
+import { detectResponseContent } from "../shared/promptEngine/responseApplier";
+import ControlledApplyPanel from "../shared/promptEngine/ControlledApplyPanel";
 
 /**
  * ═══════════════════════════════════════════════════════════
@@ -50,7 +46,6 @@ export default function IdeaBinIOPopup({
   const [pasteText, setPasteText] = useState("");
   const [parseError, setParseError] = useState(null);
   const [detected, setDetected] = useState(null);     // null | Array
-  const [applying, setApplying] = useState(false);
   const [applyResult, setApplyResult] = useState(null); // null | { created, errors }
   const pasteRef = useRef(null);
 
@@ -186,20 +181,6 @@ export default function IdeaBinIOPopup({
     setDetected(items);
   }, [pasteText]);
 
-  // ─── Import: apply ────────────────────────────────────
-  const handleApply = useCallback(async () => {
-    if (!detected || !applyCtx) return;
-    setApplying(true);
-    try {
-      const result = await applyDetected(detected, applyCtx);
-      setApplyResult(result);
-    } catch (e) {
-      setApplyResult({ created: [], errors: [e.message || "Unknown error"] });
-    } finally {
-      setApplying(false);
-    }
-  }, [detected, applyCtx]);
-
   // ─── Import: reset ────────────────────────────────────
   const resetImport = useCallback(() => {
     setPasteText("");
@@ -207,18 +188,6 @@ export default function IdeaBinIOPopup({
     setDetected(null);
     setApplyResult(null);
   }, []);
-
-  // ─── Preview labels ───────────────────────────────────
-  const previewLabels = useMemo(() => {
-    if (!detected) return [];
-    return buildPreviewLabels(detected);
-  }, [detected]);
-
-  const actionable = useMemo(() => {
-    if (!detected) return false;
-    return hasActionableContent(detected);
-  }, [detected]);
-
 
   // ═══════════════════════════════════════════════════════
   //  RENDER
@@ -432,65 +401,13 @@ export default function IdeaBinIOPopup({
                 </div>
               </div>
             ) : detected ? (
-              /* ── Preview & Apply ── */
-              <div className="flex flex-col gap-2">
-                <div className="text-[10px] font-semibold text-gray-700">Detected content:</div>
-                <div className="bg-gray-50 border border-gray-200 rounded px-2.5 py-2 flex flex-col gap-1">
-                  {previewLabels.map((label, i) => (
-                    <div key={i} className="flex items-center gap-1.5 text-[10px]">
-                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                        detected[i] && hasActionableContent([detected[i]])
-                          ? "bg-emerald-500" : "bg-gray-400"
-                      }`} />
-                      <span className={
-                        detected[i] && hasActionableContent([detected[i]])
-                          ? "text-gray-800" : "text-gray-500 italic"
-                      }>
-                        {label}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Analysis / read-only text content */}
-                {detected.filter(d => d.type === "analysis_text" || d.type === "suggestions").map((item, i) => (
-                  <div key={`analysis-${i}`} className="bg-indigo-50 border border-indigo-200 rounded px-2.5 py-2">
-                    {item.label && (
-                      <div className="text-[9px] font-semibold text-indigo-600 mb-1">{item.label}</div>
-                    )}
-                    <pre className="text-[9px] text-indigo-800 whitespace-pre-wrap font-mono max-h-40 overflow-y-auto">
-                      {typeof item.data === "string" ? item.data : JSON.stringify(item.data, null, 2)}
-                    </pre>
-                  </div>
-                ))}
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => { setDetected(null); setParseError(null); }}
-                    className="flex items-center gap-1 text-[10px] px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
-                  >
-                    <ArrowLeft size={10} />
-                    Back
-                  </button>
-                  {actionable ? (
-                    <button
-                      onClick={handleApply}
-                      disabled={applying}
-                      className="flex-1 flex items-center justify-center gap-1 text-[10px] py-1.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 font-medium"
-                    >
-                      {applying ? (
-                        <><Loader size={10} className="animate-spin" /> Applying…</>
-                      ) : (
-                        <><ArrowUpFromLine size={10} /> Apply to IdeaBin</>
-                      )}
-                    </button>
-                  ) : (
-                    <div className="flex-1 text-[10px] text-gray-500 italic flex items-center justify-center">
-                      Read-only analysis — nothing to apply
-                    </div>
-                  )}
-                </div>
-              </div>
+              /* ── Controlled review & apply ── */
+              <ControlledApplyPanel
+                detected={detected}
+                applyCtx={applyCtx}
+                onResult={setApplyResult}
+                onBack={() => { setDetected(null); setParseError(null); }}
+              />
             ) : (
               /* ── Paste textarea ── */
               <>
