@@ -9,6 +9,15 @@
  *  Detection is format-driven (inspects JSON keys) rather
  *  than scenario-driven, so it handles slight format
  *  deviations gracefully.
+ *
+ *  Key concepts:
+ *    - Ideas are identified by IdeaPlacement (through table).
+ *      The frontend keys state by placement_id.
+ *    - Categories exist independently; ideas connect via
+ *      IdeaPlacement rows.
+ *    - "Assign" = move/create an IdeaPlacement for an idea
+ *      in a category.
+ *    - Everything is scoped to `activeContextId`.
  * ═══════════════════════════════════════════════════════════
  */
 
@@ -31,7 +40,31 @@ export function detectResponseContent(json) {
     return found;
   }
 
-  // ── Ideas ──
+  // ── Updated ideas (overwork — match by original_title) ──
+  if (Array.isArray(json.updated_ideas) && json.updated_ideas.length > 0) {
+    found.push({ type: "update_ideas", count: json.updated_ideas.length, data: json.updated_ideas });
+  }
+
+  // ── Updated categories (overwork — renames + optional idea updates) ──
+  if (Array.isArray(json.updated_categories) && json.updated_categories.length > 0) {
+    const ideaCount = json.updated_categories.reduce(
+      (s, c) => s + (c.updated_ideas?.length || 0), 0,
+    );
+    found.push({
+      type: "update_categories", count: json.updated_categories.length,
+      ideaCount, data: json.updated_categories,
+    });
+  }
+
+  // ── Legend type assignments (assign types to existing ideas) ──
+  if (Array.isArray(json.legend_assignments) && json.legend_assignments.length > 0) {
+    found.push({
+      type: "legend_assignments", count: json.legend_assignments.length,
+      data: json.legend_assignments,
+    });
+  }
+
+  // ── Ideas (create new) ──
   if (Array.isArray(json.ideas) && json.ideas.length > 0) {
     found.push({ type: "ideas", count: json.ideas.length, data: json.ideas });
   }
@@ -42,7 +75,7 @@ export function detectResponseContent(json) {
     });
   }
 
-  // ── Categories ──
+  // ── Categories (create new) ──
   if (Array.isArray(json.categories) && json.categories.length > 0) {
     const total = json.categories.reduce((s, c) => s + (c.ideas?.length || 0), 0);
     found.push({ type: "categories", count: json.categories.length, ideaCount: total, data: json.categories });
@@ -61,7 +94,7 @@ export function detectResponseContent(json) {
     found.push({ type: "teams", count: json.teams.length, ideaCount: total, data: json.teams });
   }
 
-  // ── Ideas for existing categories ──
+  // ── Ideas for existing categories (insert new ideas) ──
   if (Array.isArray(json.new_ideas_for_existing) && json.new_ideas_for_existing.length > 0) {
     const total = json.new_ideas_for_existing.reduce((s, c) => s + (c.ideas?.length || 0), 0);
     found.push({ type: "insert_into_existing", count: json.new_ideas_for_existing.length, ideaCount: total, data: json.new_ideas_for_existing });
@@ -85,15 +118,13 @@ export function detectResponseContent(json) {
     found.push({ type: "filter_presets", count: json.filter_presets.length, data: json.filter_presets });
   }
 
-  // ── Assignments (move existing ideas into categories) ──
+  // ── Assignments (move existing ideas into existing categories) ──
   if (Array.isArray(json.assignments) && json.assignments.length > 0) {
     const totalIdeas = json.assignments.reduce((s, a) => s + (a.ideas?.length || 0), 0);
     found.push({ type: "assignments", count: json.assignments.length, ideaCount: totalIdeas, data: json.assignments });
   }
 
-  // ── New category suggestions (from auto-categorise / gap analysis) ──
-  // These contain string idea titles that reference EXISTING ideas to move,
-  // not full idea objects to create — so we use a dedicated type.
+  // ── New category suggestions (create new categories + move existing ideas) ──
   if (Array.isArray(json.new_category_suggestions) && json.new_category_suggestions.length > 0) {
     const total = json.new_category_suggestions.reduce((s, c) => s + (c.ideas?.length || 0), 0);
     found.push({
@@ -127,10 +158,6 @@ export function detectResponseContent(json) {
     }
   }
 
-  // ── Analysis (truly read-only) ──
-  if (json.tiers)   found.push({ type: "analysis_text", label: "Priority tiers", data: JSON.stringify(json.tiers, null, 2) });
-  if (json.summary) found.push({ type: "analysis_text", label: "Context summary", data: JSON.stringify(json.summary, null, 2) });
-
   // ── Suggestions text ──
   if (json.suggestions && typeof json.suggestions === "string") {
     found.push({ type: "suggestions", data: json.suggestions });
@@ -158,6 +185,12 @@ export function buildPreviewLabels(detected) {
         return `${item.count} new ${item.count > 1 ? "categories" : "category"} + move ${item.ideaCount} ideas into them`;
       case "assignments":
         return `Move ideas into ${item.count} existing ${item.count > 1 ? "categories" : "category"} (${item.ideaCount} ideas)`;
+      case "update_ideas":
+        return `Update ${item.count} existing idea${item.count > 1 ? "s" : ""} (title + description)`;
+      case "update_categories":
+        return `Rename ${item.count} ${item.count > 1 ? "categories" : "category"}${item.ideaCount ? ` + update ${item.ideaCount} ideas` : ""}`;
+      case "legend_assignments":
+        return `Assign legend types to ${item.count} idea${item.count > 1 ? "s" : ""}`;
       case "gap_ideas":
         return `${item.count} suggested ideas from ${item.gapCount} gap${item.gapCount > 1 ? "s" : ""}`;
       case "dedup_merged":
@@ -183,12 +216,15 @@ export function buildPreviewLabels(detected) {
 
 const ACTIONABLE_TYPES = new Set([
   "ideas", "categories", "teams", "insert_into_existing",
-  "new_cat_assignments", "assignments", "gap_ideas", "dedup_merged",
+  "new_cat_assignments", "assignments",
+  "update_ideas", "update_categories", "legend_assignments",
+  "gap_ideas", "dedup_merged",
   "legends", "new_legend_types", "filter_presets",
 ]);
 
-/** Ensure new-category-assignments run before assignments to existing cats. */
+/** Execution order: updates first, creates second, assignments last. */
 const TYPE_ORDER = [
+  "update_categories", "update_ideas", "legend_assignments",
   "new_cat_assignments", "categories", "assignments",
   "ideas", "teams", "insert_into_existing",
   "gap_ideas", "dedup_merged",
@@ -211,15 +247,20 @@ export function hasActionableContent(detected) {
  *   createIdea(title, desc, categoryId, contextId)
  *   importCategories(jsonData, contextId) → result
  *   insertIdeas(categoryId, jsonData, contextId) → result
- *   createCategory(name) → result
+ *   createCategory(name) → { category: { id, … } }
+ *   renameCategory(id, newName)
  *   createLegend(name) → { legend: { id, … } }
  *   createTypeOnLegend(legendId, name, color, icon) → type
- *   assignIdeaToCategory(placementId, categoryId) – move idea
- *   setFilterPresets(updater)  – React setState-style
+ *   assignIdeaToCategory(placementId, categoryId)
+ *   assignCategoryToContext(categoryId, contextId)
+ *   updateIdeaTitle(ideaId, title)
+ *   updateIdeaDescription(ideaId, description)
+ *   assignLegendType(ideaId, legendId, legendTypeId)
+ *   setFilterPresets(updater)
  *   refreshAll() → Promise
  *   activeContextId  – number | null
- *   ideas            – current { [placementId]: { title, … } }
- *   categories       – current { [id]: { id, name, … } }
+ *   ideas            – { [placementId]: { placement_id, idea_id, title, … } }
+ *   categories       – { [id]: { id, name, … } }
  *   dims             – { legends, legendTypes, … }
  *
  * @returns {{ created: string[], errors: string[] }}
@@ -230,9 +271,14 @@ export async function applyDetected(detected, applyCtx) {
     importCategories,
     insertIdeas,
     createCategory,
+    renameCategory,
     createLegend,
     createTypeOnLegend,
     assignIdeaToCategory,
+    assignCategoryToContext,
+    updateIdeaTitle,
+    updateIdeaDescription,
+    assignLegendType,
     setFilterPresets,
     refreshAll,
     activeContextId,
@@ -243,7 +289,7 @@ export async function applyDetected(detected, applyCtx) {
 
   const result = { created: [], errors: [] };
 
-  // Sort so new-cat-assignments happen before regular assignments
+  // Sort so updates happen before creates, creates before assignments
   const sorted = [...detected].sort((a, b) => {
     const ai = TYPE_ORDER.indexOf(a.type);
     const bi = TYPE_ORDER.indexOf(b.type);
@@ -253,11 +299,151 @@ export async function applyDetected(detected, applyCtx) {
   // Track categories created during this apply call (name → id)
   const newCatIds = {};
 
+  // Build common lookups
+  const buildTitleLookup = () => {
+    const map = {};
+    for (const [pid, idea] of Object.entries(ideas || {})) {
+      const key = (idea.title || "").toLowerCase().trim();
+      if (key) map[key] = { pid: parseInt(pid), ideaId: idea.idea_id };
+    }
+    return map;
+  };
+
+  const buildCatNameLookup = () => {
+    const map = {};
+    for (const c of Object.values(categories || {})) {
+      map[c.name.toLowerCase().trim()] = c;
+    }
+    return map;
+  };
+
   for (const item of sorted) {
     if (!ACTIONABLE_TYPES.has(item.type)) continue;
 
     try {
       switch (item.type) {
+
+        // ── Update existing ideas in place (matched by original_title) ──
+        case "update_ideas": {
+          const titleLookup = buildTitleLookup();
+          let updated = 0;
+          let notFound = 0;
+
+          for (const idea of item.data) {
+            const origKey = (idea.original_title || "").toLowerCase().trim();
+            const match = titleLookup[origKey];
+            if (!match) { notFound++; continue; }
+
+            const newTitle = idea.title || idea.original_title;
+            const newDesc  = idea.description ?? null;
+
+            if (newTitle && newTitle !== idea.original_title && updateIdeaTitle) {
+              await updateIdeaTitle(match.ideaId, newTitle);
+            }
+            if (newDesc !== null && updateIdeaDescription) {
+              await updateIdeaDescription(match.ideaId, newDesc);
+            }
+            updated++;
+          }
+
+          if (updated) result.created.push(`${updated} ideas updated`);
+          if (notFound) result.errors.push(`${notFound} ideas not matched by original title`);
+          break;
+        }
+
+        // ── Rename categories + update their ideas ──
+        case "update_categories": {
+          const catByName = buildCatNameLookup();
+          const titleLookup = buildTitleLookup();
+          let renamed = 0;
+          let ideaUpdated = 0;
+          let catNotFound = 0;
+          let ideaNotFound = 0;
+
+          for (const entry of item.data) {
+            const origKey = (entry.original_name || "").toLowerCase().trim();
+            const cat = catByName[origKey];
+            if (!cat) { catNotFound++; continue; }
+
+            // Rename the category if name changed
+            const newName = entry.category_name || entry.original_name;
+            if (newName !== cat.name && renameCategory) {
+              await renameCategory(cat.id, newName);
+              renamed++;
+            }
+
+            // Update ideas inside this category
+            for (const idea of (entry.updated_ideas || [])) {
+              const origIdeaKey = (idea.original_title || "").toLowerCase().trim();
+              const match = titleLookup[origIdeaKey];
+              if (!match) { ideaNotFound++; continue; }
+
+              const newTitle = idea.title || idea.original_title;
+              const newDesc  = idea.description ?? null;
+              if (newTitle && newTitle !== idea.original_title && updateIdeaTitle) {
+                await updateIdeaTitle(match.ideaId, newTitle);
+              }
+              if (newDesc !== null && updateIdeaDescription) {
+                await updateIdeaDescription(match.ideaId, newDesc);
+              }
+              ideaUpdated++;
+            }
+          }
+
+          if (renamed) result.created.push(`${renamed} categories renamed`);
+          if (ideaUpdated) result.created.push(`${ideaUpdated} ideas updated`);
+          if (catNotFound) result.errors.push(`${catNotFound} categories not matched by name`);
+          if (ideaNotFound) result.errors.push(`${ideaNotFound} ideas not matched by title`);
+          break;
+        }
+
+        // ── Assign legend types to ideas by name matching ──
+        case "legend_assignments": {
+          const titleLookup = buildTitleLookup();
+
+          // Build legend name → id lookup
+          const legByName = {};
+          for (const l of (dims?.legends || [])) {
+            legByName[l.name.toLowerCase().trim()] = l;
+          }
+
+          // Build type name → type object lookup (per legend)
+          const typeByLegendAndName = {};
+          for (const t of Object.values(dims?.legendTypes || {})) {
+            const key = `${t.legend}::${t.name.toLowerCase().trim()}`;
+            typeByLegendAndName[key] = t;
+          }
+
+          let assigned = 0;
+          let notFoundIdea = 0;
+          let notFoundLegend = 0;
+          let notFoundType = 0;
+
+          for (const entry of item.data) {
+            const ideaKey = (entry.idea_title || "").toLowerCase().trim();
+            const match = titleLookup[ideaKey];
+            if (!match) { notFoundIdea++; continue; }
+
+            const legendKey = (entry.legend_name || "").toLowerCase().trim();
+            const legend = legByName[legendKey];
+            if (!legend) { notFoundLegend++; continue; }
+
+            const typeKey = `${legend.id}::${(entry.type_name || "").toLowerCase().trim()}`;
+            const type = typeByLegendAndName[typeKey];
+            if (!type) { notFoundType++; continue; }
+
+            if (assignLegendType) {
+              await assignLegendType(match.ideaId, legend.id, type.id);
+              assigned++;
+            }
+          }
+
+          if (assigned) result.created.push(`${assigned} legend type assignments`);
+          if (notFoundIdea) result.errors.push(`${notFoundIdea} ideas not found`);
+          if (notFoundLegend) result.errors.push(`${notFoundLegend} legends not found`);
+          if (notFoundType) result.errors.push(`${notFoundType} legend types not found`);
+          break;
+        }
 
         // ── Create unassigned ideas ──
         case "ideas": {
@@ -289,7 +475,11 @@ export async function applyDetected(detected, applyCtx) {
           }
 
           for (const cat of empty) {
-            await createCategory(cat.category_name || "Untitled");
+            const res = await createCategory(cat.category_name || "Untitled");
+            const catId = res?.category?.id;
+            if (catId && activeContextId && assignCategoryToContext) {
+              await assignCategoryToContext(catId, activeContextId);
+            }
           }
           if (empty.length) result.created.push(`${empty.length} empty categories`);
           break;
@@ -315,16 +505,13 @@ export async function applyDetected(detected, applyCtx) {
 
         // ── Insert ideas into existing categories (matched by name) ──
         case "insert_into_existing": {
-          const catByName = {};
-          for (const c of Object.values(categories || {})) {
-            catByName[c.name.toLowerCase()] = c;
-          }
+          const catByName = buildCatNameLookup();
 
           let insertedCount = 0;
           const notFound = [];
 
           for (const entry of item.data) {
-            const match = catByName[(entry.category_name || "").toLowerCase()];
+            const match = catByName[(entry.category_name || "").toLowerCase().trim()];
             if (match) {
               await insertIdeas(match.id, { ideas: entry.ideas }, activeContextId);
               insertedCount += entry.ideas.length;
@@ -338,18 +525,14 @@ export async function applyDetected(detected, applyCtx) {
             }
           }
 
-          if (insertedCount) result.created.push(`${insertedCount} ideas inserted`);
+          if (insertedCount) result.created.push(`${insertedCount} ideas inserted into existing categories`);
           if (notFound.length) result.created.push(`${notFound.length} categories not found — created as new`);
           break;
         }
 
         // ── Create new categories and move existing ideas into them ──
         case "new_cat_assignments": {
-          const ideaByTitle = {};
-          for (const [pid, idea] of Object.entries(ideas || {})) {
-            const key = (idea.title || "").toLowerCase();
-            if (key) ideaByTitle[key] = parseInt(pid);
-          }
+          const titleLookup = buildTitleLookup();
 
           let catsCreated = 0;
           let moved = 0;
@@ -364,14 +547,18 @@ export async function applyDetected(detected, applyCtx) {
               continue;
             }
             catsCreated++;
-            // Track for subsequent assignment steps
-            newCatIds[catName.toLowerCase()] = catId;
+            newCatIds[catName.toLowerCase().trim()] = catId;
+
+            // Link to active context
+            if (activeContextId && assignCategoryToContext) {
+              await assignCategoryToContext(catId, activeContextId);
+            }
 
             for (const ideaRef of (entry.ideas || [])) {
               const title = typeof ideaRef === "string" ? ideaRef : ideaRef?.title || "";
-              const pid = ideaByTitle[title.toLowerCase()];
-              if (pid && assignIdeaToCategory) {
-                await assignIdeaToCategory(pid, catId);
+              const match = titleLookup[title.toLowerCase().trim()];
+              if (match && assignIdeaToCategory) {
+                await assignIdeaToCategory(match.pid, catId);
                 moved++;
               } else {
                 notFoundIdeas++;
@@ -385,36 +572,25 @@ export async function applyDetected(detected, applyCtx) {
           break;
         }
 
-        // ── Assign existing ideas to categories (matched by title) ──
+        // ── Assign existing ideas to existing categories (matched by title) ──
         case "assignments": {
-          // Build lookup: category name → id (includes both existing + just-created)
-          const catByName = {};
-          for (const c of Object.values(categories || {})) {
-            catByName[c.name.toLowerCase()] = c;
-          }
-
-          // Build lookup: idea title → placement id
-          const ideaByTitle2 = {};
-          for (const [pid, idea] of Object.entries(ideas || {})) {
-            const key = (idea.title || "").toLowerCase();
-            if (key) ideaByTitle2[key] = parseInt(pid);
-          }
+          const catByName = buildCatNameLookup();
+          const titleLookup = buildTitleLookup();
 
           let moved = 0;
           let notFoundIdeas = 0;
           let notFoundCats = 0;
 
           for (const assignment of item.data) {
-            const name = (assignment.category_name || "").toLowerCase();
-            // Check existing categories first, then newly-created ones
+            const name = (assignment.category_name || "").toLowerCase().trim();
             const catId = catByName[name]?.id || newCatIds[name];
             if (!catId) { notFoundCats++; continue; }
 
             for (const ideaRef of (assignment.ideas || [])) {
               const title = typeof ideaRef === "string" ? ideaRef : ideaRef?.title || "";
-              const pid = ideaByTitle2[title.toLowerCase()];
-              if (pid && assignIdeaToCategory) {
-                await assignIdeaToCategory(pid, catId);
+              const match = titleLookup[title.toLowerCase().trim()];
+              if (match && assignIdeaToCategory) {
+                await assignIdeaToCategory(match.pid, catId);
                 moved++;
               } else {
                 notFoundIdeas++;
@@ -482,12 +658,12 @@ export async function applyDetected(detected, applyCtx) {
         case "new_legend_types": {
           const legByName = {};
           for (const l of (dims?.legends || [])) {
-            legByName[l.name.toLowerCase()] = l;
+            legByName[l.name.toLowerCase().trim()] = l;
           }
 
           let addedTypes = 0;
           for (const entry of item.data) {
-            const leg = legByName[(entry.legend_name || "").toLowerCase()];
+            const leg = legByName[(entry.legend_name || "").toLowerCase().trim()];
             if (leg && entry.types?.length) {
               for (const t of entry.types) {
                 await createTypeOnLegend(leg.id, t.name, t.color || "#6366f1", t.icon || null);

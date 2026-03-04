@@ -32,7 +32,8 @@ VALID_SCENARIO_KEYS = {
     "categories_add_with_ideas",
     # Categories — Overwork
     "categories_overwork_structure",
-    "categories_overwork_with_ideas",
+    "ideas_reassign_existing",
+    "ideas_reassign_with_new",
     # Categories & Ideas
     "combined_overwork_all",
     "combined_add_ideas_only",
@@ -48,10 +49,8 @@ VALID_SCENARIO_KEYS = {
     "context_overwork_all",
     # Analysis
     "ideas_deduplicate",
-    "ideas_prioritize",
     "ideas_auto_categorize",
     "ideas_gap_analysis",
-    "context_summarize",
 }
 
 

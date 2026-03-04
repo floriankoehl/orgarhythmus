@@ -212,6 +212,13 @@ export async function fetchArchivedIdeasApi() {
   return data?.ideas || [];
 }
 
+export async function deleteAllArchivedIdeasApi() {
+  const res = await authFetch(`${API}/user/ideas/delete_all_archived/`, {
+    method: "DELETE",
+  });
+  return await res.json();
+}
+
 export async function mergeIdeasApi(targetIdeaId, sourceIdeaIds) {
   const res = await authFetch(`${API}/user/ideas/merge/`, {
     method: "POST",

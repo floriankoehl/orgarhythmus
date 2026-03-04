@@ -22,10 +22,12 @@
 const cleanIdea = (idea, legendTypes) => {
   const obj = { title: idea.title || "" };
   if (idea.description) obj.description = idea.description;
-  if (idea.legend_types?.length && legendTypes) {
-    obj.legend_types = idea.legend_types
-      .map(tid => legendTypes[tid]?.name)
+  // idea.legend_types is { [legendId]: { legend_type_id, name, color, icon } }
+  if (idea.legend_types && typeof idea.legend_types === "object" && !Array.isArray(idea.legend_types)) {
+    const typeNames = Object.values(idea.legend_types)
+      .map(v => v.name)
       .filter(Boolean);
+    if (typeNames.length > 0) obj.legend_types = typeNames;
   }
   return obj;
 };
@@ -106,6 +108,75 @@ const buildFilterPayload = (ctx) => {
   return f;
 };
 
+// ─── Context-scoping helpers ────────────────────────────
+// When the user is inside a context, exports should only include
+// ideas and categories that belong to that context — not everything.
+
+/** Set of idea_ids linked to the active context (direct + in-category). null = no filtering. */
+const _ctxIdeaIdSet = (ctx) => {
+  if (!ctx.activeContext) return null;
+  const ids = new Set(ctx.contextIdeaOrders?.[ctx.activeContext.id] || []);
+  const ctxCatIds = new Set((ctx.activeContext.category_ids || []).map(String));
+  for (const p of Object.values(ctx.ideas || {})) {
+    if (p?.idea_id && p.category != null && ctxCatIds.has(String(p.category))) {
+      ids.add(p.idea_id);
+    }
+  }
+  return ids;
+};
+
+/** Categories belonging to the active context (or all if no context) */
+const ctxCategories = (ctx) => {
+  const all = Object.values(ctx.categories || {});
+  if (!ctx.activeContext) return all;
+  const ids = new Set((ctx.activeContext.category_ids || []).map(Number));
+  return all.filter(c => ids.has(Number(c.id)));
+};
+
+/** Category orders scoped to context categories & context ideas */
+const ctxCategoryOrders = (ctx) => {
+  if (!ctx.activeContext) return ctx.categoryOrders || {};
+  const ideaIds = _ctxIdeaIdSet(ctx);
+  const catIds = new Set((ctx.activeContext.category_ids || []).map(String));
+  const out = {};
+  for (const [k, order] of Object.entries(ctx.categoryOrders || {})) {
+    if (!catIds.has(k)) continue;
+    out[k] = ideaIds
+      ? order.filter(pid => { const p = ctx.ideas[pid]; return p && ideaIds.has(p.idea_id); })
+      : order;
+  }
+  return out;
+};
+
+/** Unassigned ideas within the context (ideas linked to context but not in any context category) */
+const ctxUnassigned = (ctx) => {
+  if (!ctx.activeContext) return getUnassignedIdeas(ctx.ideas, ctx.unassignedOrder);
+  const ideaIds = new Set(ctx.contextIdeaOrders?.[ctx.activeContext.id] || []);
+  if (ideaIds.size === 0) return [];
+  const catIds = new Set((ctx.activeContext.category_ids || []).map(Number));
+  return Object.values(ctx.ideas)
+    .filter(p => p && ideaIds.has(p.idea_id) && (p.category == null || !catIds.has(Number(p.category))))
+    .sort((a, b) => a.order_index - b.order_index);
+};
+
+/** All unique ideas in the context (de-duped by idea_id), or all ideas if no context */
+const ctxAllIdeas = (ctx) => {
+  const ideaIds = _ctxIdeaIdSet(ctx);
+  const seen = new Set();
+  return Object.values(ctx.ideas || {}).filter(p => {
+    if (!p || seen.has(p.idea_id)) return false;
+    if (ideaIds && !ideaIds.has(p.idea_id)) return false;
+    seen.add(p.idea_id);
+    return true;
+  });
+};
+
+/** Count of unique context-scoped ideas */
+const ctxIdeaCount = (ctx) => ctxAllIdeas(ctx).length;
+
+/** Count of context-scoped categories */
+const ctxCategoryCount = (ctx) => ctxCategories(ctx).length;
+
 
 // ═══════════════════════════════════════════════════════════
 //  SCENARIO DEFINITIONS
@@ -146,7 +217,7 @@ export const IDEABIN_SCENARIOS = [
     label: "New ideas (with existing context)",
     description: "Generate new ideas informed by existing ideas and categories — avoids duplicates.",
     unavailableMsg: (ctx) =>
-      totalIdeaCount(ctx.ideas) === 0 && Object.keys(ctx.categories || {}).length === 0
+      ctxIdeaCount(ctx) === 0 && ctxCategoryCount(ctx) === 0
         ? "No existing ideas or categories to provide context"
         : null,
     defaultPrompt:
@@ -160,11 +231,12 @@ export const IDEABIN_SCENARIOS = [
   ]
 }`,
     buildPayload: (ctx) => {
-      const cats = Object.values(ctx.categories || {});
+      const cats = ctxCategories(ctx);
+      const orders = ctxCategoryOrders(ctx);
       return {
         existing_categories: cats.map(c =>
-          buildCategoryPayload(c, ctx.ideas, ctx.categoryOrders, ctx.dims?.legendTypes)),
-        unassigned_ideas: getUnassignedIdeas(ctx.ideas, ctx.unassignedOrder)
+          buildCategoryPayload(c, ctx.ideas, orders, ctx.dims?.legendTypes)),
+        unassigned_ideas: ctxUnassigned(ctx)
           .map(i => cleanIdea(i, ctx.dims?.legendTypes)),
       };
     },
@@ -178,13 +250,13 @@ export const IDEABIN_SCENARIOS = [
     label: "New ideas for existing categories",
     description: "Generate ideas that specifically fit into your existing category structure.",
     unavailableMsg: (ctx) =>
-      Object.keys(ctx.categories || {}).length === 0
+      ctxCategoryCount(ctx) === 0
         ? "Create at least one category first"
         : null,
     defaultPrompt:
-      `Given the categories below, generate 3-5 new ideas per category that fit well into each. The ideas should be specific to each category's theme. Return them organised by category.`,
+      `Given the categories below, generate 3-5 new ideas per category that fit well into each. The ideas should be specific to each category's theme. Return them organised by category using the exact category names provided.`,
     expectedFormat: `{
-  "categories": [
+  "new_ideas_for_existing": [
     {
       "category_name": "Existing Category Name",
       "ideas": [
@@ -194,10 +266,11 @@ export const IDEABIN_SCENARIOS = [
   ]
 }`,
     buildPayload: (ctx) => {
-      const cats = Object.values(ctx.categories || {});
+      const cats = ctxCategories(ctx);
+      const orders = ctxCategoryOrders(ctx);
       return {
         categories: cats.map(c =>
-          buildCategoryPayload(c, ctx.ideas, ctx.categoryOrders, ctx.dims?.legendTypes)),
+          buildCategoryPayload(c, ctx.ideas, orders, ctx.dims?.legendTypes)),
       };
     },
   },
@@ -230,7 +303,7 @@ export const IDEABIN_SCENARIOS = [
         name: t.name,
         tasks: (t.tasks || []).map(tk => ({ name: tk.name, description: tk.description })),
       })),
-      existing_ideas: getUnassignedIdeas(ctx.ideas, ctx.unassignedOrder)
+      existing_ideas: ctxUnassigned(ctx)
         .slice(0, 30)
         .map(i => cleanIdea(i, ctx.dims?.legendTypes)),
     }),
@@ -244,7 +317,7 @@ export const IDEABIN_SCENARIOS = [
     label: "New ideas + suggest new teams",
     description: "Generate ideas AND suggest a team structure to execute them.",
     unavailableMsg: (ctx) =>
-      totalIdeaCount(ctx.ideas) === 0
+      ctxIdeaCount(ctx) === 0
         ? "Add some ideas first so the AI can suggest teams based on them"
         : null,
     defaultPrompt:
@@ -261,11 +334,12 @@ export const IDEABIN_SCENARIOS = [
   ]
 }`,
     buildPayload: (ctx) => {
-      const cats = Object.values(ctx.categories || {});
+      const cats = ctxCategories(ctx);
+      const orders = ctxCategoryOrders(ctx);
       return {
         existing_categories: cats.map(c =>
-          buildCategoryPayload(c, ctx.ideas, ctx.categoryOrders, ctx.dims?.legendTypes)),
-        unassigned_ideas: getUnassignedIdeas(ctx.ideas, ctx.unassignedOrder)
+          buildCategoryPayload(c, ctx.ideas, orders, ctx.dims?.legendTypes)),
+        unassigned_ideas: ctxUnassigned(ctx)
           .map(i => cleanIdea(i, ctx.dims?.legendTypes)),
       };
     },
@@ -287,10 +361,11 @@ export const IDEABIN_SCENARIOS = [
         ? "Select one or more ideas first"
         : null,
     defaultPrompt:
-      `Improve the following ideas. Make titles more concise and impactful, expand descriptions to be clearer and more actionable. Keep the original intent but elevate the quality. Return the improved versions using the same structure.`,
+      `Improve the following ideas. Make titles more concise and impactful, expand descriptions to be clearer and more actionable. Keep the original intent but elevate the quality. Include the original title so changes can be tracked.`,
     expectedFormat: `{
-  "ideas": [
+  "updated_ideas": [
     {
+      "original_title": "Original title (exact match)",
       "title": "Improved title",
       "description": "Improved, more detailed description"
     }
@@ -315,13 +390,14 @@ export const IDEABIN_SCENARIOS = [
       return null;
     },
     defaultPrompt:
-      `Improve the following ideas (better titles, expanded descriptions) and assign each to the most suitable team from the provided team list. Return the improved ideas with team assignments.`,
+      `Improve the following ideas (better titles, expanded descriptions) and assign each to the most suitable team from the provided team list. Include the original title so changes can be tracked.`,
     expectedFormat: `{
-  "ideas": [
+  "updated_ideas": [
     {
+      "original_title": "Original title (exact match)",
       "title": "Improved title",
       "description": "Improved description",
-      "assigned_team": "Team Name"
+      "suggested_team": "Team Name"
     }
   ]
 }`,
@@ -345,12 +421,13 @@ export const IDEABIN_SCENARIOS = [
       return null;
     },
     defaultPrompt:
-      `Analyse each idea below and assign the most fitting legend types from the provided list. An idea can have multiple types. Only use types from the provided list — do not invent new ones.`,
+      `Analyse each idea below and assign the most fitting legend types from the provided list. Each assignment is one legend-type pair. An idea can have multiple assignments across different legends. Only use types from the provided list — do not invent new ones.`,
     expectedFormat: `{
-  "ideas": [
+  "legend_assignments": [
     {
-      "title": "Idea title",
-      "legend_types": ["Type A", "Type B"]
+      "idea_title": "Idea title (exact match)",
+      "legend_name": "Legend Name",
+      "type_name": "Type Name"
     }
   ]
 }`,
@@ -370,30 +447,27 @@ export const IDEABIN_SCENARIOS = [
     label: "Improve all ideas",
     description: "Refine every idea in the current view.",
     unavailableMsg: (ctx) =>
-      totalIdeaCount(ctx.ideas) === 0
+      ctxIdeaCount(ctx) === 0
         ? "No ideas to improve"
         : null,
     defaultPrompt:
-      `Improve ALL of the following ideas. Make titles more concise, expand descriptions for clarity, and ensure consistency across the set. Return every idea with the same structure.`,
+      `Improve ALL of the following ideas. Make titles more concise, expand descriptions for clarity, and ensure consistency across the set. Include the original title for each so changes can be tracked.`,
     expectedFormat: `{
-  "categories": [
+  "updated_ideas": [
     {
-      "category_name": "Category Name",
-      "ideas": [
-        { "title": "Improved title", "description": "Improved description" }
-      ]
+      "original_title": "Original title (exact match)",
+      "title": "Improved title",
+      "description": "Improved description"
     }
-  ],
-  "unassigned_ideas": [
-    { "title": "Improved title", "description": "Improved description" }
   ]
 }`,
     buildPayload: (ctx) => {
-      const cats = Object.values(ctx.categories || {});
+      const cats = ctxCategories(ctx);
+      const orders = ctxCategoryOrders(ctx);
       return {
         categories: cats.map(c =>
-          buildCategoryPayload(c, ctx.ideas, ctx.categoryOrders, ctx.dims?.legendTypes)),
-        unassigned_ideas: getUnassignedIdeas(ctx.ideas, ctx.unassignedOrder)
+          buildCategoryPayload(c, ctx.ideas, orders, ctx.dims?.legendTypes)),
+        unassigned_ideas: ctxUnassigned(ctx)
           .map(i => cleanIdea(i, ctx.dims?.legendTypes)),
       };
     },
@@ -444,7 +518,7 @@ export const IDEABIN_SCENARIOS = [
 }`,
     buildPayload: (ctx) => {
       // Provide existing if any, so AI avoids duplicates
-      const cats = Object.values(ctx.categories || {});
+      const cats = ctxCategories(ctx);
       if (cats.length === 0) return {};
       return {
         existing_categories: cats.map(c => ({ category_name: c.name })),
@@ -464,55 +538,96 @@ export const IDEABIN_SCENARIOS = [
     label: "Improve category structure",
     description: "Reorganise and rename categories for better clarity.",
     unavailableMsg: (ctx) =>
-      Object.keys(ctx.categories || {}).length === 0
+      ctxCategoryCount(ctx) === 0
         ? "Create at least one category first"
         : null,
     defaultPrompt:
-      `Review the current categories and suggest improvements: better names, merges, splits, or reorganisation. Return the improved structure. If two categories overlap significantly, suggest merging them.`,
+      `Review the current categories and suggest improvements: better names, merges, splits, or reorganisation. Return the improved structure with original names so changes can be tracked. If two categories overlap significantly, suggest merging them.`,
     expectedFormat: `{
-  "categories": [
-    { "category_name": "Improved Name" }
+  "updated_categories": [
+    { "original_name": "Current Category Name", "category_name": "Improved Name" }
   ],
   "suggestions": "Brief explanation of what was changed and why."
 }`,
     buildPayload: (ctx) => {
-      const cats = Object.values(ctx.categories || {});
+      const cats = ctxCategories(ctx);
+      const orders = ctxCategoryOrders(ctx);
       return {
         categories: cats.map(c =>
-          buildCategoryPayload(c, ctx.ideas, ctx.categoryOrders, ctx.dims?.legendTypes)),
+          buildCategoryPayload(c, ctx.ideas, orders, ctx.dims?.legendTypes)),
       };
     },
   },
 
   {
-    id: "categories_overwork_with_ideas",
+    id: "ideas_reassign_existing",
     domain: "ideabin",
     group: "Categories — Overwork",
     action: "overwork",
-    label: "Improve categories + their ideas",
-    description: "Improve category names AND refine all ideas within them.",
-    unavailableMsg: (ctx) =>
-      Object.keys(ctx.categories || {}).length === 0
-        ? "Create at least one category first"
-        : null,
+    label: "Reassign ideas to existing categories",
+    description: "Move ideas into the most fitting existing category — no renaming, just smarter placement.",
+    unavailableMsg: (ctx) => {
+      if (ctxCategoryCount(ctx) < 2) return "Need at least 2 categories to reassign between";
+      if (ctxIdeaCount(ctx) === 0) return "No ideas to reassign";
+      return null;
+    },
     defaultPrompt:
-      `Improve everything: rename categories for clarity, improve idea titles and descriptions, and suggest better placement if ideas are in the wrong category. Return the full improved structure.`,
+      `Review the ideas and categories below. For any ideas that would fit better in a different category, suggest moving them there. Only list moves that genuinely improve the organisation — don't shuffle things around without reason. Group your assignments by target category.`,
     expectedFormat: `{
-  "categories": [
+  "assignments": [
     {
-      "category_name": "Improved Category Name",
-      "ideas": [
-        { "title": "Improved title", "description": "Improved description" }
-      ]
+      "category_name": "Target Category (exact existing name)",
+      "ideas": ["Idea title A", "Idea title B"]
     }
   ]
 }`,
     buildPayload: (ctx) => {
-      const cats = Object.values(ctx.categories || {});
+      const cats = ctxCategories(ctx);
+      const orders = ctxCategoryOrders(ctx);
       return {
         categories: cats.map(c =>
-          buildCategoryPayload(c, ctx.ideas, ctx.categoryOrders, ctx.dims?.legendTypes)),
-        unassigned_ideas: getUnassignedIdeas(ctx.ideas, ctx.unassignedOrder)
+          buildCategoryPayload(c, ctx.ideas, orders, ctx.dims?.legendTypes)),
+        unassigned_ideas: ctxUnassigned(ctx)
+          .map(i => cleanIdea(i, ctx.dims?.legendTypes)),
+      };
+    },
+  },
+
+  {
+    id: "ideas_reassign_with_new",
+    domain: "ideabin",
+    group: "Categories — Overwork",
+    action: "overwork",
+    label: "Reassign ideas + propose new categories",
+    description: "Move ideas into better categories and suggest new ones for ideas that don't fit anywhere.",
+    unavailableMsg: (ctx) => {
+      if (ctxCategoryCount(ctx) === 0) return "Create at least one category first";
+      if (ctxIdeaCount(ctx) === 0) return "No ideas to reassign";
+      return null;
+    },
+    defaultPrompt:
+      `Review the ideas and categories below. Move misplaced ideas into the correct existing category, and for ideas that don't fit any current category, propose new categories to hold them. Group assignments by target category name, and list new category suggestions separately.`,
+    expectedFormat: `{
+  "assignments": [
+    {
+      "category_name": "Existing Category Name",
+      "ideas": ["Idea title A", "Idea title B"]
+    }
+  ],
+  "new_category_suggestions": [
+    {
+      "category_name": "Suggested New Category",
+      "ideas": ["Idea title C"]
+    }
+  ]
+}`,
+    buildPayload: (ctx) => {
+      const cats = ctxCategories(ctx);
+      const orders = ctxCategoryOrders(ctx);
+      return {
+        categories: cats.map(c =>
+          buildCategoryPayload(c, ctx.ideas, orders, ctx.dims?.legendTypes)),
+        unassigned_ideas: ctxUnassigned(ctx)
           .map(i => cleanIdea(i, ctx.dims?.legendTypes)),
       };
     },
@@ -530,31 +645,33 @@ export const IDEABIN_SCENARIOS = [
     label: "Overwork all categories & ideas",
     description: "Full restructure — improve categories, ideas, and placement.",
     unavailableMsg: (ctx) =>
-      Object.keys(ctx.categories || {}).length === 0 && totalIdeaCount(ctx.ideas) === 0
+      ctxCategoryCount(ctx) === 0 && ctxIdeaCount(ctx) === 0
         ? "No categories or ideas to overwork"
         : null,
     defaultPrompt:
-      `Perform a comprehensive review: improve all category names, improve all idea titles and descriptions, suggest better categorisation if ideas seem misplaced, and note any gaps. Return a complete improved structure.`,
+      `Perform a comprehensive review: improve all category names, improve all idea titles and descriptions, suggest better categorisation if ideas seem misplaced, and note any gaps. Include original names/titles so changes can be tracked.`,
     expectedFormat: `{
-  "categories": [
+  "updated_categories": [
     {
+      "original_name": "Current Category Name",
       "category_name": "Improved Category",
-      "ideas": [
-        { "title": "Improved title", "description": "Improved description" }
+      "updated_ideas": [
+        { "original_title": "Original title", "title": "Improved title", "description": "Improved description" }
       ]
     }
   ],
-  "unassigned_ideas": [
-    { "title": "Improved title", "description": "Improved description" }
+  "updated_ideas": [
+    { "original_title": "Original title", "title": "Improved title", "description": "Improved description" }
   ],
   "suggestions": "Overall observations and recommendations."
 }`,
     buildPayload: (ctx) => {
-      const cats = Object.values(ctx.categories || {});
+      const cats = ctxCategories(ctx);
+      const orders = ctxCategoryOrders(ctx);
       return {
         categories: cats.map(c =>
-          buildCategoryPayload(c, ctx.ideas, ctx.categoryOrders, ctx.dims?.legendTypes)),
-        unassigned_ideas: getUnassignedIdeas(ctx.ideas, ctx.unassignedOrder)
+          buildCategoryPayload(c, ctx.ideas, orders, ctx.dims?.legendTypes)),
+        unassigned_ideas: ctxUnassigned(ctx)
           .map(i => cleanIdea(i, ctx.dims?.legendTypes)),
       };
     },
@@ -568,13 +685,13 @@ export const IDEABIN_SCENARIOS = [
     label: "Add ideas to existing categories",
     description: "Keep existing categories, generate new ideas to fill them.",
     unavailableMsg: (ctx) =>
-      Object.keys(ctx.categories || {}).length === 0
+      ctxCategoryCount(ctx) === 0
         ? "Create at least one category first"
         : null,
     defaultPrompt:
-      `Given the existing categories and their current ideas, generate 3-5 NEW ideas per category that fill gaps and extend coverage. Do NOT repeat existing ideas. Return only the new ideas, organised by category.`,
+      `Given the existing categories and their current ideas, generate 3-5 NEW ideas per category that fill gaps and extend coverage. Do NOT repeat existing ideas. Return only the new ideas, organised by their exact existing category name.`,
     expectedFormat: `{
-  "categories": [
+  "new_ideas_for_existing": [
     {
       "category_name": "Existing Category Name",
       "ideas": [
@@ -584,10 +701,11 @@ export const IDEABIN_SCENARIOS = [
   ]
 }`,
     buildPayload: (ctx) => {
-      const cats = Object.values(ctx.categories || {});
+      const cats = ctxCategories(ctx);
+      const orders = ctxCategoryOrders(ctx);
       return {
         categories: cats.map(c =>
-          buildCategoryPayload(c, ctx.ideas, ctx.categoryOrders, ctx.dims?.legendTypes)),
+          buildCategoryPayload(c, ctx.ideas, orders, ctx.dims?.legendTypes)),
       };
     },
   },
@@ -600,7 +718,7 @@ export const IDEABIN_SCENARIOS = [
     label: "Add new categories + ideas",
     description: "Keep existing structure, add new categories with ideas.",
     unavailableMsg: (ctx) =>
-      Object.keys(ctx.categories || {}).length === 0
+      ctxCategoryCount(ctx) === 0
         ? "Create at least one category first"
         : null,
     defaultPrompt:
@@ -616,11 +734,12 @@ export const IDEABIN_SCENARIOS = [
   ]
 }`,
     buildPayload: (ctx) => {
-      const cats = Object.values(ctx.categories || {});
+      const cats = ctxCategories(ctx);
+      const orders = ctxCategoryOrders(ctx);
       return {
         existing_categories: cats.map(c => ({
           category_name: c.name,
-          idea_count: ideasForCategory(c.id, ctx.ideas, ctx.categoryOrders).length,
+          idea_count: ideasForCategory(c.id, ctx.ideas, orders).length,
         })),
       };
     },
@@ -653,7 +772,7 @@ export const IDEABIN_SCENARIOS = [
 }`,
     buildPayload: (ctx) => {
       // Provide existing ideas for context
-      const sample = Object.values(ctx.ideas || {}).slice(0, 20)
+      const sample = ctxAllIdeas(ctx).slice(0, 20)
         .map(i => ({ title: i.title, description: i.description }));
       const payload = {};
       if (sample.length) payload.sample_ideas = sample;
@@ -755,7 +874,7 @@ export const IDEABIN_SCENARIOS = [
   ]
 }`,
     buildPayload: (ctx) => {
-      const sample = Object.values(ctx.ideas || {}).slice(0, 20)
+      const sample = ctxAllIdeas(ctx).slice(0, 20)
         .map(i => ({ title: i.title }));
       return sample.length ? { sample_ideas: sample } : {};
     },
@@ -806,7 +925,7 @@ export const IDEABIN_SCENARIOS = [
     label: "Add to entire context",
     description: "Pass everything, get additions: new ideas, categories, legend types.",
     unavailableMsg: (ctx) =>
-      totalIdeaCount(ctx.ideas) === 0 && Object.keys(ctx.categories || {}).length === 0
+      ctxIdeaCount(ctx) === 0 && ctxCategoryCount(ctx) === 0
         ? "Add some content first"
         : null,
     defaultPrompt:
@@ -829,11 +948,12 @@ export const IDEABIN_SCENARIOS = [
   ]
 }`,
     buildPayload: (ctx) => {
-      const cats = Object.values(ctx.categories || {});
+      const cats = ctxCategories(ctx);
+      const orders = ctxCategoryOrders(ctx);
       return {
         categories: cats.map(c =>
-          buildCategoryPayload(c, ctx.ideas, ctx.categoryOrders, ctx.dims?.legendTypes)),
-        unassigned_ideas: getUnassignedIdeas(ctx.ideas, ctx.unassignedOrder)
+          buildCategoryPayload(c, ctx.ideas, orders, ctx.dims?.legendTypes)),
+        unassigned_ideas: ctxUnassigned(ctx)
           .map(i => cleanIdea(i, ctx.dims?.legendTypes)),
         legends: buildLegendPayload(ctx.dims),
         filters: buildFilterPayload(ctx),
@@ -849,36 +969,36 @@ export const IDEABIN_SCENARIOS = [
     label: "Overwork entire context",
     description: "Pass everything, get comprehensive improvements.",
     unavailableMsg: (ctx) =>
-      totalIdeaCount(ctx.ideas) === 0 && Object.keys(ctx.categories || {}).length === 0
+      ctxIdeaCount(ctx) === 0 && ctxCategoryCount(ctx) === 0
         ? "Add some content first"
         : null,
     defaultPrompt:
-      `Perform a comprehensive review of the entire project context below. Improve EVERYTHING: category names, idea titles and descriptions, categorisation, legend types, and filter presets. Return a complete, improved version of the full structure.`,
+      `Perform a comprehensive review of the entire project context below. Improve EVERYTHING: category names, idea titles and descriptions, categorisation, legend types. Include original names/titles so changes can be tracked.`,
     expectedFormat: `{
-  "categories": [
+  "updated_categories": [
     {
+      "original_name": "Current Category Name",
       "category_name": "Improved Category",
-      "ideas": [
-        { "title": "Improved title", "description": "Improved description", "legend_types": ["Type A"] }
+      "updated_ideas": [
+        { "original_title": "Original title", "title": "Improved title", "description": "Improved description" }
       ]
     }
   ],
-  "unassigned_ideas": [
-    { "title": "Improved title", "description": "Improved description" }
+  "updated_ideas": [
+    { "original_title": "Original title", "title": "Improved title", "description": "Improved description" }
   ],
-  "legends": {
-    "legends": [
-      { "name": "Legend", "types": [{ "name": "Type", "color": "#hex" }] }
-    ]
-  },
+  "legends": [
+    { "name": "Legend", "types": [{ "name": "Type", "color": "#hex" }] }
+  ],
   "suggestions": "Summary of key changes made."
 }`,
     buildPayload: (ctx) => {
-      const cats = Object.values(ctx.categories || {});
+      const cats = ctxCategories(ctx);
+      const orders = ctxCategoryOrders(ctx);
       return {
         categories: cats.map(c =>
-          buildCategoryPayload(c, ctx.ideas, ctx.categoryOrders, ctx.dims?.legendTypes)),
-        unassigned_ideas: getUnassignedIdeas(ctx.ideas, ctx.unassignedOrder)
+          buildCategoryPayload(c, ctx.ideas, orders, ctx.dims?.legendTypes)),
+        unassigned_ideas: ctxUnassigned(ctx)
           .map(i => cleanIdea(i, ctx.dims?.legendTypes)),
         legends: buildLegendPayload(ctx.dims),
         filters: buildFilterPayload(ctx),
@@ -898,7 +1018,7 @@ export const IDEABIN_SCENARIOS = [
     label: "Find & merge duplicate ideas",
     description: "Identify similar or overlapping ideas that could be merged.",
     unavailableMsg: (ctx) =>
-      totalIdeaCount(ctx.ideas) < 3
+      ctxIdeaCount(ctx) < 3
         ? "Need at least 3 ideas to check for duplicates"
         : null,
     defaultPrompt:
@@ -918,49 +1038,9 @@ export const IDEABIN_SCENARIOS = [
   "duplicate_ideas_count": 5
 }`,
     buildPayload: (ctx) => {
-      const all = Object.values(ctx.ideas || {})
+      const all = ctxAllIdeas(ctx)
         .map(i => cleanIdea(i, ctx.dims?.legendTypes));
       return { ideas: all };
-    },
-  },
-
-  {
-    id: "ideas_prioritize",
-    domain: "ideabin",
-    group: "Analysis",
-    action: "analyse",
-    label: "Prioritise ideas",
-    description: "Get priority rankings with reasoning for all ideas.",
-    unavailableMsg: (ctx) =>
-      totalIdeaCount(ctx.ideas) === 0
-        ? "No ideas to prioritise"
-        : null,
-    defaultPrompt:
-      `Analyse and prioritise the following ideas for a project. Rank them by potential impact and feasibility. Group them into tiers: Must-have, Should-have, Nice-to-have, and Consider-later. Provide brief reasoning for each placement.`,
-    expectedFormat: `{
-  "tiers": [
-    {
-      "tier": "Must-have",
-      "ideas": [
-        {
-          "title": "Idea title",
-          "reasoning": "High impact because..."
-        }
-      ]
-    },
-    { "tier": "Should-have", "ideas": [...] },
-    { "tier": "Nice-to-have", "ideas": [...] },
-    { "tier": "Consider-later", "ideas": [...] }
-  ]
-}`,
-    buildPayload: (ctx) => {
-      const cats = Object.values(ctx.categories || {});
-      return {
-        categories: cats.map(c =>
-          buildCategoryPayload(c, ctx.ideas, ctx.categoryOrders, ctx.dims?.legendTypes)),
-        unassigned_ideas: getUnassignedIdeas(ctx.ideas, ctx.unassignedOrder)
-          .map(i => cleanIdea(i, ctx.dims?.legendTypes)),
-      };
     },
   },
 
@@ -972,8 +1052,8 @@ export const IDEABIN_SCENARIOS = [
     label: "Auto-categorise uncategorised ideas",
     description: "Suggest which categories uncategorised ideas should go into.",
     unavailableMsg: (ctx) => {
-      const unassignedCount = (ctx.unassignedOrder || []).filter(pid => ctx.ideas[pid]).length;
-      const catCount = Object.keys(ctx.categories || {}).length;
+      const unassignedCount = ctxUnassigned(ctx).length;
+      const catCount = ctxCategoryCount(ctx);
       if (catCount === 0) return "Create at least one category first";
       if (unassignedCount === 0) return "No uncategorised ideas to assign";
       return null;
@@ -995,14 +1075,15 @@ export const IDEABIN_SCENARIOS = [
   ]
 }`,
     buildPayload: (ctx) => {
-      const cats = Object.values(ctx.categories || {});
+      const cats = ctxCategories(ctx);
+      const orders = ctxCategoryOrders(ctx);
       return {
         categories: cats.map(c => ({
           category_name: c.name,
-          ideas: ideasForCategory(c.id, ctx.ideas, ctx.categoryOrders)
+          ideas: ideasForCategory(c.id, ctx.ideas, orders)
             .map(i => ({ title: i.title })),
         })),
-        uncategorised_ideas: getUnassignedIdeas(ctx.ideas, ctx.unassignedOrder)
+        uncategorised_ideas: ctxUnassigned(ctx)
           .map(i => cleanIdea(i, ctx.dims?.legendTypes)),
       };
     },
@@ -1016,7 +1097,7 @@ export const IDEABIN_SCENARIOS = [
     label: "Gap analysis",
     description: "Identify missing areas and blind spots in the idea landscape.",
     unavailableMsg: (ctx) =>
-      totalIdeaCount(ctx.ideas) === 0 && Object.keys(ctx.categories || {}).length === 0
+      ctxIdeaCount(ctx) === 0 && ctxCategoryCount(ctx) === 0
         ? "Add some content first"
         : null,
     defaultPrompt:
@@ -1035,47 +1116,13 @@ export const IDEABIN_SCENARIOS = [
   "overall_assessment": "Brief summary of coverage strengths and weaknesses."
 }`,
     buildPayload: (ctx) => {
-      const cats = Object.values(ctx.categories || {});
+      const cats = ctxCategories(ctx);
+      const orders = ctxCategoryOrders(ctx);
       return {
         categories: cats.map(c =>
-          buildCategoryPayload(c, ctx.ideas, ctx.categoryOrders, ctx.dims?.legendTypes)),
-        unassigned_ideas: getUnassignedIdeas(ctx.ideas, ctx.unassignedOrder)
+          buildCategoryPayload(c, ctx.ideas, orders, ctx.dims?.legendTypes)),
+        unassigned_ideas: ctxUnassigned(ctx)
           .map(i => cleanIdea(i, ctx.dims?.legendTypes)),
-      };
-    },
-  },
-
-  {
-    id: "context_summarize",
-    domain: "ideabin",
-    group: "Analysis",
-    action: "analyse",
-    label: "Summarise context",
-    description: "Get a high-level summary and report of the current state.",
-    unavailableMsg: (ctx) =>
-      totalIdeaCount(ctx.ideas) === 0 && Object.keys(ctx.categories || {}).length === 0
-        ? "Add some content first"
-        : null,
-    defaultPrompt:
-      `Provide a comprehensive summary of this project's IdeaBin: how many categories, ideas, what themes emerge, which areas are strongest, which are weak, and an overall assessment. Format it as a brief report.`,
-    expectedFormat: `{
-  "summary": {
-    "total_categories": 0,
-    "total_ideas": 0,
-    "themes": ["Theme 1", "Theme 2"],
-    "strengths": ["..."],
-    "weaknesses": ["..."],
-    "overall_assessment": "..."
-  }
-}`,
-    buildPayload: (ctx) => {
-      const cats = Object.values(ctx.categories || {});
-      return {
-        categories: cats.map(c =>
-          buildCategoryPayload(c, ctx.ideas, ctx.categoryOrders, ctx.dims?.legendTypes)),
-        unassigned_ideas: getUnassignedIdeas(ctx.ideas, ctx.unassignedOrder)
-          .map(i => cleanIdea(i, ctx.dims?.legendTypes)),
-        legends: buildLegendPayload(ctx.dims),
       };
     },
   },

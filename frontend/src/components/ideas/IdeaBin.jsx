@@ -43,12 +43,12 @@ import { IDEABIN_SCENARIOS, IDEABIN_GROUPS, assemblePrompt } from "../shared/pro
 // Extracted API helpers
 
 import { fetchContextsApi, assignCategoryToContextApi } from "./api/contextApi";
-import { mergeIdeasApi, createIdeaApi, assignIdeaToCategoryApi } from "./api/ideaApi";
+import { mergeIdeasApi, createIdeaApi, assignIdeaToCategoryApi, updateIdeaTitleApi, updateIdeaDescriptionApi, assignIdeaLegendTypeApi } from "./api/ideaApi";
 import { authFetch, API } from "./api/authFetch";
 import { exportIdeabinApi, importIdeabinApi, exportCategoryApi, exportMultipleCategoriesApi, importCategoryApi, insertIdeasIntoCategoryApi } from "./api/exportApi";
 import { delete_task } from "../../api/dependencies_api";
 import { deleteTeamForProject } from "../../api/org_API";
-import { createCategoryApi, syncCategoryIdeas } from "./api/categoryApi";
+import { createCategoryApi, syncCategoryIdeas, renameCategoryApi } from "./api/categoryApi";
 import { passesAllFiltersCheck } from "./ideaBinFilters";
 
 // ───────────────────── Constants ─────────────────────
@@ -637,6 +637,7 @@ export default function IdeaBin() {
     categories,
     categoryOrders,
     unassignedOrder,
+    contextIdeaOrders,
     dims,
     selectedIdeaIds,
     selectedCategoryIds,
@@ -650,7 +651,7 @@ export default function IdeaBin() {
     projectTeams: projectTeams || [],
     projectDescription: projectDescRef.current || "",
   }), [
-    ideas, categories, categoryOrders, unassignedOrder, dims,
+    ideas, categories, categoryOrders, unassignedOrder, contextIdeaOrders, dims,
     selectedIdeaIds, selectedCategoryIds,
     legendFilters, filterCombineMode, stackedFilters, stackCombineMode,
     globalTypeFilter, filterPresets, activeContext, projectTeams,
@@ -673,9 +674,14 @@ export default function IdeaBin() {
     importCategories: importCategoryApi,
     insertIdeas: insertIdeasIntoCategoryApi,
     createCategory: createCategoryApi,
+    renameCategory: renameCategoryApi,
     createLegend: dims.create_legend,
     createTypeOnLegend,
     assignIdeaToCategory: assignIdeaToCategoryApi,
+    assignCategoryToContext: assignCategoryToContextApi,
+    updateIdeaTitle: updateIdeaTitleApi,
+    updateIdeaDescription: updateIdeaDescriptionApi,
+    assignLegendType: assignIdeaLegendTypeApi,
     setFilterPresets,
     refreshAll: async () => {
       await fetch_categories();

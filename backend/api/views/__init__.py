@@ -163,6 +163,7 @@ from .ideas import (
     toggle_archive_idea,
     batch_set_archive,
     get_archived_ideas,
+    delete_all_archived_ideas,
     update_category_filter_config,
     merge_ideas,
 )

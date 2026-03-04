@@ -968,6 +968,16 @@ def get_archived_ideas(request):
     })
 
 
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_all_archived_ideas(request):
+    """Permanently delete ALL archived ideas owned by the current user."""
+    qs = Idea.objects.filter(owner=request.user, archived=True)
+    count = qs.count()
+    qs.delete()
+    return Response({"deleted": True, "count": count})
+
+
 # ═══════════════════════════════════════════════════════
 #  UPVOTES
 # ═══════════════════════════════════════════════════════
