@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Layers, ListOrdered, Globe, Lock, Merge, Download, Upload } from "lucide-react";
+import { Layers, ListOrdered, Globe, Lock, Merge, Download, Upload, Sparkles, Loader } from "lucide-react";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import UnarchiveIcon from "@mui/icons-material/Unarchive";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
@@ -42,6 +42,9 @@ export default function IdeaBinToolbar({
   // multi-category export
   selectedCategoryCount,
   onExportSelectedCategories,
+  // AI generate
+  onAiGenerate,
+  aiGenerating,
 }) {
   const ctxColor = activeContext?.color;
   const importInputRef = useRef(null);
@@ -315,6 +318,22 @@ export default function IdeaBinToolbar({
 
       {/* spacer */}
       <div className="flex-1" />
+
+      {/* ── AI Generate button ── */}
+      {viewMode === "ideas" && (
+        <button
+          onClick={onAiGenerate}
+          disabled={aiGenerating}
+          className="text-[9px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 border flex items-center gap-0.5 transition-colors bg-violet-50 text-violet-700 border-violet-300 hover:bg-violet-100 disabled:opacity-50 disabled:cursor-wait"
+          title="Generate new ideas with AI (uses existing context)"
+        >
+          {aiGenerating
+            ? <Loader size={10} className="animate-spin" />
+            : <Sparkles size={10} />
+          }
+          {aiGenerating ? "Generating…" : "Generate"}
+        </button>
+      )}
 
       {/* ── Export selected categories ── */}
       {selectedCategoryCount >= 2 && (

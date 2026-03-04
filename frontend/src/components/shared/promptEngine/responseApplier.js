@@ -150,7 +150,13 @@ export function detectResponseContent(json) {
 
   // ── Duplicate analysis (merged versions are actionable) ──
   if (Array.isArray(json.duplicate_groups) && json.duplicate_groups.length > 0) {
-    const merged = json.duplicate_groups.filter(g => g.merged_version).map(g => g.merged_version);
+    const merged = json.duplicate_groups
+      .filter(g => g.merged_version)
+      .map(g => ({
+        ...g.merged_version,
+        _originals: g.ideas || [],
+        _reason: g.reason || null,
+      }));
     if (merged.length > 0) {
       found.push({ type: "dedup_merged", count: merged.length, data: merged, groupCount: json.duplicate_groups.length });
     } else {

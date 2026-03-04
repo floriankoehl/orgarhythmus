@@ -274,6 +274,9 @@ urlpatterns = [
     path("workspaces/<int:workspace_id>/update/", views.update_workspace, name="update_workspace"),
     path("workspaces/<int:workspace_id>/delete/", views.delete_workspace, name="delete_workspace"),
     path("workspaces/<int:workspace_id>/set-default/", views.set_default_workspace, name="set_default_workspace"),
+
+    # ── AI Generate (OpenAI proxy) ──
+    path("ai/generate/", views.ai_generate, name="ai_generate"),
 ]
 
 

@@ -31,7 +31,7 @@
  * ╚══════════════════════════════════════════════════════════╝
  */
 
-export { IDEABIN_SCENARIOS, IDEABIN_GROUPS } from './scenarios/ideabinScenarios';
-export { ALL_SCENARIOS, ALL_GROUPS, ALL_SCENARIO_KEYS, getScenario, getGroup, getScenariosForDomain } from './registry';
+export { IDEABIN_SCENARIOS, IDEABIN_GROUPS, IDEABIN_GRID } from './scenarios/ideabinScenarios';
+export { ALL_SCENARIOS, ALL_GROUPS, ALL_SCENARIO_KEYS, getScenario, getGroup, getScenariosForDomain, IDEABIN_GRID as GRID } from './registry';
 export { assemblePrompt } from './assembler';
 export { detectResponseContent, buildPreviewLabels, hasActionableContent, applyDetected } from './responseApplier';

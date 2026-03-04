@@ -38,7 +38,9 @@ import useIdeaBinKeyboard from "./hooks/useIdeaBinKeyboard";
 import useIdeaBinContext from "./hooks/useIdeaBinContext";
 import useIdeaBinTransform from "./hooks/useIdeaBinTransform.jsx";
 import usePromptSettings from "../usePromptSettings";
-import { IDEABIN_SCENARIOS, IDEABIN_GROUPS, assemblePrompt } from "../shared/promptEngine";
+import { IDEABIN_SCENARIOS, IDEABIN_GRID, assemblePrompt } from "../shared/promptEngine";
+import { detectResponseContent } from "../shared/promptEngine/responseApplier";
+import ControlledApplyModal from "../shared/promptEngine/ControlledApplyPanel";
 
 // Extracted API helpers
 
@@ -207,6 +209,10 @@ export default function IdeaBin() {
 
   // ───── I/O Prompt panel ─────
   const [showIOPanel, setShowIOPanel] = useState(false);
+
+  // ───── AI Direct Generate ─────
+  const [aiDetected, setAiDetected] = useState(null);
+  const [aiGenerating, setAiGenerating] = useState(false);
 
   // Refs
   const IdeaListRef = useRef(null);
@@ -701,7 +707,7 @@ export default function IdeaBin() {
     showIOPanel ? (
       <IdeaBinIOPopup
         scenarios={IDEABIN_SCENARIOS}
-        groups={IDEABIN_GROUPS}
+        grid={IDEABIN_GRID}
         ctx={ioCtx}
         settings={promptSettingsRef.current}
         assemblePrompt={assemblePrompt}
@@ -711,6 +717,47 @@ export default function IdeaBin() {
       />
     ) : null
   ), [showIOPanel, ioCtx, applyCtx, activeContext?.color]);
+
+  // ═══════════════════════════════════════════════════════
+  // ═══════════  AI DIRECT GENERATE  ══════════════════════
+  // ═══════════════════════════════════════════════════════
+
+  const handleAiGenerate = useCallback(async () => {
+    setAiGenerating(true);
+    try {
+      const { text } = assemblePrompt("ideas_add", { ...ioCtx, _withContext: true }, promptSettingsRef.current);
+      const res = await authFetch(`${API}/ai/generate/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: text }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Server error ${res.status}`);
+      }
+      const { content } = await res.json();
+
+      // Parse: strip markdown code fences, then JSON.parse
+      let jsonStr = (content || "").trim();
+      const fenceMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
+      if (fenceMatch) jsonStr = fenceMatch[1].trim();
+
+      let parsed;
+      try { parsed = JSON.parse(jsonStr); }
+      catch (e) { throw new Error(`AI returned invalid JSON: ${e.message}`); }
+
+      const detected = detectResponseContent(parsed);
+      if (!detected || detected.length === 0) {
+        throw new Error("No actionable content detected in AI response");
+      }
+      setAiDetected(detected);
+    } catch (e) {
+      console.error("AI generate failed:", e);
+      alert(`AI generation failed: ${e.message}`);
+    } finally {
+      setAiGenerating(false);
+    }
+  }, [ioCtx]);
 
   // ═══════════════════════════════════════════════════════
   // ═══════════  EXPORT BACKUP  ═══════════════════════════
@@ -1360,7 +1407,19 @@ export default function IdeaBin() {
             onImportBackup={handleImportBackup}
             selectedCategoryCount={selectedCategoryIds.size}
             onExportSelectedCategories={handleExportSelectedCategories}
+            onAiGenerate={handleAiGenerate}
+            aiGenerating={aiGenerating}
           />
+
+          {/* ── AI Generate review modal ── */}
+          {aiDetected && (
+            <ControlledApplyModal
+              detected={aiDetected}
+              applyCtx={applyCtx}
+              onResult={(result) => { setAiDetected(null); }}
+              onClose={() => setAiDetected(null)}
+            />
+          )}
 
           {/* ── Content area ── */}
           <div className="flex-1 flex overflow-hidden relative">

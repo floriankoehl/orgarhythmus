@@ -268,3 +268,7 @@ from .workspaces import (
     set_default_workspace,
     get_default_workspace,
 )
+
+from .ai_generate import (
+    ai_generate,
+)

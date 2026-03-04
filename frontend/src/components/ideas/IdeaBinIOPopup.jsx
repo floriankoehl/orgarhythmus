@@ -1,105 +1,84 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import {
-  Copy, Download, Check, ChevronRight, ChevronDown,
-  Plus, RefreshCw, Search as SearchIcon, AlertCircle, Sparkles,
-  ClipboardPaste,
+  Copy, Download, Check, Plus, RefreshCw, Pencil,
+  Search as SearchIcon, AlertCircle, Sparkles,
+  ClipboardPaste, ArrowRightLeft, Star, Zap,
 } from "lucide-react";
 import { detectResponseContent } from "../shared/promptEngine/responseApplier";
-import ControlledApplyPanel from "../shared/promptEngine/ControlledApplyPanel";
+import ControlledApplyModal from "../shared/promptEngine/ControlledApplyPanel";
 
 /**
  * ═══════════════════════════════════════════════════════════
- *  IdeaBinIOPopup
- *  ──────────────
+ *  IdeaBinIOPopup  —  Grid Layout v2
+ *  ──────────────────────────────────
  *  Two-mode popup:
- *   • Export – scenario list, click to copy prompt to clipboard
+ *   • Export – 3×3 grid (Add / Assign / Finetune × Ideas /
+ *     Categories / Legends & Filters) + Specials row + context toggle
  *   • Import – paste AI response, preview & apply
- *
- *  After copying a scenario the popup transitions to Import
- *  mode, pre-loaded with the expected format hint.
  *
  *  Props:
  *    scenarios       – array of scenario definitions
- *    groups          – ordered group labels
+ *    grid            – { rows, columns, cells, specials } metadata
  *    ctx             – data context for availability + payload
  *    settings        – user's prompt settings
  *    assemblePrompt  – (scenarioId, ctx, settings) => { text, json, jsonString }
  *    applyCtx        – object with API functions for applying responses
  *    onClose         – close callback
- *    iconColor       – title bar icon colour (for theming)
+ *    iconColor       – title bar icon colour
  * ═══════════════════════════════════════════════════════════
  */
 export default function IdeaBinIOPopup({
-  scenarios, groups, ctx, settings, assemblePrompt, applyCtx, onClose, iconColor = "#92400e",
+  scenarios, grid, ctx, settings, assemblePrompt, applyCtx, onClose, iconColor = "#92400e",
 }) {
   // ─── Shared state ─────────────────────────────────────
-  const [mode, setMode] = useState("export"); // "export" | "import"
+  const [mode, setMode] = useState("export");
   const [copiedId, setCopiedId] = useState(null);
   const [lastCopiedScenario, setLastCopiedScenario] = useState(null);
 
   // ─── Export state ─────────────────────────────────────
-  const [collapsedGroups, setCollapsedGroups] = useState(new Set());
-  const [searchQuery, setSearchQuery] = useState("");
-  const searchRef = useRef(null);
+  const [withContext, setWithContext] = useState(true);
+  const [selectedLegendId, setSelectedLegendId] = useState(
+    () => ctx.dims?.legends?.[0]?.id ?? null,
+  );
 
   // ─── Import state ─────────────────────────────────────
   const [pasteText, setPasteText] = useState("");
   const [parseError, setParseError] = useState(null);
-  const [detected, setDetected] = useState(null);     // null | Array
-  const [applyResult, setApplyResult] = useState(null); // null | { created, errors }
+  const [detected, setDetected] = useState(null);
+  const [applyResult, setApplyResult] = useState(null);
   const pasteRef = useRef(null);
 
   const popupRef = useRef(null);
 
-  // Auto-focus on mode switch
-  useEffect(() => {
-    if (mode === "export") searchRef.current?.focus();
-    else pasteRef.current?.focus();
-  }, [mode]);
+  // Build scenario lookup map
+  const scenarioMap = useMemo(() => {
+    const m = new Map();
+    scenarios.forEach(s => m.set(s.id, s));
+    return m;
+  }, [scenarios]);
 
-  // Action icons by scenario action type
-  const actionIcon = (action) => {
-    if (action === "add") return <Plus size={11} className="text-green-500 flex-shrink-0" />;
-    if (action === "overwork") return <RefreshCw size={11} className="text-blue-500 flex-shrink-0" />;
-    if (action === "analyse") return <SearchIcon size={11} className="text-purple-500 flex-shrink-0" />;
-    return <Sparkles size={11} className="text-gray-400 flex-shrink-0" />;
-  };
+  // Modified ctx with context toggle + legend picker
+  const modCtx = useMemo(() => ({
+    ...ctx,
+    _withContext: withContext,
+    _selectedLegendId: selectedLegendId,
+  }), [ctx, withContext, selectedLegendId]);
 
-  // Compute availability for each scenario
+  // Compute availability for each scenario (using base ctx, not toggles)
   const availability = useMemo(() => {
     const map = {};
     scenarios.forEach(s => {
-      map[s.id] = s.unavailableMsg(ctx);
+      let msg = s.unavailableMsg(ctx);
+      // For legend-picker scenarios, check if a legend is selected
+      if (!msg && s.needsLegendPicker && !selectedLegendId) {
+        msg = "Select a legend from the dropdown";
+      }
+      map[s.id] = msg;
     });
     return map;
-  }, [scenarios, ctx]);
+  }, [scenarios, ctx, selectedLegendId]);
 
-  // Filter by search
-  const filteredScenarios = useMemo(() => {
-    if (!searchQuery.trim()) return scenarios;
-    const q = searchQuery.toLowerCase();
-    return scenarios.filter(s =>
-      s.label.toLowerCase().includes(q) ||
-      s.description.toLowerCase().includes(q) ||
-      s.group.toLowerCase().includes(q)
-    );
-  }, [scenarios, searchQuery]);
-
-  // Group scenarios
-  const groupedScenarios = useMemo(() => {
-    const map = new Map();
-    groups.forEach(g => map.set(g, []));
-    filteredScenarios.forEach(s => {
-      if (!map.has(s.group)) map.set(s.group, []);
-      map.get(s.group).push(s);
-    });
-    for (const [k, v] of map) {
-      if (v.length === 0) map.delete(k);
-    }
-    return map;
-  }, [filteredScenarios, groups]);
-
-  // Selection stats for header
+  // Selection stats
   const selectionStats = useMemo(() => {
     const parts = [];
     if (ctx.selectedIdeaIds?.size > 0) parts.push(`${ctx.selectedIdeaIds.size} idea${ctx.selectedIdeaIds.size > 1 ? "s" : ""}`);
@@ -107,18 +86,31 @@ export default function IdeaBinIOPopup({
     return parts.length > 0 ? parts.join(", ") + " selected" : null;
   }, [ctx.selectedIdeaIds, ctx.selectedCategoryIds]);
 
-  const toggleGroup = useCallback((group) => {
-    setCollapsedGroups(prev => {
-      const next = new Set(prev);
-      next.has(group) ? next.delete(group) : next.add(group);
-      return next;
-    });
-  }, []);
+  // Auto-focus paste area on import mode
+  useEffect(() => {
+    if (mode === "import") pasteRef.current?.focus();
+  }, [mode]);
+
+  // ─── Action icons ─────────────────────────────────────
+  const actionIcon = (action, size = 10) => {
+    if (action === "add") return <Plus size={size} className="text-green-500 flex-shrink-0" />;
+    if (action === "assign") return <ArrowRightLeft size={size} className="text-teal-500 flex-shrink-0" />;
+    if (action === "finetune") return <Pencil size={size} className="text-blue-500 flex-shrink-0" />;
+    if (action === "special") return <Star size={size} className="text-amber-500 flex-shrink-0" />;
+    return <Sparkles size={size} className="text-gray-400 flex-shrink-0" />;
+  };
+
+  // Column header colour hints
+  const colColors = {
+    add: "text-green-700 bg-green-50",
+    assign: "text-teal-700 bg-teal-50",
+    finetune: "text-blue-700 bg-blue-50",
+  };
 
   // ─── Export: copy prompt ──────────────────────────────
   const handleCopy = useCallback(async (scenarioId) => {
-    const scenario = scenarios.find(s => s.id === scenarioId);
-    const { text } = assemblePrompt(scenarioId, ctx, settings);
+    const scenario = scenarioMap.get(scenarioId);
+    const { text } = assemblePrompt(scenarioId, modCtx, settings);
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -133,13 +125,12 @@ export default function IdeaBinIOPopup({
     setLastCopiedScenario(scenario || null);
     setTimeout(() => {
       setCopiedId(null);
-      // Auto-switch to import mode after brief "Copied" flash
       setMode("import");
     }, 800);
-  }, [assemblePrompt, ctx, settings, scenarios]);
+  }, [assemblePrompt, modCtx, settings, scenarioMap]);
 
   const handleDownload = useCallback((scenarioId) => {
-    const { jsonString } = assemblePrompt(scenarioId, ctx, settings);
+    const { jsonString } = assemblePrompt(scenarioId, modCtx, settings);
     const blob = new Blob([jsonString], { type: "application/json" });
     const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const filename = `${scenarioId}_${ts}.json`;
@@ -151,14 +142,13 @@ export default function IdeaBinIOPopup({
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-  }, [assemblePrompt, ctx, settings]);
+  }, [assemblePrompt, modCtx, settings]);
 
   // ─── Import: parse ────────────────────────────────────
   const handleParse = useCallback(() => {
     const raw = pasteText.trim();
     if (!raw) { setParseError("Paste some JSON first."); return; }
 
-    // Try to extract JSON from markdown code blocks
     let jsonStr = raw;
     const fenceMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
     if (fenceMatch) jsonStr = fenceMatch[1].trim();
@@ -181,13 +171,58 @@ export default function IdeaBinIOPopup({
     setDetected(items);
   }, [pasteText]);
 
-  // ─── Import: reset ────────────────────────────────────
   const resetImport = useCallback(() => {
     setPasteText("");
     setParseError(null);
     setDetected(null);
     setApplyResult(null);
   }, []);
+
+  // ─── Render helpers ───────────────────────────────────
+
+  /** Render a single scenario as a clickable row inside a grid cell */
+  const renderScenarioBtn = (scenarioId) => {
+    const scenario = scenarioMap.get(scenarioId);
+    if (!scenario) return null;
+    const unavailable = availability[scenarioId];
+    const isCopied = copiedId === scenarioId;
+
+    return (
+      <div
+        key={scenarioId}
+        className={`group flex items-center gap-1 px-1.5 py-[3px] rounded transition-colors ${
+          unavailable
+            ? "opacity-35 cursor-not-allowed"
+            : "hover:bg-black/5 cursor-pointer"
+        }`}
+        onClick={() => !unavailable && handleCopy(scenarioId)}
+        title={unavailable || scenario.description}
+      >
+        {actionIcon(scenario.action, 9)}
+        <span className="flex-1 text-[10px] text-gray-700 font-medium truncate leading-tight">
+          {scenario.label}
+        </span>
+        {!unavailable && (
+          <span className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            {isCopied ? (
+              <Check size={9} className="text-green-500" />
+            ) : (
+              <>
+                <Copy size={8} className="text-gray-400" />
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDownload(scenarioId); }}
+                  className="p-0 text-gray-300 hover:text-gray-600"
+                  title="Download as JSON"
+                >
+                  <Download size={8} />
+                </button>
+              </>
+            )}
+          </span>
+        )}
+      </div>
+    );
+  };
 
   // ═══════════════════════════════════════════════════════
   //  RENDER
@@ -202,24 +237,44 @@ export default function IdeaBinIOPopup({
       <div
         ref={popupRef}
         className="absolute right-0 top-full mt-1 z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col"
-        style={{ width: "min(380px, 90vw)", maxHeight: "min(560px, 75vh)" }}
+        style={{ width: "min(680px, 92vw)", maxHeight: "min(620px, 80vh)" }}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* ── Header with mode tabs ── */}
-        <div className="px-3 pt-2 pb-1.5 border-b border-gray-100">
+        {/* ── Header ── */}
+        <div className="px-3 pt-2 pb-1.5 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-1.5">
               <Sparkles size={13} style={{ color: iconColor }} />
               <span className="text-[11px] font-semibold text-gray-800">AI I/O</span>
             </div>
-            {selectionStats && mode === "export" && (
-              <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">
-                {selectionStats}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {selectionStats && mode === "export" && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">
+                  {selectionStats}
+                </span>
+              )}
+              {/* Context toggle */}
+              {mode === "export" && (
+                <button
+                  onClick={() => setWithContext(v => !v)}
+                  className={`text-[9px] px-2 py-0.5 rounded-full font-medium transition-colors ${
+                    withContext
+                      ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                  }`}
+                  title={withContext
+                    ? "ON: Prompts include existing context for reference"
+                    : "OFF: Blank-slate prompts without existing data"
+                  }
+                >
+                  Context {withContext ? "ON" : "OFF"}
+                </button>
+              )}
+            </div>
           </div>
+
           {/* Mode tabs */}
-          <div className="flex gap-0.5 mb-1">
+          <div className="flex gap-0.5">
             <button
               onClick={() => setMode("export")}
               className={`flex-1 text-[10px] py-1 rounded font-medium transition-colors ${
@@ -243,106 +298,114 @@ export default function IdeaBinIOPopup({
               Import Response
             </button>
           </div>
-
-          {/* Search (export only) */}
-          {mode === "export" && (
-            <div className="relative">
-              <SearchIcon size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                ref={searchRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search scenarios…"
-                className="w-full text-[10px] pl-6 pr-2 py-1 rounded border border-gray-200 focus:outline-none focus:border-amber-400 bg-gray-50"
-              />
-            </div>
-          )}
         </div>
 
         {/* ═══════════════════════════════════════════════ */}
-        {/*  EXPORT MODE                                   */}
+        {/*  EXPORT MODE — GRID                            */}
         {/* ═══════════════════════════════════════════════ */}
         {mode === "export" && (
-          <div className="flex-1 overflow-y-auto py-1">
-            {groupedScenarios.size === 0 && (
-              <div className="px-3 py-4 text-[10px] text-gray-400 text-center italic">
-                No matching scenarios
+          <div className="flex-1 overflow-y-auto p-2">
+            {/* CSS Grid */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "80px 1fr 1fr 1fr",
+                gridTemplateRows: "auto",
+                gap: "1px",
+              }}
+              className="bg-gray-200 rounded-lg overflow-hidden border border-gray-200"
+            >
+              {/* ── Row 0: Column headers ── */}
+              <div className="bg-gray-50" style={{ gridColumn: 1, gridRow: 1 }} /> {/* empty corner */}
+              {grid.columns.map((col, ci) => (
+                <div
+                  key={col.key}
+                  style={{ gridColumn: ci + 2, gridRow: 1 }}
+                  className={`px-2 py-1.5 text-[10px] font-bold text-center uppercase tracking-wide ${colColors[col.key] || "bg-gray-50 text-gray-600"}`}
+                >
+                  {col.label}
+                </div>
+              ))}
+
+              {/* ── Grid rows ── */}
+              {grid.rows.map((row, ri) => {
+                const gridRowIdx = ri + 2; // row 1 = headers, row 2+ = data
+                const colIdx = { add: 2, assign: 3, finetune: 4 };
+
+                return (
+                <React.Fragment key={row.key}>
+                  {/* Row label */}
+                  <div
+                    className="bg-gray-50 px-2 py-2 flex items-start"
+                    style={{ gridColumn: 1, gridRow: gridRowIdx }}
+                  >
+                    <span className="text-[10px] font-bold text-gray-600 leading-tight">
+                      {row.label}
+                    </span>
+                  </div>
+
+                  {/* Cells */}
+                  {grid.columns.map((col) => {
+                    const cellKey = `${row.key}:${col.key}`;
+                    const cellScenarioIds = grid.cells[cellKey];
+
+                    // Merged cell (categories:assign → null, occupied by span from ideas:assign)
+                    if (cellScenarioIds === null) return null;
+
+                    // Shared assign cell spans ideas + categories rows
+                    const isSharedAssign = row.key === "ideas" && col.key === "assign";
+
+                    return (
+                      <div
+                        key={cellKey}
+                        className="bg-white px-1 py-1 flex flex-col gap-0"
+                        style={{
+                          gridColumn: colIdx[col.key],
+                          gridRow: isSharedAssign ? `${gridRowIdx} / ${gridRowIdx + 2}` : gridRowIdx,
+                        }}
+                      >
+                        {cellScenarioIds.map(id => renderScenarioBtn(id))}
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+                );
+              })}
+            </div>
+
+            {/* ── Legend picker (for scenarios needing it) ── */}
+            {ctx.dims?.legends?.length > 0 && (
+              <div className="flex items-center gap-2 mt-2 px-1">
+                <span className="text-[9px] text-gray-500 font-medium">Active legend:</span>
+                <select
+                  value={selectedLegendId || ""}
+                  onChange={(e) => setSelectedLegendId(Number(e.target.value) || null)}
+                  className="text-[10px] px-1.5 py-0.5 rounded border border-gray-200 bg-gray-50 text-gray-700 focus:outline-none focus:border-blue-400"
+                >
+                  <option value="">Select legend…</option>
+                  {ctx.dims.legends.map(l => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+                <span className="text-[8px] text-gray-400 italic">
+                  Used by "1 legend →" and "single legend" scenarios
+                </span>
               </div>
             )}
-            {[...groupedScenarios.entries()].map(([group, items]) => (
-              <div key={group}>
-                {/* Group header */}
-                <button
-                  onClick={() => toggleGroup(group)}
-                  className="w-full flex items-center gap-1 px-3 py-1.5 text-[9px] font-bold text-gray-500 uppercase tracking-wider hover:bg-gray-50 transition-colors"
-                >
-                  {collapsedGroups.has(group)
-                    ? <ChevronRight size={10} />
-                    : <ChevronDown size={10} />
-                  }
-                  {group}
-                  <span className="text-[8px] font-normal text-gray-400 ml-auto">
-                    {items.filter(s => !availability[s.id]).length}/{items.length}
-                  </span>
-                </button>
 
-                {/* Scenario items */}
-                {!collapsedGroups.has(group) && items.map(scenario => {
-                  const unavailable = availability[scenario.id];
-                  const isCopied = copiedId === scenario.id;
-
-                  return (
-                    <div
-                      key={scenario.id}
-                      className={`group flex items-center gap-1.5 px-3 py-1.5 mx-1 rounded transition-colors ${
-                        unavailable
-                          ? "opacity-40 cursor-not-allowed"
-                          : "hover:bg-amber-50 cursor-pointer"
-                      }`}
-                      onClick={() => !unavailable && handleCopy(scenario.id)}
-                      title={unavailable || scenario.description}
-                    >
-                      {actionIcon(scenario.action)}
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[11px] text-gray-800 font-medium truncate leading-tight">
-                          {scenario.label}
-                        </div>
-                        <div className="text-[9px] text-gray-400 truncate leading-tight">
-                          {unavailable ? (
-                            <span className="flex items-center gap-0.5 text-orange-400">
-                              <AlertCircle size={8} />
-                              {unavailable}
-                            </span>
-                          ) : scenario.description}
-                        </div>
-                      </div>
-                      {!unavailable && (
-                        <div className="flex items-center gap-0.5 flex-shrink-0">
-                          {isCopied ? (
-                            <span className="flex items-center gap-0.5 text-green-500 text-[9px] font-medium">
-                              <Check size={10} />
-                              Copied
-                            </span>
-                          ) : (
-                            <>
-                              <Copy size={10} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleDownload(scenario.id); }}
-                                className="p-0.5 rounded text-gray-300 hover:text-gray-600 hover:bg-gray-100 transition-colors opacity-0 group-hover:opacity-100"
-                                title="Download as JSON file"
-                              >
-                                <Download size={10} />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+            {/* ── Specials section ── */}
+            <div className="mt-2">
+              <div className="text-[9px] font-bold text-gray-500 uppercase tracking-wider px-1 mb-1">
+                Specials
               </div>
-            ))}
+              <div className="grid grid-cols-2 gap-[1px] bg-gray-200 rounded-lg overflow-hidden border border-gray-200">
+                {grid.specials.map(id => (
+                  <div key={id} className="bg-white px-1 py-0.5">
+                    {renderScenarioBtn(id)}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -402,16 +465,15 @@ export default function IdeaBinIOPopup({
               </div>
             ) : detected ? (
               /* ── Controlled review & apply ── */
-              <ControlledApplyPanel
+              <ControlledApplyModal
                 detected={detected}
                 applyCtx={applyCtx}
                 onResult={setApplyResult}
-                onBack={() => { setDetected(null); setParseError(null); }}
+                onClose={() => { setDetected(null); setParseError(null); }}
               />
             ) : (
               /* ── Paste textarea ── */
               <>
-                {/* Format hint from last-copied scenario */}
                 {lastCopiedScenario?.expectedFormat && (
                   <details className="group">
                     <summary className="text-[9px] text-gray-500 cursor-pointer hover:text-gray-700 select-none">
@@ -456,9 +518,9 @@ export default function IdeaBinIOPopup({
         )}
 
         {/* ── Footer ── */}
-        <div className="px-3 py-1.5 border-t border-gray-100 text-[9px] text-gray-400">
+        <div className="px-3 py-1.5 border-t border-gray-100 text-[9px] text-gray-400 flex-shrink-0">
           {mode === "export"
-            ? "Click to copy prompt · switches to Import after copy"
+            ? "Click scenario to copy prompt · switches to Import after copy"
             : "Paste AI response · preview & apply"
           }
         </div>
