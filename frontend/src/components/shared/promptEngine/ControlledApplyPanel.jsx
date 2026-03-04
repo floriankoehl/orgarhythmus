@@ -5,11 +5,11 @@ import {
   LayoutList, ArrowRight, ArrowLeft,
 } from "lucide-react";
 import {
-  buildChangeItems,
-  recomposeDetected,
-  CHANGE_TYPE_META,
+  buildChangeItems as _ideabinBuildChangeItems,
+  recomposeDetected as _ideabinRecomposeDetected,
+  CHANGE_TYPE_META as _IDEABIN_CHANGE_TYPE_META,
 } from "./changeBuilder";
-import { applyDetected } from "./responseApplier";
+import { applyDetected as _ideabinApplyDetected } from "./responseApplier";
 
 /**
  * ═══════════════════════════════════════════════════════════
@@ -26,13 +26,31 @@ import { applyDetected } from "./responseApplier";
  *  The user can switch freely between modes at any time.
  *
  *  Props:
- *    detected   – Array from detectResponseContent()
- *    applyCtx   – API context from IdeaBin
- *    onResult   – (result) => void
- *    onClose    – () => void
+ *    detected                – Array from detect*ResponseContent()
+ *    applyCtx                – API context from the host window
+ *    onResult                – (result) => void
+ *    onClose                 – () => void
+ *    buildChangeItemsFn      – optional override (task domain)
+ *    recomposeDetectedFn     – optional override (task domain)
+ *    applyDetectedFn         – optional override (task domain)
+ *    changeTypeMeta          – optional override (task domain)
  * ═══════════════════════════════════════════════════════════
  */
-export default function ControlledApplyModal({ detected, applyCtx, onResult, onClose }) {
+export default function ControlledApplyModal({
+  detected, applyCtx, onResult, onClose,
+  buildChangeItemsFn,
+  recomposeDetectedFn,
+  applyDetectedFn,
+  changeTypeMeta,
+}) {
+  // Domain-aware: use overrides if provided, else default to IdeaBin
+  const buildChangeItems   = buildChangeItemsFn   || _ideabinBuildChangeItems;
+  const recomposeDetected  = recomposeDetectedFn  || _ideabinRecomposeDetected;
+  const applyDetected      = applyDetectedFn      || _ideabinApplyDetected;
+  const CHANGE_TYPE_META   = changeTypeMeta
+    ? { ..._IDEABIN_CHANGE_TYPE_META, ...changeTypeMeta }
+    : _IDEABIN_CHANGE_TYPE_META;
+
   // ─── State ────────────────────────────────────────────
   const [changeItems, setChangeItems] = useState(() => buildChangeItems(detected));
   const [viewMode, setViewMode] = useState("slide");   // "slide" | "overview"
@@ -223,6 +241,7 @@ export default function ControlledApplyModal({ detected, applyCtx, onResult, onC
               onNext={goNext}
               isDisabled={isDisabled}
               analysisItems={analysisItems}
+              changeTypeMeta={CHANGE_TYPE_META}
             />
           ) : (
             <OverviewView
@@ -237,6 +256,7 @@ export default function ControlledApplyModal({ detected, applyCtx, onResult, onC
               onDeclineGroup={declineGroup}
               isDisabled={isDisabled}
               analysisItems={analysisItems}
+              changeTypeMeta={CHANGE_TYPE_META}
             />
           )}
         </div>
@@ -276,7 +296,8 @@ export default function ControlledApplyModal({ detected, applyCtx, onResult, onC
 //  SLIDE VIEW
 // ═══════════════════════════════════════════════════════════
 
-function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext, isDisabled, analysisItems }) {
+function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext, isDisabled, analysisItems, changeTypeMeta }) {
+  const CHANGE_TYPE_META = changeTypeMeta;
   const current = slideItems[slideIdx];
   if (!current && analysisItems.length === 0) {
     return (
@@ -348,6 +369,7 @@ function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext
                   disabled={isDisabled(child)}
                   onToggle={onToggle}
                   compact
+                  changeTypeMeta={CHANGE_TYPE_META}
                 />
               ))}
             </div>
@@ -672,6 +694,213 @@ function SlideDetailCard({ detail, changeType }) {
       );
     }
 
+    // ════════════════════════════════════════════════════
+    //  TASK DOMAIN — detail types
+    // ════════════════════════════════════════════════════
+
+    // ── Create task ──
+    case "create_task": {
+      return (
+        <div className="flex flex-col gap-2">
+          <div>
+            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">New Task</div>
+            <div className="bg-green-50 border border-green-200 rounded px-3 py-2">
+              <div className="text-[12px] font-medium text-green-800">{detail.name}</div>
+              {detail.description && (
+                <div className="text-[10px] text-green-700 mt-1 whitespace-pre-wrap">{detail.description}</div>
+              )}
+              {(detail.priority || detail.difficulty) && (
+                <div className="flex items-center gap-2 mt-1.5">
+                  {detail.priority && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">
+                      Priority: {detail.priority}
+                    </span>
+                  )}
+                  {detail.difficulty && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">
+                      Difficulty: {detail.difficulty}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="text-[10px] text-gray-500">
+            Target: <span className="font-medium text-gray-700">{detail.target || "Unassigned"}</span>
+          </div>
+          {detail.criteriaCount > 0 && (
+            <div className="text-[10px] text-gray-500">
+              Includes {detail.criteriaCount} acceptance criteri{detail.criteriaCount === 1 ? "on" : "a"}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Create team ──
+    case "create_team": {
+      return (
+        <div className="flex flex-col gap-2">
+          <div>
+            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
+              New Team{detail.isAssignment ? " + Assign Tasks" : ""}
+            </div>
+            <div className="bg-indigo-50 border border-indigo-200 rounded px-3 py-2 flex items-center gap-2">
+              <span
+                className="w-3 h-3 rounded-full flex-shrink-0 border border-indigo-300"
+                style={{ backgroundColor: detail.color || "#6366f1" }}
+              />
+              <div className="text-[12px] font-medium text-indigo-800">{detail.teamName}</div>
+              {detail.taskCount > 0 && (
+                <span className="text-[10px] text-indigo-600 ml-auto">
+                  {detail.taskCount} task{detail.taskCount > 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+          </div>
+          {detail.taskNames?.length > 0 && (
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Tasks</div>
+              <div className="flex flex-col gap-0.5">
+                {detail.taskNames.map((name, i) => (
+                  <div key={i} className="text-[10px] text-gray-700 flex items-center gap-1.5">
+                    <span className="w-1 h-1 rounded-full bg-gray-400 flex-shrink-0" />
+                    {name}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Update task ──
+    case "update_task": {
+      return (
+        <div className="flex flex-col gap-3">
+          {/* Title change */}
+          {detail.renamed ? (
+            <div className="flex flex-col gap-1.5">
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Task Name</div>
+              <div className="flex flex-col gap-1">
+                <div className="bg-red-50 border border-red-200 rounded px-3 py-1.5">
+                  <div className="text-[10px] text-red-400 mb-0.5">Before</div>
+                  <div className="text-[11px] text-red-800 line-through">{detail.originalName}</div>
+                </div>
+                <div className="bg-green-50 border border-green-200 rounded px-3 py-1.5">
+                  <div className="text-[10px] text-green-500 mb-0.5">After</div>
+                  <div className="text-[11px] text-green-800 font-medium">{detail.newName}</div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Task</div>
+              <div className="text-[11px] text-gray-800">{detail.originalName}</div>
+            </div>
+          )}
+          {detail.description != null && (
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">New Description</div>
+              <div className="bg-green-50 border border-green-200 rounded px-3 py-2 text-[10px] text-green-800 whitespace-pre-wrap">
+                {detail.description || "(empty)"}
+              </div>
+            </div>
+          )}
+          {(detail.priority || detail.difficulty) && (
+            <div className="flex items-center gap-2">
+              {detail.priority && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">
+                  Priority → {detail.priority}
+                </span>
+              )}
+              {detail.difficulty && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">
+                  Difficulty → {detail.difficulty}
+                </span>
+              )}
+            </div>
+          )}
+          {detail.criteriaCount > 0 && (
+            <div className="text-[10px] text-gray-500">
+              + {detail.criteriaCount} acceptance criteri{detail.criteriaCount === 1 ? "on" : "a"}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Update team ──
+    case "update_team": {
+      return (
+        <div className="flex flex-col gap-3">
+          {detail.renamed ? (
+            <div className="flex flex-col gap-1.5">
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Team Name</div>
+              <div className="flex flex-col gap-1">
+                <div className="bg-red-50 border border-red-200 rounded px-3 py-1.5">
+                  <div className="text-[10px] text-red-400 mb-0.5">Before</div>
+                  <div className="text-[11px] text-red-800 line-through">{detail.originalName}</div>
+                </div>
+                <div className="bg-green-50 border border-green-200 rounded px-3 py-1.5">
+                  <div className="text-[10px] text-green-500 mb-0.5">After</div>
+                  <div className="text-[11px] text-green-800 font-medium">{detail.newName}</div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Team</div>
+              <div className="text-[11px] text-gray-800">{detail.originalName}</div>
+            </div>
+          )}
+          {detail.color && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-500">Color:</span>
+              <span
+                className="w-4 h-4 rounded border border-gray-300"
+                style={{ backgroundColor: detail.color }}
+              />
+              <span className="text-[10px] text-gray-600 font-mono">{detail.color}</span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Move / assign task ──
+    case "move_task": {
+      return (
+        <div className="flex flex-col gap-2">
+          <div>
+            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Assign Task</div>
+            <div className="bg-teal-50 border border-teal-200 rounded px-3 py-2">
+              <div className="text-[11px] font-medium text-teal-800">{detail.taskName}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
+            <ArrowRight size={10} />
+            To team: <span className="font-medium text-gray-700">{detail.targetTeam}</span>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Add acceptance criteria ──
+    case "add_criteria": {
+      return (
+        <div className="flex flex-col gap-2">
+          <div className="text-[10px] text-gray-500">
+            Add criterion to task: <span className="font-medium text-gray-700">{detail.taskName}</span>
+          </div>
+          <div className="bg-purple-50 border border-purple-200 rounded px-3 py-2">
+            <div className="text-[11px] font-medium text-purple-800">{detail.criterionTitle}</div>
+          </div>
+        </div>
+      );
+    }
+
     default:
       return null;
   }
@@ -686,7 +915,7 @@ function OverviewView({
   groups, changeItems, collapsedGroups,
   onToggleGroup, onToggleItem,
   onAcceptAll, onDeclineAll, onAcceptGroup, onDeclineGroup,
-  isDisabled, analysisItems,
+  isDisabled, analysisItems, changeTypeMeta,
 }) {
   return (
     <div className="px-4 py-3 flex flex-col gap-3">
@@ -744,7 +973,7 @@ function OverviewView({
               </div>
 
               {!collapsed && items.map(ci => (
-                <ChangeRow key={ci.id} item={ci} disabled={isDisabled(ci)} onToggle={onToggleItem} />
+                <ChangeRow key={ci.id} item={ci} disabled={isDisabled(ci)} onToggle={onToggleItem} changeTypeMeta={changeTypeMeta} />
               ))}
             </div>
           );
@@ -762,8 +991,8 @@ function OverviewView({
 //  Shared sub-components
 // ═══════════════════════════════════════════════════════════
 
-function ChangeRow({ item, disabled, onToggle, compact }) {
-  const meta = CHANGE_TYPE_META[item.changeType] || { dotColor: "bg-gray-400" };
+function ChangeRow({ item, disabled, onToggle, compact, changeTypeMeta }) {
+  const meta = (changeTypeMeta || _IDEABIN_CHANGE_TYPE_META)[item.changeType] || { dotColor: "bg-gray-400" };
   const effectively_off = !item.accepted || disabled;
 
   return (

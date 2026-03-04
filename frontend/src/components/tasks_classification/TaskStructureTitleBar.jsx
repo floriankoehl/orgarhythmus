@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Star, Pencil, Trash2, Save, Check, ArrowLeft, Users, ListTodo, LayoutGrid, PanelTop, PanelTopClose } from "lucide-react";
+import { Star, Pencil, Trash2, Save, Check, ArrowLeft, Users, ListTodo, LayoutGrid, PanelTop, PanelTopClose, Sparkles } from "lucide-react";
 import WindowTitleBar from "../shared/WindowTitleBar";
 
 const TAB_CONFIG = [
@@ -28,6 +28,10 @@ export default function TaskStructureTitleBar({
   setActiveTab,
   detailView,
   onBackFromDetail,
+  // AI IO popup
+  ioPopupOpen,
+  setIoPopupOpen,
+  ioPopupContent,
   // View management (canvas tab only)
   groupBy,
   setGroupBy,
@@ -216,6 +220,21 @@ export default function TaskStructureTitleBar({
       }}
       rightContent={
         <div className="flex items-center gap-1">
+          {/* AI IO button */}
+          <div className="relative" onMouseDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setIoPopupOpen?.((v) => !v)}
+              className={`p-1 rounded transition-colors ${
+                ioPopupOpen
+                  ? "bg-white/30 text-white"
+                  : "hover:bg-white/20 text-white/70 hover:text-white"
+              }`}
+              title="AI I/O — Task Prompts"
+            >
+              <Sparkles size={13} />
+            </button>
+            {ioPopupOpen && ioPopupContent}
+          </div>
           {viewsPanel}
           {/* Toolbar toggle — only show on canvas tab */}
           {activeTab === "canvas" && !detailView && (

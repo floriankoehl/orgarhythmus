@@ -32,6 +32,9 @@
  */
 
 export { IDEABIN_SCENARIOS, IDEABIN_GROUPS, IDEABIN_GRID } from './scenarios/ideabinScenarios';
-export { ALL_SCENARIOS, ALL_GROUPS, ALL_SCENARIO_KEYS, getScenario, getGroup, getScenariosForDomain, IDEABIN_GRID as GRID } from './registry';
+export { TASK_SCENARIOS, TASK_GROUPS, TASK_GRID } from './scenarios/taskScenarios';
+export { ALL_SCENARIOS, ALL_GROUPS, ALL_SCENARIO_KEYS, getScenario, getGroup, getScenariosForDomain, IDEABIN_GRID as GRID, TASK_GRID as TASKS_GRID } from './registry';
 export { assemblePrompt } from './assembler';
 export { detectResponseContent, buildPreviewLabels, hasActionableContent, applyDetected } from './responseApplier';
+export { detectTaskResponseContent, buildTaskPreviewLabels, hasTaskActionableContent, applyTaskDetected } from './taskResponseApplier';
+export { buildTaskChangeItems, recomposeTaskDetected, TASK_CHANGE_TYPE_META } from './taskChangeBuilder';

@@ -76,6 +76,30 @@ VALID_SCENARIO_KEYS = {
     "special_context_suggestions",
     "special_gap_analysis",
     "special_dedup_merge",
+
+    # ── Task Structure prompt-engine v2 (grid layout) ──
+    # Tasks — Add
+    "tasks_add",
+    "tasks_add_for_teams",
+    # Tasks — Assign
+    "tasks_assign_unassigned_existing",
+    "tasks_assign_unassigned_new",
+    "tasks_assign_selected_existing",
+    "tasks_assign_selected_new",
+    # Tasks — Finetune
+    "tasks_finetune_selected",
+    "tasks_finetune_all",
+    # Teams — Add
+    "teams_add",
+    "teams_add_for_tasks",
+    # Teams — Finetune
+    "teams_finetune_selected",
+    "teams_finetune_all",
+    # Task Specials
+    "special_taskify_ideas",
+    "special_acceptance_criteria_selected",
+    "special_acceptance_criteria_all",
+    "special_task_suggestions",
 }
 
 
