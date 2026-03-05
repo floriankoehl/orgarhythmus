@@ -12,7 +12,15 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import DependencyGrid from './DependencyGrid';
 import usePromptSettings from '../components/usePromptSettings';
+import { assemblePrompt } from '../components/shared/promptEngine/assembler';
+import { DEP_SCENARIOS, DEP_GRID } from '../components/shared/promptEngine/scenarios/depScenarios';
+import DependencyIOPopup from './DependencyIOPopup';
+import { checkDepConflict, applyDepDetected } from '../components/shared/promptEngine/depResponseApplier';
+import { buildDepChangeItems, recomposeDepDetected, DEP_CHANGE_TYPE_META } from '../components/shared/promptEngine/depChangeBuilder';
+import ControlledApplyModal from '../components/shared/promptEngine/ControlledApplyPanel';
+import { getDefaultViewState } from './viewDefaults';
 import { playSound } from '../assets/sound_registry';
+import { emitDataEvent, useManualRefresh } from '../api/dataEvents';
 
 //  API imports — existing backend calls
 import {
@@ -24,6 +32,7 @@ import {
   get_project_days,
   get_all_phases,
   update_start_index,
+  bulk_update_start_index,
   add_milestone,
   delete_milestone,
   change_duration,
@@ -66,7 +75,23 @@ import { daysBetween } from './layoutMath';
 export default function MilestoneScheduleAdapter({ isFloating = false, windowPos, windowSize, setWindowPos, setWindowSize, isMaximized, setIsMaximized, viewBarRef, triggerViewBarRender }) {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const { buildClipboardText } = usePromptSettings();
+  const { buildClipboardText, settings: promptSettings, projectDescRef } = usePromptSettings();
+  const [ioPopupOpen, setIoPopupOpen] = useState(false);
+
+  // ── Conflict resolve state ──
+  // { sourceId, targetId, sourceName, targetName, changeItemId } or null
+  const [resolveState, setResolveState] = useState(null);
+
+  // ── Inline review state (slide-through dependencies on the grid) ──
+  // { items: [...changeItems], currentIdx: number, sessionEdgeIds: Set, detected: [...], showInspect: boolean }
+  const [reviewState, setReviewState] = useState(null);
+
+  // ── Grid control ref — gives adapter access to DependencyGrid's view functions ──
+  const gridControlRef = useRef(null);
+  // ── View state saved before entering review mode (restored on end) ──
+  const preReviewStateRef = useRef(null);
+  // ── Tracks which slide index focus mode last collapsed for (soft collapse) ──
+  const lastFocusedIdx = useRef(null);
 
   // ── Secret shortcut: press 0 + 9 together → 3D view ──
   const heldRef = useRef(new Set());
@@ -216,6 +241,10 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
     return () => window.removeEventListener("ideabin-dep-refresh", h);
   }, []);
 
+  // ── Targeted partial reloaders for cross-window sync ──
+  // ── Cross-window sync: manual refresh reloads all data ──
+  useManualRefresh(() => setReloadFlag(n => n + 1));
+
   // ════════════════════════════════════════════════════════════════════
   //  Column labels (computed from projectStartDate + projectDays)
   // ════════════════════════════════════════════════════════════════════
@@ -253,10 +282,21 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
   const persistNodeMove = useCallback(async (nodeId, newStartIndex) => {
     await update_start_index(projectId, nodeId, newStartIndex);
+    emitDataEvent('milestones');
+  }, [projectId]);
+
+  const persistBulkNodeMove = useCallback(async (moves) => {
+    // moves: [{ nodeId, newStartIndex }, ...]
+    await bulk_update_start_index(
+      projectId,
+      moves.map(m => ({ milestone_id: m.nodeId, index: m.newStartIndex })),
+    );
+    emitDataEvent('milestones');
   }, [projectId]);
 
   const persistNodeResize = useCallback(async (nodeId, durationChange) => {
     await change_duration(projectId, nodeId, durationChange);
+    emitDataEvent('milestones');
   }, [projectId]);
 
   const persistNodeCreate = useCallback(async (rowId, opts = {}) => {
@@ -267,20 +307,24 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
     const result = await add_milestone(projectId, rowId, apiData);
     // API returns { added_milestone: {...}, created: true } — extract the milestone
     const milestone = result?.added_milestone || result;
+    emitDataEvent('milestones');
     if (milestone) return { ...milestone, row: milestone.task, startColumn: milestone.start_index };
     return milestone;
   }, [projectId]);
 
   const persistNodeDelete = useCallback(async (nodeId) => {
     await delete_milestone(projectId, nodeId);
+    emitDataEvent('milestones');
   }, [projectId]);
 
   const persistNodeRename = useCallback(async (nodeId, newName) => {
     await rename_milestone(projectId, nodeId, newName);
+    emitDataEvent('milestones');
   }, [projectId]);
 
   const persistNodeTaskChange = useCallback(async (nodeId, newRowId) => {
     await move_milestone_task(projectId, nodeId, newRowId);
+    emitDataEvent('milestones');
   }, [projectId]);
 
   const persistEdgeCreate = useCallback(async (sourceId, targetId, opts = {}) => {
@@ -300,21 +344,25 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   const persistLaneOrder = useCallback(async (newOrder) => {
     const { safe_team_order } = await import('../api/dependencies_api');
     await safe_team_order(projectId, newOrder);
+    emitDataEvent('teams');
   }, [projectId]);
 
   const persistLaneCreate = useCallback(async (data) => {
     const { name, color } = data;
     const result = await createTeamForProject(projectId, { name, color });
+    emitDataEvent('teams');
     return result;
   }, [projectId]);
 
   const persistRowOrder = useCallback(async (rowId, targetLaneId, order) => {
     await reorder_team_tasks(projectId, rowId, targetLaneId, order);
+    emitDataEvent('tasks');
   }, [projectId]);
 
   const persistRowCreate = useCallback(async (data) => {
     const { name, lane_id } = data;
     const result = await createTaskForProject(projectId, { name, team_id: lane_id });
+    emitDataEvent('tasks');
     return result;
   }, [projectId]);
 
@@ -342,10 +390,12 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
   const persistRowDeadline = useCallback(async (rowId, deadlineIndex) => {
     await set_task_deadline(projectId, rowId, deadlineIndex);
+    emitDataEvent('tasks');
   }, [projectId]);
 
   const persistLaneColor = useCallback(async (laneId, color) => {
     await updateTeam(projectId, laneId, { color });
+    emitDataEvent('teams');
   }, [projectId]);
 
   // ════════════════════════════════════════════════════════════════════
@@ -401,8 +451,466 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   const handleBulkImport = useCallback(async (jsonString) => {
     const result = await bulk_import_dependencies(projectId, jsonString);
     setReloadFlag(n => n + 1);
+    emitDataEvent('tasks');
+    emitDataEvent('teams');
+    emitDataEvent('milestones');
     return result;
   }, [projectId]);
+
+  // ════════════════════════════════════════════════════════════════════
+  //  AI IO — context & apply context memos
+  // ════════════════════════════════════════════════════════════════════
+
+  /** Data context passed to scenario availability/payload builders */
+  const ioCtx = useMemo(() => ({
+    nodes, edges, rows, lanes, laneOrder, totalColumns,
+    projectDescription: projectDescRef?.current || "",
+    get selectedNodeIds() { return gridControlRef.current?.selectedNodes || new Set(); },
+    get selectedRowIds() { return gridControlRef.current?.selectedRows || new Set(); },
+  }), [nodes, edges, rows, lanes, laneOrder, totalColumns, projectDescRef]);
+
+  /** API context for applying AI responses */
+  const applyCtx = useMemo(() => ({
+    addMilestone: async (taskId, opts) => {
+      const result = await add_milestone(projectId, taskId, opts);
+      emitDataEvent('milestones');
+      return result?.added_milestone || result;
+    },
+    createDependency: async (sourceId, targetId, opts) => {
+      const result = await create_dependency(projectId, sourceId, targetId, opts);
+      return result;
+    },
+    updateMilestone: async (nodeId, updates) => {
+      if (updates.name != null) await rename_milestone(projectId, nodeId, updates.name);
+      if (updates.start_index != null) await update_start_index(projectId, nodeId, updates.start_index);
+      if (updates.duration != null) await change_duration(projectId, nodeId, updates.duration);
+      if (updates.task != null) await move_milestone_task(projectId, nodeId, updates.task);
+      emitDataEvent('milestones');
+    },
+    updateDependency: async (sourceId, targetId, updates) => {
+      const result = await update_dependency(projectId, sourceId, targetId, updates);
+      return result;
+    },
+    deleteDependency: async (sourceId, targetId) => {
+      await delete_dependency_api(projectId, sourceId, targetId);
+    },
+    moveMilestone: async (nodeId, newStartIndex) => {
+      await update_start_index(projectId, nodeId, newStartIndex);
+      emitDataEvent('milestones');
+    },
+    refreshAll: () => setReloadFlag(n => n + 1),
+    nodes, edges, rows,
+  }), [projectId, nodes, edges, rows]);
+
+  // ── Conflict resolve handlers ──
+  const handleResolveStart = useCallback((info) => {
+    setResolveState(info);
+  }, []);
+
+  const handleResolveEnd = useCallback(() => {
+    setResolveState(null);
+  }, []);
+
+  // ── Inline review handlers ──
+  const handleReviewStart = useCallback((detected, changeItems) => {
+    // Skip dependencies that already exist in the graph
+    const filtered = changeItems.filter(item => {
+      if (item.changeType === 'create_dependency' || item.changeType === 'conflict_dependency') {
+        const d = item.detail;
+        if (d?.sourceId && d?.targetId && edges.some(e => e.source === d.sourceId && e.target === d.targetId)) {
+          return false;
+        }
+      }
+      return true;
+    });
+    if (filtered.length === 0) return; // all proposals already exist
+
+    // Save current view state before switching to default
+    if (gridControlRef.current?.collectViewState) {
+      preReviewStateRef.current = gridControlRef.current.collectViewState();
+    }
+    // Apply the "everything visible" default view
+    if (gridControlRef.current?.applyViewState) {
+      gridControlRef.current.applyViewState(getDefaultViewState());
+    }
+
+    setReviewState({
+      items: filtered,
+      currentIdx: 0,
+      sessionEdgeIds: new Set(),
+      sessionMilestoneIds: new Set(),
+      detected,
+      showInspect: false,
+      focusMode: false,
+    });
+    setIoPopupOpen(false);
+  }, [edges]);
+
+  const handleReviewAccept = useCallback(async () => {
+    if (!reviewState) return;
+    const current = reviewState.items[reviewState.currentIdx];
+    if (!current) return;
+    const d = current.detail;
+
+    try {
+      if (current.changeType === "create_dependency" || current.changeType === "conflict_dependency") {
+        await create_dependency(projectId, d.sourceId, d.targetId, {
+          weight: d.weight || "strong",
+          reason: d.reason || null,
+          description: null,
+        });
+        // Optimistic edge add
+        setEdges(prev => [...prev, { source: d.sourceId, target: d.targetId, weight: d.weight || "strong", reason: d.reason || null, _session: true }]);
+        setReviewState(prev => {
+          const next = { ...prev, sessionEdgeIds: new Set([...prev.sessionEdgeIds, `${d.sourceId}-${d.targetId}`]) };
+          // Auto-advance
+          if (next.currentIdx < next.items.length - 1) next.currentIdx = next.currentIdx + 1;
+          return next;
+        });
+      } else if (current.changeType === "update_dependency") {
+        await update_dependency(projectId, d.sourceId, d.targetId, {
+          weight: d.weight || undefined,
+          reason: d.reason || undefined,
+        });
+        setEdges(prev => prev.map(e => (e.source === d.sourceId && e.target === d.targetId) ? { ...e, weight: d.weight, reason: d.reason, _session: true } : e));
+        setReviewState(prev => ({
+          ...prev,
+          sessionEdgeIds: new Set([...prev.sessionEdgeIds, `${d.sourceId}-${d.targetId}`]),
+          currentIdx: Math.min(prev.currentIdx + 1, prev.items.length - 1),
+        }));
+      } else if (current.changeType === "remove_dependency") {
+        await delete_dependency_api(projectId, d.sourceId, d.targetId);
+        setEdges(prev => prev.filter(e => !(e.source === d.sourceId && e.target === d.targetId)));
+        setReviewState(prev => ({
+          ...prev,
+          currentIdx: Math.min(prev.currentIdx + 1, prev.items.length - 1),
+        }));
+      } else if (current.changeType === "move_milestone") {
+        await update_start_index(projectId, d.milestoneId, d.newDay);
+        setNodes(prev => ({ ...prev, [d.milestoneId]: { ...prev[d.milestoneId], startColumn: d.newDay, start_index: d.newDay } }));
+        emitDataEvent('milestones');
+        setReviewState(prev => ({
+          ...prev,
+          currentIdx: Math.min(prev.currentIdx + 1, prev.items.length - 1),
+        }));
+      } else if (current.changeType === "create_milestone") {
+        // Resolve task id from task name
+        const taskEntry = Object.entries(rows).find(([, r]) =>
+          r.name && d.taskName && r.name.toLowerCase().trim() === d.taskName.toLowerCase().trim()
+        );
+        if (!taskEntry) throw new Error(`Task "${d.taskName}" not found`);
+        const taskId = Number(taskEntry[0]);
+        const result = await add_milestone(projectId, taskId, {
+          name: d.name,
+          description: d.description || "",
+          start_index: d.startIndex ?? 0,
+        });
+        const newMs = result?.added_milestone || result;
+        const newId = newMs?.id;
+        // If AI specified a duration > 1, apply it
+        if (newId && d.duration && d.duration > 1) {
+          await change_duration(projectId, newId, d.duration - 1);
+        }
+        // Optimistic node update
+        if (newId) {
+          setNodes(prev => ({
+            ...prev,
+            [newId]: {
+              id: newId,
+              name: d.name,
+              row: String(taskId),
+              task: String(taskId),
+              startColumn: d.startIndex ?? 0,
+              start_index: d.startIndex ?? 0,
+              duration: d.duration || 1,
+              description: d.description || "",
+              _session: true,
+            },
+          }));
+        }
+        emitDataEvent('milestones');
+        setReviewState(prev => ({
+          ...prev,
+          sessionMilestoneIds: new Set([...(prev.sessionMilestoneIds || new Set()), ...(newId ? [newId] : [])]),
+          currentIdx: Math.min(prev.currentIdx + 1, prev.items.length - 1),
+        }));
+      } else if (current.changeType === "update_milestone") {
+        // Find existing milestone by original name
+        const existingEntry = Object.entries(nodes).find(([, n]) =>
+          n.name && d.originalName && n.name.toLowerCase().trim() === d.originalName.toLowerCase().trim()
+        );
+        if (!existingEntry) throw new Error(`Milestone "${d.originalName}" not found`);
+        const msId = Number(existingEntry[0]);
+        if (d.newName) await rename_milestone(projectId, msId, d.newName);
+        if (d.startIndex != null) await update_start_index(projectId, msId, d.startIndex);
+        if (d.duration != null) {
+          const currentDuration = existingEntry[1].duration || 1;
+          const delta = d.duration - currentDuration;
+          if (delta !== 0) await change_duration(projectId, msId, delta);
+        }
+        // Optimistic node update
+        setNodes(prev => ({
+          ...prev,
+          [msId]: {
+            ...prev[msId],
+            ...(d.newName ? { name: d.newName } : {}),
+            ...(d.startIndex != null ? { startColumn: d.startIndex, start_index: d.startIndex } : {}),
+            ...(d.duration != null ? { duration: d.duration } : {}),
+            _session: true,
+          },
+        }));
+        emitDataEvent('milestones');
+        setReviewState(prev => ({
+          ...prev,
+          currentIdx: Math.min(prev.currentIdx + 1, prev.items.length - 1),
+        }));
+      }
+      playSound('milestoneMove');
+    } catch (err) {
+      console.error("Review accept failed:", err);
+    }
+  }, [reviewState, projectId, rows, nodes]);
+
+  const handleReviewDecline = useCallback(() => {
+    if (!reviewState) return;
+    setReviewState(prev => ({
+      ...prev,
+      currentIdx: Math.min(prev.currentIdx + 1, prev.items.length - 1),
+    }));
+  }, [reviewState]);
+
+  const handleReviewPrev = useCallback(() => {
+    setReviewState(prev => prev && ({ ...prev, currentIdx: Math.max(prev.currentIdx - 1, 0) }));
+  }, []);
+
+  const handleReviewNext = useCallback(() => {
+    setReviewState(prev => prev && ({ ...prev, currentIdx: Math.min(prev.currentIdx + 1, prev.items.length - 1) }));
+  }, []);
+
+  const handleReviewInspect = useCallback(() => {
+    setReviewState(prev => prev && ({ ...prev, showInspect: !prev.showInspect }));
+  }, []);
+
+  // Sync inspect modal slide state back to the ReviewBar background
+  const handleInspectSlideSync = useCallback(({ slideIdx: idx, changeItems: items }) => {
+    setReviewState(prev => {
+      if (!prev) return prev;
+      // Clamp index to review items range
+      const newIdx = Math.min(idx, prev.items.length - 1);
+      return newIdx !== prev.currentIdx ? { ...prev, currentIdx: Math.max(0, newIdx) } : prev;
+    });
+  }, []);
+
+  const handleReviewEnd = useCallback(() => {
+    // Restore pre-review view state
+    if (preReviewStateRef.current && gridControlRef.current?.applyViewState) {
+      gridControlRef.current.applyViewState(preReviewStateRef.current);
+      preReviewStateRef.current = null;
+    }
+    setReviewState(null);
+    setReloadFlag(n => n + 1);
+  }, []);
+
+  // Ghost edges for the grid — derived from resolveState OR reviewState
+  const ghostEdges = useMemo(() => {
+    // Resolve mode takes priority
+    if (resolveState) {
+      const src = nodes[resolveState.sourceId];
+      const tgt = nodes[resolveState.targetId];
+      const conflict = src && tgt ? checkDepConflict(src, tgt) : { conflict: true };
+      return [{ source: resolveState.sourceId, target: resolveState.targetId, resolved: !conflict.conflict }];
+    }
+    // Review mode — show current item as ghost edge
+    if (reviewState) {
+      const current = reviewState.items[reviewState.currentIdx];
+      if (!current?.detail) return [];
+      const d = current.detail;
+      const isEdgeType = ["create_dependency", "conflict_dependency", "update_dependency", "remove_dependency"].includes(current.changeType);
+      if (isEdgeType && d.sourceId && d.targetId) {
+        // Skip if this dependency was already accepted (exists in sessionEdgeIds)
+        const key = `${d.sourceId}-${d.targetId}`;
+        if (reviewState.sessionEdgeIds.has(key)) return [];
+        const src = nodes[d.sourceId];
+        const tgt = nodes[d.targetId];
+        const conflict = src && tgt ? checkDepConflict(src, tgt) : { conflict: true };
+        return [{
+          source: d.sourceId,
+          target: d.targetId,
+          resolved: !conflict.conflict,
+          isRemove: current.changeType === "remove_dependency",
+        }];
+      }
+      return [];
+    }
+    return [];
+  }, [resolveState, reviewState, nodes]);
+
+  // Ghost nodes (milestones) for the grid — derived from reviewState for create/update milestone items
+  const ghostNodes = useMemo(() => {
+    if (!reviewState) return [];
+    const current = reviewState.items[reviewState.currentIdx];
+    if (!current?.detail) return [];
+    const d = current.detail;
+
+    if (current.changeType === "create_milestone") {
+      // Skip if already accepted
+      if (reviewState.sessionMilestoneIds?.size > 0) {
+        // Can't easily check by name, so just show it (it won't hurt to show a ghost even if accepted)
+      }
+      // Resolve task row from taskName
+      const taskEntry = Object.entries(rows).find(([, r]) =>
+        r.name && d.taskName && r.name.toLowerCase().trim() === d.taskName.toLowerCase().trim()
+      );
+      if (!taskEntry) return [];
+      return [{
+        id: `ghost-create-ms`,
+        name: d.name,
+        row: String(taskEntry[0]),
+        startColumn: d.startIndex ?? 0,
+        duration: d.duration || 1,
+        isCreate: true,
+      }];
+    }
+
+    if (current.changeType === "update_milestone") {
+      // Find the existing milestone by originalName
+      const existingEntry = Object.entries(nodes).find(([, n]) =>
+        n.name && d.originalName && n.name.toLowerCase().trim() === d.originalName.toLowerCase().trim()
+      );
+      if (!existingEntry) return [];
+      const [msId, msNode] = existingEntry;
+      return [{
+        id: `ghost-update-${msId}`,
+        existingId: Number(msId),
+        name: d.newName || msNode.name,
+        row: msNode.row || msNode.task,
+        startColumn: d.startIndex ?? msNode.startColumn,
+        duration: d.duration ?? msNode.duration ?? 1,
+        isUpdate: true,
+      }];
+    }
+
+    if (current.changeType === "move_milestone") {
+      return [{
+        id: `ghost-move-${d.milestoneId}`,
+        existingId: d.milestoneId,
+        name: nodes[d.milestoneId]?.name || "?",
+        row: nodes[d.milestoneId]?.row || nodes[d.milestoneId]?.task,
+        startColumn: d.newDay,
+        duration: nodes[d.milestoneId]?.duration || 1,
+        isMove: true,
+      }];
+    }
+
+    return [];
+  }, [reviewState, nodes, rows]);
+
+  // Session edge IDs for visual distinction in the grid
+  const sessionEdgeIds = useMemo(() => {
+    return reviewState?.sessionEdgeIds || new Set();
+  }, [reviewState]);
+
+  // ── Focus mode toggle ──
+  const handleReviewFocusToggle = useCallback(() => {
+    setReviewState(prev => {
+      if (!prev) return prev;
+      const next = { ...prev, focusMode: !prev.focusMode };
+      // When turning focus OFF, show everything and reset soft-collapse tracker
+      if (prev.focusMode && gridControlRef.current) {
+        lastFocusedIdx.current = null;
+        gridControlRef.current.setRowDisplaySettings(p => {
+          const n = {};
+          for (const id of Object.keys(p)) n[id] = { ...p[id], hidden: false };
+          return n;
+        });
+        gridControlRef.current.setLaneDisplaySettings(p => {
+          const n = {};
+          for (const id of Object.keys(p)) n[id] = { ...p[id], hidden: false };
+          return n;
+        });
+      }
+      return next;
+    });
+  }, []);
+
+  // ── Focus mode: hide all rows/lanes not involved in the current review item ──
+  // Soft collapse: only applies when the slide index actually changes, so the
+  // warning system and manual user interaction can still reveal rows/lanes
+  // without being overridden on every re-render.
+  useEffect(() => {
+    if (!reviewState || !reviewState.focusMode || !gridControlRef.current) {
+      lastFocusedIdx.current = null;
+      return;
+    }
+    // Skip if we already applied focus for this slide index
+    if (lastFocusedIdx.current === reviewState.currentIdx) return;
+
+    const current = reviewState.items[reviewState.currentIdx];
+    if (!current?.detail) return;
+    const d = current.detail;
+
+    const relevantRows = new Set();
+    const relevantLanes = new Set();
+
+    // Collect rows + lanes for source, target, or single milestone
+    for (const mId of [d.sourceId, d.targetId, d.milestoneId].filter(Boolean)) {
+      const node = nodes[mId];
+      if (!node) continue;
+      const rowKey = String(node.row);
+      relevantRows.add(rowKey);
+      const laneKey = rows[rowKey]?.lane != null ? String(rows[rowKey].lane) : null;
+      if (laneKey) relevantLanes.add(laneKey);
+    }
+
+    // For create_milestone — resolve task row from taskName
+    if (current.changeType === "create_milestone" && d.taskName) {
+      const taskEntry = Object.entries(rows).find(([, r]) =>
+        r.name && r.name.toLowerCase().trim() === d.taskName.toLowerCase().trim()
+      );
+      if (taskEntry) {
+        relevantRows.add(taskEntry[0]);
+        const laneKey = taskEntry[1].lane != null ? String(taskEntry[1].lane) : null;
+        if (laneKey) relevantLanes.add(laneKey);
+      }
+    }
+
+    // For update_milestone — resolve from originalName
+    if (current.changeType === "update_milestone" && d.originalName) {
+      const msEntry = Object.entries(nodes).find(([, n]) =>
+        n.name && n.name.toLowerCase().trim() === d.originalName.toLowerCase().trim()
+      );
+      if (msEntry) {
+        const rowKey = String(msEntry[1].row || msEntry[1].task);
+        relevantRows.add(rowKey);
+        const laneKey = rows[rowKey]?.lane != null ? String(rows[rowKey].lane) : null;
+        if (laneKey) relevantLanes.add(laneKey);
+      }
+    }
+
+    if (relevantRows.size === 0) return; // nodes not ready yet — retry on next render
+
+    lastFocusedIdx.current = reviewState.currentIdx;
+
+    gridControlRef.current.setRowDisplaySettings(prev => {
+      const next = {};
+      for (const id of Object.keys(prev)) {
+        next[id] = { ...prev[id], hidden: !relevantRows.has(id) };
+      }
+      return next;
+    });
+    gridControlRef.current.setLaneDisplaySettings(prev => {
+      const next = {};
+      for (const id of Object.keys(prev)) {
+        next[id] = { ...prev[id], hidden: !relevantLanes.has(id) };
+      }
+      return next;
+    });
+  }, [reviewState?.currentIdx, reviewState?.items, reviewState?.focusMode, nodes, rows]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Build function for inspect modal (uses current nodes/rows/lanes)
+  const buildChangeItemsForInspect = useCallback((det) => {
+    return buildDepChangeItems(det, nodes, rows, lanes);
+  }, [nodes, rows, lanes]);
 
   // ── Navigation ──
   const handleLaneNavigate = useCallback((laneId) => {
@@ -501,6 +1009,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
             });
           }
           playSound('milestoneMove');
+          emitDataEvent('milestones');
         } catch (err) {
           console.error("Refactor drag move failed:", err);
           playSound('error');
@@ -543,6 +1052,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
       // Persist callbacks
       persistNodeMove={persistNodeMove}
+      persistBulkNodeMove={persistBulkNodeMove}
       persistNodeResize={persistNodeResize}
       persistNodeCreate={persistNodeCreate}
       persistNodeDelete={persistNodeDelete}
@@ -612,9 +1122,40 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       onBulkImport={handleBulkImport}
       handleRefactorDrag={handleRefactorDrag}
 
+      // AI IO
+      ioPopupOpen={ioPopupOpen}
+      setIoPopupOpen={setIoPopupOpen}
+      ioPopupContent={
+        <DependencyIOPopup
+          scenarios={DEP_SCENARIOS}
+          grid={DEP_GRID}
+          ctx={ioCtx}
+          settings={promptSettings}
+          assemblePrompt={assemblePrompt}
+          applyCtx={applyCtx}
+          onClose={() => { setIoPopupOpen(false); setResolveState(null); setReviewState(null); }}
+          iconColor="#0ea5e9"
+          onResolveStart={handleResolveStart}
+          onResolveEnd={handleResolveEnd}
+          resolveActive={!!resolveState}
+          onReviewStart={handleReviewStart}
+          reviewActive={!!reviewState}
+        />
+      }
+
       // View bar (floating title bar)
       viewBarRef={viewBarRef}
       triggerViewBarRender={triggerViewBarRender}
+
+      // Grid control ref (adapter-level access to view functions)
+      gridControlRef={gridControlRef}
+
+      // Ghost edges for conflict resolution
+      ghostEdges={ghostEdges}
+      ghostNodes={ghostNodes}
+      resolveState={resolveState}
+      onResolveEnd={handleResolveEnd}
+      sessionEdgeIds={sessionEdgeIds}
     >
       {/* Refactor mode ghost card */}
       {refactorGhost && (
@@ -638,6 +1179,306 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
       {/* Refactor mode active banner */}
       {/* (This is rendered from the grid's refactorMode state, but the banner is domain UI.) */}
+
+      {/* Conflict resolve banner */}
+      {resolveState && (
+        <ResolveBanner
+          resolveState={resolveState}
+          nodes={nodes}
+          onResume={handleResolveEnd}
+          onCancel={() => { setResolveState(null); }}
+        />
+      )}
+
+      {/* Inline review bar */}
+      {reviewState && !resolveState && (
+        <ReviewBar
+          reviewState={reviewState}
+          nodes={nodes}
+          rows={rows}
+          onAccept={handleReviewAccept}
+          onDecline={handleReviewDecline}
+          onPrev={handleReviewPrev}
+          onNext={handleReviewNext}
+          onInspect={handleReviewInspect}
+          onFocusToggle={handleReviewFocusToggle}
+          onDone={handleReviewEnd}
+        />
+      )}
+
+      {/* Inspect modal — detailed view during inline review */}
+      {reviewState?.showInspect && reviewState.detected && (
+        <ControlledApplyModal
+          detected={reviewState.detected}
+          applyCtx={applyCtx}
+          onResult={() => {}}
+          onClose={handleReviewInspect}
+          buildChangeItemsFn={buildChangeItemsForInspect}
+          recomposeDetectedFn={recomposeDepDetected}
+          applyDetectedFn={applyDepDetected}
+          changeTypeMeta={DEP_CHANGE_TYPE_META}
+          initialSlideIdx={reviewState.currentIdx}
+          depReview
+          onSlideSync={handleInspectSlideSync}
+        />
+      )}
     </DependencyGrid>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  Resolve Banner — floating indicator during conflict resolve
+// ═══════════════════════════════════════════════════════════
+function ResolveBanner({ resolveState, nodes, onResume, onCancel }) {
+  // Real-time conflict check from current node positions
+  const sourceNode = nodes[resolveState.sourceId];
+  const targetNode = nodes[resolveState.targetId];
+  const conflict = sourceNode && targetNode
+    ? checkDepConflict(sourceNode, targetNode)
+    : { conflict: true };
+  const isResolved = !conflict.conflict;
+
+  return (
+    <div
+      className="flex items-center gap-3 px-4 py-2.5 rounded-xl shadow-2xl border-2 bg-white/95 backdrop-blur-sm"
+      style={{
+        position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 99999,
+        borderColor: isResolved ? '#22c55e' : '#f97316',
+      }}
+    >
+      {/* Status indicator */}
+      <div className={`w-3 h-3 rounded-full flex-shrink-0 ${isResolved ? 'bg-green-500' : 'bg-orange-500 animate-pulse'}`} />
+
+      {/* Info */}
+      <div className="flex flex-col min-w-0">
+        <div className="text-[11px] font-semibold text-gray-800">
+          Resolving: "{resolveState.sourceName}" → "{resolveState.targetName}"
+        </div>
+        <div className={`text-[10px] font-medium ${isResolved ? 'text-green-600' : 'text-orange-600'}`}>
+          {isResolved
+            ? '✓ Conflict resolved — you can resume and accept'
+            : `⚠ Conflict: predecessor ends day ${conflict.sourceEnd}, successor starts day ${conflict.targetStart}`
+          }
+        </div>
+      </div>
+
+      {/* Actions */}
+      <button
+        onClick={onResume}
+        className={`text-[11px] px-3 py-1.5 rounded font-medium transition-colors flex-shrink-0 ${
+          isResolved
+            ? 'bg-green-600 text-white hover:bg-green-700'
+            : 'bg-orange-100 text-orange-700 hover:bg-orange-200 border border-orange-300'
+        }`}
+      >
+        Resume
+      </button>
+      <button
+        onClick={onCancel}
+        className="text-[10px] px-2 py-1 rounded border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0"
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  Review Bar — compact inline review bar for sliding through proposals
+// ═══════════════════════════════════════════════════════════
+function ReviewBar({ reviewState, nodes, rows, onAccept, onDecline, onPrev, onNext, onInspect, onFocusToggle, onDone }) {
+  const { items, currentIdx, sessionEdgeIds } = reviewState;
+  const current = items[currentIdx];
+  const total = items.length;
+  const isLast = currentIdx >= total - 1;
+  const isFirst = currentIdx <= 0;
+
+  // Check if current item was already accepted in this session
+  const isAlreadyAccepted = current?.detail?.sourceId && current?.detail?.targetId
+    ? sessionEdgeIds.has(`${current.detail.sourceId}-${current.detail.targetId}`)
+    : false;
+
+  // Live conflict check for dependency items
+  const d = current?.detail;
+  const hasDep = d?.sourceId && d?.targetId;
+  const conflict = hasDep && nodes[d.sourceId] && nodes[d.targetId]
+    ? checkDepConflict(nodes[d.sourceId], nodes[d.targetId])
+    : null;
+  const isConflict = conflict?.conflict;
+
+  // Color scheme based on type
+  const isRemove = current?.changeType === "remove_dependency";
+  const borderColor = isAlreadyAccepted ? '#22c55e' : isConflict ? '#f97316' : '#3b82f6';
+
+  // Scroll + highlight a milestone node on the grid
+  const scrollToNode = useCallback((nodeId) => {
+    const el = document.querySelector(`[data-node-id="${nodeId}"]`);
+    if (!el) return;
+    // Scroll the grid's scroll container to center the node horizontally
+    const scrollContainer = el.closest('.dep-scroll');
+    if (scrollContainer) {
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const currentScroll = scrollContainer.scrollLeft;
+      const elCenterInContainer = (elRect.left + elRect.width / 2) - containerRect.left + currentScroll;
+      scrollContainer.scrollTo({ left: elCenterInContainer - containerRect.width / 2, behavior: 'smooth' });
+    }
+    // Brief highlight pulse
+    el.style.transition = 'box-shadow 0.2s ease, transform 0.2s ease';
+    el.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.6), 0 0 16px rgba(59,130,246,0.3)';
+    el.style.transform = 'scale(1.08)';
+    setTimeout(() => {
+      el.style.boxShadow = '';
+      el.style.transform = '';
+      setTimeout(() => { el.style.transition = ''; }, 300);
+    }, 1200);
+  }, []);
+
+  // Build clickable label parts from detail
+  const labelContent = useMemo(() => {
+    if (!current?.detail) return <span>{current?.label || "—"}</span>;
+    const ct = current.changeType;
+    const dt = current.detail;
+    if (["create_dependency", "conflict_dependency", "update_dependency", "remove_dependency"].includes(ct) && dt.sourceId && dt.targetId) {
+      const prefix = ct === "remove_dependency" ? "Remove: " : ct === "update_dependency" ? "Update: " : ct.includes("conflict") ? "⚠️ " : "";
+      return (
+        <>
+          {prefix}
+          <button onClick={() => scrollToNode(dt.sourceId)} className="underline decoration-dotted underline-offset-2 hover:text-blue-600 cursor-pointer">{dt.sourceName}</button>
+          {" → "}
+          <button onClick={() => scrollToNode(dt.targetId)} className="underline decoration-dotted underline-offset-2 hover:text-blue-600 cursor-pointer">{dt.targetName}</button>
+        </>
+      );
+    }
+    if (ct === "move_milestone" && dt.milestoneId) {
+      const name = nodes[dt.milestoneId]?.name || `#${dt.milestoneId}`;
+      return (
+        <>
+          {"Move: "}
+          <button onClick={() => scrollToNode(dt.milestoneId)} className="underline decoration-dotted underline-offset-2 hover:text-blue-600 cursor-pointer">{name}</button>
+          {` → day ${dt.newDay}`}
+        </>
+      );
+    }
+    return <span>{current?.label || "—"}</span>;
+  }, [current, nodes, scrollToNode]);
+
+  return (
+    <div
+      className="flex items-center gap-2 px-3 py-2 rounded-xl shadow-2xl border-2 bg-white/95 backdrop-blur-sm"
+      style={{
+        position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 99999,
+        borderColor,
+        maxWidth: '90vw',
+      }}
+    >
+      {/* Navigation */}
+      <button
+        onClick={onPrev}
+        disabled={isFirst}
+        className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+
+      {/* Counter */}
+      <span className="text-[10px] text-gray-400 font-mono min-w-[36px] text-center">
+        {currentIdx + 1}/{total}
+      </span>
+
+      {/* Item info */}
+      <div className="flex flex-col min-w-0">
+        <div className="text-[11px] font-semibold text-gray-800 whitespace-nowrap">
+          {labelContent}
+        </div>
+        {d?.reason && (
+          <div className="text-[9px] text-gray-500 italic max-w-[400px] truncate" title={d.reason}>
+            {d.reason}
+          </div>
+        )}
+        {isConflict && !isAlreadyAccepted && (
+          <div className="text-[9px] text-orange-600 font-medium">
+            ⚠ Conflict: ends day {conflict.sourceEnd}, starts day {conflict.targetStart}
+          </div>
+        )}
+        {isAlreadyAccepted && (
+          <div className="text-[9px] text-green-600 font-medium">✓ Already accepted</div>
+        )}
+      </div>
+
+      {/* Next */}
+      <button
+        onClick={onNext}
+        disabled={isLast}
+        className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+
+      {/* Divider */}
+      <div className="w-px h-6 bg-gray-200 mx-1" />
+
+      {/* Focus toggle */}
+      <button
+        onClick={onFocusToggle}
+        className={`text-[10px] px-2 py-1 rounded border transition-colors flex-shrink-0 ${
+          reviewState.focusMode
+            ? 'bg-violet-100 border-violet-300 text-violet-700'
+            : 'border-gray-300 text-gray-500 hover:bg-gray-100'
+        }`}
+        title={reviewState.focusMode ? 'Show all teams & tasks' : 'Focus on relevant teams & tasks'}
+      >
+        {reviewState.focusMode ? 'Focus' : 'All'}
+      </button>
+
+      {/* Inspect */}
+      <button
+        onClick={onInspect}
+        className={`text-[10px] px-2 py-1 rounded border transition-colors flex-shrink-0 ${
+          reviewState.showInspect
+            ? 'bg-sky-100 border-sky-300 text-sky-700'
+            : 'border-gray-300 text-gray-500 hover:bg-gray-100'
+        }`}
+        title="Show details"
+      >
+        Details
+      </button>
+
+      {/* Accept / Decline */}
+      {!isAlreadyAccepted ? (
+        <>
+          <button
+            onClick={onDecline}
+            className="text-[10px] px-2.5 py-1.5 rounded font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors flex-shrink-0"
+          >
+            Decline
+          </button>
+          <button
+            onClick={onAccept}
+            className={`text-[10px] px-2.5 py-1.5 rounded font-medium transition-colors flex-shrink-0 ${
+              isConflict
+                ? 'border border-orange-300 text-orange-700 bg-orange-50 hover:bg-orange-100'
+                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+            }`}
+          >
+            {isConflict ? 'Accept (conflict)' : 'Accept'}
+          </button>
+        </>
+      ) : (
+        <div className="text-[10px] px-2.5 py-1.5 rounded font-medium bg-green-50 border border-green-200 text-green-700 flex-shrink-0">
+          ✓ Accepted
+        </div>
+      )}
+
+      {/* Done */}
+      <button
+        onClick={onDone}
+        className="text-[10px] px-2 py-1 rounded border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0"
+      >
+        Done
+      </button>
+    </div>
   );
 }

@@ -12,22 +12,25 @@
  */
 
 import { IDEABIN_SCENARIOS, IDEABIN_GROUPS, IDEABIN_GRID } from './scenarios/ideabinScenarios';
+import { TASK_SCENARIOS, TASK_GROUPS, TASK_GRID } from './scenarios/taskScenarios';
+import { DEP_SCENARIOS, DEP_GROUPS, DEP_GRID } from './scenarios/depScenarios';
 
 // ─── Aggregate all scenarios ────────────────────────────
 
 export const ALL_SCENARIOS = [
   ...IDEABIN_SCENARIOS,
-  // ...TASK_SCENARIOS,      // Phase 2
-  // ...DEP_SCENARIOS,       // Phase 2
+  ...TASK_SCENARIOS,
+  ...DEP_SCENARIOS,
 ];
 
 export const ALL_GROUPS = [
   ...IDEABIN_GROUPS,
-  // ...TASK_GROUPS,         // Phase 2
+  ...TASK_GROUPS,
+  ...DEP_GROUPS,
 ];
 
 // ─── Grid metadata (per-domain) ─────────────────────────
-export { IDEABIN_GRID };
+export { IDEABIN_GRID, TASK_GRID, DEP_GRID };
 
 /** Set of every valid scenario key (for backend sync) */
 export const ALL_SCENARIO_KEYS = new Set(ALL_SCENARIOS.map(s => s.id));

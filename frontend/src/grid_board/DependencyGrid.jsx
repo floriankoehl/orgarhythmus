@@ -125,6 +125,7 @@ function DependencyGridContent({
 
   // ── Persist callbacks ──
   persistNodeMove,
+  persistBulkNodeMove,
   persistNodeResize,
   persistNodeCreate,
   persistNodeDelete,
@@ -192,6 +193,21 @@ function DependencyGridContent({
   /** Refactor drag handler — adapter-supplied for domain-specific refactor mode */
   handleRefactorDrag,
 
+  /** AI IO popup state — passed to floating title bar via viewBarRef */
+  ioPopupOpen,
+  setIoPopupOpen,
+  ioPopupContent,
+
+  /** Ghost edges for conflict resolution — rendered as dashed preview lines */
+  ghostEdges,
+  /** Ghost nodes (milestones) for inline review — rendered as translucent preview blocks */
+  ghostNodes,
+  /** Resolve conflict state + end callback — passed as children render context */
+  resolveState,
+  onResolveEnd,
+  /** Session edge IDs for visual distinction during review */
+  sessionEdgeIds,
+
   /** When true, rendered inside a floating window — uses compact padding, hides header toggle */
   isFloating = false,
 
@@ -206,6 +222,9 @@ function DependencyGridContent({
   // ── View bar ref (floating title bar uses this to show views) ──
   viewBarRef,
   triggerViewBarRender,
+
+  /** Ref for adapter-level grid control (focus mode, view state, etc.) */
+  gridControlRef,
 }) {
 
   const {
@@ -700,6 +719,18 @@ function DependencyGridContent({
     playSound('uiClick');
   }, [onSaveShortcuts]);
 
+  // ── Expose grid control functions to adapter via ref ──
+  if (gridControlRef) {
+    gridControlRef.current = {
+      applyViewState,
+      collectViewState,
+      setRowDisplaySettings,
+      setLaneDisplaySettings,
+      selectedNodes,
+      selectedRows,
+    };
+  }
+
   // ── Expose view state to floating title bar via ref ──
   if (viewBarRef) {
     viewBarRef.current = {
@@ -718,9 +749,13 @@ function DependencyGridContent({
       onPrevView: handlePrevView,
       toolbarCollapsed,
       toggleToolbar: () => { setToolbarCollapsed(v => !v); playSound('uiClick'); },
+      // AI IO
+      ioPopupOpen,
+      setIoPopupOpen,
+      ioPopupContent,
     };
   }
-  useEffect(() => { triggerViewBarRender?.(); }, [savedViews, activeViewId, activeViewName, toolbarCollapsed, triggerViewBarRender]);
+  useEffect(() => { triggerViewBarRender?.(); }, [savedViews, activeViewId, activeViewName, toolbarCollapsed, ioPopupOpen, ghostEdges, triggerViewBarRender]);
 
   // ─────────────────────────
   //  Snapshot management (inline — no separate hook needed since it's all callbacks)
@@ -889,7 +924,7 @@ function DependencyGridContent({
     setShowCreateLaneModal, setShowCreateRowModal, setPhaseEditModal,
     onLoadDefaultView: () => handleLoadView(null),
     // Persist callbacks
-    persistNodeCreate, persistNodeMove, persistNodeResize, persistNodeDelete,
+    persistNodeCreate, persistNodeMove, persistBulkNodeMove, persistNodeResize, persistNodeDelete,
     persistNodeRename,
     persistEdgeCreate, persistEdgeDelete, persistEdgeUpdate, persistNodeTaskChange,
     persistLaneOrder, persistRowOrder,
@@ -1017,6 +1052,9 @@ function DependencyGridContent({
     hideRowLabels,
     hideRowActions,
     marqueeRect,
+    ghostEdges,
+    ghostNodes,
+    sessionEdgeIds,
   };
 
   const handlers = {
@@ -1296,7 +1334,7 @@ function DependencyGridContent({
           {!toolbarCollapsed && (
             <GridToolbar
               isFloating={isFloating}
-              compactToolbar={isFloating && (windowSize?.w ?? Infinity) < 1000}
+              compactToolbar={isFloating ? ((windowSize?.w ?? Infinity) < 700 ? 'compact' : (windowSize?.w ?? Infinity) < 1700 ? 'medium' : 'full') : 'full'}
               laneLabel={laneLabel}
               rowLabel={rowLabel}
               nodeLabel={nodeLabel}

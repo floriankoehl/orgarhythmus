@@ -76,6 +76,44 @@ VALID_SCENARIO_KEYS = {
     "special_context_suggestions",
     "special_gap_analysis",
     "special_dedup_merge",
+
+    # ── Task Structure prompt-engine v2 (grid layout) ──
+    # Tasks — Add
+    "tasks_add",
+    "tasks_add_for_teams",
+    # Tasks — Assign
+    "tasks_assign_unassigned_existing",
+    "tasks_assign_unassigned_new",
+    "tasks_assign_selected_existing",
+    "tasks_assign_selected_new",
+    # Tasks — Finetune
+    "tasks_finetune_selected",
+    "tasks_finetune_all",
+    # Teams — Add
+    "teams_add",
+    "teams_add_for_tasks",
+    # Teams — Finetune
+    "teams_finetune_selected",
+    "teams_finetune_all",
+    # Task Specials
+    "special_taskify_ideas",
+    "special_acceptance_criteria_selected",
+    "special_acceptance_criteria_all",
+    "special_task_suggestions",
+
+    # ── Dependency prompt-engine v2 (grid layout) ──
+    # Milestones — Add / Finetune
+    "dep_milestones_add",
+    "dep_milestones_finetune",
+    # Connections — Add / Finetune
+    "dep_connections_add",
+    "dep_connections_finetune",
+    # Schedule — Add / Finetune
+    "dep_schedule_add",
+    "dep_schedule_finetune",
+    # Dependency Specials
+    "special_full_dependency_graph",
+    "special_dep_suggestions",
 }
 
 

@@ -40,6 +40,10 @@ export default function useFloatingWindow(opts = {}) {
   const manager = useWindowManager();
   const managed = !!(manager && id);
 
+  // Stable ref to manager.commitLayout (avoids stale closures in drag handlers)
+  const commitLayoutRef = useRef(null);
+  useEffect(() => { commitLayoutRef.current = manager?.commitLayout; });
+
   // Resolve default icon position: fallback for standalone; managed mode
   // no longer uses dock positions (InventoryBar owns icons).
   const defaultIcon = defaultIconFallback;
@@ -235,6 +239,7 @@ export default function useFloatingWindow(opts = {}) {
       setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - bottomReserve });
       setIsMaximized(true);
     }
+    commitLayoutRef.current?.();
   }, [isMaximized, managed]);
 
   // ── Keep maximized window in sync with viewport ──
@@ -311,6 +316,7 @@ export default function useFloatingWindow(opts = {}) {
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      commitLayoutRef.current?.();
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
@@ -334,6 +340,7 @@ export default function useFloatingWindow(opts = {}) {
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      commitLayoutRef.current?.();
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
@@ -366,6 +373,7 @@ export default function useFloatingWindow(opts = {}) {
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      commitLayoutRef.current?.();
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);

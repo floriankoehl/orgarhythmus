@@ -1,21 +1,25 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import {
-  Copy, Download, Check, Plus, RefreshCw, Pencil,
-  Search as SearchIcon, AlertCircle, Sparkles,
-  ClipboardPaste, ArrowRightLeft, Star, Zap, Loader,
+  Copy, Download, Check, Plus, Pencil,
+  AlertCircle, Sparkles,
+  ClipboardPaste, ArrowRightLeft, Star,
+  AlertTriangle, Zap, Loader,
 } from "lucide-react";
-import { detectResponseContent } from "../shared/promptEngine/responseApplier";
-import ControlledApplyModal from "../shared/promptEngine/ControlledApplyPanel";
-import { aiGenerate, getDirectMode } from "../../api/aiGenerateApi";
+import { detectDepResponseContent } from "../components/shared/promptEngine/depResponseApplier";
+import ControlledApplyModal from "../components/shared/promptEngine/ControlledApplyPanel";
+import { buildDepChangeItems, recomposeDepDetected, DEP_CHANGE_TYPE_META } from "../components/shared/promptEngine/depChangeBuilder";
+import { applyDepDetected } from "../components/shared/promptEngine/depResponseApplier";
+import { aiGenerate, getDirectMode } from "../api/aiGenerateApi";
 
 /**
  * ═══════════════════════════════════════════════════════════
- *  IdeaBinIOPopup  —  Grid Layout v2
+ *  DependencyIOPopup  —  Grid Layout
  *  ──────────────────────────────────
  *  Two-mode popup:
- *   • Export – 3×3 grid (Add / Assign / Finetune × Ideas /
- *     Categories / Legends & Filters) + Specials row + context toggle
+ *   • Export – 3×2 grid (Add / Finetune × Tasks /
+ *     Milestones / Dependencies) + Specials row + context toggle
  *   • Import – paste AI response, preview & apply
+ *             with conflict detection for scheduling violations
  *
  *  Props:
  *    scenarios       – array of scenario definitions
@@ -26,10 +30,17 @@ import { aiGenerate, getDirectMode } from "../../api/aiGenerateApi";
  *    applyCtx        – object with API functions for applying responses
  *    onClose         – close callback
  *    iconColor       – title bar icon colour
+ *    onResolveStart  – optional (info) => void — called when entering conflict resolve mode
+ *    onResolveEnd    – optional () => void — called when exiting resolve mode
+ *    resolveActive   – optional boolean — true when in resolve mode (from adapter)
+ *    onReviewStart   – optional (detected, changeItems) => void — enter inline review mode
+ *    reviewActive    – optional boolean — true when in review mode
  * ═══════════════════════════════════════════════════════════
  */
-export default function IdeaBinIOPopup({
-  scenarios, grid, ctx, settings, assemblePrompt, applyCtx, onClose, iconColor = "#92400e",
+export default function DependencyIOPopup({
+  scenarios, grid, ctx, settings, assemblePrompt, applyCtx, onClose, iconColor = "#0ea5e9",
+  onResolveStart, onResolveEnd, resolveActive,
+  onReviewStart, reviewActive,
 }) {
   // ─── Shared state ─────────────────────────────────────
   const [mode, setMode] = useState("export");
@@ -44,9 +55,6 @@ export default function IdeaBinIOPopup({
   const [customAddOn, setCustomAddOn] = useState("");
   // ─── Export state ─────────────────────────────────────
   const [withContext, setWithContext] = useState(true);
-  const [selectedLegendId, setSelectedLegendId] = useState(
-    () => ctx.dims?.legends?.[0]?.id ?? null,
-  );
 
   // ─── Import state ─────────────────────────────────────
   const [pasteText, setPasteText] = useState("");
@@ -54,7 +62,6 @@ export default function IdeaBinIOPopup({
   const [detected, setDetected] = useState(null);
   const [applyResult, setApplyResult] = useState(null);
   const pasteRef = useRef(null);
-
   const popupRef = useRef(null);
 
   // Build scenario lookup map
@@ -64,34 +71,21 @@ export default function IdeaBinIOPopup({
     return m;
   }, [scenarios]);
 
-  // Modified ctx with context toggle + legend picker
+  // Modified ctx with context toggle
   const modCtx = useMemo(() => ({
     ...ctx,
     _withContext: withContext,
-    _selectedLegendId: selectedLegendId,
-  }), [ctx, withContext, selectedLegendId]);
+  }), [ctx, withContext]);
 
-  // Compute availability for each scenario (using base ctx, not toggles)
+  // Compute availability for each scenario
   const availability = useMemo(() => {
     const map = {};
     scenarios.forEach(s => {
-      let msg = s.unavailableMsg(ctx);
-      // For legend-picker scenarios, check if a legend is selected
-      if (!msg && s.needsLegendPicker && !selectedLegendId) {
-        msg = "Select a legend from the dropdown";
-      }
+      const msg = s.unavailableMsg(ctx);
       map[s.id] = msg;
     });
     return map;
-  }, [scenarios, ctx, selectedLegendId]);
-
-  // Selection stats
-  const selectionStats = useMemo(() => {
-    const parts = [];
-    if (ctx.selectedIdeaIds?.size > 0) parts.push(`${ctx.selectedIdeaIds.size} idea${ctx.selectedIdeaIds.size > 1 ? "s" : ""}`);
-    if (ctx.selectedCategoryIds?.size > 0) parts.push(`${ctx.selectedCategoryIds.size} cat${ctx.selectedCategoryIds.size > 1 ? "s" : ""}`);
-    return parts.length > 0 ? parts.join(", ") + " selected" : null;
-  }, [ctx.selectedIdeaIds, ctx.selectedCategoryIds]);
+  }, [scenarios, ctx]);
 
   // Auto-focus paste area on import mode
   useEffect(() => {
@@ -107,10 +101,8 @@ export default function IdeaBinIOPopup({
     return <Sparkles size={size} className="text-gray-400 flex-shrink-0" />;
   };
 
-  // Column header colour hints
   const colColors = {
     add: "text-green-700 bg-green-50",
-    assign: "text-teal-700 bg-teal-50",
     finetune: "text-blue-700 bg-blue-50",
   };
 
@@ -137,29 +129,6 @@ export default function IdeaBinIOPopup({
     }, 800);
   }, [assemblePrompt, modCtx, settings, scenarioMap, customAddOn]);
 
-  // ─── Export: direct AI generate ────────────────────────
-  const handleGenerate = useCallback(async (scenarioId) => {
-    setGeneratingId(scenarioId);
-    setGenerateError(null);
-    try {
-      let { text } = assemblePrompt(scenarioId, modCtx, settings);
-      if (customAddOn.trim()) text += "\n\n" + customAddOn.trim();
-      const parsed = await aiGenerate(text);
-      const items = detectResponseContent(parsed);
-      if (!items || items.length === 0) {
-        throw new Error("No actionable content detected in AI response");
-      }
-      setDetected(items);
-      setMode("import");
-    } catch (e) {
-      console.error("AI generate failed:", e);
-      setGenerateError(e.message);
-      setTimeout(() => setGenerateError(null), 4000);
-    } finally {
-      setGeneratingId(null);
-    }
-  }, [assemblePrompt, modCtx, settings, customAddOn]);
-
   const handleDownload = useCallback((scenarioId) => {
     const { jsonString } = assemblePrompt(scenarioId, modCtx, settings);
     const blob = new Blob([jsonString], { type: "application/json" });
@@ -174,6 +143,39 @@ export default function IdeaBinIOPopup({
     a.remove();
     URL.revokeObjectURL(url);
   }, [assemblePrompt, modCtx, settings]);
+
+  // ─── Export: direct AI generate ────────────────────────
+  // Wrap buildDepChangeItems to pass nodes/rows/lanes context
+  const buildChangeItemsWithCtx = useCallback((det) => {
+    return buildDepChangeItems(det, ctx.nodes || {}, ctx.rows || {}, ctx.lanes || {});
+  }, [ctx.nodes, ctx.rows, ctx.lanes]);
+
+  const handleGenerate = useCallback(async (scenarioId) => {
+    setGeneratingId(scenarioId);
+    setGenerateError(null);
+    try {
+      let { text } = assemblePrompt(scenarioId, modCtx, settings);
+      if (customAddOn.trim()) text += "\n\n" + customAddOn.trim();
+      const parsed = await aiGenerate(text);
+      const items = detectDepResponseContent(parsed);
+      if (!items || items.length === 0) {
+        throw new Error("No actionable content detected in AI response");
+      }
+      setDetected(items);
+      setMode("import");
+      // Enter inline review mode if available
+      if (onReviewStart) {
+        const changeItems = buildChangeItemsWithCtx(items);
+        onReviewStart(items, changeItems);
+      }
+    } catch (e) {
+      console.error("AI generate failed:", e);
+      setGenerateError(e.message);
+      setTimeout(() => setGenerateError(null), 4000);
+    } finally {
+      setGeneratingId(null);
+    }
+  }, [assemblePrompt, modCtx, settings, onReviewStart, buildChangeItemsWithCtx, customAddOn]);
 
   // ─── Import: parse ────────────────────────────────────
   const handleParse = useCallback(() => {
@@ -192,14 +194,20 @@ export default function IdeaBinIOPopup({
       return;
     }
 
-    const items = detectResponseContent(parsed);
+    const items = detectDepResponseContent(parsed);
     if (items.length === 0) {
-      setParseError("Could not detect any usable content in this response.");
+      setParseError("Could not detect any milestone/dependency content in this response.");
       return;
     }
 
     setParseError(null);
     setDetected(items);
+
+    // Enter inline review mode if available
+    if (onReviewStart) {
+      const changeItems = buildChangeItemsWithCtx(items);
+      onReviewStart(items, changeItems);
+    }
   }, [pasteText]);
 
   const resetImport = useCallback(() => {
@@ -209,9 +217,20 @@ export default function IdeaBinIOPopup({
     setApplyResult(null);
   }, []);
 
+  // ─── Resolve conflict handler ─────────────────────────
+  const handleResolve = useCallback((changeItem) => {
+    if (!onResolveStart || !changeItem.detail) return;
+    onResolveStart({
+      sourceId: changeItem.detail.sourceId,
+      targetId: changeItem.detail.targetId,
+      sourceName: changeItem.detail.sourceName,
+      targetName: changeItem.detail.targetName,
+      changeItemId: changeItem.id,
+    });
+  }, [onResolveStart]);
+
   // ─── Render helpers ───────────────────────────────────
 
-  /** Render a single scenario as a clickable row inside a grid cell */
   const renderScenarioBtn = (scenarioId) => {
     const scenario = scenarioMap.get(scenarioId);
     if (!scenario) return null;
@@ -272,16 +291,19 @@ export default function IdeaBinIOPopup({
   //  RENDER
   // ═══════════════════════════════════════════════════════
 
+  // When resolving or in review mode, hide popup UI but keep everything mounted to preserve state
+  const hidePopup = resolveActive || reviewActive;
+
   return (
     <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-[9998]" onClick={onClose} />
+      {/* Backdrop — hidden during resolve */}
+      {!hidePopup && <div className="fixed inset-0 z-[9998]" onClick={onClose} />}
 
-      {/* Popup */}
+      {/* Popup — hidden during resolve */}
       <div
         ref={popupRef}
         className="absolute right-0 top-full mt-1 z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col"
-        style={{ width: "min(680px, 92vw)", maxHeight: "min(620px, 80vh)" }}
+        style={{ width: "min(580px, 92vw)", maxHeight: "min(580px, 80vh)", display: hidePopup ? "none" : undefined }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* ── Header ── */}
@@ -289,15 +311,9 @@ export default function IdeaBinIOPopup({
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-1.5">
               <Sparkles size={13} style={{ color: iconColor }} />
-              <span className="text-[11px] font-semibold text-gray-800">AI I/O</span>
+              <span className="text-[11px] font-semibold text-gray-800">AI I/O — Dependencies</span>
             </div>
             <div className="flex items-center gap-2">
-              {selectionStats && mode === "export" && (
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium">
-                  {selectionStats}
-                </span>
-              )}
-              {/* Context toggle */}
               {mode === "export" && (
                 <button
                   onClick={() => setWithContext(v => !v)}
@@ -307,7 +323,7 @@ export default function IdeaBinIOPopup({
                       : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                   }`}
                   title={withContext
-                    ? "ON: Prompts include existing context for reference"
+                    ? "ON: Prompts include existing milestones/dependencies"
                     : "OFF: Blank-slate prompts without existing data"
                   }
                 >
@@ -323,7 +339,7 @@ export default function IdeaBinIOPopup({
               onClick={() => setMode("export")}
               className={`flex-1 text-[10px] py-1 rounded font-medium transition-colors ${
                 mode === "export"
-                  ? "bg-amber-100 text-amber-800"
+                  ? "bg-sky-100 text-sky-800"
                   : "bg-gray-50 text-gray-500 hover:bg-gray-100"
               }`}
             >
@@ -349,18 +365,18 @@ export default function IdeaBinIOPopup({
         {/* ═══════════════════════════════════════════════ */}
         {mode === "export" && (
           <div className="flex-1 overflow-y-auto p-2">
-            {/* CSS Grid */}
+            {/* CSS Grid — 3 rows × 2 columns */}
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "80px 1fr 1fr 1fr",
+                gridTemplateColumns: "90px 1fr 1fr",
                 gridTemplateRows: "auto",
                 gap: "1px",
               }}
               className="bg-gray-200 rounded-lg overflow-hidden border border-gray-200"
             >
-              {/* ── Row 0: Column headers ── */}
-              <div className="bg-gray-50" style={{ gridColumn: 1, gridRow: 1 }} /> {/* empty corner */}
+              {/* Row 0: Column headers */}
+              <div className="bg-gray-50" style={{ gridColumn: 1, gridRow: 1 }} />
               {grid.columns.map((col, ci) => (
                 <div
                   key={col.key}
@@ -371,73 +387,48 @@ export default function IdeaBinIOPopup({
                 </div>
               ))}
 
-              {/* ── Grid rows ── */}
+              {/* Grid rows */}
               {grid.rows.map((row, ri) => {
-                const gridRowIdx = ri + 2; // row 1 = headers, row 2+ = data
-                const colIdx = { add: 2, assign: 3, finetune: 4 };
+                const gridRowIdx = ri + 2;
+                const colIdx = { add: 2, finetune: 3 };
 
                 return (
-                <React.Fragment key={row.key}>
-                  {/* Row label */}
-                  <div
-                    className="bg-gray-50 px-2 py-2 flex items-start"
-                    style={{ gridColumn: 1, gridRow: gridRowIdx }}
-                  >
-                    <span className="text-[10px] font-bold text-gray-600 leading-tight">
-                      {row.label}
-                    </span>
-                  </div>
+                  <React.Fragment key={row.key}>
+                    {/* Row label */}
+                    <div
+                      className="bg-gray-50 px-2 py-2 flex items-start"
+                      style={{ gridColumn: 1, gridRow: gridRowIdx }}
+                    >
+                      <span className="text-[10px] font-bold text-gray-600 leading-tight">
+                        {row.label}
+                      </span>
+                    </div>
 
-                  {/* Cells */}
-                  {grid.columns.map((col) => {
-                    const cellKey = `${row.key}:${col.key}`;
-                    const cellScenarioIds = grid.cells[cellKey];
+                    {/* Cells */}
+                    {grid.columns.map((col) => {
+                      const cellKey = `${row.key}:${col.key}`;
+                      const cellScenarioIds = grid.cells[cellKey];
+                      if (cellScenarioIds === null) return null;
 
-                    // Merged cell (categories:assign → null, occupied by span from ideas:assign)
-                    if (cellScenarioIds === null) return null;
-
-                    // Shared assign cell spans ideas + categories rows
-                    const isSharedAssign = row.key === "ideas" && col.key === "assign";
-
-                    return (
-                      <div
-                        key={cellKey}
-                        className="bg-white px-1 py-1 flex flex-col gap-0"
-                        style={{
-                          gridColumn: colIdx[col.key],
-                          gridRow: isSharedAssign ? `${gridRowIdx} / ${gridRowIdx + 2}` : gridRowIdx,
-                        }}
-                      >
-                        {cellScenarioIds.map(id => renderScenarioBtn(id))}
-                      </div>
-                    );
-                  })}
-                </React.Fragment>
+                      return (
+                        <div
+                          key={cellKey}
+                          className="bg-white px-1 py-1 flex flex-col gap-0"
+                          style={{
+                            gridColumn: colIdx[col.key],
+                            gridRow: gridRowIdx,
+                          }}
+                        >
+                          {cellScenarioIds.map(id => renderScenarioBtn(id))}
+                        </div>
+                      );
+                    })}
+                  </React.Fragment>
                 );
               })}
             </div>
 
-            {/* ── Legend picker (for scenarios needing it) ── */}
-            {ctx.dims?.legends?.length > 0 && (
-              <div className="flex items-center gap-2 mt-2 px-1">
-                <span className="text-[9px] text-gray-500 font-medium">Active legend:</span>
-                <select
-                  value={selectedLegendId || ""}
-                  onChange={(e) => setSelectedLegendId(Number(e.target.value) || null)}
-                  className="text-[10px] px-1.5 py-0.5 rounded border border-gray-200 bg-gray-50 text-gray-700 focus:outline-none focus:border-blue-400"
-                >
-                  <option value="">Select legend…</option>
-                  {ctx.dims.legends.map(l => (
-                    <option key={l.id} value={l.id}>{l.name}</option>
-                  ))}
-                </select>
-                <span className="text-[8px] text-gray-400 italic">
-                  Used by "1 legend →" and "single legend" scenarios
-                </span>
-              </div>
-            )}
-
-            {/* ── Specials section ── */}
+            {/* Specials section */}
             <div className="mt-2">
               <div className="text-[9px] font-bold text-gray-500 uppercase tracking-wider px-1 mb-1">
                 Specials
@@ -473,16 +464,16 @@ export default function IdeaBinIOPopup({
 
             {/* Last-copied scenario hint */}
             {lastCopiedScenario && !applyResult && (
-              <div className="flex items-center gap-1.5 px-2 py-1.5 bg-amber-50 rounded border border-amber-200">
-                <Check size={10} className="text-amber-600 flex-shrink-0" />
-                <span className="text-[10px] text-amber-800 truncate">
+              <div className="flex items-center gap-1.5 px-2 py-1.5 bg-sky-50 rounded border border-sky-200">
+                <Check size={10} className="text-sky-600 flex-shrink-0" />
+                <span className="text-[10px] text-sky-800 truncate">
                   <span className="font-medium">{lastCopiedScenario.label}</span>
-                  <span className="text-amber-600"> prompt copied — paste the AI response below</span>
+                  <span className="text-sky-600"> prompt copied — paste the AI response below</span>
                 </span>
               </div>
             )}
 
-            {/* ── Apply result screen ── */}
+            {/* Apply result screen */}
             {applyResult ? (
               <div className="flex flex-col gap-2 py-2">
                 {applyResult.created.length > 0 && (
@@ -492,6 +483,26 @@ export default function IdeaBinIOPopup({
                       <div key={i} className="flex items-center gap-1 text-[10px] text-green-700">
                         <Check size={9} className="flex-shrink-0" />
                         {msg}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {applyResult.conflicts?.length > 0 && (
+                  <div className="bg-orange-50 border border-orange-200 rounded px-3 py-2">
+                    <div className="text-[11px] font-semibold text-orange-800 mb-1 flex items-center gap-1">
+                      <AlertTriangle size={11} />
+                      Scheduling Conflicts
+                    </div>
+                    <p className="text-[9px] text-orange-600 mb-1.5">
+                      These dependencies were created but violate scheduling rules.
+                      Adjust milestone positions in the grid to resolve them.
+                    </p>
+                    {applyResult.conflicts.map((c, i) => (
+                      <div key={i} className="text-[10px] text-orange-700 mb-1">
+                        <span className="font-medium">"{c.sourceName}" → "{c.targetName}"</span>
+                        <span className="text-orange-500 ml-1">
+                          (source ends day {c.sourceEnd}, target starts day {c.targetStart})
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -520,15 +531,19 @@ export default function IdeaBinIOPopup({
                 </div>
               </div>
             ) : detected ? (
-              /* ── Controlled review & apply ── */
               <ControlledApplyModal
                 detected={detected}
                 applyCtx={applyCtx}
                 onResult={setApplyResult}
                 onClose={() => { setDetected(null); setParseError(null); }}
+                buildChangeItemsFn={buildChangeItemsWithCtx}
+                recomposeDetectedFn={recomposeDepDetected}
+                applyDetectedFn={applyDepDetected}
+                changeTypeMeta={DEP_CHANGE_TYPE_META}
+                onResolve={onResolveStart ? handleResolve : undefined}
+                paused={resolveActive}
               />
             ) : (
-              /* ── Paste textarea ── */
               <>
                 {lastCopiedScenario?.expectedFormat && (
                   <details className="group">
@@ -546,7 +561,7 @@ export default function IdeaBinIOPopup({
                   value={pasteText}
                   onChange={(e) => { setPasteText(e.target.value); setParseError(null); }}
                   placeholder="Paste the AI's JSON response here…"
-                  className="w-full font-mono text-[10px] text-gray-700 bg-gray-50 border border-gray-200 rounded p-2 resize-y focus:outline-none focus:ring-1 focus:ring-emerald-300 placeholder:text-gray-400"
+                  className="w-full font-mono text-[10px] text-gray-700 bg-gray-50 border border-gray-200 rounded p-2 resize-y focus:outline-none focus:ring-1 focus:ring-sky-300 placeholder:text-gray-400"
                   style={{ minHeight: "120px", maxHeight: "300px" }}
                 />
 
@@ -560,20 +575,21 @@ export default function IdeaBinIOPopup({
                 <button
                   onClick={handleParse}
                   disabled={!pasteText.trim()}
-                  className="w-full text-[10px] py-1.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 font-medium transition-colors"
+                  className="w-full text-[10px] py-1.5 rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-40 font-medium transition-colors"
                 >
                   Parse & Preview
                 </button>
 
                 <p className="text-[9px] text-gray-400">
                   Supports JSON objects, arrays, and JSON inside markdown code fences.
+                  Scheduling conflicts will be highlighted for manual resolution.
                 </p>
               </>
             )}
           </div>
         )}
 
-        {/* ── Footer ── */}
+        {/* Footer */}
         <div className="px-3 py-1.5 border-t border-gray-100 text-[9px] flex-shrink-0 flex items-center gap-2">
           {generateError ? (
             <span className="text-red-500 font-medium">{generateError}</span>
@@ -583,7 +599,7 @@ export default function IdeaBinIOPopup({
                 ? directMode
                   ? "Click scenario to generate directly via OpenAI"
                   : "Click scenario to copy prompt · switches to Import after copy"
-                : "Paste AI response · preview & apply"
+                : "Paste AI response · preview & apply · conflicts shown for manual fix"
               }
             </span>
           )}

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Save, Star, Plus, PanelTop, PanelTopClose } from "lucide-react";
+import { CalendarRange, ChevronLeft, ChevronRight, ChevronDown, Save, Star, Plus, PanelTop, PanelTopClose, Sparkles } from "lucide-react";
 import WindowTitleBar from "../components/shared/WindowTitleBar";
 
 /**
@@ -25,6 +25,10 @@ export default function ScheduleTitleBar({
     onCreateView,
     toolbarCollapsed,
     toggleToolbar,
+    // AI IO
+    ioPopupOpen,
+    setIoPopupOpen,
+    ioPopupContent,
   } = viewBar;
 
   const [showDropdown, setShowDropdown] = useState(false);
@@ -49,7 +53,22 @@ export default function ScheduleTitleBar({
   const hasViews = savedViews.length > 0 || activeViewId;
 
   const toolbarToggle = (
-    <div className="flex items-center" onMouseDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+    <div className="flex items-center gap-1" onMouseDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+      {/* AI IO button */}
+      <div className="relative">
+        <button
+          onClick={() => setIoPopupOpen?.((v) => !v)}
+          className={`p-1 rounded transition-colors ${
+            ioPopupOpen
+              ? "bg-white/30 text-white"
+              : "hover:bg-white/20 text-white/70 hover:text-white"
+          }`}
+          title="AI I/O — Dependency Prompts"
+        >
+          <Sparkles size={13} />
+        </button>
+        {ioPopupOpen && ioPopupContent}
+      </div>
       <button
         onClick={() => toggleToolbar?.()}
         className={`p-1 rounded transition-colors ${

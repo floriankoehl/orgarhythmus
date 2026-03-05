@@ -54,6 +54,7 @@ export function useNodeInteractions({
   collapsedColumns,
   // Persist callbacks
   persistNodeMove,
+  persistBulkNodeMove,
   persistNodeResize,
   persistNodeRename,
   persistNodeDelete,
@@ -339,38 +340,83 @@ export function useNodeInteractions({
         afterPositions[nId] = initial.startColumn + currentDeltaIndex;
       }
 
-      for (const nId of nodesToMove) {
-        const newStart = afterPositions[nId];
-        if (newStart === undefined) continue;
-
-        setNodes(prev => {
-          const { x, ...rest } = prev[nId];
-          return { ...prev, [nId]: { ...rest, startColumn: newStart } };
-        });
-
-        try {
-          if (persistNodeMove) await persistNodeMove(nId, newStart);
-        } catch (err) {
-          console.error("Failed to update start column:", err);
+      // Update local state for all nodes in one batch
+      setNodes(prev => {
+        const updated = { ...prev };
+        for (const nId of nodesToMove) {
+          const newStart = afterPositions[nId];
+          if (newStart === undefined) continue;
+          const { x, ...rest } = updated[nId];
+          updated[nId] = { ...rest, startColumn: newStart };
         }
-      }
+        return updated;
+      });
 
-      pushAction({
-        description: `Move ${nodesToMove.length} node(s)`,
-        undo: async () => {
-          for (const nId of nodesToMove) {
-            const oldStart = beforePositions[nId];
-            if (oldStart === undefined) continue;
-            setNodes(prev => ({ ...prev, [nId]: { ...prev[nId], startColumn: oldStart } }));
-            if (persistNodeMove) await persistNodeMove(nId, oldStart);
-          }
-        },
-        redo: async () => {
+      // Persist — use bulk API when moving multiple nodes (single request, single snap)
+      try {
+        if (nodesToMove.length > 1 && persistBulkNodeMove) {
+          const moves = nodesToMove
+            .filter(nId => afterPositions[nId] !== undefined)
+            .map(nId => ({ nodeId: nId, newStartIndex: afterPositions[nId] }));
+          await persistBulkNodeMove(moves);
+        } else {
           for (const nId of nodesToMove) {
             const newStart = afterPositions[nId];
             if (newStart === undefined) continue;
-            setNodes(prev => ({ ...prev, [nId]: { ...prev[nId], startColumn: newStart } }));
             if (persistNodeMove) await persistNodeMove(nId, newStart);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to persist move:', err);
+      }
+
+      // Single undo/redo entry for the entire bulk move
+      pushAction({
+        description: `Move ${nodesToMove.length} node(s)`,
+        undo: async () => {
+          setNodes(prev => {
+            const updated = { ...prev };
+            for (const nId of nodesToMove) {
+              const oldStart = beforePositions[nId];
+              if (oldStart === undefined) continue;
+              updated[nId] = { ...updated[nId], startColumn: oldStart };
+            }
+            return updated;
+          });
+          if (nodesToMove.length > 1 && persistBulkNodeMove) {
+            const moves = nodesToMove
+              .filter(nId => beforePositions[nId] !== undefined)
+              .map(nId => ({ nodeId: nId, newStartIndex: beforePositions[nId] }));
+            await persistBulkNodeMove(moves);
+          } else {
+            for (const nId of nodesToMove) {
+              const oldStart = beforePositions[nId];
+              if (oldStart === undefined) continue;
+              if (persistNodeMove) await persistNodeMove(nId, oldStart);
+            }
+          }
+        },
+        redo: async () => {
+          setNodes(prev => {
+            const updated = { ...prev };
+            for (const nId of nodesToMove) {
+              const newStart = afterPositions[nId];
+              if (newStart === undefined) continue;
+              updated[nId] = { ...updated[nId], startColumn: newStart };
+            }
+            return updated;
+          });
+          if (nodesToMove.length > 1 && persistBulkNodeMove) {
+            const moves = nodesToMove
+              .filter(nId => afterPositions[nId] !== undefined)
+              .map(nId => ({ nodeId: nId, newStartIndex: afterPositions[nId] }));
+            await persistBulkNodeMove(moves);
+          } else {
+            for (const nId of nodesToMove) {
+              const newStart = afterPositions[nId];
+              if (newStart === undefined) continue;
+              if (persistNodeMove) await persistNodeMove(nId, newStart);
+            }
           }
         },
       });

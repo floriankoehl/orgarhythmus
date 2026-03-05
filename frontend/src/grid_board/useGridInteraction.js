@@ -141,6 +141,7 @@ export function useGridInteraction({
   // ── Persist callbacks (adapter-supplied) ──
   persistNodeCreate,
   persistNodeMove,
+  persistBulkNodeMove,
   persistNodeResize,
   persistNodeDelete,
   persistNodeRename,
@@ -266,6 +267,7 @@ export function useGridInteraction({
     columnLayout,
     // Persist callbacks
     persistNodeMove,
+    persistBulkNodeMove,
     persistNodeResize,
     persistNodeRename,
     persistNodeDelete,

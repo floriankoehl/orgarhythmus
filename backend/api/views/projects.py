@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..models import Project
+from ..models import Project, Context, ProjectContextPlacement, UserContextAdoption
 from .serializers import (
     ProjectSerializer,
     ProjectSerializer_Deps,
@@ -82,6 +82,13 @@ def join_project(request, pk):
     # Add user as member
     project.members.add(user)
 
+    # Auto-adopt all contexts linked to this project
+    ctx_ids = ProjectContextPlacement.objects.filter(
+        project=project,
+    ).values_list("context_id", flat=True)
+    for ctx_id in ctx_ids:
+        UserContextAdoption.objects.get_or_create(user=user, context_id=ctx_id)
+
     serializer = ProjectSerializer(project)
     return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -147,6 +154,13 @@ def create_project(request):
     )
     # Optional: Owner auch gleich als Mitglied hinzufügen
     project.members.add(request.user)
+
+    # Auto-create a context for the project and link it
+    ctx = Context.objects.create(
+        owner=request.user,
+        name=name,
+    )
+    ProjectContextPlacement.objects.create(project=project, context=ctx)
 
     serializer = ProjectSerializer(project)
     return Response(serializer.data, status=status.HTTP_201_CREATED)

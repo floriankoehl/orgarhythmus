@@ -50,15 +50,14 @@ const ROTATION_SPEED = 50;           // seconds per full rotation
 
 // ── Background colour shifts (heartbeat only) ──
 const BG_BASE = [15, 23, 42]; // slate-900
-const BG_BEAT_LIFT = 18;
-const BG_BEAT_DECAY_S = 0.20; // seconds (not ms) — keeps everything in audio-time
+const BG_BEAT_LIFT = 30;
+const BG_BEAT_DECAY_S = 0.25; // seconds (not ms) — keeps everything in audio-time
+const BG_BASE_COLOR = `rgb(${BG_BASE.join(',')})`;
 
-function bgColor(beatT) {
-  const lift = BG_BEAT_LIFT * beatT;
-  const r = Math.round(BG_BASE[0] + lift);
-  const g = Math.round(BG_BASE[1] + lift);
-  const b = Math.round(BG_BASE[2] + lift * 0.7);
-  return `rgb(${r},${g},${b})`;
+function bgGradient(beatT, centerYPct) {
+  if (beatT <= 0) return 'none';
+  const a = 0.12 * beatT;
+  return `radial-gradient(circle at 50% ${centerYPct}%, rgba(140,160,200,${a}) 0%, transparent 40%)`;
 }
 
 /**
@@ -80,10 +79,10 @@ export default function OrbitMode() {
   const [projectName, setProjectName] = useState("");
   const rafRef = useRef(null);
   const hoveredRef = useRef(false);
-  const lastBeatCycleRef = useRef(-1);
   const beatFlashStartRef = useRef(null); // breathing-time when beat fired
   const breathEaseRef = useRef(0);
-  const heartDotRef = useRef(null);
+  const prevHbtRef = useRef(0);       // previous heartbeat time (detect wrap)
+  const beatFiredRef = useRef(false);  // already fired in this audio cycle?
 
   // ── Mirror hover into ref (avoids re-creating effect) ──
   useEffect(() => { hoveredRef.current = hovered; }, [hovered]);
@@ -131,16 +130,20 @@ export default function OrbitMode() {
 
       // ── Heartbeat (single source of truth: heartbeat audio position) ──
       const hbt = getHeartbeatTime(); // 0 … ~1.1, loops via audio.loop
-      const beatCycle = Math.floor(hbt / ORBIT_HEARTBEAT_DURATION);
-      const posInCycle = hbt % ORBIT_HEARTBEAT_DURATION;
+
+      // Detect audio loop-around (currentTime jumped backward)
+      if (hbt < prevHbtRef.current - 0.05) {
+        beatFiredRef.current = false;
+      }
+      prevHbtRef.current = hbt;
 
       // Detect new beat thump
       if (
-        beatCycle !== lastBeatCycleRef.current &&
-        posInCycle >= ORBIT_HEARTBEAT_OFFSET &&
-        posInCycle < ORBIT_HEARTBEAT_OFFSET + 0.15
+        !beatFiredRef.current &&
+        hbt >= ORBIT_HEARTBEAT_OFFSET &&
+        hbt < ORBIT_HEARTBEAT_OFFSET + 0.15
       ) {
-        lastBeatCycleRef.current = beatCycle;
+        beatFiredRef.current = true;
         beatFlashStartRef.current = hbt;
       }
 
@@ -164,15 +167,9 @@ export default function OrbitMode() {
 
       // ── Paint background directly (heartbeat only) ──
       if (containerRef.current) {
-        containerRef.current.style.backgroundColor = bgColor(beatT);
-      }
-
-      // ── Pulse the centre heart dot ──
-      if (heartDotRef.current) {
-        const scale = 1 + beatT * 0.35;
-        const opacity = 0.5 + beatT * 0.5;
-        heartDotRef.current.style.transform = `translate(-50%, -50%) scale(${scale})`;
-        heartDotRef.current.style.opacity = opacity;
+        const h = containerRef.current.clientHeight || window.innerHeight;
+        const centerYPct = 50 + (ORBIT_VERTICAL_SHIFT / h) * 100;
+        containerRef.current.style.backgroundImage = bgGradient(beatT, centerYPct);
       }
 
       rafRef.current = requestAnimationFrame(tick);
@@ -201,7 +198,7 @@ export default function OrbitMode() {
   return (
     <div
       ref={containerRef}
-      style={{ zIndex: 99980, backgroundColor: bgColor(0) }}
+      style={{ zIndex: 99980, backgroundColor: BG_BASE_COLOR }}
       className="fixed inset-0 flex flex-col items-center justify-center"
     >
       {/* ── Header: back button above centred project name ── */}
@@ -230,22 +227,6 @@ export default function OrbitMode() {
       {/* Subtle radial glow behind the orbit */}
       <div className="absolute w-[340px] h-[340px] rounded-full bg-slate-800/50 blur-3xl pointer-events-none"
            style={{ transform: `translateY(${ORBIT_VERTICAL_SHIFT}px)` }} />
-
-      {/* Centre heartbeat dot */}
-      <div
-        ref={heartDotRef}
-        className="absolute rounded-full bg-white/50 pointer-events-none"
-        style={{
-          width: 10,
-          height: 10,
-          left: '50%',
-          top: `calc(50% + ${ORBIT_VERTICAL_SHIFT}px)`,
-          transform: 'translate(-50%, -50%) scale(1)',
-          opacity: 0.5,
-          boxShadow: '0 0 8px 2px rgba(255,255,255,0.25)',
-          transition: 'none',
-        }}
-      />
 
       {/* Rotating container — shifted slightly down */}
       <div

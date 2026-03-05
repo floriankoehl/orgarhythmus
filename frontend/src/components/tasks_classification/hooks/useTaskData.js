@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   fetchTasksForProject,
   createTaskForProject,
@@ -7,6 +7,7 @@ import {
   toggleCriterion,
 } from "../../../api/org_API";
 import { reorder_team_tasks as reorderTeamTasksApi } from "../../../api/dependencies_api";
+import { emitDataEvent, useManualRefresh } from "../../../api/dataEvents";
 
 /**
  * Manages task CRUD, ordering, and selection for the Task Structure page.
@@ -63,6 +64,7 @@ export default function useTaskData({ projectId }) {
       if (!task.team) {
         setTaskOrder((prev) => [...prev, task.id]);
       }
+      emitDataEvent('tasks');
       return task;
     } catch (err) {
       console.error("Failed to create task:", err);
@@ -77,6 +79,7 @@ export default function useTaskData({ projectId }) {
       const res = await updateTask(projectId, taskId, payload);
       const updated = res.task || res;
       setTasks((prev) => ({ ...prev, [taskId]: { ...prev[taskId], ...updated } }));
+      emitDataEvent('tasks');
       return updated;
     } catch (err) {
       console.error("Failed to update task:", err);
@@ -103,6 +106,7 @@ export default function useTaskData({ projectId }) {
         }
         return next;
       });
+      emitDataEvent('tasks');
     } catch (err) {
       console.error("Failed to delete task:", err);
     }
@@ -140,6 +144,7 @@ export default function useTaskData({ projectId }) {
     });
     try {
       await updateTask(projectId, taskId, { team_id: teamId });
+      emitDataEvent('tasks');
     } catch (err) {
       console.error("Failed to assign task to team:", err);
       // Revert on failure
@@ -173,6 +178,7 @@ export default function useTaskData({ projectId }) {
     // Persist to backend
     try {
       await reorderTeamTasksApi(projectId, taskId, teamId, newOrder);
+      emitDataEvent('tasks');
     } catch (err) {
       console.error("Failed to reorder team tasks:", err);
       // Revert on failure
@@ -224,6 +230,9 @@ export default function useTaskData({ projectId }) {
       return null;
     }
   }, [projectId]);
+
+  // ── Cross-window sync: reload on manual refresh ──
+  useManualRefresh(fetchTasks);
 
   // Initial fetch
   useEffect(() => {

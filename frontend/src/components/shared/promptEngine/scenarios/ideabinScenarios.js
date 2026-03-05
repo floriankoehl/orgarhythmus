@@ -1093,6 +1093,45 @@ export const IDEABIN_SCENARIOS = [
         .map(i => cleanIdea(i, ctx.dims?.legendTypes)),
     }),
   },
+
+  // ── Taskify ideas (export from IdeaBin, import in TaskStructure) ──
+  {
+    id: "special_taskify_ideas",
+    domain: "ideabin",
+    grid: { row: "special", col: "special" },
+    group: "Specials",
+    action: "special",
+    label: "Taskify ideas",
+    description:
+      "Convert IdeaBin ideas into well-defined tasks with acceptance criteria. " +
+      "Copy the prompt, send it to your AI, then import the response in the Task Structure panel.",
+    unavailableMsg: (ctx) =>
+      ctxIdeaCount(ctx) === 0 ? "No ideas to taskify" : null,
+    defaultPrompt:
+      "Convert these ideas into well-defined tasks. " +
+      "Each idea should become one or more tasks with clear names, descriptions, " +
+      "priority, difficulty, and 2-4 acceptance criteria. " +
+      "Group them into teams if logical groupings emerge.",
+    expectedFormat:
+      '{ "teams": [{ "team_name": "...", "tasks": [{ "name": "...", "description": "...", "priority": "...", "difficulty": "...", "acceptance_criteria": [{ "title": "..." }] }] }], "unassigned_tasks": [...] }',
+    buildPayload: (ctx) => {
+      const cats = ctxCategories(ctx).map(cat => ({
+        category_name: cat.name,
+        ideas: ideasForCategory(cat.id, ctx.ideas, ctx.categoryOrders)
+          .map(i => cleanIdea(i, ctx.dims?.legendTypes)),
+      })).filter(c => c.ideas.length > 0);
+
+      const unassigned = getUnassignedIdeas(ctx.ideas, ctx.unassignedOrder)
+        .map(i => cleanIdea(i, ctx.dims?.legendTypes));
+
+      return {
+        categories: cats,
+        ...(unassigned.length > 0 ? { unassigned_ideas: unassigned } : {}),
+        existing_teams: (ctx.projectTeams || []).map(t => ({ team_name: t.name })),
+        project_description: ctx.projectDescription || "",
+      };
+    },
+  },
 ];
 
 
@@ -1120,7 +1159,7 @@ export const IDEABIN_GRID = {
     "legends:assign":      ["legends_assign_one_selected", "legends_assign_one_all", "legends_assign_all_selected", "legends_assign_all_all"],
     "legends:finetune":    ["legends_finetune_all", "legends_finetune_single"],
   },
-  specials: ["special_context_add", "special_context_suggestions", "special_gap_analysis", "special_dedup_merge"],
+  specials: ["special_context_add", "special_context_suggestions", "special_gap_analysis", "special_dedup_merge", "special_taskify_ideas"],
 };
 
 

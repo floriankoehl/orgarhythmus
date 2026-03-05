@@ -72,6 +72,7 @@ grid_board/
 │
 ├── MilestoneScheduleAdapter.jsx # Reference adapter for the Django backend
 │                                 (Team→Lane, Task→Row, Milestone→Node, etc.)
+│                                 Also wires AI IO (ioCtx, applyCtx, ioPopupOpen)
 │
 ├── GridBoardContext.jsx         # React context for transient UI state
 │                                 (selection, undo/redo, clipboard, hover)
@@ -105,7 +106,12 @@ grid_board/
 ├── GridRowSelectionBar.jsx     # Row label sidebar (name, deadline, multi-select)
 ├── GridModals.jsx              # All modal dialogs (create, rename, move, etc.)
 ├── GridWarningToast.jsx        # Toast notification overlay
-└── SafetyCheckPanel.jsx        # Safety check results panel
+├── SafetyCheckPanel.jsx        # Safety check results panel
+│
+│  ─── AI IO (Prompt Engine integration) ───
+├── DependencyIOPopup.jsx       # AI export/import popup with conflict detection
+├── ScheduleTitleBar.jsx        # Floating window title bar (views + AI IO button)
+└── ScheduleWindow.jsx          # Floating window host
 ```
 
 ### Data Flow
@@ -388,6 +394,16 @@ function MyCustomGrid() {
 | `buildClipboardText` | `Function` | — | Build clipboard text for copy |
 | `onBulkImport` | `(jsonString) → Promise` | — | Handle bulk JSON import |
 | `children` | `ReactNode` | — | Extra content rendered inside the grid container |
+
+### AI IO (Prompt Engine)
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `ioPopupOpen` | `boolean` | — | Whether the AI IO popup is currently open |
+| `setIoPopupOpen` | `Function` | — | Toggle the IO popup state |
+| `ioPopupContent` | `ReactNode` | — | The rendered `<DependencyIOPopup />` element |
+
+These props are exposed to the floating title bar via `viewBarRef.current` so that `ScheduleTitleBar` can render the Sparkles button and popup without being in the same component tree.
 
 ---
 

@@ -6,6 +6,7 @@ import {
   updateTeam,
   reorder_project_teams,
 } from "../../../api/org_API";
+import { emitDataEvent, useManualRefresh } from "../../../api/dataEvents";
 
 /**
  * Manages team CRUD, canvas positioning, and reordering for the Task Structure page.
@@ -104,6 +105,7 @@ export default function useTaskTeams({ projectId, selectedTeamIds, tasksRef }) {
         saveCanvasState(projectId, next);
         return next;
       });
+      emitDataEvent('teams');
       return team;
     } catch (err) {
       console.error("Failed to create team:", err);
@@ -118,6 +120,7 @@ export default function useTaskTeams({ projectId, selectedTeamIds, tasksRef }) {
       const res = await updateTeam(projectId, teamId, payload);
       const updated = res.team || res;
       setTeams((prev) => ({ ...prev, [teamId]: { ...prev[teamId], ...updated } }));
+      emitDataEvent('teams');
       return updated;
     } catch (err) {
       console.error("Failed to update team:", err);
@@ -147,6 +150,7 @@ export default function useTaskTeams({ projectId, selectedTeamIds, tasksRef }) {
         saveCanvasState(projectId, next);
         return next;
       });
+      emitDataEvent('teams');
       return team;
     } catch (err) {
       console.error("Failed to create team at position:", err);
@@ -171,6 +175,7 @@ export default function useTaskTeams({ projectId, selectedTeamIds, tasksRef }) {
         saveCanvasState(projectId, next);
         return next;
       });
+      emitDataEvent('teams');
     } catch (err) {
       console.error("Failed to delete team:", err);
     }
@@ -336,6 +341,9 @@ export default function useTaskTeams({ projectId, selectedTeamIds, tasksRef }) {
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   }, [teamPositions, projectId]);
+
+  // ── Cross-window sync: reload on manual refresh ──
+  useManualRefresh(fetchTeams);
 
   // Initial fetch
   useEffect(() => {

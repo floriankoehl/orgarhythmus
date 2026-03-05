@@ -1,20 +1,22 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import {
-  Copy, Download, Check, Plus, RefreshCw, Pencil,
-  Search as SearchIcon, AlertCircle, Sparkles,
+  Copy, Download, Check, Plus, Pencil,
+  AlertCircle, Sparkles,
   ClipboardPaste, ArrowRightLeft, Star, Zap, Loader,
 } from "lucide-react";
-import { detectResponseContent } from "../shared/promptEngine/responseApplier";
+import { detectTaskResponseContent } from "../shared/promptEngine/taskResponseApplier";
 import ControlledApplyModal from "../shared/promptEngine/ControlledApplyPanel";
+import { buildTaskChangeItems, recomposeTaskDetected, TASK_CHANGE_TYPE_META } from "../shared/promptEngine/taskChangeBuilder";
+import { applyTaskDetected } from "../shared/promptEngine/taskResponseApplier";
 import { aiGenerate, getDirectMode } from "../../api/aiGenerateApi";
 
 /**
  * ═══════════════════════════════════════════════════════════
- *  IdeaBinIOPopup  —  Grid Layout v2
- *  ──────────────────────────────────
+ *  TaskStructureIOPopup  —  Grid Layout
+ *  ─────────────────────────────────────
  *  Two-mode popup:
- *   • Export – 3×3 grid (Add / Assign / Finetune × Ideas /
- *     Categories / Legends & Filters) + Specials row + context toggle
+ *   • Export – 2×3 grid (Add / Assign / Finetune × Tasks /
+ *     Teams) + Specials row + context toggle
  *   • Import – paste AI response, preview & apply
  *
  *  Props:
@@ -28,8 +30,8 @@ import { aiGenerate, getDirectMode } from "../../api/aiGenerateApi";
  *    iconColor       – title bar icon colour
  * ═══════════════════════════════════════════════════════════
  */
-export default function IdeaBinIOPopup({
-  scenarios, grid, ctx, settings, assemblePrompt, applyCtx, onClose, iconColor = "#92400e",
+export default function TaskStructureIOPopup({
+  scenarios, grid, ctx, settings, assemblePrompt, applyCtx, onClose, iconColor = "#6366f1",
 }) {
   // ─── Shared state ─────────────────────────────────────
   const [mode, setMode] = useState("export");
@@ -44,9 +46,6 @@ export default function IdeaBinIOPopup({
   const [customAddOn, setCustomAddOn] = useState("");
   // ─── Export state ─────────────────────────────────────
   const [withContext, setWithContext] = useState(true);
-  const [selectedLegendId, setSelectedLegendId] = useState(
-    () => ctx.dims?.legends?.[0]?.id ?? null,
-  );
 
   // ─── Import state ─────────────────────────────────────
   const [pasteText, setPasteText] = useState("");
@@ -64,36 +63,31 @@ export default function IdeaBinIOPopup({
     return m;
   }, [scenarios]);
 
-  // Modified ctx with context toggle + legend picker
+  // Modified ctx with context toggle
   const modCtx = useMemo(() => ({
     ...ctx,
     _withContext: withContext,
-    _selectedLegendId: selectedLegendId,
-  }), [ctx, withContext, selectedLegendId]);
+  }), [ctx, withContext]);
 
-  // Compute availability for each scenario (using base ctx, not toggles)
+  // Compute availability for each scenario
   const availability = useMemo(() => {
     const map = {};
     scenarios.forEach(s => {
-      let msg = s.unavailableMsg(ctx);
-      // For legend-picker scenarios, check if a legend is selected
-      if (!msg && s.needsLegendPicker && !selectedLegendId) {
-        msg = "Select a legend from the dropdown";
-      }
+      const msg = s.unavailableMsg(ctx);
       map[s.id] = msg;
     });
     return map;
-  }, [scenarios, ctx, selectedLegendId]);
+  }, [scenarios, ctx]);
 
   // Selection stats
   const selectionStats = useMemo(() => {
     const parts = [];
-    if (ctx.selectedIdeaIds?.size > 0) parts.push(`${ctx.selectedIdeaIds.size} idea${ctx.selectedIdeaIds.size > 1 ? "s" : ""}`);
-    if (ctx.selectedCategoryIds?.size > 0) parts.push(`${ctx.selectedCategoryIds.size} cat${ctx.selectedCategoryIds.size > 1 ? "s" : ""}`);
+    if (ctx.selectedTaskIds?.size > 0) parts.push(`${ctx.selectedTaskIds.size} task${ctx.selectedTaskIds.size > 1 ? "s" : ""}`);
+    if (ctx.selectedTeamIds?.size > 0) parts.push(`${ctx.selectedTeamIds.size} team${ctx.selectedTeamIds.size > 1 ? "s" : ""}`);
     return parts.length > 0 ? parts.join(", ") + " selected" : null;
-  }, [ctx.selectedIdeaIds, ctx.selectedCategoryIds]);
+  }, [ctx.selectedTaskIds, ctx.selectedTeamIds]);
 
-  // Auto-focus paste area on import mode
+  // Auto-focus paste area on import modedd
   useEffect(() => {
     if (mode === "import") pasteRef.current?.focus();
   }, [mode]);
@@ -145,7 +139,7 @@ export default function IdeaBinIOPopup({
       let { text } = assemblePrompt(scenarioId, modCtx, settings);
       if (customAddOn.trim()) text += "\n\n" + customAddOn.trim();
       const parsed = await aiGenerate(text);
-      const items = detectResponseContent(parsed);
+      const items = detectTaskResponseContent(parsed);
       if (!items || items.length === 0) {
         throw new Error("No actionable content detected in AI response");
       }
@@ -192,9 +186,9 @@ export default function IdeaBinIOPopup({
       return;
     }
 
-    const items = detectResponseContent(parsed);
+    const items = detectTaskResponseContent(parsed);
     if (items.length === 0) {
-      setParseError("Could not detect any usable content in this response.");
+      setParseError("Could not detect any usable task/team content in this response.");
       return;
     }
 
@@ -281,7 +275,7 @@ export default function IdeaBinIOPopup({
       <div
         ref={popupRef}
         className="absolute right-0 top-full mt-1 z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col"
-        style={{ width: "min(680px, 92vw)", maxHeight: "min(620px, 80vh)" }}
+        style={{ width: "min(620px, 92vw)", maxHeight: "min(580px, 80vh)" }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* ── Header ── */}
@@ -289,7 +283,7 @@ export default function IdeaBinIOPopup({
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-1.5">
               <Sparkles size={13} style={{ color: iconColor }} />
-              <span className="text-[11px] font-semibold text-gray-800">AI I/O</span>
+              <span className="text-[11px] font-semibold text-gray-800">AI I/O — Tasks</span>
             </div>
             <div className="flex items-center gap-2">
               {selectionStats && mode === "export" && (
@@ -323,7 +317,7 @@ export default function IdeaBinIOPopup({
               onClick={() => setMode("export")}
               className={`flex-1 text-[10px] py-1 rounded font-medium transition-colors ${
                 mode === "export"
-                  ? "bg-amber-100 text-amber-800"
+                  ? "bg-indigo-100 text-indigo-800"
                   : "bg-gray-50 text-gray-500 hover:bg-gray-100"
               }`}
             >
@@ -349,7 +343,7 @@ export default function IdeaBinIOPopup({
         {/* ═══════════════════════════════════════════════ */}
         {mode === "export" && (
           <div className="flex-1 overflow-y-auto p-2">
-            {/* CSS Grid */}
+            {/* CSS Grid — 2 rows × 3 columns */}
             <div
               style={{
                 display: "grid",
@@ -393,11 +387,11 @@ export default function IdeaBinIOPopup({
                     const cellKey = `${row.key}:${col.key}`;
                     const cellScenarioIds = grid.cells[cellKey];
 
-                    // Merged cell (categories:assign → null, occupied by span from ideas:assign)
+                    // Merged cell (teams:assign → null, occupied by span from tasks:assign)
                     if (cellScenarioIds === null) return null;
 
-                    // Shared assign cell spans ideas + categories rows
-                    const isSharedAssign = row.key === "ideas" && col.key === "assign";
+                    // Shared assign cell spans tasks + teams rows
+                    const isSharedAssign = row.key === "tasks" && col.key === "assign";
 
                     return (
                       <div
@@ -416,26 +410,6 @@ export default function IdeaBinIOPopup({
                 );
               })}
             </div>
-
-            {/* ── Legend picker (for scenarios needing it) ── */}
-            {ctx.dims?.legends?.length > 0 && (
-              <div className="flex items-center gap-2 mt-2 px-1">
-                <span className="text-[9px] text-gray-500 font-medium">Active legend:</span>
-                <select
-                  value={selectedLegendId || ""}
-                  onChange={(e) => setSelectedLegendId(Number(e.target.value) || null)}
-                  className="text-[10px] px-1.5 py-0.5 rounded border border-gray-200 bg-gray-50 text-gray-700 focus:outline-none focus:border-blue-400"
-                >
-                  <option value="">Select legend…</option>
-                  {ctx.dims.legends.map(l => (
-                    <option key={l.id} value={l.id}>{l.name}</option>
-                  ))}
-                </select>
-                <span className="text-[8px] text-gray-400 italic">
-                  Used by "1 legend →" and "single legend" scenarios
-                </span>
-              </div>
-            )}
 
             {/* ── Specials section ── */}
             <div className="mt-2">
@@ -473,11 +447,11 @@ export default function IdeaBinIOPopup({
 
             {/* Last-copied scenario hint */}
             {lastCopiedScenario && !applyResult && (
-              <div className="flex items-center gap-1.5 px-2 py-1.5 bg-amber-50 rounded border border-amber-200">
-                <Check size={10} className="text-amber-600 flex-shrink-0" />
-                <span className="text-[10px] text-amber-800 truncate">
+              <div className="flex items-center gap-1.5 px-2 py-1.5 bg-indigo-50 rounded border border-indigo-200">
+                <Check size={10} className="text-indigo-600 flex-shrink-0" />
+                <span className="text-[10px] text-indigo-800 truncate">
                   <span className="font-medium">{lastCopiedScenario.label}</span>
-                  <span className="text-amber-600"> prompt copied — paste the AI response below</span>
+                  <span className="text-indigo-600"> prompt copied — paste the AI response below</span>
                 </span>
               </div>
             )}
@@ -520,12 +494,16 @@ export default function IdeaBinIOPopup({
                 </div>
               </div>
             ) : detected ? (
-              /* ── Controlled review & apply ── */
+              /* ── Controlled review & apply (using task-domain functions) ── */
               <ControlledApplyModal
                 detected={detected}
                 applyCtx={applyCtx}
                 onResult={setApplyResult}
                 onClose={() => { setDetected(null); setParseError(null); }}
+                buildChangeItemsFn={buildTaskChangeItems}
+                recomposeDetectedFn={recomposeTaskDetected}
+                applyDetectedFn={applyTaskDetected}
+                changeTypeMeta={TASK_CHANGE_TYPE_META}
               />
             ) : (
               /* ── Paste textarea ── */

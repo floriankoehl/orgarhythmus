@@ -529,6 +529,7 @@ export default function IdeaBin() {
     setSelectedCategoryIds, setShowMetaList, setDockedCategories,
     setCategories, setFormHeight,
     enterContext: enterContextRef,
+    projectId,
   });
 
   // ── Wire formation state into workspace collector/applier ──

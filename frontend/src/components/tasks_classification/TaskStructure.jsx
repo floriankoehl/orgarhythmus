@@ -3,6 +3,7 @@ import { useParams, useLocation } from "react-router-dom";
 import { LayoutGrid, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { playSound } from "../../assets/sound_registry";
 import { createTaskForProject, bulk_delete_tasks } from "../../api/org_API";
+import { emitDataEvent } from "../../api/dataEvents";
 
 import useFloatingWindow from "../shared/useFloatingWindow";
 import { useWindowManager } from "../shared/WindowManager";
@@ -26,6 +27,9 @@ import TeamsTabContent from "./TeamsTabContent";
 import TasksTabContent from "./TasksTabContent";
 import TaskDetailPanel from "./TaskDetailPanel";
 import TeamDetailPanel from "./TeamDetailPanel";
+import TaskStructureIOPopup from "./TaskStructureIOPopup";
+import { TASK_SCENARIOS, TASK_GRID } from "../shared/promptEngine";
+import { assemblePrompt } from "../shared/promptEngine/assembler";
 
 // ── Layout constants (mirror IdeaBin) ──
 const MIN_SIDEBAR_W = 200;
@@ -49,7 +53,7 @@ export default function TaskStructure() {
   const location = useLocation();
 
   // ── Prompt settings (for AI prepend on export) ──
-  const { buildClipboardText } = usePromptSettings();
+  const { buildClipboardText, settings: promptSettings, projectDescRef } = usePromptSettings();
 
   // ── Tab navigation ──
   const [activeTab, setActiveTab] = useState("canvas"); // "canvas" | "tasks" | "teams"
@@ -110,6 +114,7 @@ export default function TaskStructure() {
   const [editingTeamName, setEditingTeamName] = useState("");
   const [exportModal, setExportModal] = useState(null);
   const [importModal, setImportModal] = useState(null);
+  const [ioPopupOpen, setIoPopupOpen] = useState(false);
   const [viewMode, setViewMode] = useState("compact");
   const [teamViewOverrides, setTeamViewOverrides] = useState({});
   const [groupBy, setGroupBy] = useState("team");
@@ -325,6 +330,7 @@ export default function TaskStructure() {
           setTasks((prev) => ({ ...prev, [created.id]: created }));
           if (!created.team) setTaskOrder((prev) => [...prev, created.id]);
         }
+        emitDataEvent('tasks');
         // Delete the source idea
         window.dispatchEvent(new CustomEvent("pipeline-delete-idea", { detail: { ideaId, placementId } }));
         playSound("ideaTransform");
@@ -401,6 +407,8 @@ export default function TaskStructure() {
           window.dispatchEvent(new CustomEvent("pipeline-delete-category", { detail: { categoryId } }));
           playSound("ideaTransform");
           fetchTasks();
+          emitDataEvent('tasks');
+          emitDataEvent('teams');
         }
       } catch (err) {
         console.error("Pipeline category→team failed:", err);
@@ -589,6 +597,7 @@ export default function TaskStructure() {
           setTaskOrder((prev) => prev.filter((id) => !ids.includes(id)));
           setSelectedTaskIds(new Set());
           if (ids.includes(editingTaskId)) setEditingTaskId(null);
+          emitDataEvent('tasks');
         } catch (e) {
           console.error('Bulk delete failed', e);
         }
@@ -647,6 +656,7 @@ export default function TaskStructure() {
           setSelectedTeamIds(new Set());
           // Refetch tasks since they become unassigned
           fetchTasks();
+          emitDataEvent('tasks');
         } catch (e) {
           console.error('Bulk delete teams failed', e);
         }
@@ -870,6 +880,48 @@ export default function TaskStructure() {
   }, [importModal, createTeam, createTask, fetchTasks, fetchTeams]);
 
   // ═════════════════════════════════════════════
+  //  AI IO — context & apply context memos
+  // ═════════════════════════════════════════════
+
+  /** Data context passed to scenario availability/payload builders */
+  const ioCtx = useMemo(() => ({
+    tasks,
+    teams,
+    taskOrder,
+    teamOrder,
+    selectedTaskIds,
+    selectedTeamIds,
+    tasksByTeamMap,
+    projectDescription: projectDescRef?.current || "",
+  }), [tasks, teams, taskOrder, teamOrder, selectedTaskIds, selectedTeamIds, tasksByTeamMap, projectDescRef]);
+
+  /** API context for applying AI responses */
+  const applyCtx = useMemo(() => ({
+    createTask: async (payload) => {
+      const res = await createTask(payload);
+      return res;
+    },
+    createTeam: async (name, color) => {
+      const res = await createTeam(name, color);
+      return res;
+    },
+    updateTask: async (taskId, payload) => {
+      await updateTaskApi(taskId, payload);
+    },
+    updateTeam: async (teamId, payload) => {
+      await updateTeamApi(teamId, payload);
+    },
+    assignTaskToTeam,
+    refreshAll: async () => {
+      await fetchTasks();
+      await fetchTeams();
+    },
+    tasks,
+    teams,
+    teamOrder,
+  }), [createTask, createTeam, updateTaskApi, updateTeamApi, assignTaskToTeam, fetchTasks, fetchTeams, tasks, teams, teamOrder]);
+
+  // ═════════════════════════════════════════════
   //  JSX
   // ═════════════════════════════════════════════
 
@@ -935,6 +987,20 @@ export default function TaskStructure() {
             setActiveTab={(tab) => { exitTeamFocus(); setActiveTab(tab); setDetailView(null); }}
             detailView={detailView}
             onBackFromDetail={() => setDetailView(null)}
+            ioPopupOpen={ioPopupOpen}
+            setIoPopupOpen={setIoPopupOpen}
+            ioPopupContent={
+              <TaskStructureIOPopup
+                scenarios={TASK_SCENARIOS}
+                grid={TASK_GRID}
+                ctx={ioCtx}
+                settings={promptSettings}
+                assemblePrompt={assemblePrompt}
+                applyCtx={applyCtx}
+                onClose={() => setIoPopupOpen(false)}
+                iconColor="#6366f1"
+              />
+            }
             groupBy={groupBy}
             setGroupBy={setGroupBy}
             teams={teams}

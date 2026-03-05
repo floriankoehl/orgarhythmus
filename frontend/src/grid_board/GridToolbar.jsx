@@ -40,7 +40,7 @@ import {
  * (floating window).  Being top-level means React keeps a stable reference
  * and never unmounts sections just because the parent re-renders.
  */
-function ToolbarSection({ sectionKey, label, icon, width, children, flex, className = '', isFloating, isOpen, onToggle }) {
+function ToolbarSection({ sectionKey, label, icon, width, children, flex, className = '', isFloating, isMedium, isOpen, onToggle }) {
   if (!isFloating) {
     return (
       <div
@@ -56,6 +56,40 @@ function ToolbarSection({ sectionKey, label, icon, width, children, flex, classN
       </div>
     );
   }
+  // Medium mode: horizontal collapsible — button inline, content expands below via flex-wrap
+  if (isMedium) {
+    return (
+      <>
+        <div className="flex-shrink-0 border-r border-slate-100 last:border-r-0">
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggle(sectionKey); }}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium transition whitespace-nowrap ${
+              isOpen ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            {icon}
+            <span>{label}</span>
+            <svg
+              width="10" height="10" viewBox="0 0 10 10"
+              className={`ml-1 transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`}
+            >
+              <path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+        {isOpen && (
+          <div
+            className={`w-full order-last border-t border-slate-100 px-2.5 pb-2 pt-1.5 ${className}`}
+            style={width ? { minWidth: width } : undefined}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {children}
+          </div>
+        )}
+      </>
+    );
+  }
+  // Compact mode: vertical collapsible sections
   return (
     <div className="flex-shrink-0 w-full border-b border-slate-100 last:border-b-0">
       <button
@@ -96,8 +130,8 @@ function ToolbarSection({ sectionKey, label, icon, width, children, flex, classN
 export default function GridToolbar({
   // ── Floating window mode ──
   isFloating = false,
-  /** When true, toolbar uses vertical accordion layout (narrow window). When false in floating, uses horizontal. */
-  compactToolbar = false,
+  /** 'full' = horizontal inline, 'medium' = horizontal collapsible, 'compact' = vertical collapsible */
+  compactToolbar = 'full',
   // ── Customisable labels ──
   laneLabel   = 'Lane',
   rowLabel    = 'Row',
@@ -334,19 +368,24 @@ export default function GridToolbar({
 
   const toggleSection = useCallback((key) => {
     setOpenSections(prev => {
+      if (prev.has(key)) return new Set();               // close if already open
+      if (compactToolbar === 'medium') return new Set([key]); // medium: only one at a time
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
+      next.add(key);
       return next;
     });
-  }, []);
+  }, [compactToolbar]);
 
   // Helper: shorthand props threaded to every ToolbarSection
-  const sectionProps = { isFloating: compactToolbar, onToggle: toggleSection };
+  const isCompact = compactToolbar === 'compact';
+  const isMedium = compactToolbar === 'medium';
+  const isCollapsible = isCompact || isMedium;
+  const sectionProps = { isFloating: isCollapsible, isMedium, onToggle: toggleSection };
 
   return (
     <>
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className={compactToolbar ? "flex flex-col" : "flex divide-x divide-slate-200"}>
+      <div className={isCompact ? "flex flex-col" : isMedium ? "flex flex-wrap" : "flex divide-x divide-slate-200"}>
 
         {/* ─── COL 1: Mode (2×2 grid) ─── */}
         <ToolbarSection sectionKey="mode" label="Mode" icon={<VisibilityIcon style={{ fontSize: 14 }} />} width={170} isOpen={openSections.has('mode')} {...sectionProps}>
@@ -862,6 +901,10 @@ export default function GridToolbar({
                         <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                           <input type="checkbox" checked={!!edgeSettings.hideSuggestions} onChange={(e) => { setEdgeSettings(prev => ({ ...prev, hideSuggestions: e.target.checked })); playSound('settingToggle'); }} className="rounded border-slate-300" />
                           <span>Hide suggestion {pl(edgeLabel.toLowerCase(), 2)}</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input type="checkbox" checked={!!edgeSettings.hideInternalDeps} onChange={(e) => { setEdgeSettings(prev => ({ ...prev, hideInternalDeps: e.target.checked })); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                          <span>Hide task-internal {pl(edgeLabel.toLowerCase(), 2)}</span>
                         </label>
                         <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                           <input type="checkbox" checked={!!edgeSettings.uniformVisuals} onChange={(e) => { setEdgeSettings(prev => ({ ...prev, uniformVisuals: e.target.checked })); playSound('settingToggle'); }} className="rounded border-slate-300" />
