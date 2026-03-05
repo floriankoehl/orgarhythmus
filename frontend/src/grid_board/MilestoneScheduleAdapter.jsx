@@ -13,6 +13,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import DependencyGrid from './DependencyGrid';
 import usePromptSettings from '../components/usePromptSettings';
 import { playSound } from '../assets/sound_registry';
+import { emitDataEvent, useDataRefresh } from '../api/dataEvents';
 
 //  API imports — existing backend calls
 import {
@@ -130,6 +131,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   const [rows, setRows]                     = useState({});   // tasks
   const [edges, setEdges]                   = useState([]);   // dependencies
   const [reloadFlag, setReloadFlag]         = useState(0);     // bump to reload
+  const _mutingRef = useRef(false);
 
   // ── Load all data ──
   useEffect(() => {
@@ -216,6 +218,9 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
     return () => window.removeEventListener("ideabin-dep-refresh", h);
   }, []);
 
+  // ── Cross-window sync: reload when another window mutates shared data ──
+  useDataRefresh(['tasks', 'teams', 'milestones'], () => setReloadFlag(n => n + 1), _mutingRef);
+
   // ════════════════════════════════════════════════════════════════════
   //  Column labels (computed from projectStartDate + projectDays)
   // ════════════════════════════════════════════════════════════════════
@@ -253,10 +258,14 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
   const persistNodeMove = useCallback(async (nodeId, newStartIndex) => {
     await update_start_index(projectId, nodeId, newStartIndex);
+    _mutingRef.current = true;
+    emitDataEvent('milestones');
   }, [projectId]);
 
   const persistNodeResize = useCallback(async (nodeId, durationChange) => {
     await change_duration(projectId, nodeId, durationChange);
+    _mutingRef.current = true;
+    emitDataEvent('milestones');
   }, [projectId]);
 
   const persistNodeCreate = useCallback(async (rowId, opts = {}) => {
@@ -267,20 +276,28 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
     const result = await add_milestone(projectId, rowId, apiData);
     // API returns { added_milestone: {...}, created: true } — extract the milestone
     const milestone = result?.added_milestone || result;
+    _mutingRef.current = true;
+    emitDataEvent('milestones');
     if (milestone) return { ...milestone, row: milestone.task, startColumn: milestone.start_index };
     return milestone;
   }, [projectId]);
 
   const persistNodeDelete = useCallback(async (nodeId) => {
     await delete_milestone(projectId, nodeId);
+    _mutingRef.current = true;
+    emitDataEvent('milestones');
   }, [projectId]);
 
   const persistNodeRename = useCallback(async (nodeId, newName) => {
     await rename_milestone(projectId, nodeId, newName);
+    _mutingRef.current = true;
+    emitDataEvent('milestones');
   }, [projectId]);
 
   const persistNodeTaskChange = useCallback(async (nodeId, newRowId) => {
     await move_milestone_task(projectId, nodeId, newRowId);
+    _mutingRef.current = true;
+    emitDataEvent('milestones');
   }, [projectId]);
 
   const persistEdgeCreate = useCallback(async (sourceId, targetId, opts = {}) => {
@@ -300,21 +317,29 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   const persistLaneOrder = useCallback(async (newOrder) => {
     const { safe_team_order } = await import('../api/dependencies_api');
     await safe_team_order(projectId, newOrder);
+    _mutingRef.current = true;
+    emitDataEvent('teams');
   }, [projectId]);
 
   const persistLaneCreate = useCallback(async (data) => {
     const { name, color } = data;
     const result = await createTeamForProject(projectId, { name, color });
+    _mutingRef.current = true;
+    emitDataEvent('teams');
     return result;
   }, [projectId]);
 
   const persistRowOrder = useCallback(async (rowId, targetLaneId, order) => {
     await reorder_team_tasks(projectId, rowId, targetLaneId, order);
+    _mutingRef.current = true;
+    emitDataEvent('tasks');
   }, [projectId]);
 
   const persistRowCreate = useCallback(async (data) => {
     const { name, lane_id } = data;
     const result = await createTaskForProject(projectId, { name, team_id: lane_id });
+    _mutingRef.current = true;
+    emitDataEvent('tasks');
     return result;
   }, [projectId]);
 
@@ -342,10 +367,14 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
   const persistRowDeadline = useCallback(async (rowId, deadlineIndex) => {
     await set_task_deadline(projectId, rowId, deadlineIndex);
+    _mutingRef.current = true;
+    emitDataEvent('tasks');
   }, [projectId]);
 
   const persistLaneColor = useCallback(async (laneId, color) => {
     await updateTeam(projectId, laneId, { color });
+    _mutingRef.current = true;
+    emitDataEvent('teams');
   }, [projectId]);
 
   // ════════════════════════════════════════════════════════════════════
@@ -401,6 +430,9 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   const handleBulkImport = useCallback(async (jsonString) => {
     const result = await bulk_import_dependencies(projectId, jsonString);
     setReloadFlag(n => n + 1);
+    emitDataEvent('tasks');
+    emitDataEvent('teams');
+    emitDataEvent('milestones');
     return result;
   }, [projectId]);
 
@@ -501,6 +533,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
             });
           }
           playSound('milestoneMove');
+          emitDataEvent('milestones');
         } catch (err) {
           console.error("Refactor drag move failed:", err);
           playSound('error');

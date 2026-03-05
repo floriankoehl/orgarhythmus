@@ -7,6 +7,7 @@ import {
   toggleCriterion,
 } from "../../../api/org_API";
 import { reorder_team_tasks as reorderTeamTasksApi } from "../../../api/dependencies_api";
+import { emitDataEvent, useDataRefresh } from "../../../api/dataEvents";
 
 /**
  * Manages task CRUD, ordering, and selection for the Task Structure page.
@@ -18,6 +19,7 @@ export default function useTaskData({ projectId }) {
   const [taskOrder, setTaskOrder] = useState([]);    // ordered array of task ids (unassigned)
   const [teamTaskOrder, setTeamTaskOrder] = useState({});  // { teamId: [taskId, ...] }
   const [loading, setLoading] = useState(false);
+  const _mutingRef = useRef(false);
 
   // ── Fetch all tasks for project ──
   const fetchTasks = useCallback(async () => {
@@ -63,6 +65,8 @@ export default function useTaskData({ projectId }) {
       if (!task.team) {
         setTaskOrder((prev) => [...prev, task.id]);
       }
+      _mutingRef.current = true;
+      emitDataEvent('tasks');
       return task;
     } catch (err) {
       console.error("Failed to create task:", err);
@@ -77,6 +81,8 @@ export default function useTaskData({ projectId }) {
       const res = await updateTask(projectId, taskId, payload);
       const updated = res.task || res;
       setTasks((prev) => ({ ...prev, [taskId]: { ...prev[taskId], ...updated } }));
+      _mutingRef.current = true;
+      emitDataEvent('tasks');
       return updated;
     } catch (err) {
       console.error("Failed to update task:", err);
@@ -103,6 +109,8 @@ export default function useTaskData({ projectId }) {
         }
         return next;
       });
+      _mutingRef.current = true;
+      emitDataEvent('tasks');
     } catch (err) {
       console.error("Failed to delete task:", err);
     }
@@ -140,6 +148,8 @@ export default function useTaskData({ projectId }) {
     });
     try {
       await updateTask(projectId, taskId, { team_id: teamId });
+      _mutingRef.current = true;
+      emitDataEvent('tasks');
     } catch (err) {
       console.error("Failed to assign task to team:", err);
       // Revert on failure
@@ -173,6 +183,8 @@ export default function useTaskData({ projectId }) {
     // Persist to backend
     try {
       await reorderTeamTasksApi(projectId, taskId, teamId, newOrder);
+      _mutingRef.current = true;
+      emitDataEvent('tasks');
     } catch (err) {
       console.error("Failed to reorder team tasks:", err);
       // Revert on failure
@@ -224,6 +236,9 @@ export default function useTaskData({ projectId }) {
       return null;
     }
   }, [projectId]);
+
+  // ── Cross-window sync: refetch when another window mutates tasks ──
+  useDataRefresh(['tasks'], fetchTasks, _mutingRef);
 
   // Initial fetch
   useEffect(() => {

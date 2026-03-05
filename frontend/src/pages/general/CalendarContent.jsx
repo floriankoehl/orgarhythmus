@@ -5,7 +5,7 @@ import {
   fetch_project_tasks,
   get_all_milestones,
 } from "../../api/dependencies_api.js";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import {
   Calendar as CalendarIcon,
   Loader2,
@@ -18,6 +18,7 @@ import {
 import dayjs from "dayjs";
 import isBetween from "dayjs/plugin/isBetween";
 import isSameOrAfter from "dayjs/plugin/isSameOrAfter";
+import { useDataRefresh } from "../../api/dataEvents";
 
 dayjs.extend(isBetween);
 dayjs.extend(isSameOrAfter);
@@ -52,6 +53,10 @@ export default function CalendarContent({ effectiveView, transposed, windowSize 
   useEffect(() => {
     loadData();
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Cross-window sync: reload when tasks/teams/milestones change ──
+  const loadDataCb = useCallback(() => { loadData(); }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useDataRefresh(['tasks', 'teams', 'milestones'], loadDataCb);
 
   async function loadData() {
     try {
