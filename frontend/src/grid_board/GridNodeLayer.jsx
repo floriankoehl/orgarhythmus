@@ -298,6 +298,7 @@ export default function GridNodeLayer({
             return (
               <div
                 data-node
+                data-node-id={node.id}
                 onMouseDown={(e) => {
                   e.stopPropagation();
                   if (refactorMode) {

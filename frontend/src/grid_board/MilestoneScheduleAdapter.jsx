@@ -18,6 +18,7 @@ import DependencyIOPopup from './DependencyIOPopup';
 import { checkDepConflict, applyDepDetected } from '../components/shared/promptEngine/depResponseApplier';
 import { buildDepChangeItems, recomposeDepDetected, DEP_CHANGE_TYPE_META } from '../components/shared/promptEngine/depChangeBuilder';
 import ControlledApplyModal from '../components/shared/promptEngine/ControlledApplyPanel';
+import { getDefaultViewState } from './viewDefaults';
 import { playSound } from '../assets/sound_registry';
 import { emitDataEvent, useManualRefresh } from '../api/dataEvents';
 
@@ -83,6 +84,11 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   // ── Inline review state (slide-through dependencies on the grid) ──
   // { items: [...changeItems], currentIdx: number, sessionEdgeIds: Set, detected: [...], showInspect: boolean }
   const [reviewState, setReviewState] = useState(null);
+
+  // ── Grid control ref — gives adapter access to DependencyGrid's view functions ──
+  const gridControlRef = useRef(null);
+  // ── View state saved before entering review mode (restored on end) ──
+  const preReviewStateRef = useRef(null);
 
   // ── Secret shortcut: press 0 + 9 together → 3D view ──
   const heldRef = useRef(new Set());
@@ -493,15 +499,36 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
   // ── Inline review handlers ──
   const handleReviewStart = useCallback((detected, changeItems) => {
+    // Skip dependencies that already exist in the graph
+    const filtered = changeItems.filter(item => {
+      if (item.changeType === 'create_dependency' || item.changeType === 'conflict_dependency') {
+        const d = item.detail;
+        if (d?.sourceId && d?.targetId && edges.some(e => e.source === d.sourceId && e.target === d.targetId)) {
+          return false;
+        }
+      }
+      return true;
+    });
+    if (filtered.length === 0) return; // all proposals already exist
+
+    // Save current view state before switching to default
+    if (gridControlRef.current?.collectViewState) {
+      preReviewStateRef.current = gridControlRef.current.collectViewState();
+    }
+    // Apply the "everything visible" default view
+    if (gridControlRef.current?.applyViewState) {
+      gridControlRef.current.applyViewState(getDefaultViewState());
+    }
+
     setReviewState({
-      items: changeItems,
+      items: filtered,
       currentIdx: 0,
       sessionEdgeIds: new Set(),
       detected,
       showInspect: false,
     });
-    setIoPopupOpen(false); // hide the IO popup
-  }, []);
+    setIoPopupOpen(false);
+  }, [edges]);
 
   const handleReviewAccept = useCallback(async () => {
     if (!reviewState) return;
@@ -578,8 +605,12 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   }, []);
 
   const handleReviewEnd = useCallback(() => {
+    // Restore pre-review view state
+    if (preReviewStateRef.current && gridControlRef.current?.applyViewState) {
+      gridControlRef.current.applyViewState(preReviewStateRef.current);
+      preReviewStateRef.current = null;
+    }
     setReviewState(null);
-    // Refresh all data to ensure consistency
     setReloadFlag(n => n + 1);
   }, []);
 
@@ -621,6 +652,44 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   const sessionEdgeIds = useMemo(() => {
     return reviewState?.sessionEdgeIds || new Set();
   }, [reviewState]);
+
+  // ── Focus mode: hide all rows/lanes not involved in the current review item ──
+  useEffect(() => {
+    if (!reviewState || !gridControlRef.current) return;
+    const current = reviewState.items[reviewState.currentIdx];
+    if (!current?.detail) return;
+    const d = current.detail;
+
+    const relevantRows = new Set();
+    const relevantLanes = new Set();
+
+    // Collect rows + lanes for source, target, or single milestone
+    for (const mId of [d.sourceId, d.targetId, d.milestoneId].filter(Boolean)) {
+      const node = nodes[mId];
+      if (!node) continue;
+      const rowKey = String(node.row);
+      relevantRows.add(rowKey);
+      const laneKey = rows[rowKey]?.lane != null ? String(rows[rowKey].lane) : null;
+      if (laneKey) relevantLanes.add(laneKey);
+    }
+
+    if (relevantRows.size === 0) return; // nothing to focus on
+
+    gridControlRef.current.setRowDisplaySettings(prev => {
+      const next = {};
+      for (const id of Object.keys(prev)) {
+        next[id] = { ...prev[id], hidden: !relevantRows.has(id) };
+      }
+      return next;
+    });
+    gridControlRef.current.setLaneDisplaySettings(prev => {
+      const next = {};
+      for (const id of Object.keys(prev)) {
+        next[id] = { ...prev[id], hidden: !relevantLanes.has(id) };
+      }
+      return next;
+    });
+  }, [reviewState?.currentIdx, reviewState?.items, nodes, rows]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Build function for inspect modal (uses current nodes/rows/lanes)
   const buildChangeItemsForInspect = useCallback((det) => {
@@ -861,6 +930,9 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       viewBarRef={viewBarRef}
       triggerViewBarRender={triggerViewBarRender}
 
+      // Grid control ref (adapter-level access to view functions)
+      gridControlRef={gridControlRef}
+
       // Ghost edges for conflict resolution
       ghostEdges={ghostEdges}
       resolveState={resolveState}
@@ -905,6 +977,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
         <ReviewBar
           reviewState={reviewState}
           nodes={nodes}
+          rows={rows}
           onAccept={handleReviewAccept}
           onDecline={handleReviewDecline}
           onPrev={handleReviewPrev}
@@ -993,7 +1066,7 @@ function ResolveBanner({ resolveState, nodes, onResume, onCancel }) {
 // ═══════════════════════════════════════════════════════════
 //  Review Bar — compact inline review bar for sliding through proposals
 // ═══════════════════════════════════════════════════════════
-function ReviewBar({ reviewState, nodes, onAccept, onDecline, onPrev, onNext, onInspect, onDone }) {
+function ReviewBar({ reviewState, nodes, rows, onAccept, onDecline, onPrev, onNext, onInspect, onDone }) {
   const { items, currentIdx, sessionEdgeIds } = reviewState;
   const current = items[currentIdx];
   const total = items.length;
@@ -1016,6 +1089,59 @@ function ReviewBar({ reviewState, nodes, onAccept, onDecline, onPrev, onNext, on
   // Color scheme based on type
   const isRemove = current?.changeType === "remove_dependency";
   const borderColor = isAlreadyAccepted ? '#22c55e' : isConflict ? '#f97316' : '#3b82f6';
+
+  // Scroll + highlight a milestone node on the grid
+  const scrollToNode = useCallback((nodeId) => {
+    const el = document.querySelector(`[data-node-id="${nodeId}"]`);
+    if (!el) return;
+    // Scroll the grid's scroll container to center the node horizontally
+    const scrollContainer = el.closest('.dep-scroll');
+    if (scrollContainer) {
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const currentScroll = scrollContainer.scrollLeft;
+      const elCenterInContainer = (elRect.left + elRect.width / 2) - containerRect.left + currentScroll;
+      scrollContainer.scrollTo({ left: elCenterInContainer - containerRect.width / 2, behavior: 'smooth' });
+    }
+    // Brief highlight pulse
+    el.style.transition = 'box-shadow 0.2s ease, transform 0.2s ease';
+    el.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.6), 0 0 16px rgba(59,130,246,0.3)';
+    el.style.transform = 'scale(1.08)';
+    setTimeout(() => {
+      el.style.boxShadow = '';
+      el.style.transform = '';
+      setTimeout(() => { el.style.transition = ''; }, 300);
+    }, 1200);
+  }, []);
+
+  // Build clickable label parts from detail
+  const labelContent = useMemo(() => {
+    if (!current?.detail) return <span>{current?.label || "—"}</span>;
+    const ct = current.changeType;
+    const dt = current.detail;
+    if (["create_dependency", "conflict_dependency", "update_dependency", "remove_dependency"].includes(ct) && dt.sourceId && dt.targetId) {
+      const prefix = ct === "remove_dependency" ? "Remove: " : ct === "update_dependency" ? "Update: " : ct.includes("conflict") ? "⚠️ " : "";
+      return (
+        <>
+          {prefix}
+          <button onClick={() => scrollToNode(dt.sourceId)} className="underline decoration-dotted underline-offset-2 hover:text-blue-600 cursor-pointer">{dt.sourceName}</button>
+          {" → "}
+          <button onClick={() => scrollToNode(dt.targetId)} className="underline decoration-dotted underline-offset-2 hover:text-blue-600 cursor-pointer">{dt.targetName}</button>
+        </>
+      );
+    }
+    if (ct === "move_milestone" && dt.milestoneId) {
+      const name = nodes[dt.milestoneId]?.name || `#${dt.milestoneId}`;
+      return (
+        <>
+          {"Move: "}
+          <button onClick={() => scrollToNode(dt.milestoneId)} className="underline decoration-dotted underline-offset-2 hover:text-blue-600 cursor-pointer">{name}</button>
+          {` → day ${dt.newDay}`}
+        </>
+      );
+    }
+    return <span>{current?.label || "—"}</span>;
+  }, [current, nodes, scrollToNode]);
 
   return (
     <div
@@ -1043,7 +1169,7 @@ function ReviewBar({ reviewState, nodes, onAccept, onDecline, onPrev, onNext, on
       {/* Item info */}
       <div className="flex flex-col min-w-0">
         <div className="text-[11px] font-semibold text-gray-800 whitespace-nowrap">
-          {current?.label || "—"}
+          {labelContent}
         </div>
         {isConflict && !isAlreadyAccepted && (
           <div className="text-[9px] text-orange-600 font-medium">

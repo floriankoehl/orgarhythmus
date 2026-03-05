@@ -219,6 +219,9 @@ function DependencyGridContent({
   // ── View bar ref (floating title bar uses this to show views) ──
   viewBarRef,
   triggerViewBarRender,
+
+  /** Ref for adapter-level grid control (focus mode, view state, etc.) */
+  gridControlRef,
 }) {
 
   const {
@@ -712,6 +715,16 @@ function DependencyGridContent({
     });
     playSound('uiClick');
   }, [onSaveShortcuts]);
+
+  // ── Expose grid control functions to adapter via ref ──
+  if (gridControlRef) {
+    gridControlRef.current = {
+      applyViewState,
+      collectViewState,
+      setRowDisplaySettings,
+      setLaneDisplaySettings,
+    };
+  }
 
   // ── Expose view state to floating title bar via ref ──
   if (viewBarRef) {
