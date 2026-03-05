@@ -1016,48 +1016,7 @@ export default function GridCanvas({
               />
             )}
 
-            {/* Ghost edges — proposed dependency preview during conflict resolution */}
-            {ghostEdges.map((ge) => {
-              const sourcePos = getNodeHandlePosition(ge.source, "source");
-              const targetPos = getNodeHandlePosition(ge.target, "target");
-              if (!sourcePos || !targetPos) return null;
-              const pathD = getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y);
-              const color = ge.resolved ? '#22c55e' : '#f97316';
-              const glowColor = ge.resolved ? 'rgba(34, 197, 94, 0.4)' : 'rgba(249, 115, 22, 0.4)';
-              return (
-                <g key={`ghost-${ge.source}-${ge.target}`} style={{ pointerEvents: 'none' }}>
-                  <path
-                    d={pathD}
-                    stroke={color}
-                    strokeWidth="3"
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeDasharray={ge.resolved ? 'none' : '6, 8'}
-                    opacity={ge.resolved ? 0.85 : 0.6}
-                    style={{
-                      animation: ge.resolved ? 'none' : 'flowAnimation 3s linear infinite',
-                      filter: `drop-shadow(0 0 4px ${glowColor})`,
-                      transition: 'stroke 0.3s ease, opacity 0.3s ease, stroke-dasharray 0.3s ease',
-                    }}
-                  />
-                  <path
-                    d={pathD}
-                    stroke={color}
-                    strokeWidth="8"
-                    fill="none"
-                    opacity="0.12"
-                    strokeLinecap="round"
-                    style={{ pointerEvents: "none", transition: 'stroke 0.3s ease' }}
-                  />
-                  {ge.resolved && targetPos && (
-                    <g transform={`translate(${(sourcePos.x + targetPos.x) / 2}, ${(sourcePos.y + targetPos.y) / 2})`}>
-                      <circle r="10" fill="#22c55e" opacity="0.9" />
-                      <path d="M-3.5,0.5 L-1,3.5 L4,-2.5" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                    </g>
-                  )}
-                </g>
-              );
-            })}
+            {/* Ghost edges moved to overlay SVG above nodes */}
           </svg>
 
           {/* Nodes Layer - ABOVE edges */}
@@ -1108,6 +1067,55 @@ export default function GridCanvas({
             totalColumns={totalColumns}
             getLanePhaseRowHeight={getLanePhaseRowHeight}
           />
+
+          {/* Ghost edges overlay — ABOVE nodes for visibility */}
+          {ghostEdges.length > 0 && (
+            <svg
+              className="absolute top-0 left-0 w-full h-full"
+              style={{ zIndex: 100, pointerEvents: 'none' }}
+            >
+              {ghostEdges.map((ge) => {
+                const sourcePos = getNodeHandlePosition(ge.source, "source");
+                const targetPos = getNodeHandlePosition(ge.target, "target");
+                if (!sourcePos || !targetPos) return null;
+                const pathD = getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y);
+                const color = ge.resolved ? '#22c55e' : '#f97316';
+                const glowColor = ge.resolved ? 'rgba(34, 197, 94, 0.4)' : 'rgba(249, 115, 22, 0.4)';
+                return (
+                  <g key={`ghost-${ge.source}-${ge.target}`}>
+                    <path
+                      d={pathD}
+                      stroke={color}
+                      strokeWidth="3"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeDasharray={ge.resolved ? 'none' : '6, 8'}
+                      opacity={ge.resolved ? 0.85 : 0.6}
+                      style={{
+                        animation: ge.resolved ? 'none' : 'flowAnimation 3s linear infinite',
+                        filter: `drop-shadow(0 0 4px ${glowColor})`,
+                        transition: 'stroke 0.3s ease, opacity 0.3s ease, stroke-dasharray 0.3s ease',
+                      }}
+                    />
+                    <path
+                      d={pathD}
+                      stroke={color}
+                      strokeWidth="8"
+                      fill="none"
+                      opacity="0.12"
+                      strokeLinecap="round"
+                    />
+                    {ge.resolved && (
+                      <g transform={`translate(${(sourcePos.x + targetPos.x) / 2}, ${(sourcePos.y + targetPos.y) / 2})`}>
+                        <circle r="10" fill="#22c55e" opacity="0.9" />
+                        <path d="M-3.5,0.5 L-1,3.5 L4,-2.5" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                      </g>
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
+          )}
 
           {/* Marquee selection overlay */}
           {marqueeRect && marqueeRect.width > 0 && marqueeRect.height > 0 && (

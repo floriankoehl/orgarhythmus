@@ -211,12 +211,14 @@ export const DEP_SCENARIOS = [
     defaultPrompt:
       "Analyse these milestones and create dependency connections. " +
       "A dependency means the source must finish before the target can start. " +
-      "Use milestone IDs for source and target. Include a reason for each dependency. " +
+      "Use milestone IDs for source and target. " +
+      "For each dependency, provide a short 'reason' (a concise label/headline, max ~5 words) " +
+      "and a longer 'description' (a detailed explanation of why this dependency exists). " +
       "Use weight 'strong' for hard dependencies and 'weak' for soft ones. " +
       "IMPORTANT: Avoid creating dependencies between milestones that belong to the same task — " +
       "those are implicitly ordered already. Only add same-task dependencies if there is a truly critical reason.",
     expectedFormat:
-      '{ "dependencies": [{ "source_id": 1, "target_id": 2, "weight": "strong", "reason": "..." }] }',
+      '{ "dependencies": [{ "source_id": 1, "target_id": 2, "weight": "strong", "reason": "Short label", "description": "Detailed explanation..." }] }',
     buildPayload: (ctx) => ({
       milestones: buildMilestonesPayload(ctx),
       tasks: buildTasksPayload(ctx),
@@ -246,12 +248,14 @@ export const DEP_SCENARIOS = [
       "Analyse ONLY the selected milestones (listed under 'selected_milestones') and create dependency connections " +
       "between them and other milestones. " +
       "A dependency means the source must finish before the target can start. " +
-      "Use milestone IDs for source and target. Include a reason for each dependency. " +
+      "Use milestone IDs for source and target. " +
+      "For each dependency, provide a short 'reason' (a concise label/headline, max ~5 words) " +
+      "and a longer 'description' (a detailed explanation of why this dependency exists). " +
       "Use weight 'strong' for hard dependencies and 'weak' for soft ones. " +
       "IMPORTANT: Avoid creating dependencies between milestones that belong to the same task — " +
       "those are implicitly ordered already. Only add same-task dependencies if there is a truly critical reason.",
     expectedFormat:
-      '{ "dependencies": [{ "source_id": 1, "target_id": 2, "weight": "strong", "reason": "..." }] }',
+      '{ "dependencies": [{ "source_id": 1, "target_id": 2, "weight": "strong", "reason": "Short label", "description": "Detailed explanation..." }] }',
     buildPayload: (ctx) => ({
       selected_milestones: buildMilestonesPayload(ctx, selectedNodeIds(ctx)),
       all_milestones: buildMilestonesPayload(ctx),
@@ -280,12 +284,14 @@ export const DEP_SCENARIOS = [
       edgeCount(ctx) === 0 ? "No dependencies to refine" : null,
     defaultPrompt:
       "Review these dependency connections. Suggest improvements: " +
-      "change weights (strong/weak/suggestion), add or improve reasons, " +
-      "and identify any dependencies that should be removed or added.",
+      "change weights (strong/weak/suggestion), add or improve reasons and descriptions, " +
+      "and identify any dependencies that should be removed or added. " +
+      "For each dependency, provide a short 'reason' (a concise label/headline, max ~5 words) " +
+      "and a longer 'description' (a detailed explanation).",
     expectedFormat:
-      '{ "updated_dependencies": [{ "source_id": 1, "target_id": 2, "weight": "strong", "reason": "..." }], ' +
-      '"remove_dependencies": [{ "source_id": 3, "target_id": 4, "reason": "..." }], ' +
-      '"new_dependencies": [{ "source_id": 5, "target_id": 6, "weight": "strong", "reason": "..." }] }',
+      '{ "updated_dependencies": [{ "source_id": 1, "target_id": 2, "weight": "strong", "reason": "Short label", "description": "Detailed explanation..." }], ' +
+      '"remove_dependencies": [{ "source_id": 3, "target_id": 4, "reason": "Short label", "description": "Detailed explanation..." }], ' +
+      '"new_dependencies": [{ "source_id": 5, "target_id": 6, "weight": "strong", "reason": "Short label", "description": "Detailed explanation..." }] }',
     buildPayload: (ctx) => ({
       dependencies: buildEdgesPayload(ctx),
       milestones: buildMilestonesPayload(ctx),
@@ -375,12 +381,13 @@ export const DEP_SCENARIOS = [
       "Determine which tasks logically depend on each other. " +
       "Each task should have at least one milestone. " +
       "Schedule milestones so predecessors finish before successors start. " +
-      "Include a reason for each dependency. " +
+      "For each dependency, provide a short 'reason' (a concise label/headline, max ~5 words) " +
+      "and a longer 'description' (a detailed explanation of why this dependency exists). " +
       "IMPORTANT: Avoid creating dependencies between milestones that belong to the same task — " +
       "those are implicitly ordered already. Only add same-task dependencies if there is a truly critical reason.",
     expectedFormat:
       '{ "milestones": [{ "task_name": "...", "name": "...", "description": "...", "start_index": 0, "duration": 1 }], ' +
-      '"dependencies": [{ "source_milestone_name": "...", "target_milestone_name": "...", "weight": "strong", "reason": "..." }] }',
+      '"dependencies": [{ "source_milestone_name": "...", "target_milestone_name": "...", "weight": "strong", "reason": "Short label", "description": "Detailed explanation..." }] }',
     buildPayload: (ctx) => ({
       tasks: buildTasksByTeam(ctx),
       ...(ctx._withContext && milestoneCount(ctx) > 0
@@ -407,11 +414,12 @@ export const DEP_SCENARIOS = [
     defaultPrompt:
       "Analyse the existing milestones and dependencies. " +
       "Suggest any missing dependency connections that should exist. " +
-      "Explain why each suggested dependency is important. " +
+      "For each dependency, provide a short 'reason' (a concise label/headline, max ~5 words) " +
+      "and a longer 'description' (a detailed explanation of why it is important). " +
       "IMPORTANT: Avoid suggesting dependencies between milestones that belong to the same task — " +
       "those are implicitly ordered already. Only suggest same-task dependencies if there is a truly critical reason.",
     expectedFormat:
-      '{ "new_dependencies": [{ "source_milestone_name": "...", "target_milestone_name": "...", "weight": "strong", "reason": "..." }], ' +
+      '{ "new_dependencies": [{ "source_milestone_name": "...", "target_milestone_name": "...", "weight": "strong", "reason": "Short label", "description": "Detailed explanation..." }], ' +
       '"suggestions": "..." }',
     buildPayload: (ctx) => ({
       milestones: buildMilestonesPayload(ctx),

@@ -607,6 +607,16 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
     setReviewState(prev => prev && ({ ...prev, showInspect: !prev.showInspect }));
   }, []);
 
+  // Sync inspect modal slide state back to the ReviewBar background
+  const handleInspectSlideSync = useCallback(({ slideIdx: idx, changeItems: items }) => {
+    setReviewState(prev => {
+      if (!prev) return prev;
+      // Clamp index to review items range
+      const newIdx = Math.min(idx, prev.items.length - 1);
+      return newIdx !== prev.currentIdx ? { ...prev, currentIdx: Math.max(0, newIdx) } : prev;
+    });
+  }, []);
+
   const handleReviewEnd = useCallback(() => {
     // Restore pre-review view state
     if (preReviewStateRef.current && gridControlRef.current?.applyViewState) {
@@ -1025,6 +1035,8 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
           applyDetectedFn={applyDepDetected}
           changeTypeMeta={DEP_CHANGE_TYPE_META}
           initialSlideIdx={reviewState.currentIdx}
+          depReview
+          onSlideSync={handleInspectSlideSync}
         />
       )}
     </DependencyGrid>

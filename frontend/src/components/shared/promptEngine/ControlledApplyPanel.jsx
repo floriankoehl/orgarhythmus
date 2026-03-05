@@ -48,6 +48,7 @@ export default function ControlledApplyModal({
   paused,
   initialSlideIdx,
   depReview,
+  onSlideSync,
 }) {
   // Domain-aware: use overrides if provided, else default to IdeaBin
   const buildChangeItems   = buildChangeItemsFn   || _ideabinBuildChangeItems;
@@ -89,6 +90,11 @@ export default function ControlledApplyModal({
       });
     }
   }, [paused, buildChangeItems, detected]);
+
+  // ─── Sync slide state back to host (e.g. ReviewBar) ──
+  useEffect(() => {
+    if (onSlideSync) onSlideSync({ slideIdx, changeItems });
+  }, [slideIdx, changeItems, onSlideSync]);
 
   // ─── Derived ──────────────────────────────────────────
 
@@ -347,7 +353,7 @@ export default function ControlledApplyModal({
 //  SLIDE VIEW
 // ═══════════════════════════════════════════════════════════
 
-function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext, isDisabled, analysisItems, changeTypeMeta, onResolve }) {
+function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext, isDisabled, analysisItems, changeTypeMeta, onResolve, depReview }) {
   const CHANGE_TYPE_META = changeTypeMeta;
   const current = slideItems[slideIdx];
   if (!current && analysisItems.length === 0) {
@@ -395,13 +401,15 @@ function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext
 
       {/* Slide content */}
       <div className="flex-1 px-5 py-4 overflow-y-auto">
-        {/* Group badge */}
-        <div className="flex items-center gap-2 mb-3">
-          <span className={`w-2 h-2 rounded-full ${meta.dotColor}`} />
-          <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
-            {current.group}
-          </span>
-        </div>
+        {/* Group badge — hidden in depReview mode */}
+        {!depReview && (
+          <div className="flex items-center gap-2 mb-3">
+            <span className={`w-2 h-2 rounded-full ${meta.dotColor}`} />
+            <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+              {current.group}
+            </span>
+          </div>
+        )}
 
         {/* Detail card */}
         <SlideDetailCard detail={current.detail} changeType={current.changeType} resolved={current._resolved} />
@@ -1098,6 +1106,130 @@ function SlideDetailCard({ detail, changeType, resolved }) {
 
 
 // ═══════════════════════════════════════════════════════════
+//  DEP EDGE CARD — grid-matching visual for dependency changes
+// ═══════════════════════════════════════════════════════════
+
+const WEIGHT_DASH = { strong: "4,3", medium: "6,5", weak: "8,8" };
+
+function DepEdgeCard({ detail, changeType, resolved }) {
+  const isConflict = changeType === "conflict_dependency";
+  const isRemove   = changeType === "remove_dependency";
+  const isUpdate   = changeType === "update_dependency";
+
+  const srcColor = detail.sourceCtx?.teamColor || "#6b7280";
+  const tgtColor = detail.targetCtx?.teamColor || "#6b7280";
+
+  // Arrow stroke color per type
+  const strokeColor = isConflict ? "#f97316" : isRemove ? "#ef4444" : resolved ? "#22c55e" : "#6b7280";
+  const weight = detail.weight || "strong";
+  const dash = WEIGHT_DASH[weight] || WEIGHT_DASH.strong;
+  // Stroke width varies by weight
+  const strokeWidth = weight === "strong" ? 2.5 : weight === "medium" ? 2 : 1.5;
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Conflict badge */}
+      {isConflict && (
+        <div className="flex items-center gap-1.5 text-[10px] font-semibold text-orange-600 uppercase tracking-wider">
+          <AlertTriangle size={10} /> Scheduling Conflict
+        </div>
+      )}
+      {resolved && (
+        <div className="flex items-center gap-1.5 text-[10px] font-semibold text-green-600 uppercase tracking-wider">
+          <Check size={10} /> Resolved
+        </div>
+      )}
+
+      {/* Visual: source → animated path → target */}
+      <div className="flex items-center gap-0">
+        {/* Source milestone block */}
+        <div
+          className="rounded-md px-3 py-2 min-w-0 flex-shrink-0"
+          style={{
+            backgroundColor: srcColor + "18",
+            borderLeft: `3px solid ${srcColor}`,
+          }}
+        >
+          <div className="text-[11px] font-semibold leading-tight" style={{ color: srcColor }}>
+            {detail.sourceName}
+          </div>
+          {detail.sourceCtx?.taskName && (
+            <div className="text-[8px] text-gray-400 leading-tight mt-0.5">{detail.sourceCtx.taskName}</div>
+          )}
+        </div>
+
+        {/* Animated dotted arrow */}
+        <svg width="80" height="28" className="flex-shrink-0 mx-0.5" viewBox="0 0 80 28">
+          <defs>
+            <marker id={`arrow-${changeType}`} markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6" fill={strokeColor} />
+            </marker>
+          </defs>
+          <line
+            x1="2" y1="14" x2="68" y2="14"
+            stroke={strokeColor}
+            strokeWidth={strokeWidth}
+            strokeDasharray={dash}
+            markerEnd={`url(#arrow-${changeType})`}
+            className={isRemove ? "" : "dep-edge-animate"}
+          />
+          {/* Weight label */}
+          <text x="40" y="8" textAnchor="middle" fill="#9ca3af" fontSize="7" fontWeight="500">
+            {weight}
+          </text>
+        </svg>
+
+        {/* Target milestone block */}
+        <div
+          className={`rounded-md px-3 py-2 min-w-0 flex-shrink-0 ${isRemove ? "opacity-50" : ""}`}
+          style={{
+            backgroundColor: tgtColor + "18",
+            borderLeft: `3px solid ${tgtColor}`,
+          }}
+        >
+          <div className={`text-[11px] font-semibold leading-tight ${isRemove ? "line-through" : ""}`} style={{ color: tgtColor }}>
+            {detail.targetName}
+          </div>
+          {detail.targetCtx?.taskName && (
+            <div className="text-[8px] text-gray-400 leading-tight mt-0.5">{detail.targetCtx.taskName}</div>
+          )}
+        </div>
+      </div>
+
+      {/* Conflict message */}
+      {isConflict && detail.conflict && (
+        <div className="bg-red-50 border border-red-200 rounded px-2.5 py-1.5 text-[9px] text-red-700 flex items-start gap-1.5">
+          <AlertTriangle size={10} className="flex-shrink-0 mt-0.5 text-red-500" />
+          <span>{detail.conflict.message}</span>
+        </div>
+      )}
+
+      {/* Reason */}
+      {detail.reason && (
+        <div className="text-[11px] font-medium text-gray-700 px-1">{detail.reason}</div>
+      )}
+
+      {/* Description */}
+      {detail.description && (
+        <div className="bg-gray-50 border border-gray-100 rounded px-3 py-2">
+          <div className="text-[10px] text-gray-600 leading-relaxed">{detail.description}</div>
+        </div>
+      )}
+
+      <style>{`
+        .dep-edge-animate {
+          animation: dashFlow 1.2s linear infinite;
+        }
+        @keyframes dashFlow {
+          to { stroke-dashoffset: -20; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════
 //  OVERVIEW VIEW
 // ═══════════════════════════════════════════════════════════
 
@@ -1105,25 +1237,27 @@ function OverviewView({
   groups, changeItems, collapsedGroups,
   onToggleGroup, onToggleItem,
   onAcceptAll, onDeclineAll, onAcceptGroup, onDeclineGroup,
-  isDisabled, analysisItems, changeTypeMeta,
+  isDisabled, analysisItems, changeTypeMeta, depReview,
 }) {
   return (
     <div className="px-4 py-3 flex flex-col gap-3">
-      {/* Quick actions */}
-      <div className="flex gap-2">
-        <button
-          onClick={onAcceptAll}
-          className="flex items-center gap-1 text-[10px] px-2.5 py-1 rounded border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
-        >
-          <CheckCheck size={10} /> Accept All
-        </button>
-        <button
-          onClick={onDeclineAll}
-          className="flex items-center gap-1 text-[10px] px-2.5 py-1 rounded border border-red-300 text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
-        >
-          <XCircle size={10} /> Decline All
-        </button>
-      </div>
+      {/* Quick actions — hidden in depReview mode */}
+      {!depReview && (
+        <div className="flex gap-2">
+          <button
+            onClick={onAcceptAll}
+            className="flex items-center gap-1 text-[10px] px-2.5 py-1 rounded border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
+          >
+            <CheckCheck size={10} /> Accept All
+          </button>
+          <button
+            onClick={onDeclineAll}
+            className="flex items-center gap-1 text-[10px] px-2.5 py-1 rounded border border-red-300 text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+          >
+            <XCircle size={10} /> Decline All
+          </button>
+        </div>
+      )}
 
       {/* Groups */}
       <div className="bg-gray-50 border border-gray-200 rounded overflow-hidden">
