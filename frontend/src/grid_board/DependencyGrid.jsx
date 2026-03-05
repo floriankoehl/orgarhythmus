@@ -1296,7 +1296,7 @@ function DependencyGridContent({
           {!toolbarCollapsed && (
             <GridToolbar
               isFloating={isFloating}
-              compactToolbar={isFloating && (windowSize?.w ?? Infinity) < 1000}
+              compactToolbar={isFloating ? ((windowSize?.w ?? Infinity) < 700 ? 'compact' : (windowSize?.w ?? Infinity) < 1700 ? 'medium' : 'full') : 'full'}
               laneLabel={laneLabel}
               rowLabel={rowLabel}
               nodeLabel={nodeLabel}
