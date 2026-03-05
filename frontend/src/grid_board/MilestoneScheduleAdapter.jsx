@@ -538,6 +538,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       items: filtered,
       currentIdx: 0,
       sessionEdgeIds: new Set(),
+      sessionMilestoneIds: new Set(),
       detected,
       showInspect: false,
       focusMode: false,
@@ -592,12 +593,83 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
           ...prev,
           currentIdx: Math.min(prev.currentIdx + 1, prev.items.length - 1),
         }));
+      } else if (current.changeType === "create_milestone") {
+        // Resolve task id from task name
+        const taskEntry = Object.entries(rows).find(([, r]) =>
+          r.name && d.taskName && r.name.toLowerCase().trim() === d.taskName.toLowerCase().trim()
+        );
+        if (!taskEntry) throw new Error(`Task "${d.taskName}" not found`);
+        const taskId = Number(taskEntry[0]);
+        const result = await add_milestone(projectId, taskId, {
+          name: d.name,
+          description: d.description || "",
+          start_index: d.startIndex ?? 0,
+        });
+        const newMs = result?.added_milestone || result;
+        const newId = newMs?.id;
+        // If AI specified a duration > 1, apply it
+        if (newId && d.duration && d.duration > 1) {
+          await change_duration(projectId, newId, d.duration - 1);
+        }
+        // Optimistic node update
+        if (newId) {
+          setNodes(prev => ({
+            ...prev,
+            [newId]: {
+              id: newId,
+              name: d.name,
+              row: String(taskId),
+              task: String(taskId),
+              startColumn: d.startIndex ?? 0,
+              start_index: d.startIndex ?? 0,
+              duration: d.duration || 1,
+              description: d.description || "",
+              _session: true,
+            },
+          }));
+        }
+        emitDataEvent('milestones');
+        setReviewState(prev => ({
+          ...prev,
+          sessionMilestoneIds: new Set([...(prev.sessionMilestoneIds || new Set()), ...(newId ? [newId] : [])]),
+          currentIdx: Math.min(prev.currentIdx + 1, prev.items.length - 1),
+        }));
+      } else if (current.changeType === "update_milestone") {
+        // Find existing milestone by original name
+        const existingEntry = Object.entries(nodes).find(([, n]) =>
+          n.name && d.originalName && n.name.toLowerCase().trim() === d.originalName.toLowerCase().trim()
+        );
+        if (!existingEntry) throw new Error(`Milestone "${d.originalName}" not found`);
+        const msId = Number(existingEntry[0]);
+        if (d.newName) await rename_milestone(projectId, msId, d.newName);
+        if (d.startIndex != null) await update_start_index(projectId, msId, d.startIndex);
+        if (d.duration != null) {
+          const currentDuration = existingEntry[1].duration || 1;
+          const delta = d.duration - currentDuration;
+          if (delta !== 0) await change_duration(projectId, msId, delta);
+        }
+        // Optimistic node update
+        setNodes(prev => ({
+          ...prev,
+          [msId]: {
+            ...prev[msId],
+            ...(d.newName ? { name: d.newName } : {}),
+            ...(d.startIndex != null ? { startColumn: d.startIndex, start_index: d.startIndex } : {}),
+            ...(d.duration != null ? { duration: d.duration } : {}),
+            _session: true,
+          },
+        }));
+        emitDataEvent('milestones');
+        setReviewState(prev => ({
+          ...prev,
+          currentIdx: Math.min(prev.currentIdx + 1, prev.items.length - 1),
+        }));
       }
       playSound('milestoneMove');
     } catch (err) {
       console.error("Review accept failed:", err);
     }
-  }, [reviewState, projectId]);
+  }, [reviewState, projectId, rows, nodes]);
 
   const handleReviewDecline = useCallback(() => {
     if (!reviewState) return;
@@ -673,6 +745,66 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
     return [];
   }, [resolveState, reviewState, nodes]);
 
+  // Ghost nodes (milestones) for the grid — derived from reviewState for create/update milestone items
+  const ghostNodes = useMemo(() => {
+    if (!reviewState) return [];
+    const current = reviewState.items[reviewState.currentIdx];
+    if (!current?.detail) return [];
+    const d = current.detail;
+
+    if (current.changeType === "create_milestone") {
+      // Skip if already accepted
+      if (reviewState.sessionMilestoneIds?.size > 0) {
+        // Can't easily check by name, so just show it (it won't hurt to show a ghost even if accepted)
+      }
+      // Resolve task row from taskName
+      const taskEntry = Object.entries(rows).find(([, r]) =>
+        r.name && d.taskName && r.name.toLowerCase().trim() === d.taskName.toLowerCase().trim()
+      );
+      if (!taskEntry) return [];
+      return [{
+        id: `ghost-create-ms`,
+        name: d.name,
+        row: String(taskEntry[0]),
+        startColumn: d.startIndex ?? 0,
+        duration: d.duration || 1,
+        isCreate: true,
+      }];
+    }
+
+    if (current.changeType === "update_milestone") {
+      // Find the existing milestone by originalName
+      const existingEntry = Object.entries(nodes).find(([, n]) =>
+        n.name && d.originalName && n.name.toLowerCase().trim() === d.originalName.toLowerCase().trim()
+      );
+      if (!existingEntry) return [];
+      const [msId, msNode] = existingEntry;
+      return [{
+        id: `ghost-update-${msId}`,
+        existingId: Number(msId),
+        name: d.newName || msNode.name,
+        row: msNode.row || msNode.task,
+        startColumn: d.startIndex ?? msNode.startColumn,
+        duration: d.duration ?? msNode.duration ?? 1,
+        isUpdate: true,
+      }];
+    }
+
+    if (current.changeType === "move_milestone") {
+      return [{
+        id: `ghost-move-${d.milestoneId}`,
+        existingId: d.milestoneId,
+        name: nodes[d.milestoneId]?.name || "?",
+        row: nodes[d.milestoneId]?.row || nodes[d.milestoneId]?.task,
+        startColumn: d.newDay,
+        duration: nodes[d.milestoneId]?.duration || 1,
+        isMove: true,
+      }];
+    }
+
+    return [];
+  }, [reviewState, nodes, rows]);
+
   // Session edge IDs for visual distinction in the grid
   const sessionEdgeIds = useMemo(() => {
     return reviewState?.sessionEdgeIds || new Set();
@@ -728,6 +860,31 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       relevantRows.add(rowKey);
       const laneKey = rows[rowKey]?.lane != null ? String(rows[rowKey].lane) : null;
       if (laneKey) relevantLanes.add(laneKey);
+    }
+
+    // For create_milestone — resolve task row from taskName
+    if (current.changeType === "create_milestone" && d.taskName) {
+      const taskEntry = Object.entries(rows).find(([, r]) =>
+        r.name && r.name.toLowerCase().trim() === d.taskName.toLowerCase().trim()
+      );
+      if (taskEntry) {
+        relevantRows.add(taskEntry[0]);
+        const laneKey = taskEntry[1].lane != null ? String(taskEntry[1].lane) : null;
+        if (laneKey) relevantLanes.add(laneKey);
+      }
+    }
+
+    // For update_milestone — resolve from originalName
+    if (current.changeType === "update_milestone" && d.originalName) {
+      const msEntry = Object.entries(nodes).find(([, n]) =>
+        n.name && n.name.toLowerCase().trim() === d.originalName.toLowerCase().trim()
+      );
+      if (msEntry) {
+        const rowKey = String(msEntry[1].row || msEntry[1].task);
+        relevantRows.add(rowKey);
+        const laneKey = rows[rowKey]?.lane != null ? String(rows[rowKey].lane) : null;
+        if (laneKey) relevantLanes.add(laneKey);
+      }
     }
 
     if (relevantRows.size === 0) return; // nodes not ready yet — retry on next render
@@ -995,6 +1152,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
       // Ghost edges for conflict resolution
       ghostEdges={ghostEdges}
+      ghostNodes={ghostNodes}
       resolveState={resolveState}
       onResolveEnd={handleResolveEnd}
       sessionEdgeIds={sessionEdgeIds}

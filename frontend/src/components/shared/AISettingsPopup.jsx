@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Sparkles, X, ChevronDown, ChevronRight, RotateCcw,
-  ToggleLeft, ToggleRight, Save, Check,
+  ToggleLeft, ToggleRight, Save, Check, Zap,
 } from "lucide-react";
+import { getDirectMode, setDirectMode as persistDirectMode } from "../../api/aiGenerateApi";
 import usePromptSettings, {
   ENGINE_SCENARIO_LABELS,
   ENGINE_SCENARIO_GROUPS,
@@ -26,6 +27,16 @@ export default function AISettingsPopup({ onClose }) {
   const [saving, setSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const popupRef = useRef(null);
+
+  // Direct AI mode (localStorage only — not persisted to server)
+  const [directMode, setDirectMode] = useState(getDirectMode);
+  const handleDirectModeToggle = useCallback(() => {
+    setDirectMode(prev => {
+      const next = !prev;
+      persistDirectMode(next);
+      return next;
+    });
+  }, []);
 
   // Local editable state (mirrors settings)
   const [localSettings, setLocalSettings] = useState(null);
@@ -178,6 +189,26 @@ export default function AISettingsPopup({ onClose }) {
           {/* ── Toggles tab ── */}
           {activeTab === "toggles" && (
             <div className="space-y-2">
+              {/* ── Direct AI toggle ── */}
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-200 mb-3">
+                <button onClick={handleDirectModeToggle} className="flex-shrink-0">
+                  {directMode
+                    ? <ToggleRight size={20} className="text-amber-500" />
+                    : <ToggleLeft size={20} className="text-gray-300" />
+                  }
+                </button>
+                <div className="flex-1">
+                  <div className="flex items-center gap-1">
+                    <Zap size={11} className="text-amber-500" />
+                    <span className="text-[11px] font-semibold text-amber-800">Direct AI Mode</span>
+                  </div>
+                  <div className="text-[9px] text-amber-600">
+                    Send prompts directly to OpenAI instead of copying to clipboard.
+                    Requires OPENAI_API_KEY in server .env (local testing only).
+                  </div>
+                </div>
+              </div>
+
               <div className="text-[10px] text-gray-500 mb-2">
                 Control which sections are included when copying prompts to clipboard.
               </div>

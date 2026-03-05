@@ -200,6 +200,8 @@ function DependencyGridContent({
 
   /** Ghost edges for conflict resolution — rendered as dashed preview lines */
   ghostEdges,
+  /** Ghost nodes (milestones) for inline review — rendered as translucent preview blocks */
+  ghostNodes,
   /** Resolve conflict state + end callback — passed as children render context */
   resolveState,
   onResolveEnd,
@@ -1051,6 +1053,7 @@ function DependencyGridContent({
     hideRowActions,
     marqueeRect,
     ghostEdges,
+    ghostNodes,
     sessionEdgeIds,
   };
 

@@ -116,6 +116,7 @@ export default function GridCanvas({
     hideRowActions = false,
     marqueeRect,
     ghostEdges = [],
+    ghostNodes = [],
     sessionEdgeIds,
   } = displayState;
 
@@ -1071,6 +1072,7 @@ export default function GridCanvas({
             onSetDeadline={onSetDeadline}
             totalColumns={totalColumns}
             getLanePhaseRowHeight={getLanePhaseRowHeight}
+            ghostNodes={ghostNodes}
           />
 
           {/* Ghost edges overlay — ABOVE nodes for visibility */}

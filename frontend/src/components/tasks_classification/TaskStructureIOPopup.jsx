@@ -2,12 +2,13 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from "react"
 import {
   Copy, Download, Check, Plus, Pencil,
   AlertCircle, Sparkles,
-  ClipboardPaste, ArrowRightLeft, Star,
+  ClipboardPaste, ArrowRightLeft, Star, Zap, Loader,
 } from "lucide-react";
 import { detectTaskResponseContent } from "../shared/promptEngine/taskResponseApplier";
 import ControlledApplyModal from "../shared/promptEngine/ControlledApplyPanel";
 import { buildTaskChangeItems, recomposeTaskDetected, TASK_CHANGE_TYPE_META } from "../shared/promptEngine/taskChangeBuilder";
 import { applyTaskDetected } from "../shared/promptEngine/taskResponseApplier";
+import { aiGenerate, getDirectMode } from "../../api/aiGenerateApi";
 
 /**
  * ═══════════════════════════════════════════════════════════
@@ -37,6 +38,12 @@ export default function TaskStructureIOPopup({
   const [copiedId, setCopiedId] = useState(null);
   const [lastCopiedScenario, setLastCopiedScenario] = useState(null);
 
+  // ─── Direct AI mode ───────────────────────────────────
+  const [directMode] = useState(getDirectMode);
+  const [generatingId, setGeneratingId] = useState(null);
+  const [generateError, setGenerateError] = useState(null);
+  // ─── Custom prompt add-on ─────────────────────────
+  const [customAddOn, setCustomAddOn] = useState("");
   // ─── Export state ─────────────────────────────────────
   const [withContext, setWithContext] = useState(true);
 
@@ -80,7 +87,7 @@ export default function TaskStructureIOPopup({
     return parts.length > 0 ? parts.join(", ") + " selected" : null;
   }, [ctx.selectedTaskIds, ctx.selectedTeamIds]);
 
-  // Auto-focus paste area on import mode
+  // Auto-focus paste area on import modedd
   useEffect(() => {
     if (mode === "import") pasteRef.current?.focus();
   }, [mode]);
@@ -104,7 +111,8 @@ export default function TaskStructureIOPopup({
   // ─── Export: copy prompt ──────────────────────────────
   const handleCopy = useCallback(async (scenarioId) => {
     const scenario = scenarioMap.get(scenarioId);
-    const { text } = assemblePrompt(scenarioId, modCtx, settings);
+    let { text } = assemblePrompt(scenarioId, modCtx, settings);
+    if (customAddOn.trim()) text += "\n\n" + customAddOn.trim();
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -121,7 +129,30 @@ export default function TaskStructureIOPopup({
       setCopiedId(null);
       setMode("import");
     }, 800);
-  }, [assemblePrompt, modCtx, settings, scenarioMap]);
+  }, [assemblePrompt, modCtx, settings, scenarioMap, customAddOn]);
+
+  // ─── Export: direct AI generate ────────────────────────
+  const handleGenerate = useCallback(async (scenarioId) => {
+    setGeneratingId(scenarioId);
+    setGenerateError(null);
+    try {
+      let { text } = assemblePrompt(scenarioId, modCtx, settings);
+      if (customAddOn.trim()) text += "\n\n" + customAddOn.trim();
+      const parsed = await aiGenerate(text);
+      const items = detectTaskResponseContent(parsed);
+      if (!items || items.length === 0) {
+        throw new Error("No actionable content detected in AI response");
+      }
+      setDetected(items);
+      setMode("import");
+    } catch (e) {
+      console.error("AI generate failed:", e);
+      setGenerateError(e.message);
+      setTimeout(() => setGenerateError(null), 4000);
+    } finally {
+      setGeneratingId(null);
+    }
+  }, [assemblePrompt, modCtx, settings, customAddOn]);
 
   const handleDownload = useCallback((scenarioId) => {
     const { jsonString } = assemblePrompt(scenarioId, modCtx, settings);
@@ -180,26 +211,39 @@ export default function TaskStructureIOPopup({
     if (!scenario) return null;
     const unavailable = availability[scenarioId];
     const isCopied = copiedId === scenarioId;
+    const isGenerating = generatingId === scenarioId;
+    const anyGenerating = generatingId !== null;
 
     return (
       <div
         key={scenarioId}
         className={`group flex items-center gap-1 px-1.5 py-[3px] rounded transition-colors ${
-          unavailable
+          unavailable || (anyGenerating && !isGenerating)
             ? "opacity-35 cursor-not-allowed"
-            : "hover:bg-black/5 cursor-pointer"
+            : isGenerating
+              ? "bg-amber-50 cursor-wait"
+              : "hover:bg-black/5 cursor-pointer"
         }`}
-        onClick={() => !unavailable && handleCopy(scenarioId)}
-        title={unavailable || scenario.description}
+        onClick={() => !unavailable && !anyGenerating && (
+          directMode ? handleGenerate(scenarioId) : handleCopy(scenarioId)
+        )}
+        title={unavailable || (isGenerating ? "Generating…" : scenario.description)}
       >
-        {actionIcon(scenario.action, 9)}
-        <span className="flex-1 text-[10px] text-gray-700 font-medium truncate leading-tight">
-          {scenario.label}
+        {isGenerating
+          ? <Loader size={9} className="text-amber-500 animate-spin flex-shrink-0" />
+          : actionIcon(scenario.action, 9)
+        }
+        <span className={`flex-1 text-[10px] font-medium truncate leading-tight ${
+          isGenerating ? "text-amber-700" : "text-gray-700"
+        }`}>
+          {isGenerating ? "Generating…" : scenario.label}
         </span>
-        {!unavailable && (
+        {!unavailable && !isGenerating && (
           <span className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
             {isCopied ? (
               <Check size={9} className="text-green-500" />
+            ) : directMode ? (
+              <Zap size={8} className="text-amber-500" />
             ) : (
               <>
                 <Copy size={8} className="text-gray-400" />
@@ -380,6 +424,18 @@ export default function TaskStructureIOPopup({
                 ))}
               </div>
             </div>
+
+            {/* ── Custom prompt add-on ── */}
+            <div className="mt-2 px-1">
+              <textarea
+                value={customAddOn}
+                onChange={(e) => setCustomAddOn(e.target.value)}
+                placeholder="Custom add-on to the prompt (appended at the end)…"
+                className="w-full text-[10px] text-gray-700 bg-gray-50 border border-gray-200 rounded px-2 py-1.5 resize-y focus:outline-none focus:ring-1 focus:ring-amber-300 placeholder:text-gray-400"
+                style={{ minHeight: "32px", maxHeight: "120px" }}
+                rows={1}
+              />
+            </div>
           </div>
         )}
 
@@ -496,11 +552,24 @@ export default function TaskStructureIOPopup({
         )}
 
         {/* ── Footer ── */}
-        <div className="px-3 py-1.5 border-t border-gray-100 text-[9px] text-gray-400 flex-shrink-0">
-          {mode === "export"
-            ? "Click scenario to copy prompt · switches to Import after copy"
-            : "Paste AI response · preview & apply"
-          }
+        <div className="px-3 py-1.5 border-t border-gray-100 text-[9px] flex-shrink-0 flex items-center gap-2">
+          {generateError ? (
+            <span className="text-red-500 font-medium">{generateError}</span>
+          ) : (
+            <span className="text-gray-400">
+              {mode === "export"
+                ? directMode
+                  ? "Click scenario to generate directly via OpenAI"
+                  : "Click scenario to copy prompt · switches to Import after copy"
+                : "Paste AI response · preview & apply"
+              }
+            </span>
+          )}
+          {directMode && mode === "export" && (
+            <span className="ml-auto flex items-center gap-0.5 text-amber-500 font-medium">
+              <Zap size={8} /> Direct
+            </span>
+          )}
         </div>
       </div>
     </>

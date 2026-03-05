@@ -62,6 +62,8 @@ export default function GridNodeLayer({
   totalColumns,
   // Lane phase row height
   getLanePhaseRowHeight,
+  // Ghost nodes for inline review preview
+  ghostNodes = [],
 }) {
   // Helper: get pixel X offset for a column index using columnLayout
   const getColumnX = (colIndex) => {
@@ -446,6 +448,47 @@ export default function GridNodeLayer({
             );
           });
         });
+      })}
+
+      {/* Ghost nodes — inline review preview for create/update/move milestone */}
+      {ghostNodes.map((gn) => {
+        const laneId = rows[gn.row]?.lane;
+        if (laneId == null || !isLaneVisible(laneId)) return null;
+
+        const rowHeight = getRowHeight(gn.row, rowDisplaySettings);
+        const laneYOffset = getLaneYOffset(laneId);
+        const rowYOffset = getRowYOffset(gn.row, laneId);
+        const dropHighlightOffset = LANE_DRAG_HIGHLIGHT_HEIGHT + MARGIN_BETWEEN_DRAG_HIGHLIGHT * 2;
+        const headerOffset = LANE_HEADER_LINE_HEIGHT + LANE_HEADER_GAP;
+        const phaseRowOffset = getLanePhaseRowHeight ? getLanePhaseRowHeight(laneId) : 0;
+        const rowY = laneYOffset + dropHighlightOffset + headerOffset + phaseRowOffset + rowYOffset;
+
+        const nodeLeft = getColumnX(gn.startColumn);
+        const nodeWidth = getNodePixelWidth(gn.startColumn, gn.duration || 1);
+
+        const color = gn.isCreate ? '#22c55e' : gn.isUpdate ? '#f59e0b' : '#06b6d4';
+        const bgColor = gn.isCreate ? 'rgba(34,197,94,0.22)' : gn.isUpdate ? 'rgba(245,158,11,0.22)' : 'rgba(6,182,212,0.22)';
+        const borderColor = gn.isCreate ? 'rgba(34,197,94,0.7)' : gn.isUpdate ? 'rgba(245,158,11,0.7)' : 'rgba(6,182,212,0.7)';
+
+        return (
+          <div
+            key={gn.id}
+            className="absolute rounded flex items-center overflow-hidden"
+            style={{
+              left: `${nodeLeft}px`,
+              top: `${rowY + 2}px`,
+              width: `${nodeWidth}px`,
+              height: `${rowHeight - 4}px`,
+              backgroundColor: bgColor,
+              border: `2px dashed ${borderColor}`,
+              zIndex: 25,
+              pointerEvents: 'none',
+              animation: 'pulse 2s ease-in-out infinite',
+            }}
+          >
+            <span className="truncate text-[10px] px-1.5 font-semibold" style={{ color }}>{gn.name}</span>
+          </div>
+        );
       })}
     </div>
   );
