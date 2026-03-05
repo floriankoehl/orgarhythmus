@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import InventoryBar from "./InventoryBar";
 import OrbitMode from "./OrbitMode";
 
@@ -145,6 +145,58 @@ export default function WindowManager({
     }
   }, []);
 
+  // ── Browser history integration (back / forward button support) ──
+  const restoringRef = useRef(false);
+  const pushTimerRef = useRef(null);
+  const restoreTimerRef = useRef(null);
+  const mountedRef = useRef(false);
+
+  const commitLayout = useCallback(() => {
+    if (restoringRef.current) return;
+    clearTimeout(pushTimerRef.current);
+    pushTimerRef.current = setTimeout(() => {
+      const snapshot = collectAllStates();
+      window.history.pushState({ wmSnapshot: snapshot }, '');
+    }, 120);
+  }, [collectAllStates]);
+
+  // Popstate listener (browser back / forward)
+  useEffect(() => {
+    // Seed the current history entry so the first "back" has a baseline
+    requestAnimationFrame(() => {
+      const snapshot = collectAllStates();
+      window.history.replaceState({ wmSnapshot: snapshot }, '');
+    });
+
+    const onPopState = (e) => {
+      const snapshot = e.state?.wmSnapshot;
+      if (!snapshot) return; // not our entry — let React Router handle it
+      restoringRef.current = true;
+      clearTimeout(pushTimerRef.current);
+      clearTimeout(restoreTimerRef.current);
+      applyAllStates(snapshot);
+      restoreTimerRef.current = setTimeout(() => {
+        restoringRef.current = false;
+      }, 250);
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      clearTimeout(pushTimerRef.current);
+      clearTimeout(restoreTimerRef.current);
+    };
+  }, [collectAllStates, applyAllStates]);
+
+  // Auto-push history entry when windows open / close (skip initial mount)
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    commitLayout();
+  }, [openWindows]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Context value ──
   const value = useMemo(
     () => ({
@@ -179,6 +231,9 @@ export default function WindowManager({
       collectAllStates,
       applyAllStates,
 
+      // Browser history
+      commitLayout,
+
       // View saver registry
       registerViewSaver,
       unregisterViewSaver,
@@ -195,6 +250,7 @@ export default function WindowManager({
       registerCollector, unregisterCollector,
       registerApplier, unregisterApplier,
       collectAllStates, applyAllStates,
+      commitLayout,
       registerViewSaver, unregisterViewSaver, saveViews,
     ],
   );
