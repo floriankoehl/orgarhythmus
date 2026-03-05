@@ -212,11 +212,49 @@ export const DEP_SCENARIOS = [
       "Analyse these milestones and create dependency connections. " +
       "A dependency means the source must finish before the target can start. " +
       "Use milestone IDs for source and target. Include a reason for each dependency. " +
-      "Use weight 'strong' for hard dependencies and 'weak' for soft ones.",
+      "Use weight 'strong' for hard dependencies and 'weak' for soft ones. " +
+      "IMPORTANT: Avoid creating dependencies between milestones that belong to the same task — " +
+      "those are implicitly ordered already. Only add same-task dependencies if there is a truly critical reason.",
     expectedFormat:
       '{ "dependencies": [{ "source_id": 1, "target_id": 2, "weight": "strong", "reason": "..." }] }',
     buildPayload: (ctx) => ({
       milestones: buildMilestonesPayload(ctx),
+      tasks: buildTasksPayload(ctx),
+      ...(ctx._withContext && edgeCount(ctx) > 0
+        ? { existing_dependencies: buildEdgesPayload(ctx) }
+        : {}),
+      project_description: ctx.projectDescription || "",
+    }),
+  },
+
+  // ─────────────────────────────────────────────────────────
+  //  MILESTONES — ADD (selected milestones only)
+  // ─────────────────────────────────────────────────────────
+
+  {
+    id: "dep_connections_add_selected",
+    domain: "dependencies",
+    grid: { row: "milestones", col: "add" },
+    group: "Milestones — Add",
+    action: "add",
+    label: "Dependencies for selected",
+    description:
+      "Generate dependencies only for the currently selected milestones.",
+    unavailableMsg: (ctx) =>
+      selectedMilestoneCount(ctx) < 1 ? "Select milestones first" : null,
+    defaultPrompt:
+      "Analyse ONLY the selected milestones (listed under 'selected_milestones') and create dependency connections " +
+      "between them and other milestones. " +
+      "A dependency means the source must finish before the target can start. " +
+      "Use milestone IDs for source and target. Include a reason for each dependency. " +
+      "Use weight 'strong' for hard dependencies and 'weak' for soft ones. " +
+      "IMPORTANT: Avoid creating dependencies between milestones that belong to the same task — " +
+      "those are implicitly ordered already. Only add same-task dependencies if there is a truly critical reason.",
+    expectedFormat:
+      '{ "dependencies": [{ "source_id": 1, "target_id": 2, "weight": "strong", "reason": "..." }] }',
+    buildPayload: (ctx) => ({
+      selected_milestones: buildMilestonesPayload(ctx, selectedNodeIds(ctx)),
+      all_milestones: buildMilestonesPayload(ctx),
       tasks: buildTasksPayload(ctx),
       ...(ctx._withContext && edgeCount(ctx) > 0
         ? { existing_dependencies: buildEdgesPayload(ctx) }
@@ -337,7 +375,9 @@ export const DEP_SCENARIOS = [
       "Determine which tasks logically depend on each other. " +
       "Each task should have at least one milestone. " +
       "Schedule milestones so predecessors finish before successors start. " +
-      "Include a reason for each dependency.",
+      "Include a reason for each dependency. " +
+      "IMPORTANT: Avoid creating dependencies between milestones that belong to the same task — " +
+      "those are implicitly ordered already. Only add same-task dependencies if there is a truly critical reason.",
     expectedFormat:
       '{ "milestones": [{ "task_name": "...", "name": "...", "description": "...", "start_index": 0, "duration": 1 }], ' +
       '"dependencies": [{ "source_milestone_name": "...", "target_milestone_name": "...", "weight": "strong", "reason": "..." }] }',
@@ -367,7 +407,9 @@ export const DEP_SCENARIOS = [
     defaultPrompt:
       "Analyse the existing milestones and dependencies. " +
       "Suggest any missing dependency connections that should exist. " +
-      "Explain why each suggested dependency is important.",
+      "Explain why each suggested dependency is important. " +
+      "IMPORTANT: Avoid suggesting dependencies between milestones that belong to the same task — " +
+      "those are implicitly ordered already. Only suggest same-task dependencies if there is a truly critical reason.",
     expectedFormat:
       '{ "new_dependencies": [{ "source_milestone_name": "...", "target_milestone_name": "...", "weight": "strong", "reason": "..." }], ' +
       '"suggestions": "..." }',
@@ -396,7 +438,7 @@ export const DEP_GRID = {
   cells: {
     "tasks:add":            ["dep_milestones_add"],
     "tasks:finetune":       ["dep_milestones_finetune"],
-    "milestones:add":       ["dep_connections_add"],
+    "milestones:add":       ["dep_connections_add", "dep_connections_add_selected"],
     "milestones:finetune":  ["dep_connections_finetune"],
     "dependencies:add":     ["dep_schedule_add"],
     "dependencies:finetune":["dep_schedule_finetune"],

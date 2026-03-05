@@ -46,6 +46,8 @@ export default function ControlledApplyModal({
   changeTypeMeta,
   onResolve,
   paused,
+  initialSlideIdx,
+  depReview,
 }) {
   // Domain-aware: use overrides if provided, else default to IdeaBin
   const buildChangeItems   = buildChangeItemsFn   || _ideabinBuildChangeItems;
@@ -58,7 +60,7 @@ export default function ControlledApplyModal({
   // ─── State ────────────────────────────────────────────
   const [changeItems, setChangeItems] = useState(() => buildChangeItems(detected));
   const [viewMode, setViewMode] = useState("slide");   // "slide" | "overview"
-  const [slideIdx, setSlideIdx] = useState(0);
+  const [slideIdx, setSlideIdx] = useState(initialSlideIdx ?? 0);
   const [collapsedGroups, setCollapsedGroups] = useState(new Set());
   const [applying, setApplying] = useState(false);
 
@@ -104,6 +106,10 @@ export default function ControlledApplyModal({
 
   const totalCount    = changeItems.length;
   const acceptedCount = changeItems.filter(ci => ci.accepted && !isDisabled(ci)).length;
+  // In depReview mode, Apply only counts non-conflict items
+  const applyableCount = depReview
+    ? changeItems.filter(ci => ci.accepted && !isDisabled(ci) && ci.changeType !== "conflict_dependency").length
+    : acceptedCount;
 
   // Flat list of root items for slide navigation
   // (children are shown on the parent's slide)
@@ -198,9 +204,15 @@ export default function ControlledApplyModal({
   const handleApply = useCallback(async () => {
     setApplying(true);
     try {
-      const effective = changeItems.map(ci =>
+      let effective = changeItems.map(ci =>
         isDisabled(ci) ? { ...ci, accepted: false } : ci,
       );
+      // In depReview mode, exclude conflict items from apply
+      if (depReview) {
+        effective = effective.map(ci =>
+          ci.changeType === "conflict_dependency" ? { ...ci, accepted: false } : ci,
+        );
+      }
       const filtered = recomposeDetected(detected, effective);
       const result = await applyDetected(filtered, applyCtx);
       onResult(result);
@@ -209,7 +221,7 @@ export default function ControlledApplyModal({
     } finally {
       setApplying(false);
     }
-  }, [changeItems, detected, applyCtx, onResult, isDisabled]);
+  }, [changeItems, detected, applyCtx, onResult, isDisabled, depReview]);
 
   // ─── Render ───────────────────────────────────────────
 
@@ -276,6 +288,7 @@ export default function ControlledApplyModal({
               analysisItems={analysisItems}
               changeTypeMeta={CHANGE_TYPE_META}
               onResolve={onResolve}
+              depReview={depReview}
             />
           ) : (
             <OverviewView
@@ -291,35 +304,39 @@ export default function ControlledApplyModal({
               isDisabled={isDisabled}
               analysisItems={analysisItems}
               changeTypeMeta={CHANGE_TYPE_META}
+              depReview={depReview}
             />
           )}
         </div>
 
         {/* ── Footer ── */}
-        <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-200">
-          <button
-            onClick={onClose}
-            className="text-[11px] px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
-          >
-            Cancel
-          </button>
-          <div className="flex-1" />
-          {acceptedCount > 0 ? (
+        {/* In depReview + slide mode: no Apply button (accept/decline happens in ReviewBar) */}
+        {!(depReview && viewMode === "slide") && (
+          <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-200">
             <button
-              onClick={handleApply}
-              disabled={applying}
-              className="flex items-center gap-1.5 text-[11px] px-4 py-1.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 font-medium transition-colors"
+              onClick={onClose}
+              className="text-[11px] px-3 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
             >
-              {applying ? (
-                <><Loader size={12} className="animate-spin" /> Applying…</>
-              ) : (
-                <><ArrowUpFromLine size={12} /> Apply {acceptedCount} Change{acceptedCount > 1 ? "s" : ""}</>
-              )}
+              Cancel
             </button>
-          ) : (
-            <span className="text-[11px] text-gray-400 italic">No changes accepted</span>
-          )}
-        </div>
+            <div className="flex-1" />
+            {applyableCount > 0 ? (
+              <button
+                onClick={handleApply}
+                disabled={applying}
+                className="flex items-center gap-1.5 text-[11px] px-4 py-1.5 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 font-medium transition-colors"
+              >
+                {applying ? (
+                  <><Loader size={12} className="animate-spin" /> Applying…</>
+                ) : (
+                  <><ArrowUpFromLine size={12} /> Apply {applyableCount} Change{applyableCount > 1 ? "s" : ""}</>
+                )}
+              </button>
+            ) : (
+              <span className="text-[11px] text-gray-400 italic">No changes accepted</span>
+            )}
+          </div>
+        )}
       </div>
     </>
   );
@@ -1048,114 +1065,22 @@ function SlideDetailCard({ detail, changeType, resolved }) {
     }
 
     // ── Create dependency ──
-    case "create_dependency": {
-      return (
-        <div className="flex flex-col gap-2">
-          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
-            {resolved ? (
-              <span className="flex items-center gap-1 text-green-600">
-                <Check size={10} /> Resolved — New Dependency
-              </span>
-            ) : "New Dependency"}
-          </div>
-          <div className={`rounded px-3 py-2 ${resolved ? 'bg-green-50 border border-green-200' : 'bg-blue-50 border border-blue-200'}`}>
-            <div className="flex items-center gap-2">
-              <NodeInfo name={detail.sourceName} ctx={detail.sourceCtx} />
-              <ArrowRight size={12} className={`flex-shrink-0 ${resolved ? 'text-green-400' : 'text-blue-400'}`} />
-              <NodeInfo name={detail.targetName} ctx={detail.targetCtx} />
-            </div>
-            {detail.weight && (
-              <div className={`text-[9px] mt-1 ${resolved ? 'text-green-600' : 'text-blue-600'}`}>Weight: {detail.weight}</div>
-            )}
-          </div>
-          {detail.reason && (
-            <div className="text-[9px] text-gray-500 italic px-1">Reason: {detail.reason}</div>
-          )}
-        </div>
-      );
-    }
-
+    case "create_dependency":
     // ── Conflict dependency ──
-    case "conflict_dependency": {
-      return (
-        <div className="flex flex-col gap-2">
-          <div className="text-[10px] font-semibold text-orange-600 uppercase tracking-wider mb-1 flex items-center gap-1">
-            <AlertTriangle size={10} />
-            Conflicting Dependency
-          </div>
-          <div className="bg-orange-50 border border-orange-200 rounded px-3 py-2">
-            <div className="flex items-center gap-2">
-              <NodeInfo name={detail.sourceName} ctx={detail.sourceCtx} />
-              <ArrowRight size={12} className="text-orange-400 flex-shrink-0" />
-              <NodeInfo name={detail.targetName} ctx={detail.targetCtx} />
-            </div>
-            {detail.weight && (
-              <div className="text-[9px] text-orange-600 mt-1">Weight: {detail.weight}</div>
-            )}
-          </div>
-          {detail.conflict && (
-            <div className="bg-red-50 border border-red-200 rounded px-2.5 py-1.5 text-[9px] text-red-700 flex items-start gap-1.5">
-              <AlertTriangle size={10} className="flex-shrink-0 mt-0.5 text-red-500" />
-              <span>{detail.conflict.message}</span>
-            </div>
-          )}
-          {detail.reason && (
-            <div className="text-[9px] text-gray-500 italic px-1">Reason: {detail.reason}</div>
-          )}
-        </div>
-      );
-    }
-
+    case "conflict_dependency":
     // ── Update dependency ──
-    case "update_dependency": {
-      return (
-        <div className="flex flex-col gap-2">
-          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Update Dependency</div>
-          <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2">
-            <div className="flex items-center gap-2">
-              <NodeInfo name={detail.sourceName} ctx={detail.sourceCtx} />
-              <ArrowRight size={12} className="text-amber-400 flex-shrink-0" />
-              <NodeInfo name={detail.targetName} ctx={detail.targetCtx} />
-            </div>
-            {detail.weight && (
-              <div className="text-[9px] text-amber-600 mt-1">Weight → {detail.weight}</div>
-            )}
-          </div>
-          {detail.reason && (
-            <div className="text-[9px] text-gray-500 italic px-1">Reason: {detail.reason}</div>
-          )}
-        </div>
-      );
-    }
-
+    case "update_dependency":
     // ── Remove dependency ──
     case "remove_dependency": {
-      return (
-        <div className="flex flex-col gap-2">
-          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Remove Dependency</div>
-          <div className="bg-red-50 border border-red-200 rounded px-3 py-2">
-            <div className="flex items-center gap-2">
-              <div className="line-through"><NodeInfo name={detail.sourceName} ctx={detail.sourceCtx} /></div>
-              <ArrowRight size={12} className="text-red-400 flex-shrink-0" />
-              <div className="line-through"><NodeInfo name={detail.targetName} ctx={detail.targetCtx} /></div>
-            </div>
-          </div>
-          {detail.reason && (
-            <div className="text-[9px] text-gray-500 italic px-1">Reason: {detail.reason}</div>
-          )}
-        </div>
-      );
+      return <DepEdgeCard detail={detail} changeType={changeType} resolved={resolved} />;
     }
 
     // ── Move milestone ──
     case "move_milestone": {
       return (
         <div className="flex flex-col gap-2">
-          <div>
-            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Move Milestone</div>
-            <div className="bg-teal-50 border border-teal-200 rounded px-3 py-2">
-              <div className="text-[11px] font-medium text-teal-800">{detail.milestoneName}</div>
-            </div>
+          <div className="bg-teal-50 border border-teal-200 rounded px-3 py-2">
+            <div className="text-[11px] font-medium text-teal-800">{detail.milestoneName}</div>
           </div>
           <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
             <ArrowRight size={10} />

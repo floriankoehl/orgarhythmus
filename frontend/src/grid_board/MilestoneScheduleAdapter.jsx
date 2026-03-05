@@ -453,6 +453,8 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   const ioCtx = useMemo(() => ({
     nodes, edges, rows, lanes, laneOrder, totalColumns,
     projectDescription: projectDescRef?.current || "",
+    get selectedNodeIds() { return gridControlRef.current?.selectedNodes || new Set(); },
+    get selectedRowIds() { return gridControlRef.current?.selectedRows || new Set(); },
   }), [nodes, edges, rows, lanes, laneOrder, totalColumns, projectDescRef]);
 
   /** API context for applying AI responses */
@@ -526,6 +528,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       sessionEdgeIds: new Set(),
       detected,
       showInspect: false,
+      focusMode: false,
     });
     setIoPopupOpen(false);
   }, [edges]);
@@ -653,9 +656,31 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
     return reviewState?.sessionEdgeIds || new Set();
   }, [reviewState]);
 
+  // ── Focus mode toggle ──
+  const handleReviewFocusToggle = useCallback(() => {
+    setReviewState(prev => {
+      if (!prev) return prev;
+      const next = { ...prev, focusMode: !prev.focusMode };
+      // When turning focus OFF, show everything
+      if (prev.focusMode && gridControlRef.current) {
+        gridControlRef.current.setRowDisplaySettings(p => {
+          const n = {};
+          for (const id of Object.keys(p)) n[id] = { ...p[id], hidden: false };
+          return n;
+        });
+        gridControlRef.current.setLaneDisplaySettings(p => {
+          const n = {};
+          for (const id of Object.keys(p)) n[id] = { ...p[id], hidden: false };
+          return n;
+        });
+      }
+      return next;
+    });
+  }, []);
+
   // ── Focus mode: hide all rows/lanes not involved in the current review item ──
   useEffect(() => {
-    if (!reviewState || !gridControlRef.current) return;
+    if (!reviewState || !reviewState.focusMode || !gridControlRef.current) return;
     const current = reviewState.items[reviewState.currentIdx];
     if (!current?.detail) return;
     const d = current.detail;
@@ -689,7 +714,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       }
       return next;
     });
-  }, [reviewState?.currentIdx, reviewState?.items, nodes, rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [reviewState?.currentIdx, reviewState?.items, reviewState?.focusMode, nodes, rows]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Build function for inspect modal (uses current nodes/rows/lanes)
   const buildChangeItemsForInspect = useCallback((det) => {
@@ -983,6 +1008,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
           onPrev={handleReviewPrev}
           onNext={handleReviewNext}
           onInspect={handleReviewInspect}
+          onFocusToggle={handleReviewFocusToggle}
           onDone={handleReviewEnd}
         />
       )}
@@ -998,6 +1024,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
           recomposeDetectedFn={recomposeDepDetected}
           applyDetectedFn={applyDepDetected}
           changeTypeMeta={DEP_CHANGE_TYPE_META}
+          initialSlideIdx={reviewState.currentIdx}
         />
       )}
     </DependencyGrid>
@@ -1066,7 +1093,7 @@ function ResolveBanner({ resolveState, nodes, onResume, onCancel }) {
 // ═══════════════════════════════════════════════════════════
 //  Review Bar — compact inline review bar for sliding through proposals
 // ═══════════════════════════════════════════════════════════
-function ReviewBar({ reviewState, nodes, rows, onAccept, onDecline, onPrev, onNext, onInspect, onDone }) {
+function ReviewBar({ reviewState, nodes, rows, onAccept, onDecline, onPrev, onNext, onInspect, onFocusToggle, onDone }) {
   const { items, currentIdx, sessionEdgeIds } = reviewState;
   const current = items[currentIdx];
   const total = items.length;
@@ -1171,6 +1198,11 @@ function ReviewBar({ reviewState, nodes, rows, onAccept, onDecline, onPrev, onNe
         <div className="text-[11px] font-semibold text-gray-800 whitespace-nowrap">
           {labelContent}
         </div>
+        {d?.reason && (
+          <div className="text-[9px] text-gray-500 italic max-w-[400px] truncate" title={d.reason}>
+            {d.reason}
+          </div>
+        )}
         {isConflict && !isAlreadyAccepted && (
           <div className="text-[9px] text-orange-600 font-medium">
             ⚠ Conflict: ends day {conflict.sourceEnd}, starts day {conflict.targetStart}
@@ -1192,6 +1224,19 @@ function ReviewBar({ reviewState, nodes, rows, onAccept, onDecline, onPrev, onNe
 
       {/* Divider */}
       <div className="w-px h-6 bg-gray-200 mx-1" />
+
+      {/* Focus toggle */}
+      <button
+        onClick={onFocusToggle}
+        className={`text-[10px] px-2 py-1 rounded border transition-colors flex-shrink-0 ${
+          reviewState.focusMode
+            ? 'bg-violet-100 border-violet-300 text-violet-700'
+            : 'border-gray-300 text-gray-500 hover:bg-gray-100'
+        }`}
+        title={reviewState.focusMode ? 'Show all teams & tasks' : 'Focus on relevant teams & tasks'}
+      >
+        {reviewState.focusMode ? 'Focus' : 'All'}
+      </button>
 
       {/* Inspect */}
       <button

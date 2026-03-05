@@ -723,6 +723,8 @@ function DependencyGridContent({
       collectViewState,
       setRowDisplaySettings,
       setLaneDisplaySettings,
+      selectedNodes,
+      selectedRows,
     };
   }
 
