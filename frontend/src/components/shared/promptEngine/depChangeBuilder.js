@@ -41,6 +41,28 @@ function truncate(str, len = 50) {
   return str.length > len ? str.slice(0, len) + "…" : str;
 }
 
+/** Resolve a milestone name: prefer entry field, then look up in nodesCtx, fallback to ID */
+function nodeName(entry, field, idField, nodesCtx) {
+  if (entry[field]) return entry[field];
+  const id = entry[idField];
+  if (id != null && nodesCtx[id]) return nodesCtx[id].name || String(id);
+  return String(id ?? "?");
+}
+
+/** Resolve team/task context for a milestone node */
+function nodeContext(nodeId, nodesCtx, rowsCtx, lanesCtx) {
+  const node = nodesCtx[nodeId];
+  if (!node) return null;
+  const row = rowsCtx[node.row || node.task];
+  if (!row) return { taskName: null, teamName: null, teamColor: null };
+  const lane = lanesCtx[row.lane || row.team];
+  return {
+    taskName: row.name || null,
+    teamName: lane?.name || null,
+    teamColor: lane?.color || null,
+  };
+}
+
 // ─── Change-type meta ──────────────────────────────────
 
 export const DEP_CHANGE_TYPE_META = {
@@ -61,8 +83,10 @@ export const DEP_CHANGE_TYPE_META = {
 /**
  * @param {Array}  detected – from detectDepResponseContent()
  * @param {Object} nodesCtx – current nodes (milestones) for conflict checking
+ * @param {Object} rowsCtx  – rows/tasks for team/task context
+ * @param {Object} lanesCtx – lanes/teams for team names/colors
  */
-export function buildDepChangeItems(detected, nodesCtx = {}) {
+export function buildDepChangeItems(detected, nodesCtx = {}, rowsCtx = {}, lanesCtx = {}) {
   const items = [];
   let nextId = 1;
   const makeId = () => `dch-${nextId++}`;
@@ -95,6 +119,14 @@ export function buildDepChangeItems(detected, nodesCtx = {}) {
             changeType: "update_milestone",
             group: "Update Milestones",
             depth: 0,
+            detail: {
+              type: "update_milestone",
+              originalName: entry.original_name,
+              newName: entry.name !== entry.original_name ? entry.name : null,
+              startIndex: entry.start_index,
+              duration: entry.duration,
+              description: entry.description || null,
+            },
             _sortOrder: sortOrder,
             _ref: { detectedIdx: detIdx, dataIdx: di, childField: null, childIdx: null },
           });
@@ -110,13 +142,29 @@ export function buildDepChangeItems(detected, nodesCtx = {}) {
           if (entry.weight) parts.push(`Weight: ${entry.weight}`);
           if (entry.reason) parts.push(`Reason: "${truncate(entry.reason, 40)}"`);
 
+          const srcName = nodeName(entry, "source_milestone_name", "source_id", nodesCtx);
+          const tgtName = nodeName(entry, "target_milestone_name", "target_id", nodesCtx);
+          const srcCtx = nodeContext(entry.source_id, nodesCtx, rowsCtx, lanesCtx);
+          const tgtCtx = nodeContext(entry.target_id, nodesCtx, rowsCtx, lanesCtx);
+
           items.push({
             id: makeId(), parentId: null, accepted: true,
-            label: `Update dependency: ${entry.source_id} → ${entry.target_id}`,
+            label: `Update dependency: "${truncate(srcName, 25)}" → "${truncate(tgtName, 25)}"`,
             sublabel: parts.join(" · ") || null,
             changeType: "update_dependency",
             group: "Update Dependencies",
             depth: 0,
+            detail: {
+              type: "update_dependency",
+              sourceId: entry.source_id,
+              targetId: entry.target_id,
+              sourceName: srcName,
+              targetName: tgtName,
+              sourceCtx: srcCtx,
+              targetCtx: tgtCtx,
+              weight: entry.weight || null,
+              reason: entry.reason || null,
+            },
             _sortOrder: sortOrder,
             _ref: { detectedIdx: detIdx, dataIdx: di, childField: null, childIdx: null },
           });
@@ -128,9 +176,11 @@ export function buildDepChangeItems(detected, nodesCtx = {}) {
       case "remove_dependencies": {
         for (let di = 0; di < item.data.length; di++) {
           const entry = item.data[di];
-          const label = entry.source_milestone_name
-            ? `"${truncate(entry.source_milestone_name, 25)}" → "${truncate(entry.target_milestone_name, 25)}"`
-            : `${entry.source_id} → ${entry.target_id}`;
+          const srcName = nodeName(entry, "source_milestone_name", "source_id", nodesCtx);
+          const tgtName = nodeName(entry, "target_milestone_name", "target_id", nodesCtx);
+          const srcCtx = nodeContext(entry.source_id, nodesCtx, rowsCtx, lanesCtx);
+          const tgtCtx = nodeContext(entry.target_id, nodesCtx, rowsCtx, lanesCtx);
+          const label = `"${truncate(srcName, 25)}" → "${truncate(tgtName, 25)}"`;
 
           items.push({
             id: makeId(), parentId: null, accepted: true,
@@ -139,6 +189,14 @@ export function buildDepChangeItems(detected, nodesCtx = {}) {
             changeType: "remove_dependency",
             group: "Remove Dependencies",
             depth: 0,
+            detail: {
+              type: "remove_dependency",
+              sourceName: srcName,
+              targetName: tgtName,
+              sourceCtx: srcCtx,
+              targetCtx: tgtCtx,
+              reason: entry.reason || null,
+            },
             _sortOrder: sortOrder,
             _ref: { detectedIdx: detIdx, dataIdx: di, childField: null, childIdx: null },
           });
@@ -165,6 +223,14 @@ export function buildDepChangeItems(detected, nodesCtx = {}) {
             changeType: "create_milestone",
             group: "New Milestones",
             depth: 0,
+            detail: {
+              type: "create_milestone",
+              name: entry.name,
+              taskName: entry.task_name || null,
+              startIndex: entry.start_index,
+              duration: entry.duration || null,
+              description: entry.description || null,
+            },
             _sortOrder: sortOrder,
             _ref: { detectedIdx: detIdx, dataIdx: di, childField: null, childIdx: null },
           });
@@ -197,8 +263,10 @@ export function buildDepChangeItems(detected, nodesCtx = {}) {
             }
           }
 
-          const srcLabel = entry.source_milestone_name || entry.source_id;
-          const tgtLabel = entry.target_milestone_name || entry.target_id;
+          const srcLabel = nodeName(entry, "source_milestone_name", "source_id", nodesCtx);
+          const tgtLabel = nodeName(entry, "target_milestone_name", "target_id", nodesCtx);
+          const srcCtx = nodeContext(entry.source_id, nodesCtx, rowsCtx, lanesCtx);
+          const tgtCtx = nodeContext(entry.target_id, nodesCtx, rowsCtx, lanesCtx);
 
           items.push({
             id: makeId(),
@@ -214,6 +282,18 @@ export function buildDepChangeItems(detected, nodesCtx = {}) {
             group: conflict ? "Conflicting Dependencies" : "New Dependencies",
             depth: parentId ? 1 : 0,
             conflict,
+            detail: {
+              type: conflict ? "conflict_dependency" : "create_dependency",
+              sourceId: entry.source_id,
+              targetId: entry.target_id,
+              sourceName: String(srcLabel),
+              targetName: String(tgtLabel),
+              sourceCtx: srcCtx,
+              targetCtx: tgtCtx,
+              weight: entry.weight || "strong",
+              reason: entry.reason || null,
+              conflict: conflict || null,
+            },
             _sortOrder: conflict ? sortOrder + 0.5 : sortOrder,
             _ref: { detectedIdx: detIdx, dataIdx: di, childField: null, childIdx: null },
           });
@@ -235,6 +315,13 @@ export function buildDepChangeItems(detected, nodesCtx = {}) {
             changeType: "move_milestone",
             group: "Schedule Changes",
             depth: 0,
+            detail: {
+              type: "move_milestone",
+              milestoneName: ms?.name || String(entry.milestone_id),
+              currentDay: currentPos,
+              newDay: entry.start_index,
+              duration: entry.duration || null,
+            },
             _sortOrder: sortOrder,
             _ref: { detectedIdx: detIdx, dataIdx: di, childField: null, childIdx: null },
           });

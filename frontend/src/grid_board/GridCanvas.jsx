@@ -115,6 +115,7 @@ export default function GridCanvas({
     hideRowLabels = false,
     hideRowActions = false,
     marqueeRect,
+    ghostEdges = [],
   } = displayState;
 
   // ── Destructure handlers ──
@@ -997,6 +998,40 @@ export default function GridCanvas({
                 style={{ pointerEvents: "none" }}
               />
             )}
+
+            {/* Ghost edges — proposed dependency preview during conflict resolution */}
+            {ghostEdges.map((ge) => {
+              const sourcePos = getNodeHandlePosition(ge.source, "source");
+              const targetPos = getNodeHandlePosition(ge.target, "target");
+              if (!sourcePos || !targetPos) return null;
+              const pathD = getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y);
+              return (
+                <g key={`ghost-${ge.source}-${ge.target}`} style={{ pointerEvents: 'none' }}>
+                  <path
+                    d={pathD}
+                    stroke="#f97316"
+                    strokeWidth="3"
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeDasharray="6, 8"
+                    opacity="0.6"
+                    style={{
+                      animation: "flowAnimation 3s linear infinite",
+                      filter: "drop-shadow(0 0 4px rgba(249, 115, 22, 0.4))",
+                    }}
+                  />
+                  <path
+                    d={pathD}
+                    stroke="#f97316"
+                    strokeWidth="8"
+                    fill="none"
+                    opacity="0.12"
+                    strokeLinecap="round"
+                    style={{ pointerEvents: "none" }}
+                  />
+                </g>
+              );
+            })}
           </svg>
 
           {/* Nodes Layer - ABOVE edges */}

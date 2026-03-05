@@ -197,6 +197,12 @@ function DependencyGridContent({
   setIoPopupOpen,
   ioPopupContent,
 
+  /** Ghost edges for conflict resolution — rendered as dashed preview lines */
+  ghostEdges,
+  /** Resolve conflict state + end callback — passed as children render context */
+  resolveState,
+  onResolveEnd,
+
   /** When true, rendered inside a floating window — uses compact padding, hides header toggle */
   isFloating = false,
 
@@ -729,7 +735,7 @@ function DependencyGridContent({
       ioPopupContent,
     };
   }
-  useEffect(() => { triggerViewBarRender?.(); }, [savedViews, activeViewId, activeViewName, toolbarCollapsed, ioPopupOpen, triggerViewBarRender]);
+  useEffect(() => { triggerViewBarRender?.(); }, [savedViews, activeViewId, activeViewName, toolbarCollapsed, ioPopupOpen, ghostEdges, triggerViewBarRender]);
 
   // ─────────────────────────
   //  Snapshot management (inline — no separate hook needed since it's all callbacks)
@@ -1026,6 +1032,7 @@ function DependencyGridContent({
     hideRowLabels,
     hideRowActions,
     marqueeRect,
+    ghostEdges,
   };
 
   const handlers = {

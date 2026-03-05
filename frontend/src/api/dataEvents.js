@@ -1,51 +1,48 @@
 /**
- * Cross-window data synchronisation via CustomEvent.
+ * Cross-window data synchronisation — manual-refresh model.
  *
- * Event types: 'tasks', 'teams', 'milestones'
- *
- * Usage:
- *   emitDataEvent('tasks')                        — broadcast that task data changed
- *   useDataRefresh(['tasks','teams'], cb, muteRef) — react to changes from *other* windows
+ * emitDataEvent('tasks')      — mark data as stale (visual indicator only)
+ * triggerManualRefresh()       — user-initiated: fires all registered refresh callbacks
+ * useManualRefresh(callback)   — register a callback for manual refresh
+ * useStaleData()               — returns `true` when unseen changes exist
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-const EVENT_NAME = 'data-sync';
+/* ── Stale flag bookkeeping ── */
+let _stale = false;
+const _staleListeners = new Set();
+function _notify() { _staleListeners.forEach(fn => fn(_stale)); }
 
-/** Dispatch a data-sync event.  Listeners fire synchronously. */
-export function emitDataEvent(type) {
-  window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: { type } }));
+/** Mark data as stale (called after mutations). */
+export function emitDataEvent(_type) {
+  if (!_stale) { _stale = true; _notify(); }
 }
 
-/**
- * React hook — listen for data-sync events of the given types and invoke `callback`.
- *
- * @param {string[]}  types       e.g. ['tasks', 'teams']
- * @param {() => void} callback   called when a matching event arrives
- * @param {React.MutableRefObject<boolean>} [mutingRef]
- *   Optional — when `mutingRef.current` is `true` the callback is skipped and the
- *   ref is reset.  Set it to `true` right before calling `emitDataEvent` so the
- *   emitting component doesn't trigger its own listener.
- */
-export function useDataRefresh(types, callback, mutingRef) {
+/** User-initiated: refresh all windows and clear the stale flag. */
+export function triggerManualRefresh() {
+  _stale = false;
+  _notify();
+  window.dispatchEvent(new CustomEvent('data-manual-refresh'));
+}
+
+/** Hook — returns `true` when data has changed since last manual refresh. */
+export function useStaleData() {
+  const [stale, setStale] = useState(_stale);
+  useEffect(() => {
+    _staleListeners.add(setStale);
+    setStale(_stale);          // sync on mount
+    return () => _staleListeners.delete(setStale);
+  }, []);
+  return stale;
+}
+
+/** Hook — call `callback` when the user triggers a manual refresh. */
+export function useManualRefresh(callback) {
   const cbRef = useRef(callback);
   cbRef.current = callback;
-
-  // Stable key so the effect only re-subscribes when the set of types changes.
-  const typesKey = types.join(',');
-
   useEffect(() => {
-    const typeSet = new Set(typesKey.split(','));
-
-    const handler = (e) => {
-      if (!typeSet.has(e.detail?.type)) return;
-      if (mutingRef?.current) {
-        mutingRef.current = false;
-        return;
-      }
-      cbRef.current();
-    };
-
-    window.addEventListener(EVENT_NAME, handler);
-    return () => window.removeEventListener(EVENT_NAME, handler);
-  }, [typesKey, mutingRef]);
+    const handler = () => cbRef.current();
+    window.addEventListener('data-manual-refresh', handler);
+    return () => window.removeEventListener('data-manual-refresh', handler);
+  }, []);
 }

@@ -15,8 +15,9 @@ import usePromptSettings from '../components/usePromptSettings';
 import { assemblePrompt } from '../components/shared/promptEngine/assembler';
 import { DEP_SCENARIOS, DEP_GRID } from '../components/shared/promptEngine/scenarios/depScenarios';
 import DependencyIOPopup from './DependencyIOPopup';
+import { checkDepConflict } from '../components/shared/promptEngine/depResponseApplier';
 import { playSound } from '../assets/sound_registry';
-import { emitDataEvent, useDataRefresh } from '../api/dataEvents';
+import { emitDataEvent, useManualRefresh } from '../api/dataEvents';
 
 //  API imports — existing backend calls
 import {
@@ -72,6 +73,10 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   const navigate = useNavigate();
   const { buildClipboardText, settings: promptSettings, projectDescRef } = usePromptSettings();
   const [ioPopupOpen, setIoPopupOpen] = useState(false);
+
+  // ── Conflict resolve state ──
+  // { sourceId, targetId, sourceName, targetName, changeItemId } or null
+  const [resolveState, setResolveState] = useState(null);
 
   // ── Secret shortcut: press 0 + 9 together → 3D view ──
   const heldRef = useRef(new Set());
@@ -135,7 +140,6 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   const [rows, setRows]                     = useState({});   // tasks
   const [edges, setEdges]                   = useState([]);   // dependencies
   const [reloadFlag, setReloadFlag]         = useState(0);     // bump to reload
-  const _mutingRef = useRef(false);
 
   // ── Load all data ──
   useEffect(() => {
@@ -222,8 +226,9 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
     return () => window.removeEventListener("ideabin-dep-refresh", h);
   }, []);
 
-  // ── Cross-window sync: reload when another window mutates shared data ──
-  useDataRefresh(['tasks', 'teams', 'milestones'], () => setReloadFlag(n => n + 1), _mutingRef);
+  // ── Targeted partial reloaders for cross-window sync ──
+  // ── Cross-window sync: manual refresh reloads all data ──
+  useManualRefresh(() => setReloadFlag(n => n + 1));
 
   // ════════════════════════════════════════════════════════════════════
   //  Column labels (computed from projectStartDate + projectDays)
@@ -262,13 +267,11 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
   const persistNodeMove = useCallback(async (nodeId, newStartIndex) => {
     await update_start_index(projectId, nodeId, newStartIndex);
-    _mutingRef.current = true;
     emitDataEvent('milestones');
   }, [projectId]);
 
   const persistNodeResize = useCallback(async (nodeId, durationChange) => {
     await change_duration(projectId, nodeId, durationChange);
-    _mutingRef.current = true;
     emitDataEvent('milestones');
   }, [projectId]);
 
@@ -280,7 +283,6 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
     const result = await add_milestone(projectId, rowId, apiData);
     // API returns { added_milestone: {...}, created: true } — extract the milestone
     const milestone = result?.added_milestone || result;
-    _mutingRef.current = true;
     emitDataEvent('milestones');
     if (milestone) return { ...milestone, row: milestone.task, startColumn: milestone.start_index };
     return milestone;
@@ -288,19 +290,16 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
   const persistNodeDelete = useCallback(async (nodeId) => {
     await delete_milestone(projectId, nodeId);
-    _mutingRef.current = true;
     emitDataEvent('milestones');
   }, [projectId]);
 
   const persistNodeRename = useCallback(async (nodeId, newName) => {
     await rename_milestone(projectId, nodeId, newName);
-    _mutingRef.current = true;
     emitDataEvent('milestones');
   }, [projectId]);
 
   const persistNodeTaskChange = useCallback(async (nodeId, newRowId) => {
     await move_milestone_task(projectId, nodeId, newRowId);
-    _mutingRef.current = true;
     emitDataEvent('milestones');
   }, [projectId]);
 
@@ -321,28 +320,24 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   const persistLaneOrder = useCallback(async (newOrder) => {
     const { safe_team_order } = await import('../api/dependencies_api');
     await safe_team_order(projectId, newOrder);
-    _mutingRef.current = true;
     emitDataEvent('teams');
   }, [projectId]);
 
   const persistLaneCreate = useCallback(async (data) => {
     const { name, color } = data;
     const result = await createTeamForProject(projectId, { name, color });
-    _mutingRef.current = true;
     emitDataEvent('teams');
     return result;
   }, [projectId]);
 
   const persistRowOrder = useCallback(async (rowId, targetLaneId, order) => {
     await reorder_team_tasks(projectId, rowId, targetLaneId, order);
-    _mutingRef.current = true;
     emitDataEvent('tasks');
   }, [projectId]);
 
   const persistRowCreate = useCallback(async (data) => {
     const { name, lane_id } = data;
     const result = await createTaskForProject(projectId, { name, team_id: lane_id });
-    _mutingRef.current = true;
     emitDataEvent('tasks');
     return result;
   }, [projectId]);
@@ -371,13 +366,11 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
   const persistRowDeadline = useCallback(async (rowId, deadlineIndex) => {
     await set_task_deadline(projectId, rowId, deadlineIndex);
-    _mutingRef.current = true;
     emitDataEvent('tasks');
   }, [projectId]);
 
   const persistLaneColor = useCallback(async (laneId, color) => {
     await updateTeam(projectId, laneId, { color });
-    _mutingRef.current = true;
     emitDataEvent('teams');
   }, [projectId]);
 
@@ -454,7 +447,6 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   const applyCtx = useMemo(() => ({
     addMilestone: async (taskId, opts) => {
       const result = await add_milestone(projectId, taskId, opts);
-      _mutingRef.current = true;
       emitDataEvent('milestones');
       return result?.added_milestone || result;
     },
@@ -467,7 +459,6 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       if (updates.start_index != null) await update_start_index(projectId, nodeId, updates.start_index);
       if (updates.duration != null) await change_duration(projectId, nodeId, updates.duration);
       if (updates.task != null) await move_milestone_task(projectId, nodeId, updates.task);
-      _mutingRef.current = true;
       emitDataEvent('milestones');
     },
     updateDependency: async (sourceId, targetId, updates) => {
@@ -479,12 +470,26 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
     },
     moveMilestone: async (nodeId, newStartIndex) => {
       await update_start_index(projectId, nodeId, newStartIndex);
-      _mutingRef.current = true;
       emitDataEvent('milestones');
     },
     refreshAll: () => setReloadFlag(n => n + 1),
     nodes, edges, rows,
   }), [projectId, nodes, edges, rows]);
+
+  // ── Conflict resolve handlers ──
+  const handleResolveStart = useCallback((info) => {
+    setResolveState(info);
+  }, []);
+
+  const handleResolveEnd = useCallback(() => {
+    setResolveState(null);
+  }, []);
+
+  // Ghost edges for the grid — derived from resolveState
+  const ghostEdges = useMemo(() => {
+    if (!resolveState) return [];
+    return [{ source: resolveState.sourceId, target: resolveState.targetId }];
+  }, [resolveState]);
 
   // ── Navigation ──
   const handleLaneNavigate = useCallback((laneId) => {
@@ -706,14 +711,22 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
           settings={promptSettings}
           assemblePrompt={assemblePrompt}
           applyCtx={applyCtx}
-          onClose={() => setIoPopupOpen(false)}
+          onClose={() => { setIoPopupOpen(false); setResolveState(null); }}
           iconColor="#0ea5e9"
+          onResolveStart={handleResolveStart}
+          onResolveEnd={handleResolveEnd}
+          resolveActive={!!resolveState}
         />
       }
 
       // View bar (floating title bar)
       viewBarRef={viewBarRef}
       triggerViewBarRender={triggerViewBarRender}
+
+      // Ghost edges for conflict resolution
+      ghostEdges={ghostEdges}
+      resolveState={resolveState}
+      onResolveEnd={handleResolveEnd}
     >
       {/* Refactor mode ghost card */}
       {refactorGhost && (
@@ -737,6 +750,74 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
       {/* Refactor mode active banner */}
       {/* (This is rendered from the grid's refactorMode state, but the banner is domain UI.) */}
+
+      {/* Conflict resolve banner */}
+      {resolveState && (
+        <ResolveBanner
+          resolveState={resolveState}
+          nodes={nodes}
+          onResume={handleResolveEnd}
+          onCancel={() => { setResolveState(null); }}
+        />
+      )}
     </DependencyGrid>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  Resolve Banner — floating indicator during conflict resolve
+// ═══════════════════════════════════════════════════════════
+function ResolveBanner({ resolveState, nodes, onResume, onCancel }) {
+  // Real-time conflict check from current node positions
+  const sourceNode = nodes[resolveState.sourceId];
+  const targetNode = nodes[resolveState.targetId];
+  const conflict = sourceNode && targetNode
+    ? checkDepConflict(sourceNode, targetNode)
+    : { conflict: true };
+  const isResolved = !conflict.conflict;
+
+  return (
+    <div
+      className="flex items-center gap-3 px-4 py-2.5 rounded-xl shadow-2xl border-2 bg-white/95 backdrop-blur-sm"
+      style={{
+        position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 99999,
+        borderColor: isResolved ? '#22c55e' : '#f97316',
+      }}
+    >
+      {/* Status indicator */}
+      <div className={`w-3 h-3 rounded-full flex-shrink-0 ${isResolved ? 'bg-green-500' : 'bg-orange-500 animate-pulse'}`} />
+
+      {/* Info */}
+      <div className="flex flex-col min-w-0">
+        <div className="text-[11px] font-semibold text-gray-800">
+          Resolving: "{resolveState.sourceName}" → "{resolveState.targetName}"
+        </div>
+        <div className={`text-[10px] font-medium ${isResolved ? 'text-green-600' : 'text-orange-600'}`}>
+          {isResolved
+            ? '✓ Conflict resolved — you can resume and accept'
+            : `⚠ Conflict: predecessor ends day ${conflict.sourceEnd}, successor starts day ${conflict.targetStart}`
+          }
+        </div>
+      </div>
+
+      {/* Actions */}
+      <button
+        onClick={onResume}
+        className={`text-[11px] px-3 py-1.5 rounded font-medium transition-colors flex-shrink-0 ${
+          isResolved
+            ? 'bg-green-600 text-white hover:bg-green-700'
+            : 'bg-orange-100 text-orange-700 hover:bg-orange-200 border border-orange-300'
+        }`}
+      >
+        Resume
+      </button>
+      <button
+        onClick={onCancel}
+        className="text-[10px] px-2 py-1 rounded border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0"
+      >
+        Cancel
+      </button>
+    </div>
   );
 }

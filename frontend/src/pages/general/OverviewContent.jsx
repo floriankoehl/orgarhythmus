@@ -38,7 +38,7 @@ import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import dayjs from "dayjs";
-import { useDataRefresh } from "../../api/dataEvents";
+import { useManualRefresh } from "../../api/dataEvents";
 import { validate_project_dates, sync_project_days } from "../../api/dependencies_api.js";
 
 /**
@@ -62,9 +62,9 @@ export default function OverviewContent() {
     loadData();
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Cross-window sync: reload when tasks/teams change ──
+  // ── Cross-window sync: reload on manual refresh ──
   const loadDataCb = useCallback(() => { loadData(); }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useDataRefresh(['tasks', 'teams'], loadDataCb);
+  useManualRefresh(loadDataCb);
 
   async function loadData() {
     try {

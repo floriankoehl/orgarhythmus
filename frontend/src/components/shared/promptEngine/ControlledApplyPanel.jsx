@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback } from "react";
 import {
   Check, X, ChevronRight, ChevronDown, ChevronLeft,
   Loader, ArrowUpFromLine, CheckCheck, XCircle,
-  LayoutList, ArrowRight, ArrowLeft,
+  LayoutList, ArrowRight, ArrowLeft, AlertTriangle,
 } from "lucide-react";
 import {
   buildChangeItems as _ideabinBuildChangeItems,
@@ -34,6 +34,8 @@ import { applyDetected as _ideabinApplyDetected } from "./responseApplier";
  *    recomposeDetectedFn     – optional override (task domain)
  *    applyDetectedFn         – optional override (task domain)
  *    changeTypeMeta          – optional override (task domain)
+ *    onResolve               – optional (changeItem) => void — for conflict resolution workflow
+ *    paused                  – optional boolean — hides panel UI but preserves state
  * ═══════════════════════════════════════════════════════════
  */
 export default function ControlledApplyModal({
@@ -42,6 +44,8 @@ export default function ControlledApplyModal({
   recomposeDetectedFn,
   applyDetectedFn,
   changeTypeMeta,
+  onResolve,
+  paused,
 }) {
   // Domain-aware: use overrides if provided, else default to IdeaBin
   const buildChangeItems   = buildChangeItemsFn   || _ideabinBuildChangeItems;
@@ -183,6 +187,9 @@ export default function ControlledApplyModal({
 
   // ─── Render ───────────────────────────────────────────
 
+  // When paused (resolve mode), hide the backdrop + modal but stay mounted
+  if (paused) return null;
+
   return (
     <>
       {/* Backdrop */}
@@ -242,6 +249,7 @@ export default function ControlledApplyModal({
               isDisabled={isDisabled}
               analysisItems={analysisItems}
               changeTypeMeta={CHANGE_TYPE_META}
+              onResolve={onResolve}
             />
           ) : (
             <OverviewView
@@ -296,7 +304,7 @@ export default function ControlledApplyModal({
 //  SLIDE VIEW
 // ═══════════════════════════════════════════════════════════
 
-function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext, isDisabled, analysisItems, changeTypeMeta }) {
+function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext, isDisabled, analysisItems, changeTypeMeta, onResolve }) {
   const CHANGE_TYPE_META = changeTypeMeta;
   const current = slideItems[slideIdx];
   if (!current && analysisItems.length === 0) {
@@ -389,6 +397,15 @@ function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext
         >
           <XCircle size={12} /> {isOff ? "Declined" : "Decline"}
         </button>
+        {/* Resolve button — only for conflict items when onResolve is provided */}
+        {onResolve && current.conflict && (
+          <button
+            onClick={() => onResolve(current)}
+            className="flex-1 flex items-center justify-center gap-1.5 text-[11px] py-2 rounded font-medium transition-colors bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100"
+          >
+            <AlertTriangle size={12} /> Resolve
+          </button>
+        )}
         <button
           onClick={() => {
             if (isOff) onToggle(current.id);
@@ -414,6 +431,20 @@ function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext
 
 function SlideDetailCard({ detail, changeType }) {
   if (!detail) return null;
+
+  /** Render a milestone name colored by team with team/task subtitle */
+  const NodeInfo = ({ name, ctx, fallbackColor }) => (
+    <div className="flex flex-col">
+      <span className="font-medium text-[11px]" style={ctx?.teamColor ? { color: ctx.teamColor } : undefined}>
+        {name}
+      </span>
+      {(ctx?.teamName || ctx?.taskName) && (
+        <span className="text-[8px] text-gray-400 leading-tight mt-0.5">
+          {[ctx.teamName && `Team: ${ctx.teamName}`, ctx.taskName && `Task: ${ctx.taskName}`].filter(Boolean).join(" · ")}
+        </span>
+      )}
+    </div>
+  );
 
   switch (detail.type) {
 
@@ -896,6 +927,201 @@ function SlideDetailCard({ detail, changeType }) {
           </div>
           <div className="bg-purple-50 border border-purple-200 rounded px-3 py-2">
             <div className="text-[11px] font-medium text-purple-800">{detail.criterionTitle}</div>
+          </div>
+        </div>
+      );
+    }
+
+    // ════════════════════════════════════════════════════
+    //  DEPENDENCY DOMAIN — detail types
+    // ════════════════════════════════════════════════════
+
+    // ── Create milestone ──
+    case "create_milestone": {
+      return (
+        <div className="flex flex-col gap-2">
+          <div>
+            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">New Milestone</div>
+            <div className="bg-green-50 border border-green-200 rounded px-3 py-2">
+              <div className="text-[12px] font-medium text-green-800">{detail.name}</div>
+              {detail.description && (
+                <div className="text-[10px] text-green-700 mt-1 whitespace-pre-wrap">{detail.description}</div>
+              )}
+              {(detail.startIndex != null || detail.duration) && (
+                <div className="flex items-center gap-2 mt-1.5">
+                  {detail.startIndex != null && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">
+                      Day: {detail.startIndex}
+                    </span>
+                  )}
+                  {detail.duration && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-medium">
+                      Duration: {detail.duration}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+          {detail.taskName && (
+            <div className="text-[10px] text-gray-500">
+              Task: <span className="font-medium text-gray-700">{detail.taskName}</span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Update milestone ──
+    case "update_milestone": {
+      return (
+        <div className="flex flex-col gap-3">
+          {detail.newName ? (
+            <div className="flex flex-col gap-1.5">
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Milestone Name</div>
+              <div className="flex flex-col gap-1">
+                <div className="bg-red-50 border border-red-200 rounded px-3 py-1.5">
+                  <div className="text-[10px] text-red-400 mb-0.5">Before</div>
+                  <div className="text-[11px] text-red-800 line-through">{detail.originalName}</div>
+                </div>
+                <div className="bg-green-50 border border-green-200 rounded px-3 py-1.5">
+                  <div className="text-[10px] text-green-500 mb-0.5">After</div>
+                  <div className="text-[11px] text-green-800 font-medium">{detail.newName}</div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Milestone</div>
+              <div className="text-[11px] text-gray-800">{detail.originalName}</div>
+            </div>
+          )}
+          {(detail.startIndex != null || detail.duration != null) && (
+            <div className="flex items-center gap-2">
+              {detail.startIndex != null && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">
+                  Day → {detail.startIndex}
+                </span>
+              )}
+              {detail.duration != null && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">
+                  Duration → {detail.duration}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Create dependency ──
+    case "create_dependency": {
+      return (
+        <div className="flex flex-col gap-2">
+          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">New Dependency</div>
+          <div className="bg-blue-50 border border-blue-200 rounded px-3 py-2">
+            <div className="flex items-center gap-2">
+              <NodeInfo name={detail.sourceName} ctx={detail.sourceCtx} />
+              <ArrowRight size={12} className="text-blue-400 flex-shrink-0" />
+              <NodeInfo name={detail.targetName} ctx={detail.targetCtx} />
+            </div>
+            {detail.weight && (
+              <div className="text-[9px] text-blue-600 mt-1">Weight: {detail.weight}</div>
+            )}
+          </div>
+          {detail.reason && (
+            <div className="text-[9px] text-gray-500 italic px-1">Reason: {detail.reason}</div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Conflict dependency ──
+    case "conflict_dependency": {
+      return (
+        <div className="flex flex-col gap-2">
+          <div className="text-[10px] font-semibold text-orange-600 uppercase tracking-wider mb-1 flex items-center gap-1">
+            <AlertTriangle size={10} />
+            Conflicting Dependency
+          </div>
+          <div className="bg-orange-50 border border-orange-200 rounded px-3 py-2">
+            <div className="flex items-center gap-2">
+              <NodeInfo name={detail.sourceName} ctx={detail.sourceCtx} />
+              <ArrowRight size={12} className="text-orange-400 flex-shrink-0" />
+              <NodeInfo name={detail.targetName} ctx={detail.targetCtx} />
+            </div>
+            {detail.weight && (
+              <div className="text-[9px] text-orange-600 mt-1">Weight: {detail.weight}</div>
+            )}
+          </div>
+          {detail.conflict && (
+            <div className="bg-red-50 border border-red-200 rounded px-2.5 py-1.5 text-[9px] text-red-700 flex items-start gap-1.5">
+              <AlertTriangle size={10} className="flex-shrink-0 mt-0.5 text-red-500" />
+              <span>{detail.conflict.message}</span>
+            </div>
+          )}
+          {detail.reason && (
+            <div className="text-[9px] text-gray-500 italic px-1">Reason: {detail.reason}</div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Update dependency ──
+    case "update_dependency": {
+      return (
+        <div className="flex flex-col gap-2">
+          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Update Dependency</div>
+          <div className="bg-amber-50 border border-amber-200 rounded px-3 py-2">
+            <div className="flex items-center gap-2">
+              <NodeInfo name={detail.sourceName} ctx={detail.sourceCtx} />
+              <ArrowRight size={12} className="text-amber-400 flex-shrink-0" />
+              <NodeInfo name={detail.targetName} ctx={detail.targetCtx} />
+            </div>
+            {detail.weight && (
+              <div className="text-[9px] text-amber-600 mt-1">Weight → {detail.weight}</div>
+            )}
+          </div>
+          {detail.reason && (
+            <div className="text-[9px] text-gray-500 italic px-1">Reason: {detail.reason}</div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Remove dependency ──
+    case "remove_dependency": {
+      return (
+        <div className="flex flex-col gap-2">
+          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Remove Dependency</div>
+          <div className="bg-red-50 border border-red-200 rounded px-3 py-2">
+            <div className="flex items-center gap-2">
+              <div className="line-through"><NodeInfo name={detail.sourceName} ctx={detail.sourceCtx} /></div>
+              <ArrowRight size={12} className="text-red-400 flex-shrink-0" />
+              <div className="line-through"><NodeInfo name={detail.targetName} ctx={detail.targetCtx} /></div>
+            </div>
+          </div>
+          {detail.reason && (
+            <div className="text-[9px] text-gray-500 italic px-1">Reason: {detail.reason}</div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Move milestone ──
+    case "move_milestone": {
+      return (
+        <div className="flex flex-col gap-2">
+          <div>
+            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Move Milestone</div>
+            <div className="bg-teal-50 border border-teal-200 rounded px-3 py-2">
+              <div className="text-[11px] font-medium text-teal-800">{detail.milestoneName}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
+            <ArrowRight size={10} />
+            Day {detail.currentDay} → Day {detail.newDay}
+            {detail.duration && <span className="text-gray-400 ml-1">(duration: {detail.duration})</span>}
           </div>
         </div>
       );

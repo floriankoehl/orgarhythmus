@@ -18,7 +18,7 @@ import {
 import dayjs from "dayjs";
 import isBetween from "dayjs/plugin/isBetween";
 import isSameOrAfter from "dayjs/plugin/isSameOrAfter";
-import { useDataRefresh } from "../../api/dataEvents";
+import { useManualRefresh } from "../../api/dataEvents";
 
 dayjs.extend(isBetween);
 dayjs.extend(isSameOrAfter);
@@ -54,9 +54,9 @@ export default function CalendarContent({ effectiveView, transposed, windowSize 
     loadData();
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Cross-window sync: reload when tasks/teams/milestones change ──
+  // ── Cross-window sync: reload on manual refresh ──
   const loadDataCb = useCallback(() => { loadData(); }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useDataRefresh(['tasks', 'teams', 'milestones'], loadDataCb);
+  useManualRefresh(loadDataCb);
 
   async function loadData() {
     try {

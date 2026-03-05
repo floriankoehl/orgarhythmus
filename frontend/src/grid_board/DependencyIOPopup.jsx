@@ -29,10 +29,14 @@ import { applyDepDetected } from "../components/shared/promptEngine/depResponseA
  *    applyCtx        – object with API functions for applying responses
  *    onClose         – close callback
  *    iconColor       – title bar icon colour
+ *    onResolveStart  – optional (info) => void — called when entering conflict resolve mode
+ *    onResolveEnd    – optional () => void — called when exiting resolve mode
+ *    resolveActive   – optional boolean — true when in resolve mode (from adapter)
  * ═══════════════════════════════════════════════════════════
  */
 export default function DependencyIOPopup({
   scenarios, grid, ctx, settings, assemblePrompt, applyCtx, onClose, iconColor = "#0ea5e9",
+  onResolveStart, onResolveEnd, resolveActive,
 }) {
   // ─── Shared state ─────────────────────────────────────
   const [mode, setMode] = useState("export");
@@ -129,10 +133,10 @@ export default function DependencyIOPopup({
     URL.revokeObjectURL(url);
   }, [assemblePrompt, modCtx, settings]);
 
-  // Wrap buildDepChangeItems to pass nodes context for conflict detection
+  // Wrap buildDepChangeItems to pass nodes/rows/lanes context
   const buildChangeItemsWithCtx = useCallback((det) => {
-    return buildDepChangeItems(det, ctx.nodes || {});
-  }, [ctx.nodes]);
+    return buildDepChangeItems(det, ctx.nodes || {}, ctx.rows || {}, ctx.lanes || {});
+  }, [ctx.nodes, ctx.rows, ctx.lanes]);
 
   // ─── Import: parse ────────────────────────────────────
   const handleParse = useCallback(() => {
@@ -167,6 +171,18 @@ export default function DependencyIOPopup({
     setDetected(null);
     setApplyResult(null);
   }, []);
+
+  // ─── Resolve conflict handler ─────────────────────────
+  const handleResolve = useCallback((changeItem) => {
+    if (!onResolveStart || !changeItem.detail) return;
+    onResolveStart({
+      sourceId: changeItem.detail.sourceId,
+      targetId: changeItem.detail.targetId,
+      sourceName: changeItem.detail.sourceName,
+      targetName: changeItem.detail.targetName,
+      changeItemId: changeItem.id,
+    });
+  }, [onResolveStart]);
 
   // ─── Render helpers ───────────────────────────────────
 
@@ -217,16 +233,19 @@ export default function DependencyIOPopup({
   //  RENDER
   // ═══════════════════════════════════════════════════════
 
+  // When resolving, hide popup UI but keep everything mounted to preserve state
+  const hidePopup = resolveActive;
+
   return (
     <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-[9998]" onClick={onClose} />
+      {/* Backdrop — hidden during resolve */}
+      {!hidePopup && <div className="fixed inset-0 z-[9998]" onClick={onClose} />}
 
-      {/* Popup */}
+      {/* Popup — hidden during resolve */}
       <div
         ref={popupRef}
         className="absolute right-0 top-full mt-1 z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col"
-        style={{ width: "min(580px, 92vw)", maxHeight: "min(580px, 80vh)" }}
+        style={{ width: "min(580px, 92vw)", maxHeight: "min(580px, 80vh)", display: hidePopup ? "none" : undefined }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* ── Header ── */}
@@ -451,6 +470,8 @@ export default function DependencyIOPopup({
                 recomposeDetectedFn={recomposeDepDetected}
                 applyDetectedFn={applyDepDetected}
                 changeTypeMeta={DEP_CHANGE_TYPE_META}
+                onResolve={onResolveStart ? handleResolve : undefined}
+                paused={resolveActive}
               />
             ) : (
               <>

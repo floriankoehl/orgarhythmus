@@ -13,6 +13,7 @@ import {
   ChevronDown,
   Layers,
   Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import { useWindowManager } from "./WindowManager";
 import { usePipeline } from "./PipelineContext";
@@ -20,6 +21,7 @@ import { useNotifications } from "../../auth/NotificationContext";
 import useWorkspace from "./useWorkspace";
 import WorkspacePopup from "./WorkspacePopup";
 import AISettingsPopup from "./AISettingsPopup";
+import { triggerManualRefresh, useStaleData } from "../../api/dataEvents";
 
 /**
  * Inventory bar configuration for each window slot.
@@ -65,6 +67,7 @@ export default function InventoryBar() {
 
   // ── AI settings popup state ──
   const [showAISettings, setShowAISettings] = useState(false);
+  const staleData = useStaleData();
 
   if (!manager) return null;
 
@@ -422,6 +425,41 @@ export default function InventoryBar() {
           <AISettingsPopup onClose={() => setShowAISettings(false)} />
         )}
       </div>
+
+      {/* ── Refresh button ── */}
+      <button
+        onClick={triggerManualRefresh}
+        className={`
+          group relative flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl
+          transition-all duration-200 outline-none
+          ${staleData ? "opacity-100" : "opacity-35 hover:opacity-55"}
+        `}
+        title="Refresh all windows"
+      >
+        <div
+          className={`
+            w-10 h-10 rounded-xl flex items-center justify-center shadow-lg
+            transition-all duration-300
+            ${staleData
+              ? "bg-gradient-to-br from-green-400 to-emerald-600 ring-2 ring-green-300/50"
+              : "bg-gradient-to-br from-gray-500 to-gray-600"
+            }
+          `}
+        >
+          <RefreshCw
+            size={20}
+            className={`text-white drop-shadow ${staleData ? "animate-spin" : ""}`}
+            style={staleData ? { animationDuration: "2s" } : undefined}
+          />
+        </div>
+        <span
+          className={`text-[9px] font-medium leading-none ${
+            staleData ? "text-green-300" : "text-slate-500"
+          }`}
+        >
+          Refresh
+        </span>
+      </button>
 
       {/* ── Collapse toggle ── */}
       <button
