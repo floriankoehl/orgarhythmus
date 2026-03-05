@@ -100,6 +100,20 @@ VALID_SCENARIO_KEYS = {
     "special_acceptance_criteria_selected",
     "special_acceptance_criteria_all",
     "special_task_suggestions",
+
+    # ── Dependency prompt-engine v2 (grid layout) ──
+    # Milestones — Add / Finetune
+    "dep_milestones_add",
+    "dep_milestones_finetune",
+    # Connections — Add / Finetune
+    "dep_connections_add",
+    "dep_connections_finetune",
+    # Schedule — Add / Finetune
+    "dep_schedule_add",
+    "dep_schedule_finetune",
+    # Dependency Specials
+    "special_full_dependency_graph",
+    "special_dep_suggestions",
 }
 
 

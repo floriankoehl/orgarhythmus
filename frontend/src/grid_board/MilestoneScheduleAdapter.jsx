@@ -12,6 +12,9 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import DependencyGrid from './DependencyGrid';
 import usePromptSettings from '../components/usePromptSettings';
+import { assemblePrompt } from '../components/shared/promptEngine/assembler';
+import { DEP_SCENARIOS, DEP_GRID } from '../components/shared/promptEngine/scenarios/depScenarios';
+import DependencyIOPopup from './DependencyIOPopup';
 import { playSound } from '../assets/sound_registry';
 import { emitDataEvent, useDataRefresh } from '../api/dataEvents';
 
@@ -67,7 +70,8 @@ import { daysBetween } from './layoutMath';
 export default function MilestoneScheduleAdapter({ isFloating = false, windowPos, windowSize, setWindowPos, setWindowSize, isMaximized, setIsMaximized, viewBarRef, triggerViewBarRender }) {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const { buildClipboardText } = usePromptSettings();
+  const { buildClipboardText, settings: promptSettings, projectDescRef } = usePromptSettings();
+  const [ioPopupOpen, setIoPopupOpen] = useState(false);
 
   // ── Secret shortcut: press 0 + 9 together → 3D view ──
   const heldRef = useRef(new Set());
@@ -436,6 +440,52 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
     return result;
   }, [projectId]);
 
+  // ════════════════════════════════════════════════════════════════════
+  //  AI IO — context & apply context memos
+  // ════════════════════════════════════════════════════════════════════
+
+  /** Data context passed to scenario availability/payload builders */
+  const ioCtx = useMemo(() => ({
+    nodes, edges, rows, lanes, laneOrder, totalColumns,
+    projectDescription: projectDescRef?.current || "",
+  }), [nodes, edges, rows, lanes, laneOrder, totalColumns, projectDescRef]);
+
+  /** API context for applying AI responses */
+  const applyCtx = useMemo(() => ({
+    addMilestone: async (taskId, opts) => {
+      const result = await add_milestone(projectId, taskId, opts);
+      _mutingRef.current = true;
+      emitDataEvent('milestones');
+      return result?.added_milestone || result;
+    },
+    createDependency: async (sourceId, targetId, opts) => {
+      const result = await create_dependency(projectId, sourceId, targetId, opts);
+      return result;
+    },
+    updateMilestone: async (nodeId, updates) => {
+      if (updates.name != null) await rename_milestone(projectId, nodeId, updates.name);
+      if (updates.start_index != null) await update_start_index(projectId, nodeId, updates.start_index);
+      if (updates.duration != null) await change_duration(projectId, nodeId, updates.duration);
+      if (updates.task != null) await move_milestone_task(projectId, nodeId, updates.task);
+      _mutingRef.current = true;
+      emitDataEvent('milestones');
+    },
+    updateDependency: async (sourceId, targetId, updates) => {
+      const result = await update_dependency(projectId, sourceId, targetId, updates);
+      return result;
+    },
+    deleteDependency: async (sourceId, targetId) => {
+      await delete_dependency_api(projectId, sourceId, targetId);
+    },
+    moveMilestone: async (nodeId, newStartIndex) => {
+      await update_start_index(projectId, nodeId, newStartIndex);
+      _mutingRef.current = true;
+      emitDataEvent('milestones');
+    },
+    refreshAll: () => setReloadFlag(n => n + 1),
+    nodes, edges, rows,
+  }), [projectId, nodes, edges, rows]);
+
   // ── Navigation ──
   const handleLaneNavigate = useCallback((laneId) => {
     navigate(`/projects/${projectId}/teams/${laneId}`);
@@ -644,6 +694,22 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       buildClipboardText={buildClipboardText}
       onBulkImport={handleBulkImport}
       handleRefactorDrag={handleRefactorDrag}
+
+      // AI IO
+      ioPopupOpen={ioPopupOpen}
+      setIoPopupOpen={setIoPopupOpen}
+      ioPopupContent={
+        <DependencyIOPopup
+          scenarios={DEP_SCENARIOS}
+          grid={DEP_GRID}
+          ctx={ioCtx}
+          settings={promptSettings}
+          assemblePrompt={assemblePrompt}
+          applyCtx={applyCtx}
+          onClose={() => setIoPopupOpen(false)}
+          iconColor="#0ea5e9"
+        />
+      }
 
       // View bar (floating title bar)
       viewBarRef={viewBarRef}

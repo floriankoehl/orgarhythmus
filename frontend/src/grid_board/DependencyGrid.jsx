@@ -192,6 +192,11 @@ function DependencyGridContent({
   /** Refactor drag handler — adapter-supplied for domain-specific refactor mode */
   handleRefactorDrag,
 
+  /** AI IO popup state — passed to floating title bar via viewBarRef */
+  ioPopupOpen,
+  setIoPopupOpen,
+  ioPopupContent,
+
   /** When true, rendered inside a floating window — uses compact padding, hides header toggle */
   isFloating = false,
 
@@ -718,9 +723,13 @@ function DependencyGridContent({
       onPrevView: handlePrevView,
       toolbarCollapsed,
       toggleToolbar: () => { setToolbarCollapsed(v => !v); playSound('uiClick'); },
+      // AI IO
+      ioPopupOpen,
+      setIoPopupOpen,
+      ioPopupContent,
     };
   }
-  useEffect(() => { triggerViewBarRender?.(); }, [savedViews, activeViewId, activeViewName, toolbarCollapsed, triggerViewBarRender]);
+  useEffect(() => { triggerViewBarRender?.(); }, [savedViews, activeViewId, activeViewName, toolbarCollapsed, ioPopupOpen, triggerViewBarRender]);
 
   // ─────────────────────────
   //  Snapshot management (inline — no separate hook needed since it's all callbacks)
