@@ -116,6 +116,7 @@ export default function GridCanvas({
     hideRowActions = false,
     marqueeRect,
     ghostEdges = [],
+    sessionEdgeIds,
   } = displayState;
 
   // ── Destructure handlers ──
@@ -875,6 +876,7 @@ export default function GridCanvas({
               }
 
               const isHighlighted = isSelected || isOutgoing || isIncoming || isBlockedHighlight;
+              const isSessionEdge = sessionEdgeIds?.has?.(`${edge.source}-${edge.target}`) || edge._session;
 
               const useUniform = edgeSettings.uniformVisuals;
               let baseStrokeWidth, dashArray, opacity;
@@ -952,9 +954,24 @@ export default function GridCanvas({
                           ? "none"
                           : "flowAnimation 3s linear infinite",
                       pointerEvents: "none",
-                      filter: isHighlighted ? `drop-shadow(0 0 3px ${strokeColor}80)` : "none",
+                      filter: isSessionEdge
+                        ? `drop-shadow(0 0 5px rgba(34, 197, 94, 0.6)) drop-shadow(0 0 10px rgba(34, 197, 94, 0.3))`
+                        : isHighlighted ? `drop-shadow(0 0 3px ${strokeColor}80)` : "none",
                     }}
                   />
+                  {/* Session edge glow underlay */}
+                  {isSessionEdge && (
+                    <path
+                      d={pathD}
+                      stroke="#22c55e"
+                      strokeWidth={Number(strokeWidth) + 6}
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeDasharray={dashArray}
+                      opacity="0.15"
+                      style={{ pointerEvents: "none", animation: "flowAnimation 3s linear infinite" }}
+                    />
+                  )}
                   {showReasons && reasonText && (
                     <text
                       style={{ pointerEvents: 'none', userSelect: 'none' }}
@@ -1005,30 +1022,39 @@ export default function GridCanvas({
               const targetPos = getNodeHandlePosition(ge.target, "target");
               if (!sourcePos || !targetPos) return null;
               const pathD = getConnectionPath(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y);
+              const color = ge.resolved ? '#22c55e' : '#f97316';
+              const glowColor = ge.resolved ? 'rgba(34, 197, 94, 0.4)' : 'rgba(249, 115, 22, 0.4)';
               return (
                 <g key={`ghost-${ge.source}-${ge.target}`} style={{ pointerEvents: 'none' }}>
                   <path
                     d={pathD}
-                    stroke="#f97316"
+                    stroke={color}
                     strokeWidth="3"
                     fill="none"
                     strokeLinecap="round"
-                    strokeDasharray="6, 8"
-                    opacity="0.6"
+                    strokeDasharray={ge.resolved ? 'none' : '6, 8'}
+                    opacity={ge.resolved ? 0.85 : 0.6}
                     style={{
-                      animation: "flowAnimation 3s linear infinite",
-                      filter: "drop-shadow(0 0 4px rgba(249, 115, 22, 0.4))",
+                      animation: ge.resolved ? 'none' : 'flowAnimation 3s linear infinite',
+                      filter: `drop-shadow(0 0 4px ${glowColor})`,
+                      transition: 'stroke 0.3s ease, opacity 0.3s ease, stroke-dasharray 0.3s ease',
                     }}
                   />
                   <path
                     d={pathD}
-                    stroke="#f97316"
+                    stroke={color}
                     strokeWidth="8"
                     fill="none"
                     opacity="0.12"
                     strokeLinecap="round"
-                    style={{ pointerEvents: "none" }}
+                    style={{ pointerEvents: "none", transition: 'stroke 0.3s ease' }}
                   />
+                  {ge.resolved && targetPos && (
+                    <g transform={`translate(${(sourcePos.x + targetPos.x) / 2}, ${(sourcePos.y + targetPos.y) / 2})`}>
+                      <circle r="10" fill="#22c55e" opacity="0.9" />
+                      <path d="M-3.5,0.5 L-1,3.5 L4,-2.5" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    </g>
+                  )}
                 </g>
               );
             })}

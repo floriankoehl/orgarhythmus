@@ -320,6 +320,7 @@ export default function GridNodeLayer({
                     handleNodeClick(e, node.id);
                   }
                 }}
+                title={`${node.name}${rows[row_key]?.name ? `\n${rows[row_key].name}` : ''}`}
                 onMouseEnter={() => setHoveredNode(node.id)}
                 onMouseLeave={() => setHoveredNode(null)}
                 className={`absolute rounded cursor-pointer ${

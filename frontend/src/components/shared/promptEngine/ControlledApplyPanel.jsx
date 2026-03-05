@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
   Check, X, ChevronRight, ChevronDown, ChevronLeft,
   Loader, ArrowUpFromLine, CheckCheck, XCircle,
@@ -61,6 +61,32 @@ export default function ControlledApplyModal({
   const [slideIdx, setSlideIdx] = useState(0);
   const [collapsedGroups, setCollapsedGroups] = useState(new Set());
   const [applying, setApplying] = useState(false);
+
+  // ─── Refresh conflict status when returning from resolve mode ───
+  const prevPausedRef = useRef(paused);
+  useEffect(() => {
+    const wasPaused = prevPausedRef.current;
+    prevPausedRef.current = paused;
+    // When transitioning from paused → unpaused, rebuild items to refresh conflicts
+    if (wasPaused && !paused) {
+      setChangeItems(prev => {
+        const fresh = buildChangeItems(detected);
+        // Build lookup: old id → old item (to preserve accepted state + detect resolved conflicts)
+        const oldMap = new Map(prev.map(ci => [ci.id, ci]));
+        return fresh.map(ci => {
+          const old = oldMap.get(ci.id);
+          if (!old) return ci;
+          // Preserve user's accept/decline choice
+          const merged = { ...ci, accepted: old.accepted };
+          // If item WAS a conflict but now isn't, mark as freshly resolved
+          if (old.changeType === "conflict_dependency" && ci.changeType === "create_dependency") {
+            merged._resolved = true;
+          }
+          return merged;
+        });
+      });
+    }
+  }, [paused, buildChangeItems, detected]);
 
   // ─── Derived ──────────────────────────────────────────
 
@@ -361,7 +387,7 @@ function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext
         </div>
 
         {/* Detail card */}
-        <SlideDetailCard detail={current.detail} changeType={current.changeType} />
+        <SlideDetailCard detail={current.detail} changeType={current.changeType} resolved={current._resolved} />
 
         {/* Children (if any) */}
         {current.children?.length > 0 && (
@@ -397,14 +423,21 @@ function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext
         >
           <XCircle size={12} /> {isOff ? "Declined" : "Decline"}
         </button>
-        {/* Resolve button — only for conflict items when onResolve is provided */}
-        {onResolve && current.conflict && (
-          <button
-            onClick={() => onResolve(current)}
-            className="flex-1 flex items-center justify-center gap-1.5 text-[11px] py-2 rounded font-medium transition-colors bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100"
-          >
-            <AlertTriangle size={12} /> Resolve
-          </button>
+        {/* Resolve button — for conflict items or freshly resolved items */}
+        {onResolve && (current.changeType === "conflict_dependency" || current._resolved) && (
+          current.conflict
+            ? (
+              <button
+                onClick={() => onResolve(current)}
+                className="flex-1 flex items-center justify-center gap-1.5 text-[11px] py-2 rounded font-medium transition-colors bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100"
+              >
+                <AlertTriangle size={12} /> Resolve
+              </button>
+            ) : (
+              <div className="flex-1 flex items-center justify-center gap-1.5 text-[11px] py-2 rounded font-medium bg-green-50 border border-green-200 text-green-700">
+                <Check size={12} /> Resolved
+              </div>
+            )
         )}
         <button
           onClick={() => {
@@ -429,7 +462,7 @@ function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext
 //  SLIDE DETAIL CARD — rich before/after views per type
 // ═══════════════════════════════════════════════════════════
 
-function SlideDetailCard({ detail, changeType }) {
+function SlideDetailCard({ detail, changeType, resolved }) {
   if (!detail) return null;
 
   /** Render a milestone name colored by team with team/task subtitle */
@@ -1018,15 +1051,21 @@ function SlideDetailCard({ detail, changeType }) {
     case "create_dependency": {
       return (
         <div className="flex flex-col gap-2">
-          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">New Dependency</div>
-          <div className="bg-blue-50 border border-blue-200 rounded px-3 py-2">
+          <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
+            {resolved ? (
+              <span className="flex items-center gap-1 text-green-600">
+                <Check size={10} /> Resolved — New Dependency
+              </span>
+            ) : "New Dependency"}
+          </div>
+          <div className={`rounded px-3 py-2 ${resolved ? 'bg-green-50 border border-green-200' : 'bg-blue-50 border border-blue-200'}`}>
             <div className="flex items-center gap-2">
               <NodeInfo name={detail.sourceName} ctx={detail.sourceCtx} />
-              <ArrowRight size={12} className="text-blue-400 flex-shrink-0" />
+              <ArrowRight size={12} className={`flex-shrink-0 ${resolved ? 'text-green-400' : 'text-blue-400'}`} />
               <NodeInfo name={detail.targetName} ctx={detail.targetCtx} />
             </div>
             {detail.weight && (
-              <div className="text-[9px] text-blue-600 mt-1">Weight: {detail.weight}</div>
+              <div className={`text-[9px] mt-1 ${resolved ? 'text-green-600' : 'text-blue-600'}`}>Weight: {detail.weight}</div>
             )}
           </div>
           {detail.reason && (

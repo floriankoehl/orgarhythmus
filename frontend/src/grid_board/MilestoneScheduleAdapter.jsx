@@ -15,7 +15,9 @@ import usePromptSettings from '../components/usePromptSettings';
 import { assemblePrompt } from '../components/shared/promptEngine/assembler';
 import { DEP_SCENARIOS, DEP_GRID } from '../components/shared/promptEngine/scenarios/depScenarios';
 import DependencyIOPopup from './DependencyIOPopup';
-import { checkDepConflict } from '../components/shared/promptEngine/depResponseApplier';
+import { checkDepConflict, applyDepDetected } from '../components/shared/promptEngine/depResponseApplier';
+import { buildDepChangeItems, recomposeDepDetected, DEP_CHANGE_TYPE_META } from '../components/shared/promptEngine/depChangeBuilder';
+import ControlledApplyModal from '../components/shared/promptEngine/ControlledApplyPanel';
 import { playSound } from '../assets/sound_registry';
 import { emitDataEvent, useManualRefresh } from '../api/dataEvents';
 
@@ -77,6 +79,10 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   // ── Conflict resolve state ──
   // { sourceId, targetId, sourceName, targetName, changeItemId } or null
   const [resolveState, setResolveState] = useState(null);
+
+  // ── Inline review state (slide-through dependencies on the grid) ──
+  // { items: [...changeItems], currentIdx: number, sessionEdgeIds: Set, detected: [...], showInspect: boolean }
+  const [reviewState, setReviewState] = useState(null);
 
   // ── Secret shortcut: press 0 + 9 together → 3D view ──
   const heldRef = useRef(new Set());
@@ -485,11 +491,141 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
     setResolveState(null);
   }, []);
 
-  // Ghost edges for the grid — derived from resolveState
+  // ── Inline review handlers ──
+  const handleReviewStart = useCallback((detected, changeItems) => {
+    setReviewState({
+      items: changeItems,
+      currentIdx: 0,
+      sessionEdgeIds: new Set(),
+      detected,
+      showInspect: false,
+    });
+    setIoPopupOpen(false); // hide the IO popup
+  }, []);
+
+  const handleReviewAccept = useCallback(async () => {
+    if (!reviewState) return;
+    const current = reviewState.items[reviewState.currentIdx];
+    if (!current) return;
+    const d = current.detail;
+
+    try {
+      if (current.changeType === "create_dependency" || current.changeType === "conflict_dependency") {
+        await create_dependency(projectId, d.sourceId, d.targetId, {
+          weight: d.weight || "strong",
+          reason: d.reason || null,
+          description: null,
+        });
+        // Optimistic edge add
+        setEdges(prev => [...prev, { source: d.sourceId, target: d.targetId, weight: d.weight || "strong", reason: d.reason || null, _session: true }]);
+        setReviewState(prev => {
+          const next = { ...prev, sessionEdgeIds: new Set([...prev.sessionEdgeIds, `${d.sourceId}-${d.targetId}`]) };
+          // Auto-advance
+          if (next.currentIdx < next.items.length - 1) next.currentIdx = next.currentIdx + 1;
+          return next;
+        });
+      } else if (current.changeType === "update_dependency") {
+        await update_dependency(projectId, d.sourceId, d.targetId, {
+          weight: d.weight || undefined,
+          reason: d.reason || undefined,
+        });
+        setEdges(prev => prev.map(e => (e.source === d.sourceId && e.target === d.targetId) ? { ...e, weight: d.weight, reason: d.reason, _session: true } : e));
+        setReviewState(prev => ({
+          ...prev,
+          sessionEdgeIds: new Set([...prev.sessionEdgeIds, `${d.sourceId}-${d.targetId}`]),
+          currentIdx: Math.min(prev.currentIdx + 1, prev.items.length - 1),
+        }));
+      } else if (current.changeType === "remove_dependency") {
+        await delete_dependency_api(projectId, d.sourceId, d.targetId);
+        setEdges(prev => prev.filter(e => !(e.source === d.sourceId && e.target === d.targetId)));
+        setReviewState(prev => ({
+          ...prev,
+          currentIdx: Math.min(prev.currentIdx + 1, prev.items.length - 1),
+        }));
+      } else if (current.changeType === "move_milestone") {
+        await update_start_index(projectId, d.milestoneId, d.newDay);
+        setNodes(prev => ({ ...prev, [d.milestoneId]: { ...prev[d.milestoneId], startColumn: d.newDay, start_index: d.newDay } }));
+        emitDataEvent('milestones');
+        setReviewState(prev => ({
+          ...prev,
+          currentIdx: Math.min(prev.currentIdx + 1, prev.items.length - 1),
+        }));
+      }
+      playSound('milestoneMove');
+    } catch (err) {
+      console.error("Review accept failed:", err);
+    }
+  }, [reviewState, projectId]);
+
+  const handleReviewDecline = useCallback(() => {
+    if (!reviewState) return;
+    setReviewState(prev => ({
+      ...prev,
+      currentIdx: Math.min(prev.currentIdx + 1, prev.items.length - 1),
+    }));
+  }, [reviewState]);
+
+  const handleReviewPrev = useCallback(() => {
+    setReviewState(prev => prev && ({ ...prev, currentIdx: Math.max(prev.currentIdx - 1, 0) }));
+  }, []);
+
+  const handleReviewNext = useCallback(() => {
+    setReviewState(prev => prev && ({ ...prev, currentIdx: Math.min(prev.currentIdx + 1, prev.items.length - 1) }));
+  }, []);
+
+  const handleReviewInspect = useCallback(() => {
+    setReviewState(prev => prev && ({ ...prev, showInspect: !prev.showInspect }));
+  }, []);
+
+  const handleReviewEnd = useCallback(() => {
+    setReviewState(null);
+    // Refresh all data to ensure consistency
+    setReloadFlag(n => n + 1);
+  }, []);
+
+  // Ghost edges for the grid — derived from resolveState OR reviewState
   const ghostEdges = useMemo(() => {
-    if (!resolveState) return [];
-    return [{ source: resolveState.sourceId, target: resolveState.targetId }];
-  }, [resolveState]);
+    // Resolve mode takes priority
+    if (resolveState) {
+      const src = nodes[resolveState.sourceId];
+      const tgt = nodes[resolveState.targetId];
+      const conflict = src && tgt ? checkDepConflict(src, tgt) : { conflict: true };
+      return [{ source: resolveState.sourceId, target: resolveState.targetId, resolved: !conflict.conflict }];
+    }
+    // Review mode — show current item as ghost edge
+    if (reviewState) {
+      const current = reviewState.items[reviewState.currentIdx];
+      if (!current?.detail) return [];
+      const d = current.detail;
+      const isEdgeType = ["create_dependency", "conflict_dependency", "update_dependency", "remove_dependency"].includes(current.changeType);
+      if (isEdgeType && d.sourceId && d.targetId) {
+        // Skip if this dependency was already accepted (exists in sessionEdgeIds)
+        const key = `${d.sourceId}-${d.targetId}`;
+        if (reviewState.sessionEdgeIds.has(key)) return [];
+        const src = nodes[d.sourceId];
+        const tgt = nodes[d.targetId];
+        const conflict = src && tgt ? checkDepConflict(src, tgt) : { conflict: true };
+        return [{
+          source: d.sourceId,
+          target: d.targetId,
+          resolved: !conflict.conflict,
+          isRemove: current.changeType === "remove_dependency",
+        }];
+      }
+      return [];
+    }
+    return [];
+  }, [resolveState, reviewState, nodes]);
+
+  // Session edge IDs for visual distinction in the grid
+  const sessionEdgeIds = useMemo(() => {
+    return reviewState?.sessionEdgeIds || new Set();
+  }, [reviewState]);
+
+  // Build function for inspect modal (uses current nodes/rows/lanes)
+  const buildChangeItemsForInspect = useCallback((det) => {
+    return buildDepChangeItems(det, nodes, rows, lanes);
+  }, [nodes, rows, lanes]);
 
   // ── Navigation ──
   const handleLaneNavigate = useCallback((laneId) => {
@@ -711,11 +847,13 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
           settings={promptSettings}
           assemblePrompt={assemblePrompt}
           applyCtx={applyCtx}
-          onClose={() => { setIoPopupOpen(false); setResolveState(null); }}
+          onClose={() => { setIoPopupOpen(false); setResolveState(null); setReviewState(null); }}
           iconColor="#0ea5e9"
           onResolveStart={handleResolveStart}
           onResolveEnd={handleResolveEnd}
           resolveActive={!!resolveState}
+          onReviewStart={handleReviewStart}
+          reviewActive={!!reviewState}
         />
       }
 
@@ -727,6 +865,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       ghostEdges={ghostEdges}
       resolveState={resolveState}
       onResolveEnd={handleResolveEnd}
+      sessionEdgeIds={sessionEdgeIds}
     >
       {/* Refactor mode ghost card */}
       {refactorGhost && (
@@ -758,6 +897,34 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
           nodes={nodes}
           onResume={handleResolveEnd}
           onCancel={() => { setResolveState(null); }}
+        />
+      )}
+
+      {/* Inline review bar */}
+      {reviewState && !resolveState && (
+        <ReviewBar
+          reviewState={reviewState}
+          nodes={nodes}
+          onAccept={handleReviewAccept}
+          onDecline={handleReviewDecline}
+          onPrev={handleReviewPrev}
+          onNext={handleReviewNext}
+          onInspect={handleReviewInspect}
+          onDone={handleReviewEnd}
+        />
+      )}
+
+      {/* Inspect modal — detailed view during inline review */}
+      {reviewState?.showInspect && reviewState.detected && (
+        <ControlledApplyModal
+          detected={reviewState.detected}
+          applyCtx={applyCtx}
+          onResult={() => {}}
+          onClose={handleReviewInspect}
+          buildChangeItemsFn={buildChangeItemsForInspect}
+          recomposeDetectedFn={recomposeDepDetected}
+          applyDetectedFn={applyDepDetected}
+          changeTypeMeta={DEP_CHANGE_TYPE_META}
         />
       )}
     </DependencyGrid>
@@ -817,6 +984,134 @@ function ResolveBanner({ resolveState, nodes, onResume, onCancel }) {
         className="text-[10px] px-2 py-1 rounded border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0"
       >
         Cancel
+      </button>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════
+//  Review Bar — compact inline review bar for sliding through proposals
+// ═══════════════════════════════════════════════════════════
+function ReviewBar({ reviewState, nodes, onAccept, onDecline, onPrev, onNext, onInspect, onDone }) {
+  const { items, currentIdx, sessionEdgeIds } = reviewState;
+  const current = items[currentIdx];
+  const total = items.length;
+  const isLast = currentIdx >= total - 1;
+  const isFirst = currentIdx <= 0;
+
+  // Check if current item was already accepted in this session
+  const isAlreadyAccepted = current?.detail?.sourceId && current?.detail?.targetId
+    ? sessionEdgeIds.has(`${current.detail.sourceId}-${current.detail.targetId}`)
+    : false;
+
+  // Live conflict check for dependency items
+  const d = current?.detail;
+  const hasDep = d?.sourceId && d?.targetId;
+  const conflict = hasDep && nodes[d.sourceId] && nodes[d.targetId]
+    ? checkDepConflict(nodes[d.sourceId], nodes[d.targetId])
+    : null;
+  const isConflict = conflict?.conflict;
+
+  // Color scheme based on type
+  const isRemove = current?.changeType === "remove_dependency";
+  const borderColor = isAlreadyAccepted ? '#22c55e' : isConflict ? '#f97316' : '#3b82f6';
+
+  return (
+    <div
+      className="flex items-center gap-2 px-3 py-2 rounded-xl shadow-2xl border-2 bg-white/95 backdrop-blur-sm"
+      style={{
+        position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 99999,
+        borderColor,
+        maxWidth: '90vw',
+      }}
+    >
+      {/* Navigation */}
+      <button
+        onClick={onPrev}
+        disabled={isFirst}
+        className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+
+      {/* Counter */}
+      <span className="text-[10px] text-gray-400 font-mono min-w-[36px] text-center">
+        {currentIdx + 1}/{total}
+      </span>
+
+      {/* Item info */}
+      <div className="flex flex-col min-w-0">
+        <div className="text-[11px] font-semibold text-gray-800 whitespace-nowrap">
+          {current?.label || "—"}
+        </div>
+        {isConflict && !isAlreadyAccepted && (
+          <div className="text-[9px] text-orange-600 font-medium">
+            ⚠ Conflict: ends day {conflict.sourceEnd}, starts day {conflict.targetStart}
+          </div>
+        )}
+        {isAlreadyAccepted && (
+          <div className="text-[9px] text-green-600 font-medium">✓ Already accepted</div>
+        )}
+      </div>
+
+      {/* Next */}
+      <button
+        onClick={onNext}
+        disabled={isLast}
+        className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+
+      {/* Divider */}
+      <div className="w-px h-6 bg-gray-200 mx-1" />
+
+      {/* Inspect */}
+      <button
+        onClick={onInspect}
+        className={`text-[10px] px-2 py-1 rounded border transition-colors flex-shrink-0 ${
+          reviewState.showInspect
+            ? 'bg-sky-100 border-sky-300 text-sky-700'
+            : 'border-gray-300 text-gray-500 hover:bg-gray-100'
+        }`}
+        title="Show details"
+      >
+        Details
+      </button>
+
+      {/* Accept / Decline */}
+      {!isAlreadyAccepted ? (
+        <>
+          <button
+            onClick={onDecline}
+            className="text-[10px] px-2.5 py-1.5 rounded font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors flex-shrink-0"
+          >
+            Decline
+          </button>
+          <button
+            onClick={onAccept}
+            className={`text-[10px] px-2.5 py-1.5 rounded font-medium transition-colors flex-shrink-0 ${
+              isConflict
+                ? 'border border-orange-300 text-orange-700 bg-orange-50 hover:bg-orange-100'
+                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+            }`}
+          >
+            {isConflict ? 'Accept (conflict)' : 'Accept'}
+          </button>
+        </>
+      ) : (
+        <div className="text-[10px] px-2.5 py-1.5 rounded font-medium bg-green-50 border border-green-200 text-green-700 flex-shrink-0">
+          ✓ Accepted
+        </div>
+      )}
+
+      {/* Done */}
+      <button
+        onClick={onDone}
+        className="text-[10px] px-2 py-1 rounded border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0"
+      >
+        Done
       </button>
     </div>
   );

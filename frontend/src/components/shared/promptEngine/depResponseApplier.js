@@ -169,10 +169,11 @@ export function hasDepActionableContent(detected) {
  * @returns {{ conflict: boolean, sourceEnd: number, targetStart: number }}
  */
 export function checkDepConflict(sourceNode, targetNode) {
-  const sourceStart = sourceNode.start_index ?? sourceNode.startColumn ?? 0;
+  // Prefer startColumn (optimistically updated during drag) over start_index (from API)
+  const sourceStart = sourceNode.startColumn ?? sourceNode.start_index ?? 0;
   const sourceDuration = sourceNode.duration ?? 1;
   const sourceEnd = sourceStart + sourceDuration;
-  const targetStart = targetNode.start_index ?? targetNode.startColumn ?? 0;
+  const targetStart = targetNode.startColumn ?? targetNode.start_index ?? 0;
 
   return {
     conflict: sourceEnd > targetStart,

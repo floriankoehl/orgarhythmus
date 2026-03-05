@@ -202,6 +202,8 @@ function DependencyGridContent({
   /** Resolve conflict state + end callback — passed as children render context */
   resolveState,
   onResolveEnd,
+  /** Session edge IDs for visual distinction during review */
+  sessionEdgeIds,
 
   /** When true, rendered inside a floating window — uses compact padding, hides header toggle */
   isFloating = false,
@@ -1033,6 +1035,7 @@ function DependencyGridContent({
     hideRowActions,
     marqueeRect,
     ghostEdges,
+    sessionEdgeIds,
   };
 
   const handlers = {

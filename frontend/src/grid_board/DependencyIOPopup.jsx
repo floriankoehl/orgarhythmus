@@ -32,11 +32,14 @@ import { applyDepDetected } from "../components/shared/promptEngine/depResponseA
  *    onResolveStart  – optional (info) => void — called when entering conflict resolve mode
  *    onResolveEnd    – optional () => void — called when exiting resolve mode
  *    resolveActive   – optional boolean — true when in resolve mode (from adapter)
+ *    onReviewStart   – optional (detected, changeItems) => void — enter inline review mode
+ *    reviewActive    – optional boolean — true when in review mode
  * ═══════════════════════════════════════════════════════════
  */
 export default function DependencyIOPopup({
   scenarios, grid, ctx, settings, assemblePrompt, applyCtx, onClose, iconColor = "#0ea5e9",
   onResolveStart, onResolveEnd, resolveActive,
+  onReviewStart, reviewActive,
 }) {
   // ─── Shared state ─────────────────────────────────────
   const [mode, setMode] = useState("export");
@@ -163,6 +166,12 @@ export default function DependencyIOPopup({
 
     setParseError(null);
     setDetected(items);
+
+    // Enter inline review mode if available
+    if (onReviewStart) {
+      const changeItems = buildChangeItemsWithCtx(items);
+      onReviewStart(items, changeItems);
+    }
   }, [pasteText]);
 
   const resetImport = useCallback(() => {
@@ -233,8 +242,8 @@ export default function DependencyIOPopup({
   //  RENDER
   // ═══════════════════════════════════════════════════════
 
-  // When resolving, hide popup UI but keep everything mounted to preserve state
-  const hidePopup = resolveActive;
+  // When resolving or in review mode, hide popup UI but keep everything mounted to preserve state
+  const hidePopup = resolveActive || reviewActive;
 
   return (
     <>
