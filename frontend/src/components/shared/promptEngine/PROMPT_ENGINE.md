@@ -1,6 +1,6 @@
 # Prompt Engine — Architecture & Reuse Guide
 
-> **Last updated:** 2026-03-04 (Grid Layout v2)
+> **Last updated:** 2026-03-05 (Dependencies domain — Phase 3)
 
 ## Overview
 
@@ -24,18 +24,34 @@ frontend/src/components/shared/promptEngine/
 ├── index.js                          # Public API re-exports
 ├── registry.js                       # Scenario lookup + grid metadata + domain filtering
 ├── assembler.js                      # assemblePrompt() — builds clipboard text
-├── responseApplier.js                # Parses AI responses, detects, previews & applies
-├── changeBuilder.js                  # Converts detected items into granular change-ops
-├── ControlledApplyPanel.jsx          # Human-in-the-loop review modal
+├── responseApplier.js                # IdeaBin: parses AI responses, detects, previews & applies
+├── changeBuilder.js                  # IdeaBin: converts detected items into granular change-ops
+├── taskResponseApplier.js            # Task Structure: detects, previews & applies task/team changes
+├── taskChangeBuilder.js              # Task Structure: granular change-ops for tasks/teams
+├── depResponseApplier.js             # Dependencies: detects, previews & applies milestone/dep changes
+├── depChangeBuilder.js               # Dependencies: granular change-ops with conflict detection
+├── ControlledApplyPanel.jsx          # Human-in-the-loop review modal (shared by all domains)
 ├── PROMPT_ENGINE.md                  # This documentation
 └── scenarios/
     ├── ideabinScenarios.js           # All IdeaBin scenarios (24) + IDEABIN_GRID
-    └── taskScenarios.js              # (Phase 2) Task Structure scenarios
+    ├── taskScenarios.js              # Task Structure scenarios (15) + TASK_GRID
+    └── depScenarios.js               # Dependency scenarios (8) + DEP_GRID
 
 frontend/src/components/ideas/
-├── IdeaBinIOPopup.jsx                # Grid-based export/import popup UI
+├── IdeaBinIOPopup.jsx                # Grid-based export/import popup UI (IdeaBin)
 ├── IdeaBinTitleBar.jsx               # Title bar with I/O + Generate buttons
 └── IdeaBin.jsx                       # Main IdeaBin — wires ctx, applyCtx, AI generate
+
+frontend/src/components/tasks_classification/
+├── TaskStructureIOPopup.jsx          # Grid-based export/import popup UI (Task Structure)
+├── TaskStructureTitleBar.jsx         # Title bar with I/O button
+└── TaskStructure.jsx                 # Main TaskStructure — wires ioCtx, applyCtx
+
+frontend/src/grid_board/
+├── DependencyIOPopup.jsx             # Grid-based export/import popup UI (Dependencies)
+├── ScheduleTitleBar.jsx              # Title bar with I/O button + view selector
+├── MilestoneScheduleAdapter.jsx      # Adapter — wires ioCtx, applyCtx to DependencyGrid
+└── DependencyGrid.jsx                # Generic grid — passes IO props via viewBarRef
 ```
 
 ---
@@ -49,7 +65,7 @@ Each scenario is a plain object:
 ```js
 {
   id:             "ideas_add",                // unique key (backend scenario_prompts key)
-  domain:         "ideabin",                  // domain filter ("ideabin" | "tasks" | "deps")
+  domain:         "ideabin",                  // domain filter ("ideabin" | "tasks" | "dependencies")
   grid:           { row: "ideas", col: "add" }, // position in the UI grid
   group:          "Ideas — Add",              // legacy group label (kept for registry)
   action:         "add",                      // "add" | "assign" | "finetune" | "special" (icon)
@@ -176,21 +192,23 @@ for that cell).
 
 ---
 
-## Adding a New Domain (e.g., Task Structure)
+## Adding a New Domain
+
+Three domains are currently implemented: **IdeaBin** (Phase 1), **Task Structure** (Phase 2), and **Dependencies** (Phase 3). To add a fourth domain, follow these steps:
 
 ### Step 1: Create scenario definitions
 
-Create `scenarios/taskScenarios.js`:
+Create `scenarios/myDomainScenarios.js`:
 
 ```js
-export const TASK_SCENARIOS = [
+export const MY_SCENARIOS = [
   {
-    id: "tasks_add_blank",
-    domain: "tasks",
-    grid: { row: "tasks", col: "add" },
-    group: "Tasks — Add",
+    id: "my_items_add",
+    domain: "mydomain",
+    grid: { row: "items", col: "add" },
+    group: "Items — Add",
     action: "add",
-    label: "New tasks (blank)",
+    label: "New items",
     description: "...",
     unavailableMsg: (ctx) => null,
     defaultPrompt: "...",
@@ -200,32 +218,44 @@ export const TASK_SCENARIOS = [
   // ... more scenarios
 ];
 
-export const TASK_GRID = { rows: [...], columns: [...], cells: {...}, specials: [...] };
-export const TASK_GROUPS = ["Tasks — Add", "Tasks — Finetune"];
+export const MY_GRID = { rows: [...], columns: [...], cells: {...}, specials: [...] };
+export const MY_GROUPS = ["Items — Add", "Items — Finetune"];
 ```
+
+### Step 1b: Create response applier + change builder
+
+Create `myResponseApplier.js` (detect/preview/apply) and `myChangeBuilder.js`
+(granular change-op decomposition). See `depResponseApplier.js` and `depChangeBuilder.js`
+for the most recent reference implementation, including conflict detection patterns.
 
 ### Step 2: Register in registry.js
 
 ```js
-import { TASK_SCENARIOS, TASK_GROUPS, TASK_GRID } from './scenarios/taskScenarios';
+import { MY_SCENARIOS, MY_GROUPS, MY_GRID } from './scenarios/myDomainScenarios';
 
 export const ALL_SCENARIOS = [
   ...IDEABIN_SCENARIOS,
-  ...TASK_SCENARIOS,      // ← add
+  ...TASK_SCENARIOS,
+  ...DEP_SCENARIOS,
+  ...MY_SCENARIOS,       // ← add
 ];
 
 export const ALL_GROUPS = [
   ...IDEABIN_GROUPS,
-  ...TASK_GROUPS,          // ← add
+  ...TASK_GROUPS,
+  ...DEP_GROUPS,
+  ...MY_GROUPS,          // ← add
 ];
 
-export { TASK_GRID };
+export { MY_GRID };
 ```
 
 ### Step 3: Re-export in index.js
 
 ```js
-export { TASK_SCENARIOS, TASK_GROUPS, TASK_GRID } from './scenarios/taskScenarios';
+export { MY_SCENARIOS, MY_GROUPS, MY_GRID } from './scenarios/myDomainScenarios';
+export { detectMyResponseContent, applyMyDetected } from './myResponseApplier';
+export { buildMyChangeItems, recomposeMyDetected, MY_CHANGE_TYPE_META } from './myChangeBuilder';
 ```
 
 ### Step 4: Update backend valid keys
@@ -235,9 +265,13 @@ In `backend/api/views/prompt_settings.py`, add the new scenario IDs to
 
 ### Step 5: Create UI popup
 
-Copy `IdeaBinIOPopup.jsx` as template → `TaskStructureIOPopup.jsx`.
-Wire it the same way: build a `ctx` object from the task window's state,
+Copy `IdeaBinIOPopup.jsx` or `DependencyIOPopup.jsx` as template.
+Wire it the same way: build a `ctx` object from the window's state,
 and pass `scenarios`, `grid`, `ctx`, `settings`, `assemblePrompt`, `applyCtx`.
+
+For domains that need conflict detection (like Dependencies), add a
+`buildChangeItemsWithCtx` wrapper that passes additional context (e.g., `nodes`)
+to the change builder for real-time validation.
 
 ### Step 6: Add I/O button to title bar
 
@@ -312,6 +346,224 @@ the popup.
 
 ---
 
+## Task Structure Scenario Inventory (Phase 2)
+
+> File: `scenarios/taskScenarios.js` — Response handling: `taskResponseApplier.js` + `taskChangeBuilder.js`
+
+### Tasks — Add (2 scenarios)
+| ID | Label | Context toggle | Requires |
+|---|---|---|---|
+| `tasks_add` | New tasks | ✓ with/without existing | — |
+| `tasks_add_for_teams` | Tasks for teams | ✓ | Teams |
+
+### Tasks — Assign (4 scenarios, spans 2 rows)
+| ID | Label | Context toggle | Requires |
+|---|---|---|---|
+| `tasks_assign_unassigned_existing` | Unassigned → existing teams | — | Unassigned tasks + teams |
+| `tasks_assign_unassigned_new` | Unassigned → new teams | — | Unassigned tasks |
+| `tasks_assign_selected_existing` | Selected → existing teams | — | Selected tasks + teams |
+| `tasks_assign_selected_new` | Selected → new teams | — | Selected tasks |
+
+### Tasks — Finetune (2 scenarios)
+| ID | Label | Context toggle | Requires |
+|---|---|---|---|
+| `tasks_finetune_selected` | Finetune selected | — | Selected tasks |
+| `tasks_finetune_all` | Finetune all | — | Tasks |
+
+### Teams — Add (2 scenarios)
+| ID | Label | Context toggle | Requires |
+|---|---|---|---|
+| `teams_add` | New teams | ✓ | — |
+| `teams_add_for_tasks` | Teams for tasks | ✓ | Tasks |
+
+### Teams — Finetune (2 scenarios)
+| ID | Label | Context toggle | Requires |
+|---|---|---|---|
+| `teams_finetune_selected` | Finetune selected | — | Selected teams |
+| `teams_finetune_all` | Finetune all | — | Teams |
+
+### Specials (3 scenarios)
+| ID | Label | Context toggle | Requires |
+|---|---|---|---|
+| `special_acceptance_criteria_selected` | Acceptance criteria (selected) | — | Selected tasks |
+| `special_acceptance_criteria_all` | Acceptance criteria (all) | — | Tasks |
+| `special_task_suggestions` | Task suggestions | ✓ | Content |
+
+**Total: 15 Task Structure scenarios**
+
+### Task Structure — Wiring
+
+- `TaskStructure.jsx` builds `ioCtx` (tasks, teams, taskOrder, teamOrder, selections, projectDescription) and `applyCtx` (createTask, createTeam, updateTask, updateTeam, assignTaskToTeam, refreshAll).
+- `TaskStructureIOPopup.jsx` renders a 3×3 grid (Tasks / Teams × Add / Assign / Finetune) + Specials row.
+- The Sparkles button lives in `TaskStructureTitleBar.jsx` rightContent.
+- `taskResponseApplier.js` detects: `tasks`, `teams`, `update_tasks`, `update_teams`, `assign_tasks`, `suggestions`.
+- `taskChangeBuilder.js` produces `TASK_CHANGE_TYPE_META` with types: `create_task` (green), `create_team` (blue), `update_task` (amber), `update_team` (amber), `assign_task` (cyan).
+
+---
+
+## Dependency Scenario Inventory (Phase 3)
+
+> File: `scenarios/depScenarios.js` — Response handling: `depResponseApplier.js` + `depChangeBuilder.js`
+
+The Dependency domain operates on the **DependencyGrid** (milestones, edges, schedule positions). Its unique feature is **conflict detection**: when an AI-suggested dependency violates the scheduling rule (`source.start_index + source.duration <= target.start_index`), the import previews it as a conflict rather than silently applying it.
+
+### Grid Layout (3×2)
+
+```
+              Add              Finetune
+            ┌──────────────┬──────────────┐
+  Tasks     │ Generate      │ Refine       │
+            │ milestones    │ milestones   │
+            ├──────────────┼──────────────┤
+  Milestones│ Generate      │ Refine       │
+            │ dependencies  │ dependencies │
+            ├──────────────┼──────────────┤
+  Deps      │ Generate      │ Optimise     │
+            │ schedule      │ schedule     │
+            └──────────────┴──────────────┘
+  Specials: [Full dependency graph] [Suggest missing]
+```
+
+### Tasks row — Milestones (2 scenarios)
+| ID | Label | Context toggle | Requires |
+|---|---|---|---|
+| `dep_milestones_add` | Generate milestones | ✓ includes existing milestones | Tasks in project |
+| `dep_milestones_finetune` | Refine milestones | — (always sends all) | Existing milestones |
+
+### Milestones row — Connections (2 scenarios)
+| ID | Label | Context toggle | Requires |
+|---|---|---|---|
+| `dep_connections_add` | Generate dependencies | ✓ includes existing deps | ≥ 2 milestones |
+| `dep_connections_finetune` | Refine dependencies | — (always sends all) | Existing dependencies |
+
+### Dependencies row — Schedule (2 scenarios)
+| ID | Label | Context toggle | Requires |
+|---|---|---|---|
+| `dep_schedule_add` | Generate schedule | — | ≥ 2 milestones |
+| `dep_schedule_finetune` | Optimise schedule | — | Existing milestones |
+
+### Specials (2 scenarios)
+| ID | Label | Context toggle | Requires |
+|---|---|---|---|
+| `special_full_dependency_graph` | Full dependency graph | ✓ | ≥ 2 tasks |
+| `special_dep_suggestions` | Suggest missing deps | — | ≥ 2 milestones |
+
+**Total: 8 Dependency scenarios**
+
+### Detected Response Types
+
+`detectDepResponseContent(json)` inspects parsed AI JSON and returns detected items:
+
+| Type | Keys detected | Action |
+|---|---|---|
+| `dep_milestones` | `milestones: [...]` | Create new milestones |
+| `dep_dependencies` | `dependencies: [...]` or `new_dependencies: [...]` | Create dependency edges |
+| `dep_schedule` | `schedule: [...]` | Reposition milestones (start_index/duration) |
+| `update_milestones` | `updated_milestones: [...]` | Update existing milestone name/desc/position |
+| `update_dependencies` | `updated_dependencies: [...]` | Update existing edge weight/reason |
+| `remove_dependencies` | `remove_dependencies: [...]` | Delete dependency edges |
+| `suggestions` | `suggestions: "..."` | Display text (read-only) |
+
+### Conflict Detection
+
+The scheduling rule for dependencies is:
+
+```
+source.start_index + source.duration <= target.start_index
+```
+
+When a new or updated dependency would violate this rule, the import system:
+
+1. **Flags it as a conflict** — `checkDepConflict(sourceNode, targetNode)` returns `{ conflict: true, sourceEnd, targetStart }`.
+2. **Shows it in the ChangeBuilder** — conflict dependencies get the `conflict_dependency` change type (orange) with a message explaining that the predecessor ends at day X but the successor starts at day Y.
+3. **Allows it anyway** — conflicts are not auto-blocked. The user can still accept them in the `ControlledApplyPanel` review.
+4. **Displays a conflict summary** — after applying, the result screen shows an orange warning section listing all scheduling conflicts with instructions to manually adjust milestone positions in the grid.
+
+This design mirrors a **git merge conflict** analogy: the system flags the problem, applies the change, and trusts the user to resolve the conflict by adjusting milestone positions in the visual grid.
+
+### Dependency Change Types
+
+`DEP_CHANGE_TYPE_META` defines 7 change types:
+
+| Type | Color | Icon | Description |
+|---|---|---|---|
+| `create_milestone` | green | `Plus` | New milestone creation |
+| `create_dependency` | blue | `ArrowRightLeft` | New dependency edge |
+| `update_milestone` | amber | `Pencil` | Update milestone name/desc/position |
+| `update_dependency` | amber | `Pencil` | Update dependency weight/reason |
+| `remove_dependency` | red | `Trash2` | Remove dependency edge |
+| `move_milestone` | teal | `Move` | Reposition milestone (schedule) |
+| `conflict_dependency` | orange | `AlertTriangle` | Dependency that violates scheduling rule |
+
+### Parent-Child Hierarchy
+
+When a new milestone is created, dependency edges connected to it become **children** of that milestone in the change list. Declining a milestone creation automatically disables its child edges (they cannot exist without their endpoint milestone). This is tracked via `milestoneChangeIds` in `buildDepChangeItems()`.
+
+### Dependency Context Object (`ioCtx`)
+
+Built in `MilestoneScheduleAdapter.jsx`:
+
+```js
+{
+  nodes,              // { [id]: { name, description, task, start_index, duration, ... } }
+  edges,              // [{ source, target, weight, reason, description }]
+  rows,               // { [id]: { name, team, description, ... } }
+  lanes,              // { [id]: { name, color, tasks: [...] } }
+  laneOrder,          // [teamId, ...]
+  totalColumns,       // number (project day count)
+  projectDescription, // string
+}
+```
+
+### Dependency Apply Context (`applyCtx`)
+
+```js
+{
+  addMilestone,       // (taskId, opts) → milestone object
+  createDependency,   // (sourceId, targetId, opts) → dependency object
+  updateMilestone,    // (nodeId, { name?, start_index?, duration?, task? }) → void
+  updateDependency,   // (sourceId, targetId, updates) → result
+  deleteDependency,   // (sourceId, targetId) → void
+  moveMilestone,      // (nodeId, newStartIndex) → void
+  refreshAll,         // () → triggers full data reload
+  nodes,              // current milestone state (for name-based resolution)
+  edges,              // current dependency state
+  rows,               // current task state (for name-based resolution)
+}
+```
+
+### Dependency Wiring Architecture
+
+The Dependencies IO system follows a different wiring pattern than IdeaBin/TaskStructure because the grid uses a **floating window** architecture:
+
+```
+MilestoneScheduleAdapter
+  ├── usePromptSettings() → { buildClipboardText, settings, projectDescRef }
+  ├── ioCtx useMemo (data context)
+  ├── applyCtx useMemo (API functions)
+  ├── ioPopupOpen / setIoPopupOpen state
+  └── Passes to DependencyGrid:
+        ├── ioPopupOpen, setIoPopupOpen, ioPopupContent
+        └── viewBarRef (exposes IO props to floating title bar)
+
+DependencyGrid
+  └── viewBarRef.current = {
+        ...viewState,
+        ioPopupOpen, setIoPopupOpen, ioPopupContent  ← IO props added
+      }
+
+ScheduleWindow
+  └── <ScheduleTitleBar viewBar={viewBarRef.current} />
+
+ScheduleTitleBar
+  └── Destructures ioPopupOpen, setIoPopupOpen, ioPopupContent from viewBar
+  └── Renders Sparkles button + ioPopupContent (DependencyIOPopup)
+```
+
+Unlike IdeaBin/TaskStructure where the title bar is rendered inside the same component tree, the Schedule's floating window architecture requires the IO props to flow through the `viewBarRef` (a mutable ref) from `DependencyGrid` to `ScheduleWindow` → `ScheduleTitleBar`.
+
+---
+
 ## UI Components
 
 ### IdeaBinIOPopup (Grid Layout v2)
@@ -335,6 +587,32 @@ the popup.
   - "Apply to IdeaBin" — runs `applyDetected()` through the API layer
   - Alternatively opens `ControlledApplyPanel` for human-in-the-loop review
 - Props: `scenarios`, `grid`, `ctx`, `settings`, `assemblePrompt`, `applyCtx`, `onClose`, `iconColor`
+
+### TaskStructureIOPopup (Grid Layout v2 — Phase 2)
+- Location: `frontend/src/components/tasks_classification/TaskStructureIOPopup.jsx`
+- Triggered by: Sparkles icon in TaskStructureTitleBar
+- Two-mode popup: **Export** (grid) and **Import** (paste & apply)
+- Grid layout: 3×3 (Tasks / Teams × Add / Assign / Finetune) + Specials row
+- Assign column spans Tasks + Teams rows (same merged-cell pattern as IdeaBin)
+- Context toggle, copy-to-clipboard with auto-switch, ControlledApplyPanel integration
+- Props: same as IdeaBinIOPopup
+
+### DependencyIOPopup (Grid Layout v2 — Phase 3)
+- Location: `frontend/src/grid_board/DependencyIOPopup.jsx`
+- Triggered by: Sparkles icon in ScheduleTitleBar
+- Two-mode popup: **Export** (grid) and **Import** (paste & apply with conflict detection)
+- Grid layout: 3×2 (Tasks / Milestones / Dependencies × Add / Finetune) + Specials row
+- **Export mode:**
+  - CSS grid with 3 rows × 2 columns, sky-blue theme
+  - Context toggle controls whether existing milestones/dependencies are included
+  - Click scenario = copy prompt to clipboard + auto-switch to Import tab
+- **Import mode:**
+  - Paste AI response JSON into textarea (supports code-fenced JSON)
+  - "Parse & Preview" — runs `detectDepResponseContent()`
+  - Opens `ControlledApplyPanel` with dependency-specific overrides
+  - `buildChangeItemsWithCtx` passes live `nodes` to the change builder for real-time conflict checking
+  - After apply, result screen includes an **orange conflict section** (with `AlertTriangle` icon) listing scheduling violations and instructions to manually adjust milestones in the grid
+- Props: same as IdeaBinIOPopup
 
 ### ControlledApplyPanel (Human-in-the-loop)
 - Location: `frontend/src/components/shared/promptEngine/ControlledApplyPanel.jsx`
@@ -360,7 +638,7 @@ the popup.
 ### Backend
 - Model: `PromptSettings` (OneToOne per user)
 - Valid keys: `VALID_SCENARIO_KEYS` in `backend/api/views/prompt_settings.py`
-  - Contains all 24 v2 scenario keys + legacy v1 keys for backward compatibility
+  - Contains all 24 IdeaBin + 15 Task Structure + 8 Dependency scenario keys + legacy v1 keys
 - No migration needed (scenario_prompts is a JSONField)
 - OpenAI proxy: `POST /api/ai/generate/` — accepts `{ prompt }`, returns `{ content }`
 
