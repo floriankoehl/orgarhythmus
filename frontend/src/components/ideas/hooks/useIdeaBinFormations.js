@@ -17,6 +17,7 @@ import {
   setContextPositionApi,
   setContextAreaApi,
   fetchContextsApi,
+  fetchProjectContextsApi,
 } from "../api/contextApi";
 import {
   setPositionCategory,
@@ -51,6 +52,8 @@ export default function useIdeaBinFormations(deps) {
     setCategories, setFormHeight,
     // context entry ref (from IdeaBin — a React ref that gets assigned after enterContext is defined)
     enterContext: enterContextRef,
+    // optional — when inside a project, auto-load the project's context
+    projectId,
   } = deps;
 
   const [formations, setFormations] = useState([]);
@@ -259,24 +262,49 @@ export default function useIdeaBinFormations(deps) {
   }, []);
 
   // ── Auto-load default context + its default formation on first mount ──
+  // When inside a project, auto-enter the project's linked context instead of the global default.
   const defaultLoaded = useRef(false);
   useEffect(() => {
     if (defaultLoaded.current) return;
     defaultLoaded.current = true;
     (async () => {
       try {
-        const data = await getDefaultContextApi();
-        if (data?.context) {
-          // Enter the default context
-          const ctx = {
-            id: data.context.id,
-            name: data.context.name,
-            color: data.context.color || null,
-            is_default: data.context.is_default || false,
-            category_ids: data.context.category_ids || [],
-            legend_ids: data.context.legend_ids || [],
-            filter_state: data.context.filter_state || null,
-          };
+        let ctx = null;
+
+        // If inside a project, prefer the project's linked context
+        if (projectId) {
+          const projectContexts = await fetchProjectContextsApi(projectId);
+          if (projectContexts.length > 0) {
+            const pc = projectContexts[0];
+            ctx = {
+              id: pc.id,
+              name: pc.name,
+              color: pc.color || null,
+              is_default: false,
+              category_ids: pc.category_ids || [],
+              legend_ids: pc.legend_ids || [],
+              filter_state: pc.filter_state || null,
+            };
+          }
+        }
+
+        // Fall back to the user's global default context
+        if (!ctx) {
+          const data = await getDefaultContextApi();
+          if (data?.context) {
+            ctx = {
+              id: data.context.id,
+              name: data.context.name,
+              color: data.context.color || null,
+              is_default: data.context.is_default || false,
+              category_ids: data.context.category_ids || [],
+              legend_ids: data.context.legend_ids || [],
+              filter_state: data.context.filter_state || null,
+            };
+          }
+        }
+
+        if (ctx) {
           if (enterContextRef?.current) {
             await enterContextRef.current(ctx);
           } else {

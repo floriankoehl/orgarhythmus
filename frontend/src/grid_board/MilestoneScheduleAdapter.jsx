@@ -32,6 +32,7 @@ import {
   get_project_days,
   get_all_phases,
   update_start_index,
+  bulk_update_start_index,
   add_milestone,
   delete_milestone,
   change_duration,
@@ -89,6 +90,8 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   const gridControlRef = useRef(null);
   // ── View state saved before entering review mode (restored on end) ──
   const preReviewStateRef = useRef(null);
+  // ── Tracks which slide index focus mode last collapsed for (soft collapse) ──
+  const lastFocusedIdx = useRef(null);
 
   // ── Secret shortcut: press 0 + 9 together → 3D view ──
   const heldRef = useRef(new Set());
@@ -279,6 +282,15 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
   const persistNodeMove = useCallback(async (nodeId, newStartIndex) => {
     await update_start_index(projectId, nodeId, newStartIndex);
+    emitDataEvent('milestones');
+  }, [projectId]);
+
+  const persistBulkNodeMove = useCallback(async (moves) => {
+    // moves: [{ nodeId, newStartIndex }, ...]
+    await bulk_update_start_index(
+      projectId,
+      moves.map(m => ({ milestone_id: m.nodeId, index: m.newStartIndex })),
+    );
     emitDataEvent('milestones');
   }, [projectId]);
 
@@ -671,8 +683,9 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
     setReviewState(prev => {
       if (!prev) return prev;
       const next = { ...prev, focusMode: !prev.focusMode };
-      // When turning focus OFF, show everything
+      // When turning focus OFF, show everything and reset soft-collapse tracker
       if (prev.focusMode && gridControlRef.current) {
+        lastFocusedIdx.current = null;
         gridControlRef.current.setRowDisplaySettings(p => {
           const n = {};
           for (const id of Object.keys(p)) n[id] = { ...p[id], hidden: false };
@@ -689,8 +702,17 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   }, []);
 
   // ── Focus mode: hide all rows/lanes not involved in the current review item ──
+  // Soft collapse: only applies when the slide index actually changes, so the
+  // warning system and manual user interaction can still reveal rows/lanes
+  // without being overridden on every re-render.
   useEffect(() => {
-    if (!reviewState || !reviewState.focusMode || !gridControlRef.current) return;
+    if (!reviewState || !reviewState.focusMode || !gridControlRef.current) {
+      lastFocusedIdx.current = null;
+      return;
+    }
+    // Skip if we already applied focus for this slide index
+    if (lastFocusedIdx.current === reviewState.currentIdx) return;
+
     const current = reviewState.items[reviewState.currentIdx];
     if (!current?.detail) return;
     const d = current.detail;
@@ -708,7 +730,9 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       if (laneKey) relevantLanes.add(laneKey);
     }
 
-    if (relevantRows.size === 0) return; // nothing to focus on
+    if (relevantRows.size === 0) return; // nodes not ready yet — retry on next render
+
+    lastFocusedIdx.current = reviewState.currentIdx;
 
     gridControlRef.current.setRowDisplaySettings(prev => {
       const next = {};
@@ -871,6 +895,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
       // Persist callbacks
       persistNodeMove={persistNodeMove}
+      persistBulkNodeMove={persistBulkNodeMove}
       persistNodeResize={persistNodeResize}
       persistNodeCreate={persistNodeCreate}
       persistNodeDelete={persistNodeDelete}

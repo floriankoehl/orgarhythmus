@@ -214,9 +214,7 @@ export const DEP_SCENARIOS = [
       "Use milestone IDs for source and target. " +
       "For each dependency, provide a short 'reason' (a concise label/headline, max ~5 words) " +
       "and a longer 'description' (a detailed explanation of why this dependency exists). " +
-      "Use weight 'strong' for hard dependencies and 'weak' for soft ones. " +
-      "IMPORTANT: Avoid creating dependencies between milestones that belong to the same task — " +
-      "those are implicitly ordered already. Only add same-task dependencies if there is a truly critical reason.",
+      "Use weight 'strong' for hard dependencies and 'weak' for soft ones.",
     expectedFormat:
       '{ "dependencies": [{ "source_id": 1, "target_id": 2, "weight": "strong", "reason": "Short label", "description": "Detailed explanation..." }] }',
     buildPayload: (ctx) => ({
@@ -251,9 +249,7 @@ export const DEP_SCENARIOS = [
       "Use milestone IDs for source and target. " +
       "For each dependency, provide a short 'reason' (a concise label/headline, max ~5 words) " +
       "and a longer 'description' (a detailed explanation of why this dependency exists). " +
-      "Use weight 'strong' for hard dependencies and 'weak' for soft ones. " +
-      "IMPORTANT: Avoid creating dependencies between milestones that belong to the same task — " +
-      "those are implicitly ordered already. Only add same-task dependencies if there is a truly critical reason.",
+      "Use weight 'strong' for hard dependencies and 'weak' for soft ones.",
     expectedFormat:
       '{ "dependencies": [{ "source_id": 1, "target_id": 2, "weight": "strong", "reason": "Short label", "description": "Detailed explanation..." }] }',
     buildPayload: (ctx) => ({
@@ -382,9 +378,7 @@ export const DEP_SCENARIOS = [
       "Each task should have at least one milestone. " +
       "Schedule milestones so predecessors finish before successors start. " +
       "For each dependency, provide a short 'reason' (a concise label/headline, max ~5 words) " +
-      "and a longer 'description' (a detailed explanation of why this dependency exists). " +
-      "IMPORTANT: Avoid creating dependencies between milestones that belong to the same task — " +
-      "those are implicitly ordered already. Only add same-task dependencies if there is a truly critical reason.",
+      "and a longer 'description' (a detailed explanation of why this dependency exists).",
     expectedFormat:
       '{ "milestones": [{ "task_name": "...", "name": "...", "description": "...", "start_index": 0, "duration": 1 }], ' +
       '"dependencies": [{ "source_milestone_name": "...", "target_milestone_name": "...", "weight": "strong", "reason": "Short label", "description": "Detailed explanation..." }] }',
@@ -415,9 +409,7 @@ export const DEP_SCENARIOS = [
       "Analyse the existing milestones and dependencies. " +
       "Suggest any missing dependency connections that should exist. " +
       "For each dependency, provide a short 'reason' (a concise label/headline, max ~5 words) " +
-      "and a longer 'description' (a detailed explanation of why it is important). " +
-      "IMPORTANT: Avoid suggesting dependencies between milestones that belong to the same task — " +
-      "those are implicitly ordered already. Only suggest same-task dependencies if there is a truly critical reason.",
+      "and a longer 'description' (a detailed explanation of why it is important).",
     expectedFormat:
       '{ "new_dependencies": [{ "source_milestone_name": "...", "target_milestone_name": "...", "weight": "strong", "reason": "Short label", "description": "Detailed explanation..." }], ' +
       '"suggestions": "..." }',

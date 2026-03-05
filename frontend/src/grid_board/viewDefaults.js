@@ -29,6 +29,7 @@ export const DEFAULT_EDGE_SETTINGS = {
   defaultEdgeWeight:       'strong',  // default weight when creating new edges
   weakEdgePrompt:          true,      // show prompt on weak edge conflict
   colorDirectionHighlight: true,      // color incoming (red) and outgoing (green) edges on select
+  hideInternalDeps:        false,     // hide edges between milestones in the same task
 };
 
 // ── View mode / interaction mode ─────────────────────────────

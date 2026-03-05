@@ -813,6 +813,11 @@ export default function GridCanvas({
               if (edgeSettings.filterWeights && edgeSettings.filterWeights.length > 0) {
                 if (!edgeSettings.filterWeights.includes(weight)) return null;
               }
+              if (edgeSettings.hideInternalDeps) {
+                const sN = nodes[edge.source];
+                const tN = nodes[edge.target];
+                if (sN && tN && sN.row === tN.row) return null;
+              }
 
               const sourcePos = getNodeHandlePosition(edge.source, "source");
               const targetPos = getNodeHandlePosition(edge.target, "target");

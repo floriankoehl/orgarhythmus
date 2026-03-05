@@ -84,6 +84,15 @@ export async function update_start_index(projectId, milestone_id, index) {
     return answer
 }
 
+export async function bulk_update_start_index(projectId, moves) {
+    const res = await authFetch(`/api/projects/${projectId}/bulk_update_start_index/`, {
+        method: "PATCH",
+        body: JSON.stringify({ moves })
+    })
+    if (!res.ok) throw new Error('Failed to bulk update start indices');
+    return await res.json();
+}
+
 export async function move_milestone_task(projectId, milestone_id, new_task_id) {
     const res = await authFetch(`/api/projects/${projectId}/move_milestone_task/`, {
         method: "PATCH",

@@ -69,6 +69,7 @@ from .milestones import (
     get_all_milestones,
     add_milestone,
     update_start_index,
+    bulk_update_start_index,
     delete_milestones,
     change_duration,
     rename_milestone,

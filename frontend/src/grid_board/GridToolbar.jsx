@@ -903,6 +903,10 @@ export default function GridToolbar({
                           <span>Hide suggestion {pl(edgeLabel.toLowerCase(), 2)}</span>
                         </label>
                         <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                          <input type="checkbox" checked={!!edgeSettings.hideInternalDeps} onChange={(e) => { setEdgeSettings(prev => ({ ...prev, hideInternalDeps: e.target.checked })); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                          <span>Hide task-internal {pl(edgeLabel.toLowerCase(), 2)}</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                           <input type="checkbox" checked={!!edgeSettings.uniformVisuals} onChange={(e) => { setEdgeSettings(prev => ({ ...prev, uniformVisuals: e.target.checked })); playSound('settingToggle'); }} className="rounded border-slate-300" />
                           <span>Uniform line style (ignore weight)</span>
                         </label>

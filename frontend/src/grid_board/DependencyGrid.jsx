@@ -125,6 +125,7 @@ function DependencyGridContent({
 
   // ── Persist callbacks ──
   persistNodeMove,
+  persistBulkNodeMove,
   persistNodeResize,
   persistNodeCreate,
   persistNodeDelete,
@@ -921,7 +922,7 @@ function DependencyGridContent({
     setShowCreateLaneModal, setShowCreateRowModal, setPhaseEditModal,
     onLoadDefaultView: () => handleLoadView(null),
     // Persist callbacks
-    persistNodeCreate, persistNodeMove, persistNodeResize, persistNodeDelete,
+    persistNodeCreate, persistNodeMove, persistBulkNodeMove, persistNodeResize, persistNodeDelete,
     persistNodeRename,
     persistEdgeCreate, persistEdgeDelete, persistEdgeUpdate, persistNodeTaskChange,
     persistLaneOrder, persistRowOrder,

@@ -118,6 +118,60 @@ def update_start_index(request, project_id):
     return Response({"updated": "true"})
 
 
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def bulk_update_start_index(request, project_id):
+    """
+    Move multiple milestones at once (single atomic operation).
+    Body: { "moves": [ { "milestone_id": <id>, "index": <new_index> }, ... ] }
+    """
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    moves = request.data.get("moves")
+    if not moves or not isinstance(moves, list):
+        return Response({"detail": "moves array is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Validate all moves first before persisting any
+    milestone_ids = [int(m["milestone_id"]) for m in moves]
+    milestones = {
+        ms.id: ms
+        for ms in Milestone.objects.select_related("task").filter(id__in=milestone_ids, project=project)
+    }
+
+    for m in moves:
+        ms_id = int(m["milestone_id"])
+        new_index = int(m["index"])
+
+        if new_index < 0:
+            return Response({"detail": f"Milestone {ms_id} cannot be placed before day 0"}, status=status.HTTP_400_BAD_REQUEST)
+
+        ms = milestones.get(ms_id)
+        if not ms:
+            return Response({"detail": f"Milestone {ms_id} not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if ms.task and ms.task.hard_deadline is not None:
+            new_end = new_index + (ms.duration or 1) - 1
+            if new_end > ms.task.hard_deadline:
+                return Response(
+                    {"detail": f"Move blocked: milestone {ms_id} would exceed task hard deadline"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+    # All validated — persist
+    for m in moves:
+        ms = milestones[int(m["milestone_id"])]
+        ms.start_index = int(m["index"])
+        ms.save(update_fields=["start_index"])
+
+    return Response({"updated": len(moves)})
+
+
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def delete_milestones(request, project_id):
