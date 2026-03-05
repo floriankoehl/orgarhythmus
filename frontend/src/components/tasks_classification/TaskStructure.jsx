@@ -3,6 +3,7 @@ import { useParams, useLocation } from "react-router-dom";
 import { LayoutGrid, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { playSound } from "../../assets/sound_registry";
 import { createTaskForProject, bulk_delete_tasks } from "../../api/org_API";
+import { emitDataEvent } from "../../api/dataEvents";
 
 import useFloatingWindow from "../shared/useFloatingWindow";
 import { useWindowManager } from "../shared/WindowManager";
@@ -329,6 +330,7 @@ export default function TaskStructure() {
           setTasks((prev) => ({ ...prev, [created.id]: created }));
           if (!created.team) setTaskOrder((prev) => [...prev, created.id]);
         }
+        emitDataEvent('tasks');
         // Delete the source idea
         window.dispatchEvent(new CustomEvent("pipeline-delete-idea", { detail: { ideaId, placementId } }));
         playSound("ideaTransform");
@@ -405,6 +407,8 @@ export default function TaskStructure() {
           window.dispatchEvent(new CustomEvent("pipeline-delete-category", { detail: { categoryId } }));
           playSound("ideaTransform");
           fetchTasks();
+          emitDataEvent('tasks');
+          emitDataEvent('teams');
         }
       } catch (err) {
         console.error("Pipeline category→team failed:", err);
@@ -593,6 +597,7 @@ export default function TaskStructure() {
           setTaskOrder((prev) => prev.filter((id) => !ids.includes(id)));
           setSelectedTaskIds(new Set());
           if (ids.includes(editingTaskId)) setEditingTaskId(null);
+          emitDataEvent('tasks');
         } catch (e) {
           console.error('Bulk delete failed', e);
         }
@@ -651,6 +656,7 @@ export default function TaskStructure() {
           setSelectedTeamIds(new Set());
           // Refetch tasks since they become unassigned
           fetchTasks();
+          emitDataEvent('tasks');
         } catch (e) {
           console.error('Bulk delete teams failed', e);
         }
