@@ -1,6 +1,9 @@
-﻿import CloseIcon from '@mui/icons-material/Close';
+﻿import { useState } from 'react';
+import CloseIcon from '@mui/icons-material/Close';
 import EditIcon from '@mui/icons-material/Edit';
 import FlagIcon from '@mui/icons-material/Flag';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { lightenColor } from './layoutMath';
 
 /**
@@ -64,7 +67,30 @@ export default function GridNodeLayer({
   getLanePhaseRowHeight,
   // Ghost nodes for inline review preview
   ghostNodes = [],
+  // Toggle done callback
+  persistToggleNodeDone,
 }) {
+  const [todoModal, setTodoModal] = useState(null); // { nodeId, incompleteTodos: [] }
+
+  const handleToggleDone = async (nodeId) => {
+    if (!persistToggleNodeDone) return;
+    try {
+      await persistToggleNodeDone(nodeId);
+    } catch (err) {
+      if (err.data?.incomplete_todos) {
+        setTodoModal({ nodeId, incompleteTodos: err.data.incomplete_todos });
+      }
+    }
+  };
+
+  const handleForceComplete = async () => {
+    if (!todoModal || !persistToggleNodeDone) return;
+    try {
+      await persistToggleNodeDone(todoModal.nodeId, { force_complete: true });
+    } catch { /* ignore */ }
+    setTodoModal(null);
+  };
+
   // Helper: get pixel X offset for a column index using columnLayout
   const getColumnX = (colIndex) => {
     const sidebarW = LANEWIDTH + ROWLABELWIDTH + ROWACTIONSWIDTH;
@@ -116,6 +142,7 @@ export default function GridNodeLayer({
   };
 
   return (
+    <>
     <div
       className="absolute top-0 left-0 w-full h-full"
       style={{ zIndex: 20, pointerEvents: 'none' }}
@@ -289,6 +316,8 @@ export default function GridNodeLayer({
 
             // Get lane color for node
             const nodeColor = node.color || lane.color || '#facc15';
+            const nodeDone = !!node.is_done_effective;
+            const effectiveNodeColor = nodeDone ? '#22c55e' : nodeColor;
 
             // Use node.x (pixel offset) during drag for smooth visual feedback,
             // otherwise use columnLayout-based position
@@ -340,16 +369,20 @@ export default function GridNodeLayer({
                   top: `${rowY}px`,
                   width: `${nodeWidth}px`,
                   height: `${rowHeight - 4}px`,
-                  backgroundColor: nodeColor,
+                  backgroundColor: effectiveNodeColor,
                   pointerEvents: 'auto',
                   zIndex: isSelected ? 25 : 20,
                   marginTop: '2px',
+                  opacity: nodeDone ? 0.75 : 1,
                 }}
                 key={node.id}
               >
                 {/* Node name */}
-                <div className="flex items-center h-full px-2 overflow-hidden">
-                  <span className={`truncate text-xs ${isSelected ? 'text-white' : ''}`}>
+                <div className="flex items-center h-full px-2 overflow-hidden gap-1">
+                  {nodeDone && (
+                    <CheckCircleIcon style={{ fontSize: 12, flexShrink: 0 }} className="text-white drop-shadow-sm" />
+                  )}
+                  <span className={`truncate text-xs ${isSelected ? 'text-white' : ''} ${nodeDone ? 'text-white' : ''}`}>
                     {node.name}
                   </span>
                 </div>
@@ -357,17 +390,40 @@ export default function GridNodeLayer({
                 {/* Edit name icon - shown when selected (single) and not already editing */}
                 {isSelected && selectedNodes.size === 1 && !isEditing && (
                   <div
-                    className="absolute -top-7 left-0 flex items-center gap-1 bg-white rounded shadow-md border border-slate-200 px-1.5 py-0.5 cursor-pointer hover:bg-slate-50 transition"
+                    className="absolute -top-7 left-0 flex items-center gap-1"
                     style={{ pointerEvents: 'auto', zIndex: 30 }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingNodeId(node.id);
-                      setEditingNodeName(node.name);
-                    }}
                   >
-                    <EditIcon style={{ fontSize: 12 }} className="text-slate-500" />
-                    <span className="text-[10px] text-slate-500">Rename</span>
+                    <div
+                      className="flex items-center gap-1 bg-white rounded shadow-md border border-slate-200 px-1.5 py-0.5 cursor-pointer hover:bg-slate-50 transition"
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingNodeId(node.id);
+                        setEditingNodeName(node.name);
+                      }}
+                    >
+                      <EditIcon style={{ fontSize: 12 }} className="text-slate-500" />
+                      <span className="text-[10px] text-slate-500">Rename</span>
+                    </div>
+                    {persistToggleNodeDone && (
+                      <div
+                        className={`flex items-center gap-1 rounded shadow-md border px-1.5 py-0.5 cursor-pointer transition ${
+                          nodeDone
+                            ? 'bg-green-50 border-green-300 hover:bg-green-100'
+                            : 'bg-white border-slate-200 hover:bg-slate-50'
+                        }`}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleDone(node.id);
+                        }}
+                      >
+                        <CheckCircleIcon style={{ fontSize: 12 }} className={nodeDone ? 'text-green-500' : 'text-slate-400'} />
+                        <span className={`text-[10px] ${nodeDone ? 'text-green-600' : 'text-slate-500'}`}>
+                          {nodeDone ? 'Undo' : 'Done'}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -491,5 +547,46 @@ export default function GridNodeLayer({
         );
       })}
     </div>
+
+    {/* TODO confirmation modal */}
+    {todoModal && (
+      <>
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[9998]" onClick={() => setTodoModal(null)} />
+        <div className="fixed inset-0 flex items-center justify-center z-[9999]">
+          <div className="bg-white rounded-xl shadow-xl border border-gray-200 p-5 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <WarningAmberIcon style={{ fontSize: 18 }} className="text-amber-500" />
+              <h3 className="text-sm font-semibold text-gray-900">Incomplete TODOs</h3>
+            </div>
+            <p className="text-xs text-gray-600 mb-3">
+              This milestone has incomplete TODOs. Mark all as done?
+            </p>
+            <div className="space-y-1 mb-4 max-h-40 overflow-y-auto">
+              {todoModal.incompleteTodos.map((t) => (
+                <div key={t.id} className="flex items-center gap-1.5 text-xs text-gray-700">
+                  <span className="w-2 h-2 rounded-full bg-gray-300 flex-shrink-0" />
+                  <span>{t.title}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                onClick={() => setTodoModal(null)}
+                className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleForceComplete}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700"
+              >
+                Complete all & mark done
+              </button>
+            </div>
+          </div>
+        </div>
+      </>
+    )}
+    </>
   );
 }

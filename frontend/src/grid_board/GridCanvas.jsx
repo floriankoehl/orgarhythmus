@@ -166,6 +166,8 @@ export default function GridCanvas({
     // Navigation callbacks (optional, forwarded to GridLaneList)
     onLaneNavigate,
     onRowNavigate,
+    // Toggle done
+    persistToggleNodeDone,
   } = handlers;
 
   // Row multi-select from context
@@ -1078,6 +1080,7 @@ export default function GridCanvas({
             totalColumns={totalColumns}
             getLanePhaseRowHeight={getLanePhaseRowHeight}
             ghostNodes={ghostNodes}
+            persistToggleNodeDone={persistToggleNodeDone}
           />
 
           {/* Ghost edges overlay — ABOVE nodes for visibility */}

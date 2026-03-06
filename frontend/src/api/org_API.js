@@ -462,6 +462,23 @@ export async function toggleCriterion(projectId, taskId, criterionId) {
   return await res.json();
 }
 
+// toggleTaskDone — toggle is_done state, optionally force-complete criteria
+export async function toggleTaskDone(projectId, taskId, { forceCompleteCriteria = false } = {}) {
+  const res = await authFetch(`/api/projects/${projectId}/tasks/${taskId}/toggle_done/`, {
+    method: 'PATCH',
+    body: JSON.stringify({ force_complete_criteria: forceCompleteCriteria }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    const err = new Error(errorData.detail || 'Failed to toggle task done');
+    err.data = errorData;
+    throw err;
+  }
+
+  return await res.json();
+}
+
 // Assign a user to a task
 export async function assignTaskMember(projectId, taskId, userId) {
   const res = await authFetch(`/api/projects/${projectId}/tasks/${taskId}/assign/`, {

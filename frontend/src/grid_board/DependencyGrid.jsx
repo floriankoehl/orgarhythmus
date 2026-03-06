@@ -144,6 +144,7 @@ function DependencyGridContent({
   persistPhaseDelete,
   persistRowDeadline,
   persistLaneColor,
+  persistToggleNodeDone,
 
   // ── View / snapshot API ──
   fetchViews,
@@ -1105,6 +1106,8 @@ function DependencyGridContent({
     // Navigation (adapter-injected)
     onLaneNavigate,
     onRowNavigate,
+    // Toggle done
+    persistToggleNodeDone,
   };
 
   // ═════════════════════════════════════════════════════════════════════════

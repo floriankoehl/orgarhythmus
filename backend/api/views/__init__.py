@@ -11,6 +11,7 @@ from .serializers import (
     TaskSerializer_TeamView,
     TaskExpandedSerializer,
     AcceptanceCriterionSerializer,
+    MilestoneTodoSerializer,
     IdeaSerializer,
     CategorySerializer,
     LegendTypeSerializer,
@@ -63,6 +64,7 @@ from .tasks import (
     reorder_team_tasks,
     set_task_deadline,
     toggle_criterion,
+    toggle_task_done,
 )
 
 from .milestones import (
@@ -75,6 +77,8 @@ from .milestones import (
     rename_milestone,
     move_milestone_task,
     bulk_import_dependencies,
+    toggle_milestone_done,
+    toggle_milestone_todo,
 )
 
 from .dependencies import (

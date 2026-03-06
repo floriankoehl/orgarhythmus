@@ -6,6 +6,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ArrowRightIcon from '@mui/icons-material/ArrowRight';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import GridColumnGrid from './GridColumnGrid';
 import { playSound } from '../assets/sound_registry';
 import { LANE_PHASE_ROW_HEIGHT } from './layoutMath';
@@ -476,9 +477,12 @@ export default function GridLaneList({
                               if (onRowNavigate) onRowNavigate(row_key);
                             }}
                           >
+                            {rows[row_key]?.is_done && (
+                              <CheckCircleIcon style={{ fontSize: isSmall ? 10 : 12, flexShrink: 0, marginRight: 3 }} className="text-green-500" />
+                            )}
                             <span
-                              className={`truncate hover:text-blue-600 hover:underline transition-colors ${isRowSelected ? 'text-blue-700 font-semibold' : 'text-slate-600'} ${isSmall ? 'text-xs' : 'text-sm'}`}
-                              title={`${rows[row_key]?.name} â€” Click to open, Ctrl+Click to select`}
+                              className={`truncate hover:text-blue-600 hover:underline transition-colors ${isRowSelected ? 'text-blue-700 font-semibold' : 'text-slate-600'} ${isSmall ? 'text-xs' : 'text-sm'} ${rows[row_key]?.is_done ? 'line-through opacity-60' : ''}`}
+                              title={`${rows[row_key]?.name} — Click to open, Ctrl+Click to select`}
                             >
                               {rows[row_key]?.name}
                             </span>

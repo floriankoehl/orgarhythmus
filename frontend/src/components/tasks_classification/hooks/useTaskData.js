@@ -5,8 +5,9 @@ import {
   updateTask,
   delete_task,
   toggleCriterion,
+  toggleTaskDone,
 } from "../../../api/org_API";
-import { reorder_team_tasks as reorderTeamTasksApi } from "../../../api/dependencies_api";
+import { reorder_team_tasks as reorderTeamTasksApi, toggle_milestone_todo } from "../../../api/dependencies_api";
 import { emitDataEvent, useManualRefresh } from "../../../api/dataEvents";
 
 /**
@@ -215,18 +216,60 @@ export default function useTaskData({ projectId }) {
     if (!projectId) return null;
     try {
       const updated = await toggleCriterion(projectId, taskId, criterionId);
-      // Update the criterion in the local task object
+      // Update the criterion in the local task object and recompute is_done
       setTasks((prev) => {
         const task = prev[taskId];
         if (!task) return prev;
         const criteria = (task.acceptance_criteria || []).map((c) =>
           c.id === criterionId ? { ...c, done: updated.done } : c
         );
-        return { ...prev, [taskId]: { ...task, acceptance_criteria: criteria } };
+        const is_done = criteria.length > 0 && criteria.every((c) => c.done);
+        return { ...prev, [taskId]: { ...task, acceptance_criteria: criteria, is_done } };
       });
+      emitDataEvent('tasks');
       return updated;
     } catch (err) {
       console.error("Failed to toggle criterion:", err);
+      return null;
+    }
+  }, [projectId]);
+
+  // ── Toggle task done state ──
+  const toggleTaskDoneApi = useCallback(async (taskId, { forceCompleteCriteria = false } = {}) => {
+    if (!projectId) return null;
+    try {
+      const updated = await toggleTaskDone(projectId, taskId, { forceCompleteCriteria });
+      // Update the task in local state
+      setTasks((prev) => ({
+        ...prev,
+        [taskId]: { ...prev[taskId], ...updated, is_done: updated.is_done, acceptance_criteria: updated.acceptance_criteria || prev[taskId]?.acceptance_criteria },
+      }));
+      emitDataEvent('tasks');
+      return updated;
+    } catch (err) {
+      console.error("Failed to toggle task done:", err);
+      throw err;
+    }
+  }, [projectId]);
+
+  // ── Toggle milestone todo done state ──
+  const toggleMilestoneTodoApi = useCallback(async (taskId, milestoneId, todoId) => {
+    if (!projectId) return null;
+    try {
+      const updatedMilestone = await toggle_milestone_todo(projectId, milestoneId, todoId);
+      // Update the milestone in the local task object
+      setTasks((prev) => {
+        const task = prev[taskId];
+        if (!task) return prev;
+        const milestones = (task.milestones || []).map((m) =>
+          m.id === milestoneId ? { ...m, ...updatedMilestone } : m
+        );
+        return { ...prev, [taskId]: { ...task, milestones } };
+      });
+      emitDataEvent('milestones');
+      return updatedMilestone;
+    } catch (err) {
+      console.error("Failed to toggle milestone todo:", err);
       return null;
     }
   }, [projectId]);
@@ -256,5 +299,7 @@ export default function useTaskData({ projectId }) {
     reorderTeamTasks,
     tasksByTeam,
     toggleCriterionApi,
+    toggleTaskDoneApi,
+    toggleMilestoneTodoApi,
   };
 }
