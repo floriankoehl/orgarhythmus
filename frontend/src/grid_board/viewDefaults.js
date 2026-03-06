@@ -56,6 +56,7 @@ export const DEFAULT_HIDE_LANE_LABELS           = false;  // show lane labels co
 export const DEFAULT_HIDE_ROW_LABELS            = false;  // show row labels column
 export const DEFAULT_HIDE_ROW_ACTIONS           = false;  // show row action buttons column
 export const DEFAULT_IS_FULLSCREEN             = false;  // not fullscreen by default
+export const DEFAULT_HIGHLIGHT_WEEKENDS        = true;   // tint weekend columns (Sat/Sun)
 
 // ── Numeric settings ─────────────────────────────────────────
 export const DEFAULT_WARNING_DURATION           = 2000;                       // ms — how long warning toast shows
@@ -113,5 +114,6 @@ export function getDefaultViewState() {
     hideRowLabels:           DEFAULT_HIDE_ROW_LABELS,
     hideRowActions:          DEFAULT_HIDE_ROW_ACTIONS,
     isFullscreen:            DEFAULT_IS_FULLSCREEN,
+    highlightWeekends:       DEFAULT_HIGHLIGHT_WEEKENDS,
   };
 }

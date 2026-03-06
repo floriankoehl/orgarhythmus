@@ -611,15 +611,15 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
         if (newId && d.duration && d.duration > 1) {
           await change_duration(projectId, newId, d.duration - 1);
         }
-        // Optimistic node update
+        // Optimistic node + row update so the milestone renders immediately
         if (newId) {
           setNodes(prev => ({
             ...prev,
             [newId]: {
               id: newId,
               name: d.name,
-              row: String(taskId),
-              task: String(taskId),
+              row: taskId,
+              task: taskId,
               startColumn: d.startIndex ?? 0,
               start_index: d.startIndex ?? 0,
               duration: d.duration || 1,
@@ -627,6 +627,14 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
               _session: true,
             },
           }));
+          // Add to the row's milestones array so GridNodeLayer renders it
+          setRows(prev => {
+            const row = prev[taskId];
+            if (!row) return prev;
+            const existing = row.milestones || [];
+            if (existing.some(m => m.id === newId)) return prev;
+            return { ...prev, [taskId]: { ...row, milestones: [...existing, { id: newId }] } };
+          });
         }
         emitDataEvent('milestones');
         setReviewState(prev => ({
@@ -765,7 +773,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       return [{
         id: `ghost-create-ms`,
         name: d.name,
-        row: String(taskEntry[0]),
+        row: Number(taskEntry[0]),
         startColumn: d.startIndex ?? 0,
         duration: d.duration || 1,
         isCreate: true,

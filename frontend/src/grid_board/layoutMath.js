@@ -117,7 +117,7 @@ export const getLaneYOffset = (laneId, laneOrder, isLaneVisibleFn, getLaneHeight
     const { HEADER_HEIGHT, LANE_DRAG_HIGHLIGHT_HEIGHT, MARGIN_BETWEEN_DRAG_HIGHLIGHT, LANE_HEADER_LINE_HEIGHT, LANE_HEADER_GAP } = layoutConstants;
     let offset = HEADER_HEIGHT;
     for (const tid of laneOrder) {
-      if (tid === laneId) break;
+      if (String(tid) === String(laneId)) break;
       if (!isLaneVisibleFn(tid)) continue;
       offset += LANE_DRAG_HIGHLIGHT_HEIGHT + MARGIN_BETWEEN_DRAG_HIGHLIGHT * 2;
       offset += LANE_HEADER_LINE_HEIGHT + LANE_HEADER_GAP;
@@ -131,7 +131,7 @@ export const getRowYOffset = (rowId, lane, isRowVisibleFn, getRowHeightFn, rowDi
     const rowIds = lane.rows || lane.tasks || [];
     let offset = 0;
     for (const tid of rowIds) {
-      if (tid === rowId) break;
+      if (String(tid) === String(rowId)) break;
       if (!isRowVisibleFn(tid, rowDisplaySettings)) continue;
       offset += getRowHeightFn(tid, rowDisplaySettings);
     }

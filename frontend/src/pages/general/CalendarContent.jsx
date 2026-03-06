@@ -142,10 +142,19 @@ export default function CalendarContent({ effectiveView, transposed, windowSize 
   }, [currentMonth]);
 
   // ── Days for 3d / 7d views ──
+  // For 7d view, snap to Monday of the week so the grid is always Mon–Sun.
+  const snappedDayStart = useMemo(() => {
+    if (effectiveView === "7d") {
+      const wd = currentDayStart.day(); // 0=Sun … 6=Sat
+      return currentDayStart.subtract((wd + 6) % 7, "day");
+    }
+    return currentDayStart;
+  }, [currentDayStart, effectiveView]);
+
   const shortDays = useMemo(() => {
     const count = effectiveView === "3d" ? 3 : 7;
-    return Array.from({ length: count }, (_, i) => currentDayStart.add(i, "day"));
-  }, [currentDayStart, effectiveView]);
+    return Array.from({ length: count }, (_, i) => snappedDayStart.add(i, "day"));
+  }, [snappedDayStart, effectiveView]);
 
   // ── Unique teams for filter ──
   const uniqueTeams = useMemo(() => {
@@ -472,14 +481,14 @@ export default function CalendarContent({ effectiveView, transposed, windowSize 
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setCurrentDayStart(currentDayStart.subtract(dayCount, "day"))}
+            onClick={() => setCurrentDayStart(snappedDayStart.subtract(dayCount, "day"))}
             className="rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
           >
             <ChevronLeft size={13} />
           </button>
           <div className="min-w-36 text-center">
             <h2 className="text-sm font-semibold text-slate-900">
-              {currentDayStart.format("MMM D")} {"\u2013"} {currentDayStart.add(dayCount - 1, "day").format("MMM D, YYYY")}
+              {snappedDayStart.format("MMM D")} {"\u2013"} {snappedDayStart.add(dayCount - 1, "day").format("MMM D, YYYY")}
             </h2>
           </div>
           <button
@@ -489,7 +498,7 @@ export default function CalendarContent({ effectiveView, transposed, windowSize 
             Today
           </button>
           <button
-            onClick={() => setCurrentDayStart(currentDayStart.add(dayCount, "day"))}
+            onClick={() => setCurrentDayStart(snappedDayStart.add(dayCount, "day"))}
             className="rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
           >
             <ChevronRight size={13} />

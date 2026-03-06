@@ -229,6 +229,8 @@ export default function GridToolbar({
   // Phase colors in grid
   showPhaseColorsInGrid,
   setShowPhaseColorsInGrid,
+  highlightWeekends,
+  setHighlightWeekends,
   // Lane phase row controls
   collapsedLanePhaseRows,
   collapseAllLanePhases,
@@ -829,6 +831,10 @@ export default function GridToolbar({
                           <span>Show phase colors in grid</span>
                         </label>
                       )}
+                      <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                        <input type="checkbox" checked={highlightWeekends} onChange={(e) => { setHighlightWeekends(e.target.checked); playSound('settingToggle'); }} className="rounded border-slate-300" />
+                        <span>Highlight weekends (Sat/Sun)</span>
+                      </label>
                       <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                         <input type="checkbox" checked={!hideColumnHeader} onChange={(e) => { setHideColumnHeader(!e.target.checked); playSound('settingToggle'); }} className="rounded border-slate-300" />
                         <span>Show {columnLabel.toLowerCase()} header row</span>

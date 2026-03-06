@@ -26,6 +26,7 @@ export default function GridColumnGrid({
   selectedColumns = new Set(),
   phases = [],
   showPhaseColorsInGrid = true,
+  highlightWeekends = true,
   refactorMode = false,
 }) {
   const canClickToAdd = isAddingNode || refactorMode;
@@ -115,6 +116,7 @@ export default function GridColumnGrid({
                   const isPastDeadline = rowDeadline !== null && rowDeadline !== undefined && i > rowDeadline;
                   const isDeadlineCol = rowDeadline !== null && rowDeadline !== undefined && i === rowDeadline;
                   const phaseColor = phaseColorMap[i];
+                  const isWeekendCol = highlightWeekends && colInfo?.isWeekend;
 
                   let cellBg = {};
                   if (!isHovered) {
@@ -124,6 +126,8 @@ export default function GridColumnGrid({
                       cellBg = { backgroundColor: isColSelected ? 'rgba(30, 41, 59, 0.10)' : 'rgba(30, 41, 59, 0.06)' };
                     } else if (isColSelected) {
                       cellBg = { backgroundColor: phaseColor ? `${phaseColor}22` : 'rgba(59, 130, 246, 0.08)' };
+                    } else if (isWeekendCol) {
+                      cellBg = { backgroundColor: phaseColor ? `${phaseColor}14` : 'rgba(147, 51, 234, 0.05)' };
                     } else if (phaseColor) {
                       cellBg = {
                         backgroundColor: `${phaseColor}14`,
