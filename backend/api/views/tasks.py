@@ -418,7 +418,7 @@ def fetch_project_tasks(request, project_id):
     all_tasks = (
         Task.objects
         .filter(project=project)
-        .prefetch_related("milestones", "milestones__todos", "acceptance_criteria")  
+        .prefetch_related("milestones", "milestones__todos", "acceptance_criteria", "legend_assignments", "legend_assignments__legend", "legend_assignments__legend_type")  
         .order_by("team_id", "order_index")
     )
 

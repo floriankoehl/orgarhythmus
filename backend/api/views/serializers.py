@@ -22,6 +22,9 @@ from ..models import (
     Legend,
     Context,
     CategoryContextPlacement,
+    TaskLegend,
+    TaskLegendType,
+    TaskLegendAssignment,
 )
 
 
@@ -147,6 +150,7 @@ class TaskSerializer_TeamView(serializers.ModelSerializer):
     acceptance_criteria = AcceptanceCriterionSerializer(many=True, read_only=True)
     milestones = MilestoneSerializer_Deps(many=True, read_only=True)
     is_done = serializers.SerializerMethodField()
+    legend_types = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -162,11 +166,23 @@ class TaskSerializer_TeamView(serializers.ModelSerializer):
             "acceptance_criteria",
             "milestones",
             "order_index",
+            "legend_types",
         ]
 
     def get_is_done(self, obj):
         criteria = obj.acceptance_criteria.all()
         return criteria.exists() and all(c.done for c in criteria)
+
+    def get_legend_types(self, obj):
+        result = {}
+        for a in obj.legend_assignments.select_related('legend', 'legend_type').all():
+            result[str(a.legend_id)] = {
+                "legend_type_id": a.legend_type_id,
+                "name": a.legend_type.name,
+                "color": a.legend_type.color,
+                "icon": a.legend_type.icon,
+            }
+        return result
 
 
 # TaskExpandedSerializer
@@ -176,6 +192,7 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
     assigned_members_data = serializers.SerializerMethodField()
     acceptance_criteria = AcceptanceCriterionSerializer(many=True, read_only=True)
     is_done = serializers.SerializerMethodField()
+    legend_types = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -192,10 +209,22 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
             'assigned_members',
             'assigned_members_data',
             'acceptance_criteria',
+            'legend_types',
         ]
 
     def get_assigned_members_data(self, obj):
         return [{"id": u.id, "username": u.username, "email": u.email} for u in obj.assigned_members.all()]
+
+    def get_legend_types(self, obj):
+        result = {}
+        for a in obj.legend_assignments.select_related('legend', 'legend_type').all():
+            result[str(a.legend_id)] = {
+                "legend_type_id": a.legend_type_id,
+                "name": a.legend_type.name,
+                "color": a.legend_type.color,
+                "icon": a.legend_type.icon,
+            }
+        return result
 
     def get_is_done(self, obj):
         criteria = obj.acceptance_criteria.all()
@@ -308,6 +337,25 @@ class LegendSerializer(serializers.ModelSerializer):
         return obj.owner.username if obj.owner else None
 
 
+# TaskLegendTypeSerializer
+class TaskLegendTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaskLegendType
+        fields = "__all__"
+
+
+# TaskLegendSerializer
+class TaskLegendSerializer(serializers.ModelSerializer):
+    owner_username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskLegend
+        fields = ['id', 'name', 'project', 'owner', 'owner_username', 'created_at']
+
+    def get_owner_username(self, obj):
+        return obj.owner.username if obj.owner else None
+
+
 # ContextSerializer
 class ContextSerializer(serializers.ModelSerializer):
     owner_username = serializers.SerializerMethodField()
@@ -346,6 +394,7 @@ class TaskSerializer_Deps(serializers.ModelSerializer):
     milestones = MilestoneSerializer_Deps(many=True, read_only=True)
     acceptance_criteria = AcceptanceCriterionSerializer(many=True, read_only=True)
     is_done = serializers.SerializerMethodField()
+    legend_types = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -354,6 +403,17 @@ class TaskSerializer_Deps(serializers.ModelSerializer):
     def get_is_done(self, obj):
         criteria = obj.acceptance_criteria.all()
         return criteria.exists() and all(c.done for c in criteria)
+
+    def get_legend_types(self, obj):
+        result = {}
+        for a in obj.legend_assignments.select_related('legend', 'legend_type').all():
+            result[str(a.legend_id)] = {
+                "legend_type_id": a.legend_type_id,
+                "name": a.legend_type.name,
+                "color": a.legend_type.color,
+                "icon": a.legend_type.icon,
+            }
+        return result
 
 
 class DependencySerializer_Deps(serializers.ModelSerializer):

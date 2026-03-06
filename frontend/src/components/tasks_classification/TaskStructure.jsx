@@ -11,6 +11,7 @@ import useTaskData from "./hooks/useTaskData";
 import useTaskTeams from "./hooks/useTaskTeams";
 import useTaskDrag from "./hooks/useTaskDrag";
 import useTaskViews from "./hooks/useTaskViews";
+import useTaskLegends from "./hooks/useTaskLegends";
 
 import TaskStructureTitleBar from "./TaskStructureTitleBar";
 import TaskStructureToolbar from "./TaskStructureToolbar";
@@ -18,6 +19,7 @@ import TaskList from "./TaskList";
 import TeamCanvas from "./TeamCanvas";
 import TaskEditPanel from "./TaskEditPanel";
 import TaskLegendPanel from "./TaskLegendPanel";
+import { assignTaskLegendTypeApi, batchAssignTaskLegendTypeApi, batchRemoveTaskLegendTypeApi, removeAllTaskLegendTypesApi } from "./api/taskLegendApi";
 import TaskConfirmModal from "./TaskConfirmModal";
 import TaskDragGhosts from "./TaskDragGhosts";
 import TaskExportModal from "./TaskExportModal";
@@ -101,6 +103,15 @@ export default function TaskStructure() {
     setTeamPosition, bringToFront,
     handleTeamDrag, handleTeamResize,
   } = useTaskTeams({ projectId, selectedTeamIds, tasksRef });
+
+  // ── Task legends (project-scoped, mirrors IdeaBin legend system) ──
+  const {
+    legends, activeLegendId, setActiveLegendId,
+    legendTypes, fetchLegends, fetchTypes,
+    createLegend, updateLegend, deleteLegend,
+    createType, updateType, deleteType,
+  } = useTaskLegends(projectId);
+  const [paintType, setPaintType] = useState(null); // { legendId, typeId }
 
   // ── UI state (needed before useTaskViews for deps) ──
   const [editingTaskId, setEditingTaskId] = useState(null);
@@ -723,6 +734,71 @@ export default function TaskStructure() {
     await toggleMilestoneTodoApi(taskId, milestoneId, todoId);
   }, [setTasks, toggleMilestoneTodoApi]);
 
+  // ── Legend assignment handlers ──
+  const handleAssignLegendType = useCallback(async (taskId, legendId, typeId) => {
+    // Find the type info for optimistic update
+    const type = legendTypes.find((t) => t.id === typeId);
+    // Optimistic update
+    setTasks((prev) => {
+      const task = prev[taskId];
+      if (!task) return prev;
+      const lt = { ...(task.legend_types || {}) };
+      if (type) {
+        lt[String(legendId)] = { legend_type_id: type.id, name: type.name, color: type.color, icon: type.icon };
+      } else {
+        delete lt[String(legendId)];
+      }
+      return { ...prev, [taskId]: { ...task, legend_types: lt } };
+    });
+    await assignTaskLegendTypeApi(projectId, taskId, legendId, typeId);
+  }, [projectId, legendTypes, setTasks]);
+
+  const handleBatchAssignLegendType = useCallback(async (taskIds, legendId, typeId) => {
+    const type = legendTypes.find((t) => t.id === typeId);
+    setTasks((prev) => {
+      const next = { ...prev };
+      taskIds.forEach((tid) => {
+        const task = next[tid];
+        if (!task) return;
+        const lt = { ...(task.legend_types || {}) };
+        if (type) {
+          lt[String(legendId)] = { legend_type_id: type.id, name: type.name, color: type.color, icon: type.icon };
+        }
+        next[tid] = { ...task, legend_types: lt };
+      });
+      return next;
+    });
+    await batchAssignTaskLegendTypeApi(projectId, taskIds, legendId, typeId);
+  }, [projectId, legendTypes, setTasks]);
+
+  const handleBatchRemoveLegendType = useCallback(async (taskIds, legendId) => {
+    setTasks((prev) => {
+      const next = { ...prev };
+      taskIds.forEach((tid) => {
+        const task = next[tid];
+        if (!task) return;
+        const lt = { ...(task.legend_types || {}) };
+        delete lt[String(legendId)];
+        next[tid] = { ...task, legend_types: lt };
+      });
+      return next;
+    });
+    await batchRemoveTaskLegendTypeApi(projectId, taskIds, legendId);
+  }, [projectId, setTasks]);
+
+  const handleRemoveAllLegendTypes = useCallback(async (taskIds) => {
+    setTasks((prev) => {
+      const next = { ...prev };
+      taskIds.forEach((tid) => {
+        const task = next[tid];
+        if (!task) return;
+        next[tid] = { ...task, legend_types: {} };
+      });
+      return next;
+    });
+    await removeAllTaskLegendTypesApi(projectId, taskIds);
+  }, [projectId, setTasks]);
+
   // ── Set per-team view override ──
   const setTeamViewOverride = useCallback((teamId, mode) => {
     setTeamViewOverrides((prev) => {
@@ -1168,12 +1244,33 @@ export default function TaskStructure() {
                     focusedPanel={focusedPanel}
                     setFocusedPanel={setFocusedPanel}
                     displayedTaskIdsRef={displayedTaskIdsRef}
+                    activeLegendId={activeLegendId}
+                    paintType={paintType}
+                    onPaintAssign={handleAssignLegendType}
                   />
 
                   {/* Legend panel */}
                   <TaskLegendPanel
                     collapsed={legendPanelCollapsed}
                     setCollapsed={setLegendPanelCollapsed}
+                    legends={legends}
+                    activeLegendId={activeLegendId}
+                    setActiveLegendId={setActiveLegendId}
+                    legendTypes={legendTypes}
+                    createLegend={createLegend}
+                    updateLegend={updateLegend}
+                    deleteLegend={deleteLegend}
+                    createType={createType}
+                    updateType={updateType}
+                    deleteType={deleteType}
+                    tasks={tasks}
+                    selectedTaskIds={selectedTaskIds}
+                    onAssignType={handleAssignLegendType}
+                    onBatchAssignType={handleBatchAssignLegendType}
+                    onBatchRemoveType={handleBatchRemoveLegendType}
+                    onRemoveAllTypes={handleRemoveAllLegendTypes}
+                    paintType={paintType}
+                    setPaintType={setPaintType}
                   />
                 </>
               )}
@@ -1283,6 +1380,9 @@ export default function TaskStructure() {
                 onEnterTeamFocus={enterTeamFocus}
                 onExitTeamFocus={exitTeamFocus}
                 onReorderTask={reorderTeamTasks}
+                activeLegendId={activeLegendId}
+                paintType={paintType}
+                onPaintAssign={handleAssignLegendType}
               />
               </div>
             )}

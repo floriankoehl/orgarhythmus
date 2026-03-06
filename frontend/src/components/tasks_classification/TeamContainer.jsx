@@ -51,6 +51,9 @@ export default function TeamContainer({
   onEnterTeamFocus,
   onExitTeamFocus,
   onReorderTask,         // (teamId, taskId, fromIdx, toIdx) => void
+  activeLegendId,
+  paintType,
+  onPaintAssign,
 }) {
   const [minimized, setMinimized] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -446,6 +449,9 @@ export default function TeamContainer({
                   displayedTaskIds={taskIds}
                   lastClickedTaskRef={lastClickedTaskRef}
                   onIntraTeamDrag={handleIntraTeamDrag}
+                  activeLegendId={activeLegendId}
+                  paintType={paintType}
+                  onPaintAssign={onPaintAssign}
                 />
                 {/* Drop indicator line — after last card */}
                 {reorderIdx === taskIds.length && i === taskIds.length - 1 && (

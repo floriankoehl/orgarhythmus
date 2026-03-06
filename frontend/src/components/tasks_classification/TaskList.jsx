@@ -42,6 +42,9 @@ export default function TaskList({
   focusedPanel,
   setFocusedPanel,
   displayedTaskIdsRef,
+  activeLegendId,
+  paintType,
+  onPaintAssign,
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAllTasks, setShowAllTasks] = useState(false);
@@ -164,6 +167,9 @@ export default function TaskList({
               onToggleMilestoneTodo={onToggleMilestoneTodo}
               displayedTaskIds={displayedTaskIds}
               lastClickedTaskRef={lastClickedTaskRef}
+              activeLegendId={activeLegendId}
+              paintType={paintType}
+              onPaintAssign={onPaintAssign}
             />
           ))
         )}

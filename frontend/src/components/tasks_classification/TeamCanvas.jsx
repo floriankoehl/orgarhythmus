@@ -57,6 +57,9 @@ export default function TeamCanvas({
   onEnterTeamFocus,
   onExitTeamFocus,
   onReorderTask,
+  activeLegendId,
+  paintType,
+  onPaintAssign,
 }) {
   // ── Draw-to-create marquee state ──
   const [marquee, setMarquee] = useState(null); // { startX, startY, currentX, currentY }
@@ -309,6 +312,9 @@ export default function TeamCanvas({
               onEnterTeamFocus={onEnterTeamFocus}
               onExitTeamFocus={onExitTeamFocus}
               onReorderTask={onReorderTask}
+              activeLegendId={activeLegendId}
+              paintType={paintType}
+              onPaintAssign={onPaintAssign}
             />
           );
         })}

@@ -17,6 +17,8 @@ from .serializers import (
     LegendTypeSerializer,
     DaySerializer,
     ContextSerializer,
+    TaskLegendSerializer,
+    TaskLegendTypeSerializer,
 )
 
 from .helpers import user_has_project_access
@@ -242,6 +244,21 @@ from .task_structure_views import (
     delete_ts_view,
     set_default_ts_view,
     get_default_ts_view,
+)
+
+from .task_legends import (
+    get_project_task_legends,
+    create_task_legend,
+    update_task_legend,
+    delete_task_legend,
+    get_task_legend_types,
+    create_task_legend_type,
+    update_task_legend_type,
+    delete_task_legend_type,
+    assign_task_legend_type,
+    batch_assign_task_legend_type,
+    batch_remove_task_legend_type,
+    remove_all_task_legend_types,
 )
 
 from .export import (
