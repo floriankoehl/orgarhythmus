@@ -283,12 +283,16 @@ export default function Calendar() {
               const dateKey = day.format('YYYY-MM-DD');
               const dayMilestones = milestonesByDate[dateKey] || [];
               const isSelected = day.isSame(mobileSelectedDate, 'day');
+              const mobileDayOfWeek = day.day();
+              const isMobileWeekend = mobileDayOfWeek === 0 || mobileDayOfWeek === 6;
               return (
                 <button
                   key={`mobile-day-${dateKey}`}
                   onClick={() => setMobileSelectedDate(day)}
                   className={`flex flex-col items-center justify-center rounded-lg border px-2 py-2 text-xs transition ${
-                    isSelected ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                    isSelected ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    : isMobileWeekend ? 'border-purple-200 bg-purple-50/50 text-purple-700 hover:border-purple-300'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                   }`}
                 >
                   <span className="font-semibold">{day.format('dd').charAt(0)}</span>
@@ -349,7 +353,9 @@ export default function Calendar() {
               {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
                 <div
                   key={day}
-                  className="py-2 text-center text-[11px] sm:text-xs font-bold tracking-wide text-slate-600 uppercase"
+                  className={`py-2 text-center text-[11px] sm:text-xs font-bold tracking-wide uppercase ${
+                    day === 'Sat' || day === 'Sun' ? 'text-purple-600' : 'text-slate-600'
+                  }`}
                 >
                   <span className="hidden sm:inline">{day}</span>
                   <span className="sm:hidden">{day.charAt(0)}</span>
@@ -371,6 +377,8 @@ export default function Calendar() {
                 const isToday = day.isSame(today, 'day');
                 const isCurrentMonth = day.isSame(currentMonth, 'month');
                 const isExpanded = expandedDate === dateKey;
+                const dayOfWeek = day.day();
+                const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
                 return (
                   <div
@@ -378,9 +386,13 @@ export default function Calendar() {
                     className={`relative min-h-24 sm:min-h-32 rounded-lg border transition snap-start ${
                       isToday
                         ? 'border-blue-400 bg-blue-50'
-                        : dayMilestones.length > 0
-                          ? 'border-slate-300 bg-white'
-                          : 'border-slate-200 bg-slate-50/40'
+                        : isWeekend
+                          ? dayMilestones.length > 0
+                            ? 'border-purple-200 bg-purple-50/60'
+                            : 'border-purple-100 bg-purple-50/30'
+                          : dayMilestones.length > 0
+                            ? 'border-slate-300 bg-white'
+                            : 'border-slate-200 bg-slate-50/40'
                     } ${!isCurrentMonth ? 'opacity-40' : ''}`}
                   >
                     {/* Day Number */}

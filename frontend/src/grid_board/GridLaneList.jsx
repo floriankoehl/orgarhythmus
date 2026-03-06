@@ -84,6 +84,7 @@ export default function GridLaneList({
   // Phases in grid
   phases = [],
   showPhaseColorsInGrid = true,
+  highlightWeekends = true,
   // Lane phase rows
   lanePhasesMap = {},
   getLanePhaseRowHeight,
@@ -613,6 +614,7 @@ export default function GridLaneList({
                 selectedColumns={selectedColumns}
                 phases={phases}
                 showPhaseColorsInGrid={showPhaseColorsInGrid}
+                highlightWeekends={highlightWeekends}
                 refactorMode={refactorMode}
               />
             </div>

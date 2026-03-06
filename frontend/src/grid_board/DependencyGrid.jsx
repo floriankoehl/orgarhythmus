@@ -280,6 +280,7 @@ function DependencyGridContent({
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [expandedRowView, setExpandedRowView]       = useState(false);
   const [showPhaseColorsInGrid, setShowPhaseColorsInGrid] = useState(true);
+  const [highlightWeekends, setHighlightWeekends] = useState(true);
   const [edgeSettings, setEdgeSettings]             = useState({ ...DEFAULT_EDGE_SETTINGS });
   const [edgeEditModal, setEdgeEditModal]           = useState(null);
   const [suggestionOfferModal, setSuggestionOfferModal] = useState(null);
@@ -561,6 +562,7 @@ function DependencyGridContent({
     selectedColumns: [...selectedColumns],
     edgeSettings,
     showPhaseColorsInGrid,
+    highlightWeekends,
     expandedRowView,
     hideAllEdges,
     hideCollapsedEdges,
@@ -592,7 +594,7 @@ function DependencyGridContent({
     ...(isMaximized !== undefined ? { isMaximized } : {}),
   }), [
     rowDisplaySettings, laneDisplaySettings, viewMode, mode,
-    collapsedColumns, selectedColumns, edgeSettings, showPhaseColorsInGrid,
+    collapsedColumns, selectedColumns, edgeSettings, showPhaseColorsInGrid, highlightWeekends,
     expandedRowView, hideAllEdges, hideCollapsedEdges,
     hideCollapsedNodes, showEmptyLanes, customColumnWidth,
     customRowHeightNormal, customRowHeightSmall, collapsedLanePhaseRows,
@@ -639,6 +641,7 @@ function DependencyGridContent({
     setSelectedColumns(new Set(state.selectedColumns ?? d.selectedColumns));
     setEdgeSettings({ ...d.edgeSettings, ...(state.edgeSettings ?? {}) });
     setShowPhaseColorsInGrid(state.showPhaseColorsInGrid ?? d.showPhaseColorsInGrid);
+    setHighlightWeekends(state.highlightWeekends ?? d.highlightWeekends);
     setExpandedRowView(state.expandedRowView ?? d.expandedRowView);
     setHideAllEdges(state.hideAllEdges ?? d.hideAllEdges);
     setHideCollapsedEdges(state.hideCollapsedEdges ?? d.hideCollapsedEdges);
@@ -1045,6 +1048,7 @@ function DependencyGridContent({
     expandedRowView,
     edgeSettings,
     showPhaseColorsInGrid,
+    highlightWeekends,
     collapsedLanePhaseRows,
     hideGlobalPhases,
     hideColumnHeader,
@@ -1407,6 +1411,8 @@ function DependencyGridContent({
               setPhaseEditModal={setPhaseEditModal}
               showPhaseColorsInGrid={showPhaseColorsInGrid}
               setShowPhaseColorsInGrid={setShowPhaseColorsInGrid}
+              highlightWeekends={highlightWeekends}
+              setHighlightWeekends={setHighlightWeekends}
               collapsedLanePhaseRows={collapsedLanePhaseRows}
               collapseAllLanePhases={collapseAllLanePhases}
               showAllLanePhases={showAllLanePhases}

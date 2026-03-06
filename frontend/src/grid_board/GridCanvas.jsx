@@ -108,6 +108,7 @@ export default function GridCanvas({
     expandedRowView,
     edgeSettings = {},
     showPhaseColorsInGrid = true,
+    highlightWeekends = true,
     collapsedLanePhaseRows = new Set(),
     hideGlobalPhases = false,
     hideColumnHeader = false,
@@ -614,6 +615,7 @@ export default function GridCanvas({
                     const hasPurpose = !!colInfo.purpose;
                     const isLaneSpecific = hasPurpose && Array.isArray(colInfo.purposeTeams) && colInfo.purposeTeams.length > 0;
                     const isSunday = colInfo.isSunday;
+                    const isWeekend = colInfo.isWeekend;
                     const showColName = colWidth >= COLUMN_LABEL_WIDTH_THRESHOLD;
 
                     if (isCollapsed) {
@@ -662,9 +664,11 @@ export default function GridCanvas({
                               ? isLaneSpecific
                                 ? 'bg-slate-600 text-white hover:bg-slate-500'
                                 : 'bg-slate-800 text-white hover:bg-slate-700'
-                              : isSunday
+                            : highlightWeekends && isSunday
                                 ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
-                                : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                                : highlightWeekends && isWeekend
+                                  ? 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                                  : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
                         }`}
                         style={{
                           left: `${colX}px`,
@@ -684,7 +688,7 @@ export default function GridCanvas({
                         }}
                       >
                         {showColName && (
-                          <span className={`text-[10px] font-medium ${isSelected ? 'text-blue-700' : hasPurpose ? 'text-slate-300' : isSunday ? 'text-purple-600' : 'text-slate-400'}`}>
+                          <span className={`text-[10px] font-medium ${isSelected ? 'text-blue-700' : hasPurpose ? 'text-slate-300' : (highlightWeekends && (isSunday || isWeekend)) ? 'text-purple-600' : 'text-slate-400'}`}>
                             {colInfo.dayNameShort}
                           </span>
                         )}
@@ -774,6 +778,7 @@ export default function GridCanvas({
             onSetDeadline={onSetDeadline}
             phases={phases}
             showPhaseColorsInGrid={showPhaseColorsInGrid}
+            highlightWeekends={highlightWeekends}
             lanePhasesMap={lanePhasesMap}
             getLanePhaseRowHeight={getLanePhaseRowHeight}
             collapsedLanePhaseRows={collapsedLanePhaseRows}
