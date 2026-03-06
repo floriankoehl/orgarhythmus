@@ -31,6 +31,7 @@ export default function TaskCard({
   insideTeam = false,      // when true, hide team badge (already visible in container header)
   viewMode = "compact",    // "titles" | "compact" | "full"
   onToggleCriterion,       // (taskId, criterionId) => void
+  onToggleMilestoneTodo,   // (taskId, milestoneId, todoId) => void
   displayedTaskIds = null, // ordered array of task IDs for shift-click range select
   lastClickedTaskRef = null, // ref to last-clicked task ID for shift anchor
   onIntraTeamDrag = null,  // (e, taskId, index) => void — intra-team reorder
@@ -64,6 +65,7 @@ export default function TaskCard({
   const criteria = task.acceptance_criteria || [];
   const criteriaTotal = criteria.length;
   const criteriaDone = criteria.filter((c) => c.done).length;
+  const taskIsDone = !!task.is_done;
 
   const handleClick = (e) => {
     if (e.shiftKey && displayedTaskIds && lastClickedTaskRef) {
@@ -137,11 +139,14 @@ export default function TaskCard({
         onClick={handleClick}
         onDoubleClick={(e) => { e.stopPropagation(); onEditTask?.(task.id); }}
         className={`group relative flex items-start gap-1.5 px-2 py-1.5 rounded-md cursor-pointer transition-all text-[11px]
+          ${taskIsDone ? "opacity-70" : ""}
           ${isSelected
             ? "bg-indigo-50 border border-indigo-300 shadow-sm"
-            : insideTeam
-              ? "bg-white border border-gray-200 shadow-xs hover:border-gray-300"
-              : "bg-white hover:bg-gray-100 border border-transparent"
+            : taskIsDone
+              ? "bg-green-50 border border-green-200 shadow-xs hover:border-green-300"
+              : insideTeam
+                ? "bg-white border border-gray-200 shadow-xs hover:border-gray-300"
+                : "bg-white hover:bg-gray-100 border border-transparent"
           }`}
         style={{
           borderLeftWidth: teamColor ? 3 : undefined,
@@ -174,7 +179,7 @@ export default function TaskCard({
         <div className="flex-1 min-w-0">
           {/* Name + team badge */}
           <div className="flex items-center gap-1">
-            <span className="font-semibold text-gray-800 truncate">
+            <span className={`font-semibold truncate ${taskIsDone ? "text-green-700 line-through" : "text-gray-800"}`}>
               {task.name || "Untitled Task"}
             </span>
             {team && !insideTeam && (
@@ -228,18 +233,59 @@ export default function TaskCard({
             </div>
           )}
 
-          {/* ── FULL: Milestones ── */}
+          {/* ── FULL: Milestones with TODOs ── */}
           {viewMode === "full" && task.milestones && task.milestones.length > 0 && (
             <div className="mt-1.5">
               <div className="flex items-center gap-0.5 text-[9px] font-medium text-gray-400 uppercase mb-0.5">
                 <Flag size={8} /> Milestones
               </div>
-              {task.milestones.map((m, i) => (
-                <div key={m.id || i} className="text-[9px] text-gray-600 pl-2 py-0.5 border-l-2 border-gray-200 ml-0.5 mb-0.5">
-                  <span className="font-medium">{m.name}</span>
-                  {m.description && <span className="text-gray-400 ml-1">— {m.description}</span>}
-                </div>
-              ))}
+              {task.milestones.map((m, i) => {
+                const todos = m.todos || [];
+                const todosDone = todos.filter((t) => t.done).length;
+                const mDone = !!m.is_done_effective;
+                return (
+                  <div key={m.id || i} className={`pl-2 py-0.5 border-l-2 ml-0.5 mb-0.5 ${mDone ? 'border-green-300' : 'border-gray-200'}`}>
+                    <div className="flex items-center gap-1 text-[9px]">
+                      {mDone
+                        ? <CheckSquare size={9} className="text-green-500 flex-shrink-0" />
+                        : <Square size={9} className="text-gray-300 flex-shrink-0" />
+                      }
+                      <span className={`font-medium ${mDone ? 'text-green-700 line-through' : 'text-gray-600'}`}>{m.name}</span>
+                      {todos.length > 0 && (
+                        <span className={`text-[8px] px-1 py-0 rounded font-medium ${
+                          todosDone === todos.length ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          {todosDone}/{todos.length}
+                        </span>
+                      )}
+                    </div>
+                    {m.description && <p className="text-[8px] text-gray-400 ml-3.5">{m.description}</p>}
+                    {todos.length > 0 && (
+                      <div className="ml-3.5 mt-0.5 space-y-0.5">
+                        {todos.map((t) => (
+                          <div
+                            key={t.id}
+                            className="flex items-start gap-1 group/todo cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onToggleMilestoneTodo?.(task.id, m.id, t.id);
+                            }}
+                          >
+                            {t.done ? (
+                              <CheckSquare size={10} className="text-green-500 mt-0.5 flex-shrink-0" />
+                            ) : (
+                              <Square size={10} className="text-gray-300 group-hover/todo:text-gray-500 mt-0.5 flex-shrink-0" />
+                            )}
+                            <span className={`text-[9px] flex-1 ${t.done ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
+                              {t.title}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 

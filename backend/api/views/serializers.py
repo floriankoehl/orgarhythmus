@@ -8,6 +8,7 @@ from ..models import (
     Task,
     AcceptanceCriterion,
     Milestone,
+    MilestoneTodo,
     Dependency,
     Idea,
     IdeaPlacement,
@@ -32,6 +33,42 @@ class AcceptanceCriterionSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
 
+# MilestoneTodoSerializer
+class MilestoneTodoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MilestoneTodo
+        fields = ["id", "title", "description", "done", "order"]
+
+
+# MilestoneSerializer_Deps
+class MilestoneSerializer_Deps(serializers.ModelSerializer):
+    todos = MilestoneTodoSerializer(many=True, read_only=True)
+    is_done = serializers.SerializerMethodField()
+    is_done_effective = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Milestone
+        fields = ["id", "name", "description", "project", "task", "start_index", "duration", "todos", "is_done", "is_done_effective"]
+
+    def get_is_done(self, obj):
+        todos = obj.todos.all()
+        return todos.exists() and all(t.done for t in todos)
+
+    def get_is_done_effective(self, obj):
+        # Own TODOs done?
+        todos = obj.todos.all()
+        own_done = todos.exists() and all(t.done for t in todos)
+        if own_done:
+            return True
+        # Parent task done? (all acceptance criteria done)
+        task = obj.task
+        if task:
+            criteria = task.acceptance_criteria.all()
+            if criteria.exists() and all(c.done for c in criteria):
+                return True
+        return False
+
+
 # ProjectSerializer
 class ProjectSerializer(serializers.ModelSerializer):
     owner_username = serializers.CharField(source="owner.username", read_only=True)
@@ -50,6 +87,7 @@ class ProjectSerializer(serializers.ModelSerializer):
 # TaskSerializer
 class TaskSerializer(serializers.ModelSerializer):
     acceptance_criteria = AcceptanceCriterionSerializer(many=True, read_only=True)
+    is_done = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -61,8 +99,13 @@ class TaskSerializer(serializers.ModelSerializer):
             "priority",
             "needs_approval",
             "team",
+            "is_done",
             "acceptance_criteria",
         ]
+
+    def get_is_done(self, obj):
+        criteria = obj.acceptance_criteria.all()
+        return criteria.exists() and all(c.done for c in criteria)
 
 
 # TeamExpandedSerializer
@@ -102,6 +145,8 @@ class BasicTeamSerializer(serializers.ModelSerializer):
 class TaskSerializer_TeamView(serializers.ModelSerializer):
     team = BasicTeamSerializer(read_only=True)
     acceptance_criteria = AcceptanceCriterionSerializer(many=True, read_only=True)
+    milestones = MilestoneSerializer_Deps(many=True, read_only=True)
+    is_done = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -113,9 +158,15 @@ class TaskSerializer_TeamView(serializers.ModelSerializer):
             "priority",
             "needs_approval",
             "team",
+            "is_done",
             "acceptance_criteria",
+            "milestones",
             "order_index",
         ]
+
+    def get_is_done(self, obj):
+        criteria = obj.acceptance_criteria.all()
+        return criteria.exists() and all(c.done for c in criteria)
 
 
 # TaskExpandedSerializer
@@ -124,6 +175,7 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
     project_id = serializers.IntegerField(source='project.id', read_only=True)
     assigned_members_data = serializers.SerializerMethodField()
     acceptance_criteria = AcceptanceCriterionSerializer(many=True, read_only=True)
+    is_done = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -135,6 +187,7 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
             'difficulty',
             'needs_approval',
             'team',
+            'is_done',
             'project_id',
             'assigned_members',
             'assigned_members_data',
@@ -143,6 +196,10 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
 
     def get_assigned_members_data(self, obj):
         return [{"id": u.id, "username": u.username, "email": u.email} for u in obj.assigned_members.all()]
+
+    def get_is_done(self, obj):
+        criteria = obj.acceptance_criteria.all()
+        return criteria.exists() and all(c.done for c in criteria)
 
 
 # IdeaSerializer
@@ -285,19 +342,18 @@ class TeamSerializer_Deps(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class MilestoneSerializer_Deps(serializers.ModelSerializer):
-    class Meta: 
-        model = Milestone
-        fields = "__all__"
-
-
 class TaskSerializer_Deps(serializers.ModelSerializer):
     milestones = MilestoneSerializer_Deps(many=True, read_only=True)
     acceptance_criteria = AcceptanceCriterionSerializer(many=True, read_only=True)
+    is_done = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
         fields = "__all__"
+
+    def get_is_done(self, obj):
+        criteria = obj.acceptance_criteria.all()
+        return criteria.exists() and all(c.done for c in criteria)
 
 
 class DependencySerializer_Deps(serializers.ModelSerializer):

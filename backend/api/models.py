@@ -243,6 +243,21 @@ class Milestone(models.Model):
     duration = models.IntegerField(default=1)
 
 
+class MilestoneTodo(models.Model):
+    """Individual TODO item belonging to a Milestone (mirrors AcceptanceCriterion)."""
+    milestone = models.ForeignKey(Milestone, on_delete=models.CASCADE, related_name="todos")
+    title = models.CharField(max_length=500)
+    description = models.TextField(blank=True, default="")
+    done = models.BooleanField(default=False)
+    order = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ["order"]
+
+    def __str__(self):
+        return self.title
+
+
 # ═══════════════════════════════════════════════
 #  DEPENDENCY
 # ═══════════════════════════════════════════════

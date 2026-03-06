@@ -46,6 +46,7 @@ export default function TeamContainer({
   viewMode = "compact",
   setTeamViewOverride,
   onToggleCriterion,
+  onToggleMilestoneTodo,
   isFocused = false,
   onEnterTeamFocus,
   onExitTeamFocus,
@@ -441,6 +442,7 @@ export default function TeamContainer({
                   taskMode={taskMode}
                   viewMode={viewMode}
                   onToggleCriterion={onToggleCriterion}
+                  onToggleMilestoneTodo={onToggleMilestoneTodo}
                   displayedTaskIds={taskIds}
                   lastClickedTaskRef={lastClickedTaskRef}
                   onIntraTeamDrag={handleIntraTeamDrag}

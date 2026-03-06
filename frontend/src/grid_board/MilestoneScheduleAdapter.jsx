@@ -60,6 +60,7 @@ import {
   get_user_shortcuts,
   save_user_shortcuts,
   bulk_import_dependencies,
+  toggle_milestone_done,
 } from '../api/dependencies_api';
 import {
   updateTeam,
@@ -325,6 +326,16 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   const persistNodeTaskChange = useCallback(async (nodeId, newRowId) => {
     await move_milestone_task(projectId, nodeId, newRowId);
     emitDataEvent('milestones');
+  }, [projectId]);
+
+  const persistToggleNodeDone = useCallback(async (nodeId, { force_complete = false } = {}) => {
+    const result = await toggle_milestone_done(projectId, nodeId, { force_complete });
+    setNodes(prev => ({
+      ...prev,
+      [nodeId]: { ...prev[nodeId], is_done: result.is_done, is_done_effective: result.is_done_effective, todos: result.todos },
+    }));
+    emitDataEvent('milestones');
+    return result;
   }, [projectId]);
 
   const persistEdgeCreate = useCallback(async (sourceId, targetId, opts = {}) => {
@@ -1079,6 +1090,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       persistPhaseDelete={persistPhaseDelete}
       persistRowDeadline={persistRowDeadline}
       persistLaneColor={persistLaneColor}
+      persistToggleNodeDone={persistToggleNodeDone}
 
       // View / snapshot API
       fetchViews={fetchViews}

@@ -31,6 +31,7 @@ export default function TaskList({
   taskMode = false,
   viewMode = "compact",
   onToggleCriterion,
+  onToggleMilestoneTodo,
   quickAddCollapsed,
   setQuickAddCollapsed,
   autoAssignTeamId,
@@ -160,6 +161,7 @@ export default function TaskList({
               taskMode={taskMode}
               viewMode={viewMode}
               onToggleCriterion={onToggleCriterion}
+              onToggleMilestoneTodo={onToggleMilestoneTodo}
               displayedTaskIds={displayedTaskIds}
               lastClickedTaskRef={lastClickedTaskRef}
             />

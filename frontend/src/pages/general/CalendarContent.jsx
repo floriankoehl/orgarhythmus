@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Info,
+  CheckCircle,
 } from "lucide-react";
 import dayjs from "dayjs";
 import isBetween from "dayjs/plugin/isBetween";
@@ -358,14 +359,15 @@ export default function CalendarContent({ effectiveView, transposed, windowSize 
                           {dayMilestones.map((ms) => (
                             <div
                               key={ms.id}
-                              className="group relative flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] transition hover:shadow-md"
+                              className={`group relative flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] transition hover:shadow-md ${ms.is_done_effective ? 'opacity-60' : ''}`}
                               style={{
-                                backgroundColor: ms.teamColor + "20",
-                                borderLeft: `3px solid ${ms.teamColor}`,
+                                backgroundColor: ms.is_done_effective ? '#dcfce720' : ms.teamColor + "20",
+                                borderLeft: `3px solid ${ms.is_done_effective ? '#22c55e' : ms.teamColor}`,
                               }}
                             >
-                              <div className="min-w-0 flex-1 truncate">
-                                <p className="truncate font-semibold text-slate-900">{ms.name}</p>
+                              <div className="min-w-0 flex-1 truncate flex items-center gap-1">
+                                {ms.is_done_effective && <CheckCircle size={10} className="text-green-500 flex-shrink-0" />}
+                                <p className={`truncate font-semibold ${ms.is_done_effective ? 'text-green-700 line-through' : 'text-slate-900'}`}>{ms.name}</p>
                               </div>
                               <span className="text-[9px] text-slate-400 flex-shrink-0">{ms.duration}d</span>
                             </div>
@@ -415,14 +417,15 @@ export default function CalendarContent({ effectiveView, transposed, windowSize 
                   {milestonesByDate[expandedDate].map((ms) => (
                     <div
                       key={ms.id}
-                      className="rounded-lg border border-slate-200 bg-white transition hover:border-blue-300 hover:shadow-sm"
+                      className={`rounded-lg border transition hover:border-blue-300 hover:shadow-sm ${ms.is_done_effective ? 'border-green-200 bg-green-50/50' : 'border-slate-200 bg-white'}`}
                     >
                       <div className="p-4">
                         <div className="flex items-start justify-between gap-3 mb-2">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              <div className="h-3 w-3 flex-shrink-0 rounded-full" style={{ backgroundColor: ms.teamColor }} />
-                              <h3 className="truncate text-sm font-semibold text-slate-900">{ms.name}</h3>
+                              <div className="h-3 w-3 flex-shrink-0 rounded-full" style={{ backgroundColor: ms.is_done_effective ? '#22c55e' : ms.teamColor }} />
+                              {ms.is_done_effective && <CheckCircle size={14} className="text-green-500 flex-shrink-0" />}
+                              <h3 className={`truncate text-sm font-semibold ${ms.is_done_effective ? 'text-green-700 line-through' : 'text-slate-900'}`}>{ms.name}</h3>
                             </div>
                             <p className="mt-1 text-xs text-slate-600">Task: {ms.taskName}</p>
                           </div>
@@ -624,14 +627,17 @@ export default function CalendarContent({ effectiveView, transposed, windowSize 
                     dayMilestones.map((ms) => (
                       <div
                         key={ms.id}
-                        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs transition hover:shadow-md"
+                        className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs transition hover:shadow-md ${ms.is_done_effective ? 'opacity-60' : ''}`}
                         style={{
-                          backgroundColor: ms.teamColor + "20",
-                          borderLeft: `3px solid ${ms.teamColor}`,
+                          backgroundColor: ms.is_done_effective ? '#dcfce720' : ms.teamColor + "20",
+                          borderLeft: `3px solid ${ms.is_done_effective ? '#22c55e' : ms.teamColor}`,
                         }}
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="truncate font-semibold text-slate-900">{ms.name}</p>
+                          <p className={`truncate font-semibold ${ms.is_done_effective ? 'text-green-700 line-through' : 'text-slate-900'}`}>
+                            {ms.is_done_effective && <CheckCircle size={10} className="inline mr-1 text-green-500" />}
+                            {ms.name}
+                          </p>
                           <p className="truncate text-[10px] text-slate-500">
                             {ms.taskName} {"\u00B7"} {ms.teamName} {"\u00B7"} {ms.duration}d
                           </p>

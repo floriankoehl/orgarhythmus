@@ -50,6 +50,7 @@ urlpatterns = [
     path("projects/<int:project_id>/tasks/<int:task_id>/assign/", views.assign_task_member, name="assign_task_member"),
     path("projects/<int:project_id>/tasks/<int:task_id>/set_deadline/", views.set_task_deadline, name="set_task_deadline"),
     path("projects/<int:project_id>/tasks/<int:task_id>/criteria/<int:criterion_id>/toggle/", views.toggle_criterion, name="toggle_criterion"),
+    path("projects/<int:project_id>/tasks/<int:task_id>/toggle_done/", views.toggle_task_done, name="toggle_task_done"),
     
     #Notifications
     path("notifications/", views.user_notifications, name="user_notifications"),  # Get all notifications
@@ -132,6 +133,8 @@ urlpatterns = [
     path("projects/<int:project_id>/update_start_index/", views.update_start_index),
     path("projects/<int:project_id>/bulk_update_start_index/", views.bulk_update_start_index),
     path("projects/<int:project_id>/delete_milestones/", views.delete_milestones),
+    path("projects/<int:project_id>/toggle_milestone_done/", views.toggle_milestone_done),
+    path("projects/<int:project_id>/toggle_milestone_todo/", views.toggle_milestone_todo),
     path("projects/<int:project_id>/change_duration/", views.change_duration),
     path("projects/<int:project_id>/rename_milestone/", views.rename_milestone),
     path("projects/<int:project_id>/move_milestone_task/", views.move_milestone_task),

@@ -50,6 +50,7 @@ export default function TeamCanvas({
   teamViewOverrides = {},
   setTeamViewOverride,
   onToggleCriterion,
+  onToggleMilestoneTodo,
   onCollapseRight,
   showCollapseRight,
   focusedTeamId = null,
@@ -303,6 +304,7 @@ export default function TeamCanvas({
               viewMode={teamViewOverrides[teamId] || viewMode}
               setTeamViewOverride={setTeamViewOverride}
               onToggleCriterion={onToggleCriterion}
+              onToggleMilestoneTodo={onToggleMilestoneTodo}
               isFocused={isFocused}
               onEnterTeamFocus={onEnterTeamFocus}
               onExitTeamFocus={onExitTeamFocus}

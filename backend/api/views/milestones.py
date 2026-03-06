@@ -3,8 +3,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..models import Project, Task, Milestone, Dependency
-from .serializers import MilestoneSerializer_Deps, DependencySerializer_Deps
+from ..models import Project, Task, Milestone, MilestoneTodo, Dependency
+from .serializers import MilestoneSerializer_Deps, MilestoneTodoSerializer, DependencySerializer_Deps
 from .helpers import user_has_project_access
 
 
@@ -22,7 +22,7 @@ def get_all_milestones(request, project_id):
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
-    all_milestones = Milestone.objects.filter(project=project)
+    all_milestones = Milestone.objects.filter(project=project).prefetch_related("todos", "task__acceptance_criteria")
     if all_milestones.exists():
         serialized = MilestoneSerializer_Deps(all_milestones, many=True)
         return Response({"milestones": serialized.data})
@@ -67,6 +67,13 @@ def add_milestone(request, project_id):
         task=task,
         start_index=start_index,
         duration=duration,
+    )
+
+    # Auto-create default todo so is_done can be derived
+    MilestoneTodo.objects.create(
+        milestone=milestone,
+        title="Milestone finished",
+        order=0,
     )
 
     serialized = MilestoneSerializer_Deps(milestone)
@@ -198,6 +205,98 @@ def delete_milestones(request, project_id):
 
     milestone.delete()
     return Response({"deleted": True}, status=status.HTTP_200_OK)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def toggle_milestone_done(request, project_id):
+    """
+    Toggle the done state of a milestone by toggling its todos.
+    is_done is computed: all todos must be done.
+    If force_complete=true, marks all todos as done.
+    Otherwise, returns an error listing incomplete todos.
+    """
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    milestone_id = request.data.get("milestone_id")
+    if not milestone_id:
+        return Response({"detail": "milestone_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        milestone = Milestone.objects.prefetch_related("todos", "task__acceptance_criteria").get(
+            id=milestone_id, project=project
+        )
+    except Milestone.DoesNotExist:
+        return Response({"detail": "Milestone not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    todos = milestone.todos.all()
+    all_done = todos.exists() and all(t.done for t in todos)
+
+    if all_done:
+        # Currently done → mark all todos as not done
+        todos.update(done=False)
+    else:
+        # Currently not done → try to mark all as done
+        incomplete = [t for t in todos if not t.done]
+        if incomplete:
+            force = request.data.get("force_complete", False)
+            if force:
+                todos.filter(done=False).update(done=True)
+            else:
+                return Response({
+                    "detail": "Cannot mark milestone as done: not all TODOs are completed.",
+                    "incomplete_todos": [{"id": t.id, "title": t.title} for t in incomplete],
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+    # Re-fetch to get updated state
+    milestone = Milestone.objects.prefetch_related("todos", "task__acceptance_criteria").get(pk=milestone.pk)
+    serialized = MilestoneSerializer_Deps(milestone)
+    return Response(serialized.data, status=status.HTTP_200_OK)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def toggle_milestone_todo(request, project_id):
+    """
+    Toggle an individual MilestoneTodo's done state.
+    Body: { "milestone_id": <id>, "todo_id": <id> }
+    """
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    milestone_id = request.data.get("milestone_id")
+    todo_id = request.data.get("todo_id")
+    if not milestone_id or not todo_id:
+        return Response({"detail": "milestone_id and todo_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        milestone = Milestone.objects.get(id=milestone_id, project=project)
+    except Milestone.DoesNotExist:
+        return Response({"detail": "Milestone not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        todo = MilestoneTodo.objects.get(id=todo_id, milestone=milestone)
+    except MilestoneTodo.DoesNotExist:
+        return Response({"detail": "Todo not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    todo.done = not todo.done
+    todo.save(update_fields=["done"])
+
+    # Return full milestone with updated computed fields
+    milestone = Milestone.objects.prefetch_related("todos", "task__acceptance_criteria").get(pk=milestone.pk)
+    serialized = MilestoneSerializer_Deps(milestone)
+    return Response(serialized.data, status=status.HTTP_200_OK)
 
 
 @api_view(["PATCH"])

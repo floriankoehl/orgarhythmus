@@ -86,6 +86,7 @@ export default function TaskStructure() {
     fetchTasks, createTask, updateTaskApi, deleteTask,
     assignTaskToTeam, reorderUnassigned, reorderTeamTasks, tasksByTeam,
     toggleCriterionApi,
+    toggleMilestoneTodoApi,
   } = useTaskData({ projectId });
 
   // Keep a ref to tasks for cross-hook access (e.g. pipeline drag)
@@ -704,6 +705,24 @@ export default function TaskStructure() {
     await toggleCriterionApi(taskId, criterionId);
   }, [setTasks, toggleCriterionApi]);
 
+  const onToggleMilestoneTodo = useCallback(async (taskId, milestoneId, todoId) => {
+    // Optimistic update
+    setTasks((prev) => {
+      const task = prev[taskId];
+      if (!task) return prev;
+      const milestones = (task.milestones || []).map((m) => {
+        if (m.id !== milestoneId) return m;
+        const todos = (m.todos || []).map((t) =>
+          t.id === todoId ? { ...t, done: !t.done } : t
+        );
+        const is_done = todos.length > 0 && todos.every((t) => t.done);
+        return { ...m, todos, is_done };
+      });
+      return { ...prev, [taskId]: { ...task, milestones } };
+    });
+    await toggleMilestoneTodoApi(taskId, milestoneId, todoId);
+  }, [setTasks, toggleMilestoneTodoApi]);
+
   // ── Set per-team view override ──
   const setTeamViewOverride = useCallback((teamId, mode) => {
     setTeamViewOverrides((prev) => {
@@ -1138,6 +1157,7 @@ export default function TaskStructure() {
                     taskMode={taskMode}
                     viewMode={viewMode}
                     onToggleCriterion={onToggleCriterion}
+                    onToggleMilestoneTodo={onToggleMilestoneTodo}
                     quickAddCollapsed={quickAddCollapsed}
                     setQuickAddCollapsed={setQuickAddCollapsed}
                     autoAssignTeamId={autoAssignTeamId}
@@ -1256,6 +1276,7 @@ export default function TaskStructure() {
                 teamViewOverrides={teamViewOverrides}
                 setTeamViewOverride={setTeamViewOverride}
                 onToggleCriterion={onToggleCriterion}
+                onToggleMilestoneTodo={onToggleMilestoneTodo}
                 onCollapseRight={() => setRightCollapsed(true)}
                 showCollapseRight={!leftCollapsed}
                 focusedTeamId={focusedTeamId}

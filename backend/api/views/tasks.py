@@ -100,7 +100,7 @@ def project_tasks(request, project_id):
             Task.objects
             .filter(project=project)
             .select_related("team")
-            .prefetch_related("acceptance_criteria")
+            .prefetch_related("acceptance_criteria", "milestones", "milestones__todos")
         )
 
         serializer = TaskSerializer_TeamView(tasks, many=True)
@@ -153,6 +153,10 @@ def project_tasks(request, project_id):
                         done=bool(c.get("done", False)),
                         order=idx,
                     )
+
+        # Auto-create default criterion if none were provided
+        if not task.acceptance_criteria.exists():
+            AcceptanceCriterion.objects.create(task=task, title="Task finished", order=0)
 
         # Assign members to the task if provided
         if assigned_member_ids and isinstance(assigned_member_ids, list):
@@ -414,7 +418,7 @@ def fetch_project_tasks(request, project_id):
     all_tasks = (
         Task.objects
         .filter(project=project)
-        .prefetch_related("milestones")  
+        .prefetch_related("milestones", "milestones__todos", "acceptance_criteria")  
         .order_by("team_id", "order_index")
     )
 
@@ -596,6 +600,53 @@ def toggle_criterion(request, project_id, task_id, criterion_id):
     criterion.save(update_fields=["done"])
 
     return Response(AcceptanceCriterionSerializer(criterion).data, status=status.HTTP_200_OK)
+
+
+# toggle_task_done
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def toggle_task_done(request, project_id, task_id):
+    """
+    Toggle the done state of a task by toggling its acceptance criteria.
+    is_done is computed: all criteria must be done.
+    If force_complete_criteria=true, marks all criteria as done.
+    Otherwise, returns an error listing incomplete criteria.
+    """
+    user = request.user
+
+    try:
+        task = Task.objects.select_related("project").prefetch_related("acceptance_criteria").get(
+            id=task_id, project_id=project_id
+        )
+    except Task.DoesNotExist:
+        return Response({"detail": "Task not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(user, task.project):
+        return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
+
+    criteria = task.acceptance_criteria.all()
+    all_done = criteria.exists() and all(c.done for c in criteria)
+
+    if all_done:
+        # Currently done → mark all criteria as not done
+        criteria.update(done=False)
+    else:
+        # Currently not done → try to mark all as done
+        incomplete = [c for c in criteria if not c.done]
+        if incomplete:
+            force = request.data.get("force_complete_criteria", False)
+            if force:
+                criteria.filter(done=False).update(done=True)
+            else:
+                return Response({
+                    "detail": "Cannot mark task as done: not all acceptance criteria are completed.",
+                    "incomplete_criteria": [{"id": c.id, "title": c.title} for c in incomplete],
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+    # Re-fetch to get updated criteria
+    task = Task.objects.select_related("project", "team").prefetch_related("acceptance_criteria").get(pk=task.pk)
+    serializer = TaskExpandedSerializer(task)
+    return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 

@@ -118,6 +118,29 @@ export async function bulk_import_dependencies(projectId, dependenciesJson) {
     return await res.json();
 }
 
+export async function toggle_milestone_done(projectId, milestone_id, { force_complete = false } = {}) {
+    const res = await authFetch(`/api/projects/${projectId}/toggle_milestone_done/`, {
+        method: "PATCH",
+        body: JSON.stringify({ milestone_id, force_complete })
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const error = new Error(err.detail || 'Failed to toggle milestone done');
+        error.data = err;
+        throw error;
+    }
+    return await res.json();
+}
+
+export async function toggle_milestone_todo(projectId, milestone_id, todo_id) {
+    const res = await authFetch(`/api/projects/${projectId}/toggle_milestone_todo/`, {
+        method: "PATCH",
+        body: JSON.stringify({ milestone_id, todo_id })
+    });
+    if (!res.ok) throw new Error('Failed to toggle milestone todo');
+    return await res.json();
+}
+
 export async function delete_milestone(projectId, milestone_id){
     const res = await authFetch(`/api/projects/${projectId}/delete_milestones/`, {
         method: "DELETE",
