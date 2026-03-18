@@ -17,7 +17,7 @@
 9. [Backend Endpoints Reference](#9-backend-endpoints-reference)
 10. [Architectural Patterns & Design Decisions](#10-architectural-patterns--design-decisions)
 
----
+-----
 
 ## 1. Core Concept
 
