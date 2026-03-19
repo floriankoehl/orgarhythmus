@@ -3,7 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..models import PromptSettings
+from ..models import PromptSettings, DEFAULT_SYSTEM_PROMPT
 
 
 VALID_SCENARIO_KEYS = {
@@ -114,6 +114,8 @@ VALID_SCENARIO_KEYS = {
     # Dependency Specials
     "special_full_dependency_graph",
     "special_dep_suggestions",
+    # Milestones — duration adjustment
+    "dep_durations_finetune",
 }
 
 
@@ -121,7 +123,13 @@ VALID_SCENARIO_KEYS = {
 @permission_classes([IsAuthenticated])
 def get_prompt_settings(request):
     """Return the current user's prompt settings (auto-created if missing)."""
-    obj, _ = PromptSettings.objects.get_or_create(user=request.user)
+    obj, _ = PromptSettings.objects.get_or_create(
+        user=request.user,
+        defaults={
+            "system_prompt": DEFAULT_SYSTEM_PROMPT,
+            "auto_add_system_prompt": True,
+        },
+    )
     return Response({
         "auto_add_system_prompt": obj.auto_add_system_prompt,
         "auto_add_json_format": obj.auto_add_json_format,
@@ -131,6 +139,7 @@ def get_prompt_settings(request):
         "system_prompt": obj.system_prompt,
         "end_prompt": obj.end_prompt,
         "scenario_prompts": obj.scenario_prompts,
+        "default_system_prompt": DEFAULT_SYSTEM_PROMPT,
     })
 
 
@@ -144,7 +153,13 @@ def update_prompt_settings(request):
         system_prompt, scenario_prompts
     }
     """
-    obj, _ = PromptSettings.objects.get_or_create(user=request.user)
+    obj, _ = PromptSettings.objects.get_or_create(
+        user=request.user,
+        defaults={
+            "system_prompt": DEFAULT_SYSTEM_PROMPT,
+            "auto_add_system_prompt": True,
+        },
+    )
 
     for bool_field in ("auto_add_system_prompt", "auto_add_json_format", "auto_add_scenario_prompt", "auto_add_project_description", "auto_add_end_prompt"):
         if bool_field in request.data:
@@ -178,4 +193,5 @@ def update_prompt_settings(request):
         "system_prompt": obj.system_prompt,
         "end_prompt": obj.end_prompt,
         "scenario_prompts": obj.scenario_prompts,
+        "default_system_prompt": DEFAULT_SYSTEM_PROMPT,
     })

@@ -1,14 +1,18 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import React, { useState, useCallback, useMemo, useRef, useEffect, useLayoutEffect } from "react";
 import {
   Copy, Download, Check, Plus, Pencil,
   AlertCircle, Sparkles,
-  ClipboardPaste, ArrowRightLeft, Star, Zap, Loader,
+  ClipboardPaste, ArrowRightLeft, Star, Zap, Loader, Eye, Maximize2, Minimize2, Settings,
+  RotateCcw, Save, ChevronDown,
 } from "lucide-react";
 import { detectTaskResponseContent } from "../shared/promptEngine/taskResponseApplier";
 import ControlledApplyModal from "../shared/promptEngine/ControlledApplyPanel";
 import { buildTaskChangeItems, recomposeTaskDetected, TASK_CHANGE_TYPE_META } from "../shared/promptEngine/taskChangeBuilder";
 import { applyTaskDetected } from "../shared/promptEngine/taskResponseApplier";
 import { aiGenerate, getDirectMode } from "../../api/aiGenerateApi";
+import { assemblePromptSections } from "../shared/promptEngine/assembler";
+import PromptInspector from "../shared/promptEngine/PromptInspector";
+import usePromptSettings from "../usePromptSettings";
 
 /**
  * ═══════════════════════════════════════════════════════════
@@ -44,6 +48,29 @@ export default function TaskStructureIOPopup({
   const [generateError, setGenerateError] = useState(null);
   // ─── Custom prompt add-on ─────────────────────────
   const [customAddOn, setCustomAddOn] = useState("");
+  // ─── Inspect mode ─────────────────────────────────
+  const [inspectData, setInspectData] = useState(null);
+  // ─── Expand mode ──────────────────────────────────
+  const [expanded, setExpanded] = useState(false);
+  // ─── Settings mode ────────────────────────────────
+  const [settingsMode, setSettingsMode] = useState(false);
+  const { settings: ownSettings, update: updateSettings } = usePromptSettings();
+  const effectiveSettings = ownSettings || settings;
+  // Local editable state for in-grid prompt editing
+  const [localScenarioPrompts, setLocalScenarioPrompts] = useState({});
+  const [localSystemPrompt, setLocalSystemPrompt] = useState("");
+  const [localEndPrompt, setLocalEndPrompt] = useState("");
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
+  const [collapsedScenarios, setCollapsedScenarios] = useState(new Set());
+  useEffect(() => {
+    if (settingsMode && effectiveSettings) {
+      setLocalScenarioPrompts({ ...(effectiveSettings.scenario_prompts || {}) });
+      setLocalSystemPrompt(effectiveSettings.system_prompt || "");
+      setLocalEndPrompt(effectiveSettings.end_prompt || "");
+      setCollapsedScenarios(new Set());
+    }
+  }, [settingsMode]); // eslint-disable-line react-hooks/exhaustive-deps
   // ─── Export state ─────────────────────────────────────
   const [withContext, setWithContext] = useState(true);
 
@@ -55,6 +82,40 @@ export default function TaskStructureIOPopup({
   const pasteRef = useRef(null);
 
   const popupRef = useRef(null);
+  const dragRef = useRef(null);
+  const [popupDims, setPopupDims] = useState({ width: 820, height: 700 });
+  const [fixedPos, setFixedPos] = useState(null);
+  const [selectedScenarioId, setSelectedScenarioId] = useState(null);
+
+  const handleResizeMouseDown = useCallback((e, handle) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = popupRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    dragRef.current = { handle, startX: e.clientX, startY: e.clientY, startWidth: rect.width, startHeight: rect.height };
+    const onMouseMove = (mv) => {
+      if (!dragRef.current) return;
+      const { handle: h, startX, startY, startWidth, startHeight } = dragRef.current;
+      const dx = mv.clientX - startX;
+      const dy = mv.clientY - startY;
+      const newWidth = h === "bl"
+        ? Math.max(440, Math.min(window.innerWidth * 0.97, startWidth - dx))
+        : Math.max(440, Math.min(window.innerWidth * 0.97, startWidth + dx));
+      const newHeight = Math.max(320, Math.min(window.innerHeight * 0.94, startHeight + dy));
+      setPopupDims({ width: newWidth, height: newHeight });
+    };
+    const onMouseUp = () => { dragRef.current = null; window.removeEventListener("mousemove", onMouseMove); window.removeEventListener("mouseup", onMouseUp); };
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!popupRef.current) return;
+    const parent = popupRef.current.parentElement;
+    if (!parent) return;
+    const rect = parent.getBoundingClientRect();
+    setFixedPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+  }, []);
 
   // Build scenario lookup map
   const scenarioMap = useMemo(() => {
@@ -109,9 +170,25 @@ export default function TaskStructureIOPopup({
   };
 
   // ─── Export: copy prompt ──────────────────────────────
+  const handleSettingsSave = useCallback(async () => {
+    setSettingsSaving(true);
+    try {
+      await updateSettings({
+        ...effectiveSettings,
+        system_prompt: localSystemPrompt,
+        end_prompt: localEndPrompt,
+        scenario_prompts: { ...(effectiveSettings?.scenario_prompts || {}), ...localScenarioPrompts },
+      });
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 1500);
+    } finally {
+      setSettingsSaving(false);
+    }
+  }, [effectiveSettings, localSystemPrompt, localEndPrompt, localScenarioPrompts, updateSettings]);
+
   const handleCopy = useCallback(async (scenarioId) => {
     const scenario = scenarioMap.get(scenarioId);
-    let { text } = assemblePrompt(scenarioId, modCtx, settings);
+    let { text } = assemblePrompt(scenarioId, modCtx, effectiveSettings);
     if (customAddOn.trim()) text += "\n\n" + customAddOn.trim();
     try {
       await navigator.clipboard.writeText(text);
@@ -129,14 +206,14 @@ export default function TaskStructureIOPopup({
       setCopiedId(null);
       setMode("import");
     }, 800);
-  }, [assemblePrompt, modCtx, settings, scenarioMap, customAddOn]);
+  }, [assemblePrompt, modCtx, effectiveSettings, scenarioMap, customAddOn]);
 
   // ─── Export: direct AI generate ────────────────────────
   const handleGenerate = useCallback(async (scenarioId) => {
     setGeneratingId(scenarioId);
     setGenerateError(null);
     try {
-      let { text } = assemblePrompt(scenarioId, modCtx, settings);
+      let { text } = assemblePrompt(scenarioId, modCtx, effectiveSettings);
       if (customAddOn.trim()) text += "\n\n" + customAddOn.trim();
       const parsed = await aiGenerate(text);
       const items = detectTaskResponseContent(parsed);
@@ -152,10 +229,10 @@ export default function TaskStructureIOPopup({
     } finally {
       setGeneratingId(null);
     }
-  }, [assemblePrompt, modCtx, settings, customAddOn]);
+  }, [assemblePrompt, modCtx, effectiveSettings, customAddOn]);
 
   const handleDownload = useCallback((scenarioId) => {
-    const { jsonString } = assemblePrompt(scenarioId, modCtx, settings);
+    const { jsonString } = assemblePrompt(scenarioId, modCtx, effectiveSettings);
     const blob = new Blob([jsonString], { type: "application/json" });
     const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const filename = `${scenarioId}_${ts}.json`;
@@ -167,7 +244,15 @@ export default function TaskStructureIOPopup({
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-  }, [assemblePrompt, modCtx, settings]);
+  }, [assemblePrompt, modCtx, effectiveSettings]);
+
+  // ─── Inspect: show prompt sections ────────────────────
+  const handleInspect = useCallback((scenarioId) => {
+    const scenario = scenarioMap.get(scenarioId);
+    const { sections } = assemblePromptSections(scenarioId, modCtx, effectiveSettings);
+    setInspectData({ scenarioId, scenario, sections });
+    setMode("inspect");
+  }, [scenarioMap, modCtx, effectiveSettings]);
 
   // ─── Import: parse ────────────────────────────────────
   const handleParse = useCallback(() => {
@@ -205,6 +290,58 @@ export default function TaskStructureIOPopup({
 
   // ─── Render helpers ───────────────────────────────────
 
+  /** In settings mode: collapsible editable block for a scenario's prompt */
+  const renderScenarioEditor = (scenarioId) => {
+    const scenario = scenarioMap.get(scenarioId);
+    if (!scenario) return null;
+    const rawCustom = localScenarioPrompts[scenarioId] ?? (effectiveSettings?.scenario_prompts?.[scenarioId] || "");
+    const displayValue = rawCustom || (scenario.defaultPrompt || "");
+    const isShowingDefault = !rawCustom;
+    const isCustomised = rawCustom && rawCustom !== (scenario.defaultPrompt || "");
+    const isCollapsed = collapsedScenarios.has(scenarioId);
+    const toggleCollapse = () => setCollapsedScenarios(prev => {
+      const next = new Set(prev);
+      next.has(scenarioId) ? next.delete(scenarioId) : next.add(scenarioId);
+      return next;
+    });
+    return (
+      <div key={scenarioId} className="px-1.5 py-1 flex flex-col gap-0.5">
+        <div
+          className="flex items-center gap-1 cursor-pointer select-none group/hdr"
+          onClick={toggleCollapse}
+        >
+          {actionIcon(scenario.action, 8)}
+          <span className="text-[9px] font-semibold text-gray-600 flex-1 truncate">{scenario.label}</span>
+          {isCustomised && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setLocalScenarioPrompts(p => ({ ...p, [scenarioId]: "" })); }}
+              className="text-gray-300 hover:text-violet-500 transition-colors flex-shrink-0"
+              title="Reset to default"
+            >
+              <RotateCcw size={7} />
+            </button>
+          )}
+          <ChevronDown
+            size={8}
+            className={`text-gray-300 group-hover/hdr:text-gray-500 flex-shrink-0 transition-transform duration-150 ${isCollapsed ? "-rotate-90" : ""}`}
+          />
+        </div>
+        {!isCollapsed && (
+          <textarea
+            value={displayValue}
+            onChange={e => setLocalScenarioPrompts(p => ({ ...p, [scenarioId]: e.target.value }))}
+            ref={el => { if (el) { el.style.height = "auto"; el.style.height = Math.max(48, el.scrollHeight) + "px"; } }}
+            onInput={e => { e.target.style.height = "auto"; e.target.style.height = Math.max(48, e.target.scrollHeight) + "px"; }}
+            className={`w-full text-[9px] p-1.5 rounded border bg-gray-50 focus:outline-none focus:ring-1 focus:ring-violet-300 font-sans ${
+              isShowingDefault ? "text-gray-500 italic border-gray-200" : "text-gray-700 border-gray-200"
+            }`}
+            style={{ minHeight: "48px", resize: "none", overflow: "hidden" }}
+          />
+        )}
+      </div>
+    );
+  };
+
   /** Render a single scenario as a clickable row inside a grid cell */
   const renderScenarioBtn = (scenarioId) => {
     const scenario = scenarioMap.get(scenarioId);
@@ -213,6 +350,7 @@ export default function TaskStructureIOPopup({
     const isCopied = copiedId === scenarioId;
     const isGenerating = generatingId === scenarioId;
     const anyGenerating = generatingId !== null;
+    const isSelected = selectedScenarioId === scenarioId;
 
     return (
       <div
@@ -222,11 +360,13 @@ export default function TaskStructureIOPopup({
             ? "opacity-35 cursor-not-allowed"
             : isGenerating
               ? "bg-amber-50 cursor-wait"
-              : "hover:bg-black/5 cursor-pointer"
+              : isSelected
+                ? "bg-violet-100 cursor-pointer"
+                : "hover:bg-black/5 cursor-pointer"
         }`}
-        onClick={() => !unavailable && !anyGenerating && (
-          directMode ? handleGenerate(scenarioId) : handleCopy(scenarioId)
-        )}
+        onClick={() => !unavailable && !anyGenerating && !isGenerating &&
+          setSelectedScenarioId(id => id === scenarioId ? null : scenarioId)
+        }
         title={unavailable || (isGenerating ? "Generating…" : scenario.description)}
       >
         {isGenerating
@@ -234,30 +374,11 @@ export default function TaskStructureIOPopup({
           : actionIcon(scenario.action, 9)
         }
         <span className={`flex-1 text-[10px] font-medium truncate leading-tight ${
-          isGenerating ? "text-amber-700" : "text-gray-700"
+          isGenerating ? "text-amber-700" : isSelected ? "text-violet-700" : "text-gray-700"
         }`}>
           {isGenerating ? "Generating…" : scenario.label}
         </span>
-        {!unavailable && !isGenerating && (
-          <span className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-            {isCopied ? (
-              <Check size={9} className="text-green-500" />
-            ) : directMode ? (
-              <Zap size={8} className="text-amber-500" />
-            ) : (
-              <>
-                <Copy size={8} className="text-gray-400" />
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleDownload(scenarioId); }}
-                  className="p-0 text-gray-300 hover:text-gray-600"
-                  title="Download as JSON"
-                >
-                  <Download size={8} />
-                </button>
-              </>
-            )}
-          </span>
-        )}
+        {isCopied && <Check size={9} className="text-green-500 flex-shrink-0" />}
       </div>
     );
   };
@@ -274,8 +395,19 @@ export default function TaskStructureIOPopup({
       {/* Popup */}
       <div
         ref={popupRef}
-        className="absolute right-0 top-full mt-1 z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col"
-        style={{ width: "min(620px, 92vw)", maxHeight: "min(580px, 80vh)" }}
+        className={`${expanded ? "fixed top-[4vh] left-1/2 -translate-x-1/2" : "fixed"} z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col overflow-hidden`}
+        style={expanded ? {
+          width: "min(1100px, 98vw)",
+          height: "94vh",
+        } : {
+          top: fixedPos ? `${fixedPos.top}px` : 0,
+          right: fixedPos ? `${fixedPos.right}px` : 0,
+          visibility: fixedPos ? "visible" : "hidden",
+          width: `${popupDims.width}px`,
+          height: `${popupDims.height}px`,
+          minWidth: "440px",
+          minHeight: "320px",
+        }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* ── Header ── */}
@@ -308,11 +440,37 @@ export default function TaskStructureIOPopup({
                   Context {withContext ? "ON" : "OFF"}
                 </button>
               )}
+              {settingsMode && (
+                <button
+                  onClick={handleSettingsSave}
+                  disabled={settingsSaving}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                    settingsSaved ? "bg-green-500 text-white" : "bg-violet-100 text-violet-700 hover:bg-violet-200"
+                  }`}
+                >
+                  {settingsSaved ? <Check size={9} /> : <Save size={9} />}
+                  {settingsSaved ? "Saved" : "Save"}
+                </button>
+              )}
+              <button
+                onClick={() => setSettingsMode(v => !v)}
+                className={`p-1 rounded transition-colors ${settingsMode ? "bg-violet-100 text-violet-600" : "hover:bg-gray-100 text-gray-400 hover:text-gray-700"}`}
+                title="Prompt settings for this window"
+              >
+                <Settings size={11} />
+              </button>
+              <button
+                onClick={() => setExpanded(v => !v)}
+                className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+                title={expanded ? "Collapse window" : "Expand window"}
+              >
+                {expanded ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+              </button>
             </div>
           </div>
 
           {/* Mode tabs */}
-          <div className="flex gap-0.5">
+          <div className="flex gap-0.5" style={{ display: (mode === "inspect" || settingsMode) ? "none" : undefined }}>
             <button
               onClick={() => setMode("export")}
               className={`flex-1 text-[10px] py-1 rounded font-medium transition-colors ${
@@ -338,11 +496,70 @@ export default function TaskStructureIOPopup({
           </div>
         </div>
 
+        {/* ── Selected scenario action bar ── */}
+        {mode === "export" && !settingsMode && selectedScenarioId && (() => {
+          const scenario = scenarioMap.get(selectedScenarioId);
+          if (!scenario) return null;
+          return (
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-violet-50 border-b border-violet-100 flex-shrink-0">
+              <span className="text-[9px] font-semibold text-violet-700 flex-1 truncate">{scenario.label}</span>
+              <button
+                onClick={() => handleInspect(selectedScenarioId)}
+                className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 transition-colors"
+                title="Inspect &amp; edit prompt sections"
+              >
+                <Eye size={8} /> Inspect
+              </button>
+              <button
+                onClick={() => directMode ? handleGenerate(selectedScenarioId) : handleCopy(selectedScenarioId)}
+                disabled={generatingId !== null}
+                className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors disabled:opacity-40 ${
+                  directMode ? "bg-amber-500 text-white hover:bg-amber-600" : "bg-violet-600 text-white hover:bg-violet-700"
+                }`}
+              >
+                {directMode
+                  ? <><Zap size={8} /> Send</>
+                  : copiedId === selectedScenarioId
+                    ? <><Check size={8} /> Copied!</>
+                    : <><Copy size={8} /> Copy</>
+                }
+              </button>
+            </div>
+          );
+        })()}
+
         {/* ═══════════════════════════════════════════════ */}
-        {/*  EXPORT MODE — GRID                            */}
+        {/*  EXPORT / SETTINGS MODE — GRID                */}
         {/* ═══════════════════════════════════════════════ */}
-        {mode === "export" && (
+        {(mode === "export" || settingsMode) && (
           <div className="flex-1 overflow-y-auto p-2">
+            {/* ── Settings: system / end prompt editors ── */}
+            {settingsMode && (
+              <div className="flex gap-2 mb-2 p-2 bg-violet-50 border border-violet-100 rounded-lg">
+                <div className="flex-1">
+                  <label className="text-[8px] font-bold text-violet-600 uppercase tracking-wider">System Prompt</label>
+                  <textarea
+                    value={localSystemPrompt}
+                    onChange={e => setLocalSystemPrompt(e.target.value)}
+                    placeholder="You are a helpful project management AI…"
+                    className="w-full mt-0.5 text-[9px] p-1 rounded border border-violet-200 bg-white resize-y focus:outline-none focus:ring-1 focus:ring-violet-300 placeholder:text-gray-300 font-sans"
+                    rows={2}
+                    style={{ minHeight: "28px", maxHeight: "80px" }}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[8px] font-bold text-violet-600 uppercase tracking-wider">End Prompt</label>
+                  <textarea
+                    value={localEndPrompt}
+                    onChange={e => setLocalEndPrompt(e.target.value)}
+                    placeholder="Return only valid JSON, no markdown…"
+                    className="w-full mt-0.5 text-[9px] p-1 rounded border border-violet-200 bg-white resize-y focus:outline-none focus:ring-1 focus:ring-violet-300 placeholder:text-gray-300 font-sans"
+                    rows={2}
+                    style={{ minHeight: "28px", maxHeight: "80px" }}
+                  />
+                </div>
+              </div>
+            )}
             {/* CSS Grid — 2 rows × 3 columns */}
             <div
               style={{
@@ -402,7 +619,7 @@ export default function TaskStructureIOPopup({
                           gridRow: isSharedAssign ? `${gridRowIdx} / ${gridRowIdx + 2}` : gridRowIdx,
                         }}
                       >
-                        {cellScenarioIds.map(id => renderScenarioBtn(id))}
+                        {cellScenarioIds.map(id => settingsMode ? renderScenarioEditor(id) : renderScenarioBtn(id))}
                       </div>
                     );
                   })}
@@ -419,30 +636,84 @@ export default function TaskStructureIOPopup({
               <div className="grid grid-cols-2 gap-[1px] bg-gray-200 rounded-lg overflow-hidden border border-gray-200">
                 {grid.specials.map(id => (
                   <div key={id} className="bg-white px-1 py-0.5">
-                    {renderScenarioBtn(id)}
+                    {settingsMode ? renderScenarioEditor(id) : renderScenarioBtn(id)}
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* ── Custom prompt add-on ── */}
-            <div className="mt-2 px-1">
-              <textarea
-                value={customAddOn}
-                onChange={(e) => setCustomAddOn(e.target.value)}
-                placeholder="Custom add-on to the prompt (appended at the end)…"
-                className="w-full text-[10px] text-gray-700 bg-gray-50 border border-gray-200 rounded px-2 py-1.5 resize-y focus:outline-none focus:ring-1 focus:ring-amber-300 placeholder:text-gray-400"
-                style={{ minHeight: "32px", maxHeight: "120px" }}
-                rows={1}
-              />
-            </div>
+            {/* ── Custom prompt add-on (export mode only) ── */}
+            {!settingsMode && (
+              <div className="mt-2 px-1">
+                <textarea
+                  value={customAddOn}
+                  onChange={(e) => setCustomAddOn(e.target.value)}
+                  placeholder="Custom add-on to the prompt (appended at the end)…"
+                  className="w-full text-[10px] text-gray-700 bg-gray-50 border border-gray-200 rounded px-2 py-1.5 resize-y focus:outline-none focus:ring-1 focus:ring-amber-300 placeholder:text-gray-400"
+                  style={{ minHeight: "32px", maxHeight: "120px" }}
+                  rows={1}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════ */}
+        {/*  INSPECT MODE                                  */}
+        {/* ═══════════════════════════════════════════════ */}
+        {!settingsMode && mode === "inspect" && inspectData && (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <PromptInspector
+              sections={inspectData.sections}
+              scenarioLabel={inspectData.scenario?.label}
+              directMode={directMode}
+              isGenerating={generatingId === inspectData.scenarioId}
+              customAddOn={customAddOn}
+              onCustomAddOnChange={setCustomAddOn}
+              onCopy={async (text) => {
+                try {
+                  await navigator.clipboard.writeText(text);
+                } catch {
+                  const ta = document.createElement("textarea");
+                  ta.value = text;
+                  document.body.appendChild(ta);
+                  ta.select();
+                  document.execCommand("copy");
+                  ta.remove();
+                }
+                setCopiedId(inspectData.scenarioId);
+                setLastCopiedScenario(inspectData.scenario || null);
+                setInspectData(null);
+                setTimeout(() => { setCopiedId(null); setMode("import"); }, 800);
+              }}
+              onGenerate={async (text) => {
+                const sid = inspectData.scenarioId;
+                setGeneratingId(sid);
+                setGenerateError(null);
+                setInspectData(null);
+                setMode("import");
+                try {
+                  const parsed = await aiGenerate(text);
+                  const items = detectTaskResponseContent(parsed);
+                  if (!items || items.length === 0) throw new Error("No actionable content detected in AI response");
+                  setDetected(items);
+                } catch (e) {
+                  console.error("AI generate failed:", e);
+                  setGenerateError(e.message);
+                  setTimeout(() => setGenerateError(null), 4000);
+                } finally {
+                  setGeneratingId(null);
+                }
+              }}
+              onBack={() => { setInspectData(null); setMode("export"); }}
+            />
           </div>
         )}
 
         {/* ═══════════════════════════════════════════════ */}
         {/*  IMPORT MODE                                   */}
         {/* ═══════════════════════════════════════════════ */}
-        {mode === "import" && (
+        {!settingsMode && mode === "import" && (
           <div className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-2">
 
             {/* Last-copied scenario hint */}
@@ -558,9 +829,7 @@ export default function TaskStructureIOPopup({
           ) : (
             <span className="text-gray-400">
               {mode === "export"
-                ? directMode
-                  ? "Click scenario to generate directly via OpenAI"
-                  : "Click scenario to copy prompt · switches to Import after copy"
+                ? "Select a scenario · then Copy or Send from the action bar above"
                 : "Paste AI response · preview & apply"
               }
             </span>
@@ -571,6 +840,16 @@ export default function TaskStructureIOPopup({
             </span>
           )}
         </div>
+
+        {/* ── Resize handles ── */}
+        {!expanded && (<>
+          <div onMouseDown={(e) => handleResizeMouseDown(e, "bl")} className="absolute bottom-0 left-0 w-5 h-5 z-10 cursor-sw-resize flex items-end justify-start p-1 opacity-40 hover:opacity-80 transition-opacity">
+            <svg width="9" height="9" viewBox="0 0 9 9"><line x1="1" y1="8" x2="8" y2="1" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round"/><line x1="1" y1="5" x2="5" y2="1" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          </div>
+          <div onMouseDown={(e) => handleResizeMouseDown(e, "br")} className="absolute bottom-0 right-0 w-5 h-5 z-10 cursor-se-resize flex items-end justify-end p-1 opacity-40 hover:opacity-80 transition-opacity">
+            <svg width="9" height="9" viewBox="0 0 9 9"><line x1="1" y1="8" x2="8" y2="1" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round"/><line x1="4" y1="8" x2="8" y2="4" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          </div>
+        </>)}
       </div>
     </>
   );

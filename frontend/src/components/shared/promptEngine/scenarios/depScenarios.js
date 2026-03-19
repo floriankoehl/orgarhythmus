@@ -142,8 +142,8 @@ export const DEP_SCENARIOS = [
   {
     id: "dep_milestones_add",
     domain: "dependencies",
-    grid: { row: "tasks", col: "add" },
-    group: "Tasks — Add",
+    grid: { row: "milestones", col: "add" },
+    group: "Milestones — Add",
     action: "add",
     label: "Generate milestones",
     description:
@@ -172,8 +172,8 @@ export const DEP_SCENARIOS = [
   {
     id: "dep_milestones_finetune",
     domain: "dependencies",
-    grid: { row: "tasks", col: "finetune" },
-    group: "Tasks — Finetune",
+    grid: { row: "milestones", col: "finetune" },
+    group: "Milestones — Finetune",
     action: "finetune",
     label: "Refine milestones",
     description:
@@ -267,6 +267,41 @@ export const DEP_SCENARIOS = [
   //  MILESTONES — FINETUNE
   // ─────────────────────────────────────────────────────────
 
+  // ─────────────────────────────────────────────────────────
+  //  MILESTONES — FINETUNE (durations)
+  // ─────────────────────────────────────────────────────────
+
+  {
+    id: "dep_durations_finetune",
+    domain: "dependencies",
+    grid: { row: "milestones", col: "finetune" },
+    group: "Milestones — Finetune",
+    action: "finetune",
+    label: "Adjust durations",
+    description:
+      "Suggest realistic durations for each milestone based on task complexity and dependencies.",
+    unavailableMsg: (ctx) =>
+      milestoneCount(ctx) === 0 ? "No milestones to adjust" : null,
+    defaultPrompt:
+      "Review each milestone and suggest a realistic duration in days based on the task description. " +
+      "CRITICAL SCHEDULING RULE: A predecessor's end day (start_index + duration) must be " +
+      "less than or equal to the successor's start_index — the predecessor must fully finish " +
+      "before the successor can start. After adjusting durations, verify all existing dependencies " +
+      "still satisfy this rule. Return only milestones where the duration should change.",
+    expectedFormat:
+      '{ "updated_milestones": [{ "original_name": "...", "duration": 3, "reason": "..." }] }',
+    buildPayload: (ctx) => ({
+      milestones: buildMilestonesPayload(ctx),
+      dependencies: buildEdgesPayload(ctx),
+      tasks: buildTasksPayload(ctx),
+      project_description: ctx.projectDescription || "",
+    }),
+  },
+
+  // ─────────────────────────────────────────────────────────
+  //  MILESTONES — FINETUNE (dependencies)
+  // ─────────────────────────────────────────────────────────
+
   {
     id: "dep_connections_finetune",
     domain: "dependencies",
@@ -303,8 +338,8 @@ export const DEP_SCENARIOS = [
   {
     id: "dep_schedule_add",
     domain: "dependencies",
-    grid: { row: "dependencies", col: "add" },
-    group: "Dependencies — Add",
+    grid: { row: "schedule", col: "add" },
+    group: "Schedule — Add",
     action: "add",
     label: "Generate schedule",
     description:
@@ -332,8 +367,8 @@ export const DEP_SCENARIOS = [
   {
     id: "dep_schedule_finetune",
     domain: "dependencies",
-    grid: { row: "dependencies", col: "finetune" },
-    group: "Dependencies — Finetune",
+    grid: { row: "schedule", col: "finetune" },
+    group: "Schedule — Finetune",
     action: "finetune",
     label: "Optimise schedule",
     description:
@@ -397,9 +432,9 @@ export const DEP_SCENARIOS = [
   {
     id: "special_dep_suggestions",
     domain: "dependencies",
-    grid: { row: "special", col: "special" },
-    group: "Specials",
-    action: "special",
+    grid: { row: "dependencies", col: "add" },
+    group: "Dependencies — Add",
+    action: "add",
     label: "Suggest missing dependencies",
     description:
       "Analyse the existing graph and suggest dependencies that might be missing.",
@@ -427,34 +462,34 @@ export const DEP_SCENARIOS = [
 
 export const DEP_GRID = {
   rows: [
-    { key: "tasks", label: "Tasks" },
     { key: "milestones", label: "Milestones" },
     { key: "dependencies", label: "Dependencies" },
+    { key: "schedule", label: "Schedule" },
   ],
   columns: [
     { key: "add", label: "Add" },
     { key: "finetune", label: "Finetune" },
   ],
   cells: {
-    "tasks:add":            ["dep_milestones_add"],
-    "tasks:finetune":       ["dep_milestones_finetune"],
-    "milestones:add":       ["dep_connections_add", "dep_connections_add_selected"],
-    "milestones:finetune":  ["dep_connections_finetune"],
-    "dependencies:add":     ["dep_schedule_add"],
-    "dependencies:finetune":["dep_schedule_finetune"],
+    "milestones:add":       ["dep_milestones_add"],
+    "milestones:finetune":  ["dep_milestones_finetune", "dep_durations_finetune"],
+    "dependencies:add":     ["dep_connections_add", "dep_connections_add_selected", "special_dep_suggestions"],
+    "dependencies:finetune":["dep_connections_finetune"],
+    "schedule:add":         ["dep_schedule_add"],
+    "schedule:finetune":    ["dep_schedule_finetune"],
   },
-  specials: ["special_full_dependency_graph", "special_dep_suggestions"],
+  specials: ["special_full_dependency_graph"],
 };
 
 
 // ─── Flat group ordering (legacy, kept for registry) ───
 
 export const DEP_GROUPS = [
-  "Tasks — Add",
-  "Tasks — Finetune",
   "Milestones — Add",
   "Milestones — Finetune",
   "Dependencies — Add",
   "Dependencies — Finetune",
+  "Schedule — Add",
+  "Schedule — Finetune",
   "Specials",
 ];

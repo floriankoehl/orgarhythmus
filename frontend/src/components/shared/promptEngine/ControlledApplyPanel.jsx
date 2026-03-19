@@ -110,11 +110,17 @@ export default function ControlledApplyModal({
     ci.parentId !== null && declinedParents.has(ci.parentId),
   [declinedParents]);
 
+  // In depReview mode, update_milestone items with an active scheduling conflict are blocked
+  const isBlocked = useCallback((ci) => {
+    if (!depReview) return false;
+    return ci.changeType === "update_milestone" && !!ci.conflict;
+  }, [depReview]);
+
   const totalCount    = changeItems.length;
   const acceptedCount = changeItems.filter(ci => ci.accepted && !isDisabled(ci)).length;
-  // In depReview mode, Apply only counts non-conflict items
+  // In depReview mode, Apply only counts non-conflict and non-blocked items
   const applyableCount = depReview
-    ? changeItems.filter(ci => ci.accepted && !isDisabled(ci) && ci.changeType !== "conflict_dependency").length
+    ? changeItems.filter(ci => ci.accepted && !isDisabled(ci) && ci.changeType !== "conflict_dependency" && !isBlocked(ci)).length
     : acceptedCount;
 
   // Flat list of root items for slide navigation
@@ -213,10 +219,10 @@ export default function ControlledApplyModal({
       let effective = changeItems.map(ci =>
         isDisabled(ci) ? { ...ci, accepted: false } : ci,
       );
-      // In depReview mode, exclude conflict items from apply
+      // In depReview mode, exclude conflict_dependency and blocked update_milestone items
       if (depReview) {
         effective = effective.map(ci =>
-          ci.changeType === "conflict_dependency" ? { ...ci, accepted: false } : ci,
+          (ci.changeType === "conflict_dependency" || isBlocked(ci)) ? { ...ci, accepted: false } : ci,
         );
       }
       const filtered = recomposeDetected(detected, effective);
@@ -291,6 +297,7 @@ export default function ControlledApplyModal({
               onPrev={goPrev}
               onNext={goNext}
               isDisabled={isDisabled}
+              isBlocked={isBlocked}
               analysisItems={analysisItems}
               changeTypeMeta={CHANGE_TYPE_META}
               onResolve={onResolve}
@@ -308,6 +315,7 @@ export default function ControlledApplyModal({
               onAcceptGroup={acceptGroup}
               onDeclineGroup={declineGroup}
               isDisabled={isDisabled}
+              isBlocked={isBlocked}
               analysisItems={analysisItems}
               changeTypeMeta={CHANGE_TYPE_META}
               depReview={depReview}
@@ -353,7 +361,7 @@ export default function ControlledApplyModal({
 //  SLIDE VIEW
 // ═══════════════════════════════════════════════════════════
 
-function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext, isDisabled, analysisItems, changeTypeMeta, onResolve, depReview }) {
+function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext, isDisabled, isBlocked, analysisItems, changeTypeMeta, onResolve, depReview }) {
   const CHANGE_TYPE_META = changeTypeMeta;
   const current = slideItems[slideIdx];
   if (!current && analysisItems.length === 0) {
@@ -374,6 +382,7 @@ function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext
 
   const meta = CHANGE_TYPE_META[current.changeType] || { dotColor: "bg-gray-400", verb: "Change" };
   const isOff = !current.accepted;
+  const isCurrentBlocked = isBlocked(current);
   const total = slideItems.length;
 
   return (
@@ -464,19 +473,25 @@ function SlideView({ slideItems, slideIdx, changeItems, onToggle, onPrev, onNext
               </div>
             )
         )}
-        <button
-          onClick={() => {
-            if (isOff) onToggle(current.id);
-            onNext();
-          }}
-          className={`flex-1 flex items-center justify-center gap-1.5 text-[11px] py-2 rounded font-medium transition-colors ${
-            !isOff
-              ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
-              : "bg-emerald-50 border border-emerald-200 text-emerald-600 hover:bg-emerald-100"
-          }`}
-        >
-          <Check size={12} /> {!isOff ? "Accepted" : "Accept"}
-        </button>
+        {isCurrentBlocked ? (
+          <div className="flex-1 flex items-center justify-center gap-1.5 text-[11px] py-2 rounded font-medium bg-orange-50 border border-orange-200 text-orange-600 cursor-not-allowed opacity-70">
+            <AlertTriangle size={12} /> Resolve conflict first
+          </div>
+        ) : (
+          <button
+            onClick={() => {
+              if (isOff) onToggle(current.id);
+              onNext();
+            }}
+            className={`flex-1 flex items-center justify-center gap-1.5 text-[11px] py-2 rounded font-medium transition-colors ${
+              !isOff
+                ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
+                : "bg-emerald-50 border border-emerald-200 text-emerald-600 hover:bg-emerald-100"
+            }`}
+          >
+            <Check size={12} /> {!isOff ? "Accepted" : "Accept"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1034,6 +1049,18 @@ function SlideDetailCard({ detail, changeType, resolved }) {
     case "update_milestone": {
       return (
         <div className="flex flex-col gap-3">
+          {/* Scheduling conflict warning */}
+          {detail.conflict && (
+            <>
+              <div className="flex items-center gap-1.5 text-[10px] font-semibold text-orange-600 uppercase tracking-wider">
+                <AlertTriangle size={10} /> Scheduling Conflict
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded px-2.5 py-1.5 text-[9px] text-red-700 flex items-start gap-1.5">
+                <AlertTriangle size={10} className="flex-shrink-0 mt-0.5 text-red-500" />
+                <span>{detail.conflict.message}</span>
+              </div>
+            </>
+          )}
           {detail.newName ? (
             <div className="flex flex-col gap-1.5">
               <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Milestone Name</div>
@@ -1067,6 +1094,9 @@ function SlideDetailCard({ detail, changeType, resolved }) {
                 </span>
               )}
             </div>
+          )}
+          {detail.description && (
+            <div className="text-[10px] text-gray-600 italic px-0.5">{detail.description}</div>
           )}
         </div>
       );
@@ -1237,7 +1267,7 @@ function OverviewView({
   groups, changeItems, collapsedGroups,
   onToggleGroup, onToggleItem,
   onAcceptAll, onDeclineAll, onAcceptGroup, onDeclineGroup,
-  isDisabled, analysisItems, changeTypeMeta, depReview,
+  isDisabled, isBlocked, analysisItems, changeTypeMeta, depReview,
 }) {
   return (
     <div className="px-4 py-3 flex flex-col gap-3">
@@ -1297,7 +1327,7 @@ function OverviewView({
               </div>
 
               {!collapsed && items.map(ci => (
-                <ChangeRow key={ci.id} item={ci} disabled={isDisabled(ci)} onToggle={onToggleItem} changeTypeMeta={changeTypeMeta} />
+                <ChangeRow key={ci.id} item={ci} disabled={isDisabled(ci)} blocked={isBlocked?.(ci)} onToggle={onToggleItem} changeTypeMeta={changeTypeMeta} />
               ))}
             </div>
           );
@@ -1315,26 +1345,28 @@ function OverviewView({
 //  Shared sub-components
 // ═══════════════════════════════════════════════════════════
 
-function ChangeRow({ item, disabled, onToggle, compact, changeTypeMeta }) {
+function ChangeRow({ item, disabled, blocked, onToggle, compact, changeTypeMeta }) {
   const meta = (changeTypeMeta || _IDEABIN_CHANGE_TYPE_META)[item.changeType] || { dotColor: "bg-gray-400" };
-  const effectively_off = !item.accepted || disabled;
+  const effectively_off = !item.accepted || disabled || blocked;
 
   return (
     <label
       className={`flex items-start gap-1.5 ${compact ? "px-2 py-1" : "px-2.5 py-1.5"} cursor-pointer transition-colors ${
-        disabled
-          ? "opacity-35 cursor-not-allowed"
-          : effectively_off
-            ? "opacity-60 hover:bg-gray-100/50"
-            : "hover:bg-white/60"
+        blocked
+          ? "opacity-60 cursor-not-allowed bg-orange-50/40"
+          : disabled
+            ? "opacity-35 cursor-not-allowed"
+            : effectively_off
+              ? "opacity-60 hover:bg-gray-100/50"
+              : "hover:bg-white/60"
       }`}
       style={{ paddingLeft: item.depth > 0 && !compact ? "1.75rem" : undefined }}
     >
       <input
         type="checkbox"
-        checked={item.accepted}
-        disabled={disabled}
-        onChange={() => onToggle(item.id)}
+        checked={item.accepted && !blocked}
+        disabled={disabled || blocked}
+        onChange={() => !blocked && onToggle(item.id)}
         className="mt-[3px] h-3 w-3 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 flex-shrink-0 accent-emerald-600"
       />
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-[5px] ${meta.dotColor}`} />

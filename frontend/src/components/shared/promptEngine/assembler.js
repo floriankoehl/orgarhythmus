@@ -39,38 +39,37 @@ import { getScenario } from './registry';
  *
  * @returns {{ text: string, json: object, jsonString: string }}
  */
-export function assemblePrompt(scenarioId, ctx, settings) {
+/**
+ * Break the assembled prompt into individual labelled sections.
+ * Each section has: { key, label, header, content, alwaysIncluded }
+ *   header  — the separator string printed before the content in the final text
+ *             (e.g. "--- Data ---"), null if no separator
+ *   alwaysIncluded — true for the payload section which is never gated by settings
+ */
+export function assemblePromptSections(scenarioId, ctx, settings) {
   const scenario = getScenario(scenarioId);
   if (!scenario) {
-    console.warn(`[assemblePrompt] Unknown scenario: ${scenarioId}`);
-    return { text: "", json: {}, jsonString: "{}" };
+    console.warn(`[assemblePromptSections] Unknown scenario: ${scenarioId}`);
+    return { sections: [], json: {}, jsonString: "{}" };
   }
 
-  // Build the JSON payload from the scenario's builder
   const json = scenario.buildPayload(ctx);
   const jsonString = JSON.stringify(json, null, 2);
-
-  const parts = [];
+  const sections = [];
 
   // 1. System prompt
   if (settings?.auto_add_system_prompt && settings.system_prompt?.trim()) {
-    parts.push(settings.system_prompt.trim());
+    sections.push({ key: "system_prompt", label: "System Prompt", header: null, content: settings.system_prompt.trim() });
   }
 
   // 2. Project description
   if (settings?.auto_add_project_description && ctx.projectDescription?.trim()) {
-    parts.push(
-      "--- Project Description ---\n" +
-      ctx.projectDescription.trim()
-    );
+    sections.push({ key: "project_description", label: "Project Description", header: "--- Project Description ---", content: ctx.projectDescription.trim() });
   }
 
   // 3. Expected JSON format
   if (settings?.auto_add_json_format && scenario.expectedFormat) {
-    parts.push(
-      "--- Expected JSON format ---\n" +
-      scenario.expectedFormat
-    );
+    sections.push({ key: "json_format", label: "JSON Format", header: "--- Expected JSON format ---", content: scenario.expectedFormat });
   }
 
   // 4. Scenario-specific prompt (user-customised or default)
@@ -78,24 +77,25 @@ export function assemblePrompt(scenarioId, ctx, settings) {
     const customPrompt = settings.scenario_prompts?.[scenarioId]?.trim();
     const promptText = customPrompt || scenario.defaultPrompt;
     if (promptText) {
-      parts.push(promptText);
+      sections.push({ key: "scenario_prompt", label: "Scenario Prompt", header: null, content: promptText });
     }
   }
 
   // 5. JSON payload (always)
-  parts.push(
-    "--- Data ---\n" +
-    jsonString
-  );
+  sections.push({ key: "payload", label: "Data", header: "--- Data ---", content: jsonString, alwaysIncluded: true });
 
   // 6. End prompt
   if (settings?.auto_add_end_prompt && settings.end_prompt?.trim()) {
-    parts.push(settings.end_prompt.trim());
+    sections.push({ key: "end_prompt", label: "End Prompt", header: null, content: settings.end_prompt.trim() });
   }
 
-  return {
-    text: parts.join("\n\n"),
-    json,
-    jsonString,
-  };
+  return { sections, json, jsonString };
+}
+
+export function assemblePrompt(scenarioId, ctx, settings) {
+  const { sections, json, jsonString } = assemblePromptSections(scenarioId, ctx, settings);
+  const text = sections
+    .map(s => s.header ? s.header + "\n" + s.content : s.content)
+    .join("\n\n");
+  return { text, json, jsonString };
 }

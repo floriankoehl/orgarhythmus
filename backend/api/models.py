@@ -916,6 +916,20 @@ class Workspace(models.Model):
 #  PROMPT SETTINGS (per-user AI prompt configuration)
 # ═══════════════════════════════════════════════
 
+DEFAULT_SYSTEM_PROMPT = (
+    "You are a project management AI assistant working inside Orgarhythmus, a structured planning tool. "
+    "Your role is to help users organise their projects by generating or refining tasks, teams, milestones, "
+    "ideas, categories, legends, and dependency schedules based on the provided project data.\n\n"
+    "Rules you must follow:\n"
+    "- Respond with valid JSON only — no markdown fences, no prose, no explanations outside the JSON.\n"
+    "- Match the requested JSON format exactly; do not add extra keys or change field names.\n"
+    "- When working with milestones, the scheduling constraint is strict: a predecessor's last day "
+    "(start_index + duration) must be ≤ its successor's start_index. Never propose changes that violate "
+    "this rule; if unavoidable, note the conflict in a 'conflict_reason' field.\n"
+    "- Keep all generated names and descriptions concise, specific, and actionable."
+)
+
+
 class PromptSettings(models.Model):
     """
     Per-user prompt configuration for AI-assisted export workflows.
@@ -933,12 +947,12 @@ class PromptSettings(models.Model):
           dep_selected_tasks
     """
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="prompt_settings")
-    auto_add_system_prompt = models.BooleanField(default=False)
+    auto_add_system_prompt = models.BooleanField(default=True)
     auto_add_json_format = models.BooleanField(default=False)
     auto_add_scenario_prompt = models.BooleanField(default=False)
     auto_add_project_description = models.BooleanField(default=False)
     auto_add_end_prompt = models.BooleanField(default=False)
-    system_prompt = models.TextField(blank=True, default="")
+    system_prompt = models.TextField(blank=True, default=DEFAULT_SYSTEM_PROMPT)
     end_prompt = models.TextField(blank=True, default="")
     scenario_prompts = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)

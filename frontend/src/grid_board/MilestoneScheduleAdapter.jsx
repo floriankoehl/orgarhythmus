@@ -494,7 +494,12 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
     updateMilestone: async (nodeId, updates) => {
       if (updates.name != null) await rename_milestone(projectId, nodeId, updates.name);
       if (updates.start_index != null) await update_start_index(projectId, nodeId, updates.start_index);
-      if (updates.duration != null) await change_duration(projectId, nodeId, updates.duration);
+      if (updates.duration != null) {
+        const current = nodes[nodeId];
+        const currentDuration = current?.duration ?? 1;
+        const delta = updates.duration - currentDuration;
+        if (delta !== 0) await change_duration(projectId, nodeId, delta);
+      }
       if (updates.task != null) await move_milestone_task(projectId, nodeId, updates.task);
       emitDataEvent('milestones');
     },
@@ -520,6 +525,11 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
   const handleResolveEnd = useCallback(() => {
     setResolveState(null);
+  }, []);
+
+  // Duration conflict resolve — called from ReviewBar when a proposed duration violates successors
+  const handleDurationResolveStart = useCallback((milestoneId, milestoneName, newEnd, violatedIds) => {
+    setResolveState({ type: "duration", milestoneId, milestoneName, newEnd, violatedIds });
   }, []);
 
   // ── Inline review handlers ──
@@ -660,6 +670,21 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
         );
         if (!existingEntry) throw new Error(`Milestone "${d.originalName}" not found`);
         const msId = Number(existingEntry[0]);
+
+        // Hard guard: block if proposed duration still violates scheduling rule
+        if (d.duration != null) {
+          const msNode = existingEntry[1];
+          const startIdx = msNode.startColumn ?? msNode.start_index ?? 0;
+          const newEnd = startIdx + d.duration;
+          const stillConflicts = edges.some(e => {
+            if (Number(e.source) !== msId) return false;
+            const succ = nodes[Number(e.target)];
+            if (!succ) return false;
+            return newEnd > (succ.startColumn ?? succ.start_index ?? 0);
+          });
+          if (stillConflicts) return; // user must resolve conflict first
+        }
+
         if (d.newName) await rename_milestone(projectId, msId, d.newName);
         if (d.startIndex != null) await update_start_index(projectId, msId, d.startIndex);
         if (d.duration != null) {
@@ -732,7 +757,19 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
   // Ghost edges for the grid — derived from resolveState OR reviewState
   const ghostEdges = useMemo(() => {
-    // Resolve mode takes priority
+    // Duration resolve mode: show edges from milestone → each violated successor
+    if (resolveState?.type === "duration") {
+      return resolveState.violatedIds.map(v => {
+        const tgt = nodes[v.id];
+        const succStart = tgt ? (tgt.startColumn ?? tgt.start_index ?? 0) : 0;
+        return {
+          source: resolveState.milestoneId,
+          target: v.id,
+          resolved: resolveState.newEnd <= succStart,
+        };
+      });
+    }
+    // Dep resolve mode takes priority
     if (resolveState) {
       const src = nodes[resolveState.sourceId];
       const tgt = nodes[resolveState.targetId];
@@ -928,8 +965,8 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 
   // Build function for inspect modal (uses current nodes/rows/lanes)
   const buildChangeItemsForInspect = useCallback((det) => {
-    return buildDepChangeItems(det, nodes, rows, lanes);
-  }, [nodes, rows, lanes]);
+    return buildDepChangeItems(det, nodes, rows, lanes, edges);
+  }, [nodes, rows, lanes, edges]);
 
   // ── Navigation ──
   const handleLaneNavigate = useCallback((laneId) => {
@@ -1216,6 +1253,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
           reviewState={reviewState}
           nodes={nodes}
           rows={rows}
+          edges={edges}
           onAccept={handleReviewAccept}
           onDecline={handleReviewDecline}
           onPrev={handleReviewPrev}
@@ -1223,6 +1261,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
           onInspect={handleReviewInspect}
           onFocusToggle={handleReviewFocusToggle}
           onDone={handleReviewEnd}
+          onDurationResolve={handleDurationResolveStart}
         />
       )}
 
@@ -1251,7 +1290,59 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
 //  Resolve Banner — floating indicator during conflict resolve
 // ═══════════════════════════════════════════════════════════
 function ResolveBanner({ resolveState, nodes, onResume, onCancel }) {
-  // Real-time conflict check from current node positions
+
+  // ── Duration conflict resolve ──
+  if (resolveState.type === "duration") {
+    const violatedNow = resolveState.violatedIds.filter(v => {
+      const tgt = nodes[v.id];
+      if (!tgt) return true; // node not loaded yet — treat as still violated
+      const succStart = tgt.startColumn ?? tgt.start_index ?? 0;
+      return resolveState.newEnd > succStart;
+    });
+    const isResolved = violatedNow.length === 0;
+
+    return (
+      <div
+        className="flex items-center gap-3 px-4 py-2.5 rounded-xl shadow-2xl border-2 bg-white/95 backdrop-blur-sm"
+        style={{
+          position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 99999,
+          borderColor: isResolved ? '#22c55e' : '#f97316',
+          maxWidth: '90vw',
+        }}
+      >
+        <div className={`w-3 h-3 rounded-full flex-shrink-0 ${isResolved ? 'bg-green-500' : 'bg-orange-500 animate-pulse'}`} />
+        <div className="flex flex-col min-w-0">
+          <div className="text-[11px] font-semibold text-gray-800">
+            Duration conflict: &ldquo;{resolveState.milestoneName}&rdquo; → {resolveState.newEnd} days end
+          </div>
+          <div className={`text-[10px] font-medium ${isResolved ? 'text-green-600' : 'text-orange-600'}`}>
+            {isResolved
+              ? '✓ All successors cleared — resume and accept'
+              : `⚠ Move these successors to start after day ${resolveState.newEnd}: ${violatedNow.map(v => `"${v.name}"`).join(', ')}`
+            }
+          </div>
+        </div>
+        <button
+          onClick={onResume}
+          className={`text-[11px] px-3 py-1.5 rounded font-medium transition-colors flex-shrink-0 ${
+            isResolved
+              ? 'bg-green-600 text-white hover:bg-green-700'
+              : 'bg-orange-100 text-orange-700 hover:bg-orange-200 border border-orange-300'
+          }`}
+        >
+          Resume
+        </button>
+        <button
+          onClick={onCancel}
+          className="text-[10px] px-2 py-1 rounded border border-gray-300 text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0"
+        >
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
+  // ── Dependency conflict resolve ──
   const sourceNode = nodes[resolveState.sourceId];
   const targetNode = nodes[resolveState.targetId];
   const conflict = sourceNode && targetNode
@@ -1273,7 +1364,7 @@ function ResolveBanner({ resolveState, nodes, onResume, onCancel }) {
       {/* Info */}
       <div className="flex flex-col min-w-0">
         <div className="text-[11px] font-semibold text-gray-800">
-          Resolving: "{resolveState.sourceName}" → "{resolveState.targetName}"
+          Resolving: &ldquo;{resolveState.sourceName}&rdquo; → &ldquo;{resolveState.targetName}&rdquo;
         </div>
         <div className={`text-[10px] font-medium ${isResolved ? 'text-green-600' : 'text-orange-600'}`}>
           {isResolved
@@ -1308,7 +1399,7 @@ function ResolveBanner({ resolveState, nodes, onResume, onCancel }) {
 // ═══════════════════════════════════════════════════════════
 //  Review Bar — compact inline review bar for sliding through proposals
 // ═══════════════════════════════════════════════════════════
-function ReviewBar({ reviewState, nodes, rows, onAccept, onDecline, onPrev, onNext, onInspect, onFocusToggle, onDone }) {
+function ReviewBar({ reviewState, nodes, rows, edges, onAccept, onDecline, onPrev, onNext, onInspect, onFocusToggle, onDone, onDurationResolve }) {
   const { items, currentIdx, sessionEdgeIds } = reviewState;
   const current = items[currentIdx];
   const total = items.length;
@@ -1328,9 +1419,33 @@ function ReviewBar({ reviewState, nodes, rows, onAccept, onDecline, onPrev, onNe
     : null;
   const isConflict = conflict?.conflict;
 
+  // Live duration conflict check for update_milestone items
+  const isDurationUpdate = current?.changeType === "update_milestone" && d?.duration != null;
+  const durationConflict = useMemo(() => {
+    if (!isDurationUpdate) return null;
+    const msEntry = Object.entries(nodes).find(([, n]) =>
+      n.name && d.originalName && n.name.toLowerCase().trim() === d.originalName.toLowerCase().trim()
+    );
+    if (!msEntry) return null;
+    const [msId, msNode] = msEntry;
+    const startIdx = msNode.startColumn ?? msNode.start_index ?? 0;
+    const newEnd = startIdx + d.duration;
+    const violated = edges
+      .filter(e => Number(e.source) === Number(msId))
+      .reduce((acc, e) => {
+        const succ = nodes[Number(e.target)];
+        if (!succ) return acc;
+        const succStart = succ.startColumn ?? succ.start_index ?? 0;
+        if (newEnd > succStart) acc.push({ id: Number(e.target), name: succ.name });
+        return acc;
+      }, []);
+    if (violated.length === 0) return null;
+    return { milestoneId: Number(msId), milestoneName: msNode.name, newEnd, violated };
+  }, [isDurationUpdate, d, nodes, edges]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Color scheme based on type
   const isRemove = current?.changeType === "remove_dependency";
-  const borderColor = isAlreadyAccepted ? '#22c55e' : isConflict ? '#f97316' : '#3b82f6';
+  const borderColor = isAlreadyAccepted ? '#22c55e' : (isConflict || durationConflict) ? '#f97316' : '#3b82f6';
 
   // Scroll + highlight a milestone node on the grid
   const scrollToNode = useCallback((nodeId) => {
@@ -1423,6 +1538,11 @@ function ReviewBar({ reviewState, nodes, rows, onAccept, onDecline, onPrev, onNe
             ⚠ Conflict: ends day {conflict.sourceEnd}, starts day {conflict.targetStart}
           </div>
         )}
+        {durationConflict && (
+          <div className="text-[9px] text-orange-600 font-medium">
+            ⚠ Duration conflict: ends day {durationConflict.newEnd} — move {durationConflict.violated.map(v => `"${v.name}"`).join(', ')}
+          </div>
+        )}
         {isAlreadyAccepted && (
           <div className="text-[9px] text-green-600 font-medium">✓ Already accepted</div>
         )}
@@ -1475,16 +1595,25 @@ function ReviewBar({ reviewState, nodes, rows, onAccept, onDecline, onPrev, onNe
           >
             Decline
           </button>
-          <button
-            onClick={onAccept}
-            className={`text-[10px] px-2.5 py-1.5 rounded font-medium transition-colors flex-shrink-0 ${
-              isConflict
-                ? 'border border-orange-300 text-orange-700 bg-orange-50 hover:bg-orange-100'
-                : 'bg-emerald-600 text-white hover:bg-emerald-700'
-            }`}
-          >
-            {isConflict ? 'Accept (conflict)' : 'Accept'}
-          </button>
+          {durationConflict ? (
+            <button
+              onClick={() => onDurationResolve(durationConflict.milestoneId, durationConflict.milestoneName, durationConflict.newEnd, durationConflict.violated)}
+              className="text-[10px] px-2.5 py-1.5 rounded font-medium border border-orange-300 text-orange-700 bg-orange-50 hover:bg-orange-100 transition-colors flex-shrink-0"
+            >
+              ⚠ Resolve
+            </button>
+          ) : (
+            <button
+              onClick={onAccept}
+              className={`text-[10px] px-2.5 py-1.5 rounded font-medium transition-colors flex-shrink-0 ${
+                isConflict
+                  ? 'border border-orange-300 text-orange-700 bg-orange-50 hover:bg-orange-100'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700'
+              }`}
+            >
+              {isConflict ? 'Accept (conflict)' : 'Accept'}
+            </button>
+          )}
         </>
       ) : (
         <div className="text-[10px] px-2.5 py-1.5 rounded font-medium bg-green-50 border border-green-200 text-green-700 flex-shrink-0">

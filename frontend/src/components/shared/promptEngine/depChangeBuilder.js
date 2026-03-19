@@ -81,12 +81,13 @@ export const DEP_CHANGE_TYPE_META = {
 // ═══════════════════════════════════════════════════════════
 
 /**
- * @param {Array}  detected – from detectDepResponseContent()
- * @param {Object} nodesCtx – current nodes (milestones) for conflict checking
- * @param {Object} rowsCtx  – rows/tasks for team/task context
- * @param {Object} lanesCtx – lanes/teams for team names/colors
+ * @param {Array}  detected  – from detectDepResponseContent()
+ * @param {Object} nodesCtx  – current nodes (milestones) for conflict checking
+ * @param {Object} rowsCtx   – rows/tasks for team/task context
+ * @param {Object} lanesCtx  – lanes/teams for team names/colors
+ * @param {Array}  edgesCtx  – current edges for successor conflict detection
  */
-export function buildDepChangeItems(detected, nodesCtx = {}, rowsCtx = {}, lanesCtx = {}) {
+export function buildDepChangeItems(detected, nodesCtx = {}, rowsCtx = {}, lanesCtx = {}, edgesCtx = []) {
   const items = [];
   let nextId = 1;
   const makeId = () => `dch-${nextId++}`;
@@ -102,6 +103,13 @@ export function buildDepChangeItems(detected, nodesCtx = {}, rowsCtx = {}, lanes
 
       // ── Update existing milestones ──
       case "update_milestones": {
+        // Build name→id lookup once for conflict detection
+        const nameToMsId = {};
+        for (const [id, n] of Object.entries(nodesCtx)) {
+          const k = (n.name || "").toLowerCase().trim();
+          if (k) nameToMsId[k] = parseInt(id);
+        }
+
         for (let di = 0; di < item.data.length; di++) {
           const entry = item.data[di];
           const parts = [];
@@ -111,21 +119,59 @@ export function buildDepChangeItems(detected, nodesCtx = {}, rowsCtx = {}, lanes
             parts.push(`Day: ${entry.start_index}`);
           if (entry.duration !== undefined)
             parts.push(`Duration: ${entry.duration}`);
+          if (entry.reason)
+            parts.push(`Reason: "${truncate(entry.reason, 40)}"`);
+
+          // Detect scheduling conflicts caused by duration increase
+          let conflict = null;
+          const msId = nameToMsId[(entry.original_name || "").toLowerCase().trim()];
+          if (msId && entry.duration !== undefined && nodesCtx[msId]) {
+            const ms = nodesCtx[msId];
+            const startIdx = ms.startColumn ?? ms.start_index ?? 0;
+            const newEnd = startIdx + entry.duration;
+            const violatedSuccessors = [];
+            for (const edge of edgesCtx) {
+              if (Number(edge.source) === msId) {
+                const targetNode = nodesCtx[Number(edge.target)];
+                if (targetNode) {
+                  const targetStart = targetNode.startColumn ?? targetNode.start_index ?? 0;
+                  if (newEnd > targetStart) {
+                    violatedSuccessors.push({
+                      id: Number(edge.target),
+                      name: targetNode.name || String(edge.target),
+                      newEnd,
+                      targetStart,
+                    });
+                  }
+                }
+              }
+            }
+            if (violatedSuccessors.length > 0) {
+              conflict = {
+                message: violatedSuccessors
+                  .map(v => `"${v.name}" starts day ${v.targetStart} but predecessor now ends day ${v.newEnd}`)
+                  .join("; "),
+                violatedSuccessors,
+              };
+            }
+          }
 
           items.push({
             id: makeId(), parentId: null, accepted: true,
-            label: `Update milestone: "${truncate(entry.original_name, 35)}"`,
+            label: `${conflict ? "⚠️ " : ""}Update milestone: "${truncate(entry.original_name, 35)}"`,
             sublabel: parts.join(" · ") || entry.description || null,
             changeType: "update_milestone",
-            group: "Update Milestones",
+            group: conflict ? "Conflicting Updates" : "Update Milestones",
             depth: 0,
+            conflict: conflict || undefined,
             detail: {
               type: "update_milestone",
               originalName: entry.original_name,
               newName: entry.name !== entry.original_name ? entry.name : null,
               startIndex: entry.start_index,
               duration: entry.duration,
-              description: entry.description || null,
+              description: entry.reason || entry.description || null,
+              conflict: conflict || null,
             },
             _sortOrder: sortOrder,
             _ref: { detectedIdx: detIdx, dataIdx: di, childField: null, childIdx: null },
@@ -242,6 +288,13 @@ export function buildDepChangeItems(detected, nodesCtx = {}, rowsCtx = {}, lanes
 
       // ── Create new dependencies ──
       case "dep_dependencies": {
+        // Build name→id lookup once for this batch (used when AI returns names instead of IDs)
+        const nameToNodeId = {};
+        for (const [id, n] of Object.entries(nodesCtx)) {
+          const key = (n.name || "").toLowerCase().trim();
+          if (key) nameToNodeId[key] = parseInt(id);
+        }
+
         for (let di = 0; di < item.data.length; di++) {
           const entry = item.data[di];
 
@@ -250,10 +303,14 @@ export function buildDepChangeItems(detected, nodesCtx = {}, rowsCtx = {}, lanes
           const tgtKey = (entry.target_milestone_name || "").toLowerCase().trim();
           const parentId = milestoneChangeIds[srcKey] || milestoneChangeIds[tgtKey] || null;
 
+          // Resolve IDs — prefer explicit source_id/target_id, fall back to name lookup
+          let sourceId = entry.source_id;
+          let targetId = entry.target_id;
+          if (!sourceId && srcKey) sourceId = nameToNodeId[srcKey];
+          if (!targetId && tgtKey) targetId = nameToNodeId[tgtKey];
+
           // Conflict detection
           let conflict = null;
-          const sourceId = entry.source_id;
-          const targetId = entry.target_id;
           if (sourceId && targetId && nodesCtx[sourceId] && nodesCtx[targetId]) {
             const check = checkDepConflict(nodesCtx[sourceId], nodesCtx[targetId]);
             if (check.conflict) {
@@ -286,8 +343,8 @@ export function buildDepChangeItems(detected, nodesCtx = {}, rowsCtx = {}, lanes
             conflict,
             detail: {
               type: conflict ? "conflict_dependency" : "create_dependency",
-              sourceId: entry.source_id,
-              targetId: entry.target_id,
+              sourceId: sourceId,
+              targetId: targetId,
               sourceName: String(srcLabel),
               targetName: String(tgtLabel),
               sourceCtx: srcCtx,
