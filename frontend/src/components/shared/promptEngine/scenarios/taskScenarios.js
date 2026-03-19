@@ -172,6 +172,7 @@ export const TASK_SCENARIOS = [
     buildPayload: (ctx) => ({
       unassigned_tasks: getUnassigned(ctx).map(cleanTask),
       teams: buildTeamsPayload(ctx, ctx.teamOrder || []),
+      project_description: ctx.projectDescription || "",
     }),
   },
 
@@ -193,6 +194,7 @@ export const TASK_SCENARIOS = [
     buildPayload: (ctx) => ({
       unassigned_tasks: getUnassigned(ctx).map(cleanTask),
       existing_teams: buildTeamsPayload(ctx, ctx.teamOrder || []),
+      project_description: ctx.projectDescription || "",
     }),
   },
 
@@ -216,6 +218,7 @@ export const TASK_SCENARIOS = [
     buildPayload: (ctx) => ({
       selected_tasks: getSelectedTasks(ctx).map(cleanTask),
       teams: buildTeamsPayload(ctx, ctx.teamOrder || []),
+      project_description: ctx.projectDescription || "",
     }),
   },
 
@@ -236,6 +239,7 @@ export const TASK_SCENARIOS = [
     buildPayload: (ctx) => ({
       selected_tasks: getSelectedTasks(ctx).map(cleanTask),
       existing_teams: buildTeamsPayload(ctx, ctx.teamOrder || []),
+      project_description: ctx.projectDescription || "",
     }),
   },
 
@@ -260,6 +264,7 @@ export const TASK_SCENARIOS = [
     expectedFormat: '{ "updated_tasks": [{ "original_name": "...", "name": "...", "description": "...", "priority": "...", "difficulty": "...", "acceptance_criteria": [{ "title": "..." }] }] }',
     buildPayload: (ctx) => ({
       tasks: getSelectedTasks(ctx).map(cleanTask),
+      project_description: ctx.projectDescription || "",
     }),
   },
 
@@ -280,6 +285,7 @@ export const TASK_SCENARIOS = [
     expectedFormat: '{ "updated_tasks": [{ "original_name": "...", "name": "...", "description": "...", "priority": "...", "difficulty": "...", "acceptance_criteria": [{ "title": "..." }] }] }',
     buildPayload: (ctx) => ({
       ...buildFullProject(ctx),
+      project_description: ctx.projectDescription || "",
     }),
   },
 
@@ -353,6 +359,7 @@ export const TASK_SCENARIOS = [
     expectedFormat: '{ "updated_teams": [{ "original_name": "...", "name": "...", "color": "#hex" }] }',
     buildPayload: (ctx) => ({
       teams: buildTeamsPayload(ctx, [...(ctx.selectedTeamIds || [])]),
+      project_description: ctx.projectDescription || "",
     }),
   },
 
@@ -372,12 +379,40 @@ export const TASK_SCENARIOS = [
     expectedFormat: '{ "updated_teams": [{ "original_name": "...", "name": "...", "color": "#hex" }] }',
     buildPayload: (ctx) => ({
       ...buildFullProject(ctx),
+      project_description: ctx.projectDescription || "",
     }),
   },
 
   // ─────────────────────────────────────────────────────────
   //  SPECIALS
   // ─────────────────────────────────────────────────────────
+
+  {
+    id: "special_tasks_and_teams",
+    domain: "tasks",
+    grid: null, // special
+    group: "Specials",
+    action: "special",
+    label: "New tasks & teams",
+    description: "Generate both new teams (with tasks) and additional unassigned tasks in one go.",
+    unavailableMsg: () => null,
+    defaultPrompt:
+      "Generate a complete project structure from scratch (or extending what exists). " +
+      "Create 3-6 teams, each with 3-5 well-defined tasks. " +
+      "Also add 3-5 unassigned tasks that don't fit neatly into a single team. " +
+      "Every task should have a name, description, priority, difficulty, and 2-4 acceptance criteria.",
+    expectedFormat:
+      '{ "teams": [{ "team_name": "...", "color": "#hex", "tasks": [{ "name": "...", "description": "...", "priority": "high|medium|low", "difficulty": "easy|medium|hard", "acceptance_criteria": [{ "title": "..." }] }] }], "unassigned_tasks": [{ "name": "...", "description": "...", "priority": "...", "difficulty": "..." }] }',
+    buildPayload: (ctx) => {
+      if (!wCtx(ctx)) {
+        return { project_description: ctx.projectDescription || "" };
+      }
+      return {
+        ...buildFullProject(ctx),
+        project_description: ctx.projectDescription || "",
+      };
+    },
+  },
 
   {
     id: "special_acceptance_criteria_selected",
@@ -397,6 +432,7 @@ export const TASK_SCENARIOS = [
       '{ "acceptance_criteria": [{ "original_name": "Task Name", "criteria": [{ "title": "Criterion text" }] }] }',
     buildPayload: (ctx) => ({
       tasks: getSelectedTasks(ctx).map(cleanTask),
+      project_description: ctx.projectDescription || "",
     }),
   },
 
@@ -418,6 +454,7 @@ export const TASK_SCENARIOS = [
       '{ "acceptance_criteria": [{ "original_name": "Task Name", "criteria": [{ "title": "Criterion text" }] }] }',
     buildPayload: (ctx) => ({
       ...buildFullProject(ctx),
+      project_description: ctx.projectDescription || "",
     }),
   },
 
@@ -466,6 +503,7 @@ export const TASK_GRID = {
     "teams:finetune": ["teams_finetune_selected", "teams_finetune_all"],
   },
   specials: [
+    "special_tasks_and_teams",
     "special_acceptance_criteria_selected",
     "special_acceptance_criteria_all",
     "special_task_suggestions",

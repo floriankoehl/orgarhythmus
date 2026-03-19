@@ -97,6 +97,7 @@ VALID_SCENARIO_KEYS = {
     "teams_finetune_all",
     # Task Specials
     "special_taskify_ideas",
+    "special_tasks_and_teams",
     "special_acceptance_criteria_selected",
     "special_acceptance_criteria_all",
     "special_task_suggestions",
