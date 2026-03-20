@@ -4,7 +4,7 @@ import {
   AlertCircle, Sparkles,
   ClipboardPaste, ArrowRightLeft, Star,
   AlertTriangle, Zap, Loader, Eye, Maximize2, Minimize2, Settings,
-  RotateCcw, Save, ChevronDown,
+  Save, ChevronDown,
 } from "lucide-react";
 import { detectDepResponseContent } from "../components/shared/promptEngine/depResponseApplier";
 import ControlledApplyModal from "../components/shared/promptEngine/ControlledApplyPanel";
@@ -14,6 +14,7 @@ import { aiGenerate, getDirectMode } from "../api/aiGenerateApi";
 import { assemblePromptSections } from "../components/shared/promptEngine/assembler";
 import PromptInspector from "../components/shared/promptEngine/PromptInspector";
 import usePromptSettings from "../components/usePromptSettings";
+import DefaultPromptTooltip from "../components/shared/promptEngine/DefaultPromptTooltip";
 
 /**
  * ═══════════════════════════════════════════════════════════
@@ -339,15 +340,14 @@ export default function DependencyIOPopup({
         >
           {actionIcon(scenario.action, 8)}
           <span className="text-[9px] font-semibold text-gray-600 flex-1 truncate">{scenario.label}</span>
-          {isCustomised && (
-            <button
-              onClick={(e) => { e.stopPropagation(); setLocalScenarioPrompts(p => ({ ...p, [scenarioId]: "" })); }}
-              className="text-gray-300 hover:text-violet-500 transition-colors flex-shrink-0"
-              title="Reset to default"
-            >
-              <RotateCcw size={7} />
-            </button>
-          )}
+          <div onClick={e => e.stopPropagation()}>
+            <DefaultPromptTooltip
+              defaultPrompt={scenario.defaultPrompt}
+              isCustomised={isCustomised}
+              onReset={() => setLocalScenarioPrompts(p => ({ ...p, [scenarioId]: "" }))}
+              size={7}
+            />
+          </div>
           <ChevronDown
             size={8}
             className={`text-gray-300 group-hover/hdr:text-gray-500 flex-shrink-0 transition-transform duration-150 ${isCollapsed ? "-rotate-90" : ""}`}

@@ -12,6 +12,8 @@
  * ═══════════════════════════════════════════════════════════
  */
 
+import { TASK_DEFAULTS } from '../promptDefaults';
+
 // ─── Helpers ────────────────────────────────────────────
 
 /** Build a clean task object for export */
@@ -108,10 +110,7 @@ export const TASK_SCENARIOS = [
     label: "New tasks",
     description: "Generate new tasks. Toggle 'with context' to include existing structure.",
     unavailableMsg: () => null,
-    defaultPrompt:
-      "Generate 8-12 well-defined tasks for this project. " +
-      "Each task should have a clear name, description, and 2-4 acceptance criteria. " +
-      "Also suggest a priority (high/medium/low) and difficulty (easy/medium/hard).",
+    defaultPrompt: TASK_DEFAULTS.tasks_add,
     expectedFormat: '{ "tasks": [{ "name": "...", "description": "...", "priority": "high|medium|low", "difficulty": "easy|medium|hard", "acceptance_criteria": [{ "title": "..." }] }] }',
     buildPayload: (ctx) => {
       if (!wCtx(ctx)) {
@@ -137,10 +136,7 @@ export const TASK_SCENARIOS = [
     description: "Generate tasks specifically designed for existing teams.",
     unavailableMsg: (ctx) =>
       teamCount(ctx) === 0 ? "No teams created yet" : null,
-    defaultPrompt:
-      "Generate 3-5 well-defined tasks for each team. " +
-      "Each task should fit the team's area of responsibility. " +
-      "Include name, description, priority, difficulty, and acceptance criteria.",
+    defaultPrompt: TASK_DEFAULTS.tasks_add_for_teams,
     expectedFormat: '{ "teams": [{ "team_name": "...", "tasks": [{ "name": "...", "description": "...", "priority": "...", "difficulty": "...", "acceptance_criteria": [{ "title": "..." }] }] }] }',
     buildPayload: (ctx) => ({
       ...buildFullProject(ctx),
@@ -165,9 +161,7 @@ export const TASK_SCENARIOS = [
       if (teamCount(ctx) === 0) return "No teams to assign to";
       return null;
     },
-    defaultPrompt:
-      "For each unassigned task, suggest the most appropriate existing team to assign it to. " +
-      "Return assignments as a JSON array.",
+    defaultPrompt: TASK_DEFAULTS.tasks_assign_unassigned_existing,
     expectedFormat: '{ "assignments": [{ "team_name": "...", "tasks": ["task name 1", "task name 2"] }] }',
     buildPayload: (ctx) => ({
       unassigned_tasks: getUnassigned(ctx).map(cleanTask),
@@ -186,10 +180,7 @@ export const TASK_SCENARIOS = [
     description: "Create new teams from unassigned tasks and assign them.",
     unavailableMsg: (ctx) =>
       unassignedCount(ctx) === 0 ? "No unassigned tasks" : null,
-    defaultPrompt:
-      "Suggest new team groupings for the unassigned tasks. " +
-      "Group them logically by domain or function. " +
-      "Return new teams with their assigned tasks.",
+    defaultPrompt: TASK_DEFAULTS.tasks_assign_unassigned_new,
     expectedFormat: '{ "teams": [{ "team_name": "...", "color": "#hex", "tasks": ["task name 1", "task name 2"] }] }',
     buildPayload: (ctx) => ({
       unassigned_tasks: getUnassigned(ctx).map(cleanTask),
@@ -211,9 +202,7 @@ export const TASK_SCENARIOS = [
       if (teamCount(ctx) === 0) return "No teams to assign to";
       return null;
     },
-    defaultPrompt:
-      "Assign each selected task to the most appropriate existing team. " +
-      "Consider each team's current workload and domain.",
+    defaultPrompt: TASK_DEFAULTS.tasks_assign_selected_existing,
     expectedFormat: '{ "assignments": [{ "team_name": "...", "tasks": ["task name 1"] }] }',
     buildPayload: (ctx) => ({
       selected_tasks: getSelectedTasks(ctx).map(cleanTask),
@@ -232,9 +221,7 @@ export const TASK_SCENARIOS = [
     description: "Create new teams from selected tasks.",
     unavailableMsg: (ctx) =>
       selectedTaskCount(ctx) === 0 ? "No tasks selected" : null,
-    defaultPrompt:
-      "Group the selected tasks into new teams based on logical categories. " +
-      "Suggest a team name and color for each group.",
+    defaultPrompt: TASK_DEFAULTS.tasks_assign_selected_new,
     expectedFormat: '{ "teams": [{ "team_name": "...", "color": "#hex", "tasks": ["task name 1"] }] }',
     buildPayload: (ctx) => ({
       selected_tasks: getSelectedTasks(ctx).map(cleanTask),
@@ -257,10 +244,7 @@ export const TASK_SCENARIOS = [
     description: "Improve names, descriptions, and criteria of selected tasks.",
     unavailableMsg: (ctx) =>
       selectedTaskCount(ctx) === 0 ? "No tasks selected" : null,
-    defaultPrompt:
-      "Improve these tasks: refine the names to be clearer and more actionable, " +
-      "enhance descriptions, adjust priority/difficulty if appropriate, " +
-      "and improve or add acceptance criteria. Return the full updated tasks.",
+    defaultPrompt: TASK_DEFAULTS.tasks_finetune_selected,
     expectedFormat: '{ "updated_tasks": [{ "original_name": "...", "name": "...", "description": "...", "priority": "...", "difficulty": "...", "acceptance_criteria": [{ "title": "..." }] }] }',
     buildPayload: (ctx) => ({
       tasks: getSelectedTasks(ctx).map(cleanTask),
@@ -278,10 +262,7 @@ export const TASK_SCENARIOS = [
     description: "Improve all tasks in the project.",
     unavailableMsg: (ctx) =>
       taskCount(ctx) === 0 ? "No tasks exist" : null,
-    defaultPrompt:
-      "Review and improve all tasks: refine names, enhance descriptions, " +
-      "adjust priority/difficulty, and improve acceptance criteria. " +
-      "Return the full updated set of tasks.",
+    defaultPrompt: TASK_DEFAULTS.tasks_finetune_all,
     expectedFormat: '{ "updated_tasks": [{ "original_name": "...", "name": "...", "description": "...", "priority": "...", "difficulty": "...", "acceptance_criteria": [{ "title": "..." }] }] }',
     buildPayload: (ctx) => ({
       ...buildFullProject(ctx),
@@ -302,10 +283,7 @@ export const TASK_SCENARIOS = [
     label: "New teams",
     description: "Generate new teams. Toggle 'with context' to include existing structure for reference.",
     unavailableMsg: () => null,
-    defaultPrompt:
-      "Suggest 3-5 well-defined teams for this project. " +
-      "Each team should have a clear name, purpose description, and a suggested color. " +
-      "Also suggest 3-5 tasks per team.",
+    defaultPrompt: TASK_DEFAULTS.teams_add,
     expectedFormat: '{ "teams": [{ "team_name": "...", "color": "#hex", "tasks": [{ "name": "...", "description": "...", "priority": "...", "difficulty": "...", "acceptance_criteria": [{ "title": "..." }] }] }] }',
     buildPayload: (ctx) => {
       if (!wCtx(ctx)) {
@@ -328,9 +306,7 @@ export const TASK_SCENARIOS = [
     description: "Create new teams designed to organise existing tasks.",
     unavailableMsg: (ctx) =>
       taskCount(ctx) === 0 ? "No tasks to group" : null,
-    defaultPrompt:
-      "Analyse the existing tasks and suggest new teams to group them logically. " +
-      "Include team name, color, and which existing tasks belong to each team.",
+    defaultPrompt: TASK_DEFAULTS.teams_add_for_tasks,
     expectedFormat: '{ "teams": [{ "team_name": "...", "color": "#hex", "tasks": ["existing task name 1", "existing task name 2"] }] }',
     buildPayload: (ctx) => ({
       ...buildFullProject(ctx),
@@ -352,10 +328,7 @@ export const TASK_SCENARIOS = [
     description: "Improve names and organisation of selected teams.",
     unavailableMsg: (ctx) =>
       selectedTeamCount(ctx) === 0 ? "No teams selected" : null,
-    defaultPrompt:
-      "Improve these teams: refine team names, suggest better colours, " +
-      "and review their task assignments. " +
-      "Return the updated teams with any suggested changes.",
+    defaultPrompt: TASK_DEFAULTS.teams_finetune_selected,
     expectedFormat: '{ "updated_teams": [{ "original_name": "...", "name": "...", "color": "#hex" }] }',
     buildPayload: (ctx) => ({
       teams: buildTeamsPayload(ctx, [...(ctx.selectedTeamIds || [])]),
@@ -373,9 +346,7 @@ export const TASK_SCENARIOS = [
     description: "Improve all teams in the project.",
     unavailableMsg: (ctx) =>
       teamCount(ctx) === 0 ? "No teams exist" : null,
-    defaultPrompt:
-      "Review and improve all teams: refine names, suggest better colours, " +
-      "and review task distribution across teams.",
+    defaultPrompt: TASK_DEFAULTS.teams_finetune_all,
     expectedFormat: '{ "updated_teams": [{ "original_name": "...", "name": "...", "color": "#hex" }] }',
     buildPayload: (ctx) => ({
       ...buildFullProject(ctx),
@@ -396,11 +367,7 @@ export const TASK_SCENARIOS = [
     label: "New tasks & teams",
     description: "Generate both new teams (with tasks) and additional unassigned tasks in one go.",
     unavailableMsg: () => null,
-    defaultPrompt:
-      "Generate a complete project structure from scratch (or extending what exists). " +
-      "Create 3-6 teams, each with 3-5 well-defined tasks. " +
-      "Also add 3-5 unassigned tasks that don't fit neatly into a single team. " +
-      "Every task should have a name, description, priority, difficulty, and 2-4 acceptance criteria.",
+    defaultPrompt: TASK_DEFAULTS.special_tasks_and_teams,
     expectedFormat:
       '{ "teams": [{ "team_name": "...", "color": "#hex", "tasks": [{ "name": "...", "description": "...", "priority": "high|medium|low", "difficulty": "easy|medium|hard", "acceptance_criteria": [{ "title": "..." }] }] }], "unassigned_tasks": [{ "name": "...", "description": "...", "priority": "...", "difficulty": "..." }] }',
     buildPayload: (ctx) => {
@@ -424,10 +391,7 @@ export const TASK_SCENARIOS = [
     description: "Generate acceptance criteria for selected tasks that lack them.",
     unavailableMsg: (ctx) =>
       selectedTaskCount(ctx) === 0 ? "No tasks selected" : null,
-    defaultPrompt:
-      "For each task, generate 3-5 clear, testable acceptance criteria. " +
-      "Each criterion should be specific and verifiable. " +
-      "Return using the original_name to match tasks.",
+    defaultPrompt: TASK_DEFAULTS.special_acceptance_criteria_selected,
     expectedFormat:
       '{ "acceptance_criteria": [{ "original_name": "Task Name", "criteria": [{ "title": "Criterion text" }] }] }',
     buildPayload: (ctx) => ({
@@ -446,10 +410,7 @@ export const TASK_SCENARIOS = [
     description: "Generate acceptance criteria for all tasks that are missing them.",
     unavailableMsg: (ctx) =>
       taskCount(ctx) === 0 ? "No tasks exist" : null,
-    defaultPrompt:
-      "For each task, generate 3-5 clear, testable acceptance criteria. " +
-      "Focus on tasks that don't have any criteria yet. " +
-      "Return using the original_name to match tasks.",
+    defaultPrompt: TASK_DEFAULTS.special_acceptance_criteria_all,
     expectedFormat:
       '{ "acceptance_criteria": [{ "original_name": "Task Name", "criteria": [{ "title": "Criterion text" }] }] }',
     buildPayload: (ctx) => ({
@@ -468,10 +429,7 @@ export const TASK_SCENARIOS = [
     description: "Get suggestions on how to improve the overall task structure.",
     unavailableMsg: (ctx) =>
       taskCount(ctx) === 0 && teamCount(ctx) === 0 ? "No content yet" : null,
-    defaultPrompt:
-      "Analyse the current task structure and provide suggestions for improvement. " +
-      "Consider: missing tasks, team balance, task clarity, priority distribution, " +
-      "and acceptance criteria quality.",
+    defaultPrompt: TASK_DEFAULTS.special_task_suggestions,
     expectedFormat: '{ "suggestions": "..." }',
     buildPayload: (ctx) => ({
       ...buildFullProject(ctx),

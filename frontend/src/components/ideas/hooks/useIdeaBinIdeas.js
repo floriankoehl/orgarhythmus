@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { playSound } from "../../../assets/sound_registry";
+import { emitDataEvent, useManualRefresh } from "../../../api/dataEvents";
 import {
   fetchAllIdeas as fetchAllIdeasApi,
   createIdeaApi,
@@ -79,15 +80,29 @@ export default function useIdeaBinIdeas({ selectedCategoryIds, activeContext }) 
     return result;
   })();
 
+  // Guard: starts as true to suppress the initial-load fetch from emitting.
+  // Set to false after the first load; mutations keep it false so they emit.
+  // The useManualRefresh handler sets it to true to prevent loop re-emissions.
+  const _suppressEmitRef = useRef(true);
+
   const fetch_all_ideas = useCallback(async () => {
+    const suppressed = _suppressEmitRef.current;
     try {
       const { ideas: obj, order, categoryOrders: catOrders, contextIdeaOrders: ctxIdeaOrders } = await fetchAllIdeasApi();
       setIdeas(obj);
       setUnassignedOrder(order);
       setCategoryOrders(catOrders);
       setContextIdeaOrders(ctxIdeaOrders);
+      _suppressEmitRef.current = false; // after first load, mutations should emit
+      if (!suppressed) emitDataEvent('ideas');
     } catch (err) { console.error("IdeaBin: fetch ideas failed", err); }
   }, []);
+
+  // Re-fetch when any window emits a data change event (auto or manual refresh mode)
+  useManualRefresh(() => {
+    _suppressEmitRef.current = true; // suppress re-emission from this refresh-triggered fetch
+    fetch_all_ideas().finally(() => { _suppressEmitRef.current = false; });
+  });
 
   // ── Execute a move in the given direction ──
   const executeMoveRef = useRef(null);

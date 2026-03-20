@@ -175,6 +175,7 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
     project_id = serializers.IntegerField(source='project.id', read_only=True)
     assigned_members_data = serializers.SerializerMethodField()
     acceptance_criteria = AcceptanceCriterionSerializer(many=True, read_only=True)
+    milestones = MilestoneSerializer_Deps(many=True, read_only=True)
     is_done = serializers.SerializerMethodField()
 
     class Meta:
@@ -192,6 +193,7 @@ class TaskExpandedSerializer(serializers.ModelSerializer):
             'assigned_members',
             'assigned_members_data',
             'acceptance_criteria',
+            'milestones',
         ]
 
     def get_assigned_members_data(self, obj):

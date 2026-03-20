@@ -15,6 +15,8 @@ import {
   Sparkles,
   RefreshCw,
   Settings,
+  Plus,
+  X,
 } from "lucide-react";
 import { useWindowManager } from "./WindowManager";
 import { usePipeline } from "./PipelineContext";
@@ -26,8 +28,8 @@ import GlobalSettingsPopup from "./GlobalSettingsPopup";
 import { triggerManualRefresh, useStaleData, useAutoRefreshSetting } from "../../api/dataEvents";
 
 /**
- * Inventory bar configuration for each window slot.
- * Order matches the PROJECT_WINDOWS config in ProjectLayout.
+ * Inventory bar configuration for each window slot (keyed by type).
+ * Order matches the WINDOW_DEFS config in ProjectLayout.
  */
 const SLOT_CONFIG = {
   ideaBin:       { Icon: Lightbulb,        label: "Ideas",     gradient: "from-amber-400 to-yellow-500",   border: "border-amber-300" },
@@ -44,7 +46,7 @@ const SLOT_CONFIG = {
  *
  * Features:
  * ─ Leave-project button on the far left
- * ─ Window slots with open/close toggle
+ * ─ Window slots with open/close toggle; multi-instance popup on hover
  * ─ Pipeline-mode toggle on the far right
  * ─ Collapse/expand: collapses to a tiny pill; expands back on click
  */
@@ -56,6 +58,9 @@ export default function InventoryBar() {
   const { projectId } = useParams();
   const [collapsed, setCollapsed] = useState(false);
   const [selectedSlots, setSelectedSlots] = useState(new Set());
+
+  // Which slot type has its instance popup open
+  const [hoveredType, setHoveredType] = useState(null);
 
   const {
     workspaces,
@@ -77,29 +82,31 @@ export default function InventoryBar() {
 
   if (!manager) return null;
 
-  const { windowIds, openWindows, requestOpen, requestMinimize, allCollapsed, saveViews } = manager;
+  const {
+    windowIds, windowDefs, instances,
+    openWindows, requestOpen, requestMinimize, requestFocus,
+    spawnInstance, removeInstance,
+    allCollapsed, saveViews,
+  } = manager;
 
   /** Handle slot click — toggle selection; Ctrl+click adds to multi-select */
-  const handleSlotClick = (id, e) => {
+  const handleSlotClick = (type, e) => {
     if (e.ctrlKey || e.metaKey) {
-      // Multi-select toggle
       setSelectedSlots((prev) => {
         const next = new Set(prev);
-        if (next.has(id)) next.delete(id); else next.add(id);
+        if (next.has(type)) next.delete(type); else next.add(type);
         return next;
       });
     } else {
       setSelectedSlots((prev) => {
-        // Deselect if clicking the same single item
-        if (prev.size === 1 && prev.has(id)) return new Set();
-        return new Set([id]);
+        if (prev.size === 1 && prev.has(type)) return new Set();
+        return new Set([type]);
       });
     }
   };
 
   /** Deselect all when clicking the bar background */
   const handleBarBgClick = (e) => {
-    // Only if the click target is the bar itself (not a child button)
     if (e.target === e.currentTarget) {
       setSelectedSlots(new Set());
     }
@@ -110,14 +117,11 @@ export default function InventoryBar() {
 
   useEffect(() => {
     const onKeyDown = (e) => {
-      // Skip when typing in inputs
       const tag = e.target.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable) return;
 
-      // Track held keys for chord detection (asdf)
       heldKeysRef.current.add(e.key.toLowerCase());
 
-      // Check asdf chord (all four held simultaneously)
       const held = heldKeysRef.current;
       if (held.has("a") && held.has("s") && held.has("d") && held.has("f")) {
         e.preventDefault();
@@ -126,36 +130,28 @@ export default function InventoryBar() {
         return;
       }
 
-      // Check xy chord (both held simultaneously) → save views for selected slots
       if (held.has("x") && held.has("y")) {
         e.preventDefault();
         heldKeysRef.current.clear();
         setSelectedSlots((prev) => {
-          if (prev.size > 0) saveViews([...prev]);
+          if (prev.size > 0) {
+            // Expand selected types to all their instance IDs
+            const instIds = [...prev].flatMap(type =>
+              instances.filter(i => i.type === type).map(i => i.id)
+            );
+            if (instIds.length > 0) saveViews(instIds);
+          }
           return prev;
         });
         return;
       }
 
-      // Ctrl + ArrowRight / ArrowLeft = cycle workspaces
-      if (e.ctrlKey && e.key === "ArrowRight") {
-        e.preventDefault();
-        nextWorkspace();
-        return;
-      }
-      if (e.ctrlKey && e.key === "ArrowLeft") {
-        e.preventDefault();
-        prevWorkspace();
-        return;
-      }
+      if (e.ctrlKey && e.key === "ArrowRight") { e.preventDefault(); nextWorkspace(); return; }
+      if (e.ctrlKey && e.key === "ArrowLeft")  { e.preventDefault(); prevWorkspace(); return; }
     };
 
-    const onKeyUp = (e) => {
-      heldKeysRef.current.delete(e.key.toLowerCase());
-    };
-
-    // Reset on blur to avoid stuck keys
-    const onBlur = () => { heldKeysRef.current.clear(); };
+    const onKeyUp = (e) => { heldKeysRef.current.delete(e.key.toLowerCase()); };
+    const onBlur  = () => { heldKeysRef.current.clear(); };
 
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("keyup", onKeyUp);
@@ -165,17 +161,17 @@ export default function InventoryBar() {
       document.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onBlur);
     };
-  }, [quickSave, nextWorkspace, prevWorkspace, saveViews]);
+  }, [quickSave, nextWorkspace, prevWorkspace, saveViews, instances]);
 
   // When exiting orbit mode (a window opens), always show the bar expanded
   useEffect(() => {
     if (!allCollapsed) setCollapsed(false);
   }, [allCollapsed]);
 
-  // ── Auto-hide when orbit mode is active (all windows collapsed) ──
+  // ── Auto-hide when orbit mode is active ──
   if (allCollapsed) return null;
 
-  // ── Collapsed: tiny pill button to re-expand ──
+  // ── Collapsed: tiny pill button ──
   if (collapsed) {
     return (
       <button
@@ -224,69 +220,185 @@ export default function InventoryBar() {
       <div className="w-px h-10 bg-slate-700/50 mx-1 self-center" />
 
       {/* ── Window slots ── */}
-      {windowIds.map((id) => {
-        const config = SLOT_CONFIG[id];
+      {windowIds.map((type) => {
+        const config = SLOT_CONFIG[type];
         if (!config) return null;
+        const def = windowDefs.find(d => d.type === type);
         const { Icon, label, gradient } = config;
-        const isOpen = openWindows.has(id);
-        const isSelected = selectedSlots.has(id);
-        const hasNotifBadge = id === "notifications" && unreadCount > 0;
+
+        // All instances of this type
+        const typeInstances = instances.filter(i => i.type === type);
+        const anyOpen = typeInstances.some(i => openWindows.has(i.id));
+        const isSelected = selectedSlots.has(type);
+        const hasNotifBadge = type === "notifications" && unreadCount > 0;
+        const multiInstance = def?.multiInstance ?? false;
+        const showPopup = hoveredType === type;
 
         return (
-          <button
-            key={id}
-            onClick={(e) => {
-              if (e.ctrlKey || e.metaKey) {
-                // Ctrl/Cmd+click → toggle selection
-                handleSlotClick(id, e);
-              } else if (selectedSlots.size > 0) {
-                // If anything is selected, plain click selects/deselects this slot
-                handleSlotClick(id, e);
-              } else {
-                // Normal click → open/close
-                isOpen ? requestMinimize(id) : requestOpen(id);
-              }
-            }}
-            className={`
-              group relative flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl
-              transition-all duration-200 outline-none
-              ${
-                isOpen
-                  ? "opacity-35 hover:opacity-55"
-                  : "opacity-90 hover:opacity-100 hover:scale-105"
-              }
-            `}
-            title={isOpen ? `Minimize ${label}` : `Open ${label}`}
+          <div
+            key={type}
+            className="relative"
+            onMouseEnter={() => setHoveredType(type)}
+            onMouseLeave={() => setHoveredType(null)}
           >
-            {/* Icon container */}
-            <div
-              className={`
-                w-10 h-10 rounded-xl bg-gradient-to-br ${gradient}
-                flex items-center justify-center shadow-lg
-                transition-all duration-200
-                ${isOpen ? "grayscale-[60%]" : "group-hover:shadow-xl"}
-                ${isSelected ? "ring-2 ring-white/80 ring-offset-1 ring-offset-slate-700" : ""}
-              `}
-            >
-              <Icon size={20} className="text-white drop-shadow" />
-            </div>
+            {/* ── Instance popup (shown on hover) ── */}
+            {showPopup && (typeInstances.length > 0 || multiInstance) && (
+              <>
+                {/* Transparent bridge: fills the visual gap between button and popup
+                    so onMouseLeave doesn't fire when the cursor crosses that gap. */}
+                <div className="absolute bottom-full left-0 right-0 h-3 z-10" />
+              <div
+                className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2
+                  bg-slate-800/95 backdrop-blur-sm rounded-xl shadow-2xl border border-slate-600/60
+                  p-1.5 min-w-[150px] z-10"
+                onMouseDown={e => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider px-1.5 pb-1 border-b border-slate-700/60 mb-1">
+                  {label}
+                </div>
 
-            {/* Badge for notifications */}
-            {hasNotifBadge && (
-              <span className="absolute top-0.5 right-0.5 h-4 w-4 bg-red-600 text-white text-[8px] font-bold rounded-full flex items-center justify-center shadow border border-slate-900">
-                {unreadCount > 9 ? "9+" : unreadCount}
-              </span>
+                {/* Instance list */}
+                {typeInstances.map((inst, idx) => {
+                  const instOpen = openWindows.has(inst.id);
+                  const instLabel = idx === 0 ? label : `${label} ${idx + 1}`;
+                  const isFirst = idx === 0;
+
+                  return (
+                    <div key={inst.id} className="flex items-center gap-0.5 group/row">
+                      <button
+                        onClick={() => {
+                          if (instOpen) {
+                            requestFocus(inst.id);
+                          } else {
+                            requestOpen(inst.id);
+                          }
+                          setHoveredType(null);
+                        }}
+                        className={`flex-1 flex items-center gap-2 px-1.5 py-1 rounded-lg text-[10px] transition-colors
+                          ${instOpen
+                            ? 'text-white hover:bg-slate-700/60'
+                            : 'text-slate-400 hover:bg-slate-700/60 hover:text-slate-200'
+                          }`}
+                      >
+                        {/* Open/closed dot */}
+                        <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 transition-colors
+                          ${instOpen ? 'bg-green-400 shadow-[0_0_4px_rgba(74,222,128,0.6)]' : 'bg-slate-600'}`}
+                        />
+                        <span className="truncate max-w-[100px]">{instLabel}</span>
+                      </button>
+
+                      {/* Remove button — always shown for non-first, hidden for first unless there are others */}
+                      {(!isFirst || typeInstances.length > 1) && (
+                        <button
+                          onClick={() => {
+                            removeInstance(inst.id);
+                            setHoveredType(null);
+                          }}
+                          className="opacity-0 group-hover/row:opacity-100 flex-shrink-0 w-5 h-5 flex items-center justify-center
+                            rounded text-slate-500 hover:text-red-400 hover:bg-slate-700/60 transition-all text-[11px]"
+                          title={`Close ${instLabel}`}
+                        >
+                          <X size={10} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Spawn new instance button */}
+                {multiInstance && (
+                  <button
+                    onClick={() => {
+                      spawnInstance(type);
+                      setHoveredType(null);
+                    }}
+                    className="w-full mt-1 flex items-center justify-center gap-1 px-1.5 py-1 rounded-lg
+                      text-[10px] text-slate-400 hover:text-white hover:bg-slate-700/60
+                      transition-colors border-t border-slate-700/60 pt-1.5"
+                  >
+                    <Plus size={10} />
+                    <span>New {label}</span>
+                  </button>
+                )}
+              </div>
+              </>
             )}
 
-            {/* Label */}
-            <span
-              className={`text-[9px] font-medium leading-none ${
-                isOpen ? "text-slate-500" : "text-slate-300"
-              }`}
+            {/* ── Slot button ── */}
+            <button
+              onClick={(e) => {
+                if (e.ctrlKey || e.metaKey) {
+                  handleSlotClick(type, e);
+                  return;
+                }
+                if (selectedSlots.size > 0) {
+                  handleSlotClick(type, e);
+                  return;
+                }
+                // Normal click: toggle single instance or open popup for multi
+                if (typeInstances.length === 0) {
+                  spawnInstance(type);
+                } else if (typeInstances.length === 1) {
+                  const inst = typeInstances[0];
+                  openWindows.has(inst.id) ? requestMinimize(inst.id) : requestOpen(inst.id);
+                } else {
+                  // 2+ instances: toggle popup visibility on click
+                  setHoveredType(prev => prev === type ? null : type);
+                }
+              }}
+              className={`
+                group/slot relative flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl
+                transition-all duration-200 outline-none
+                ${anyOpen
+                  ? "opacity-35 hover:opacity-55"
+                  : "opacity-90 hover:opacity-100 hover:scale-105"
+                }
+              `}
+              title={anyOpen ? `Minimize ${label}` : `Open ${label}`}
             >
-              {label}
-            </span>
-          </button>
+              {/* Icon container */}
+              <div
+                className={`
+                  w-10 h-10 rounded-xl bg-gradient-to-br ${gradient}
+                  flex items-center justify-center shadow-lg
+                  transition-all duration-200
+                  ${anyOpen ? "grayscale-[60%]" : "group-hover/slot:shadow-xl"}
+                  ${isSelected ? "ring-2 ring-white/80 ring-offset-1 ring-offset-slate-700" : ""}
+                `}
+              >
+                <Icon size={20} className="text-white drop-shadow" />
+              </div>
+
+              {/* Badge for notifications */}
+              {hasNotifBadge && (
+                <span className="absolute top-0.5 right-0.5 h-4 w-4 bg-red-600 text-white text-[8px] font-bold rounded-full flex items-center justify-center shadow border border-slate-900">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
+
+              {/* Label */}
+              <span className={`text-[9px] font-medium leading-none ${anyOpen ? "text-slate-500" : "text-slate-300"}`}>
+                {label}
+              </span>
+
+              {/* Instance count dots (only when 2+ instances) */}
+              {typeInstances.length > 1 && (
+                <div className="flex gap-0.5 justify-center -mt-0.5">
+                  {typeInstances.slice(0, 5).map(inst => (
+                    <div
+                      key={inst.id}
+                      className={`w-1 h-1 rounded-full transition-colors
+                        ${openWindows.has(inst.id) ? 'bg-white/70' : 'bg-white/20'}`}
+                    />
+                  ))}
+                  {typeInstances.length > 5 && (
+                    <span className="text-[7px] text-slate-400 leading-none self-center">+{typeInstances.length - 5}</span>
+                  )}
+                </div>
+              )}
+            </button>
+          </div>
         );
       })}
 
@@ -377,7 +489,6 @@ export default function InventoryBar() {
           </span>
         </button>
 
-        {/* Popup */}
         {showWorkspacePanel && (
           <WorkspacePopup
             workspaces={workspaces}
@@ -426,7 +537,6 @@ export default function InventoryBar() {
           </span>
         </button>
 
-        {/* Popup */}
         {showAISettings && (
           <AISettingsPopup onClose={() => setShowAISettings(false)} />
         )}

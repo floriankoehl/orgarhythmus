@@ -18,7 +18,7 @@ import NotificationsContent from "./NotificationsContent";
 
 const MIN_CONTENT_H = 200;
 
-export default function NotificationsWindow() {
+export default function NotificationsWindow({ instanceId = "notifications" }) {
   const { unreadCount } = useNotifications();
 
   const {
@@ -34,7 +34,7 @@ export default function NotificationsWindow() {
     handleWindowResize, handleEdgeResize,
     managed,
   } = useFloatingWindow({
-    id: "notifications",
+    id: instanceId,
     openSound: "ideaOpen",
     closeSound: "ideaClose",
     defaultIcon: { x: 8, y: 112 }, // fallback when outside a WindowManager

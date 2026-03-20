@@ -4,6 +4,7 @@ import { fetchPromptSettings, updatePromptSettings } from '../api/promptSettings
 import { fetch_project_detail } from '../api/org_API';
 import { ALL_SCENARIOS, ALL_GROUPS, getScenario } from './shared/promptEngine';
 import { assemblePrompt } from './shared/promptEngine';
+export { DEFAULT_SYSTEM_PROMPT, DEFAULT_END_PROMPT } from './shared/promptEngine/promptDefaults';
 
 /**
  * Expected-JSON format strings for each scenario.
@@ -162,6 +163,7 @@ export default function usePromptSettings() {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [projectDescription, setProjectDescription] = useState('');
   const settingsRef = useRef(null);
   const projectDescRef = useRef('');
 
@@ -190,14 +192,20 @@ export default function usePromptSettings() {
 
   // Fetch project description when inside a project
   useEffect(() => {
-    if (!projectId) { projectDescRef.current = ''; return; }
+    if (!projectId) { projectDescRef.current = ''; setProjectDescription(''); return; }
     let cancelled = false;
     (async () => {
       try {
         const proj = await fetch_project_detail(projectId);
-        if (!cancelled) projectDescRef.current = proj?.description || '';
+        if (!cancelled) {
+          projectDescRef.current = proj?.description || '';
+          setProjectDescription(proj?.description || '');
+        }
       } catch {
-        if (!cancelled) projectDescRef.current = '';
+        if (!cancelled) {
+          projectDescRef.current = '';
+          setProjectDescription('');
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -277,5 +285,5 @@ export default function usePromptSettings() {
     return parts.join('\n\n');
   }, []);
 
-  return { settings, loading, error, update, buildClipboardText, settingsRef, projectDescRef };
+  return { settings, loading, error, update, buildClipboardText, settingsRef, projectDescRef, projectDescription };
 }

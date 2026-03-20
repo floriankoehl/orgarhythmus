@@ -21,7 +21,7 @@ import ProfileContent from "./ProfileContent";
 
 const MIN_CONTENT_H = 200;
 
-export default function ProfileWindow() {
+export default function ProfileWindow({ instanceId = "profile" }) {
   const location = useLocation();
 
   const {
@@ -37,18 +37,18 @@ export default function ProfileWindow() {
     handleWindowResize, handleEdgeResize,
     managed,
   } = useFloatingWindow({
-    id: "profile",
+    id: instanceId,
     openSound: "ideaOpen",
     closeSound: "ideaClose",
     defaultIcon: { x: 8, y: 60 }, // fallback when outside a WindowManager
     minSize: { w: 400, h: 340 },
   });
 
-  // ── Auto-open when navigating to /profile ──
+  // ── Auto-open when navigating to /profile (primary instance only) ──
   const prevPathRef = useRef(null);
   useEffect(() => {
     const isProfileRoute = location.pathname === "/profile";
-    if (isProfileRoute && !isOpen) {
+    if (isProfileRoute && !isOpen && instanceId === "profile") {
       setWindowPos({ x: 4, y: 60 });
       setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - 68 });
       setIsMaximized(true);

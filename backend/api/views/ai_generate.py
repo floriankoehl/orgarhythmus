@@ -1,9 +1,7 @@
 """
 Thin proxy that forwards a prompt to OpenAI and returns the raw
-assistant response.  Uses only stdlib (urllib) — zero extra deps.
-
-The OPENAI_API_KEY is read from the .env already loaded by Django
-settings (via python-dotenv).
+assistant response. Uses only stdlib (urllib) and reads the
+OPENAI_API_KEY from environment variables loaded by Django settings.
 """
 
 import json

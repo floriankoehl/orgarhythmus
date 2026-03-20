@@ -4,8 +4,8 @@ import WindowTitleBar from "../shared/WindowTitleBar";
 
 const TAB_CONFIG = [
   { key: "canvas", label: "Canvas", Icon: LayoutGrid },
-  { key: "tasks", label: "Tasks", Icon: ListTodo },
-  { key: "teams", label: "Teams", Icon: Users },
+  { key: "tasks", label: "All Tasks", Icon: ListTodo },
+  { key: "teams", label: "All Teams", Icon: Users },
 ];
 
 /**

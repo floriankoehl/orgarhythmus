@@ -19,7 +19,7 @@ const STANDALONE_ICON = { x: 8, y: 8 };
  * When inside a <WindowManager> the icon dock position comes automatically from
  * the manager config (id = "ideaBin"). Outside a manager it falls back to STANDALONE_ICON.
  */
-export default function useIdeaBinWindow(headlineInputRef) {
+export default function useIdeaBinWindow(headlineInputRef, instanceId = "ideaBin") {
   // ── Manager integration (optional) ──
   const manager = useWindowManager();
   const managed = !!(manager);
@@ -79,18 +79,19 @@ export default function useIdeaBinWindow(headlineInputRef) {
   // ── Report open/close to manager ──
   useEffect(() => {
     if (!managed) return;
-    if (isOpen) manager.reportOpen("ideaBin");
-    else manager.reportClose("ideaBin");
+    if (isOpen) manager.reportOpen(instanceId);
+    else manager.reportClose(instanceId);
+    return () => { if (managed && manager) manager.reportClose(instanceId); };
   }, [isOpen, managed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Register state collector/applier with WindowManager for workspaces ──
   useEffect(() => {
     if (!managed) return;
-    manager.registerCollector("ideaBin", collectState);
-    manager.registerApplier("ideaBin", applyState);
+    manager.registerCollector(instanceId, collectState);
+    manager.registerApplier(instanceId, applyState);
     return () => {
-      manager.unregisterCollector("ideaBin");
-      manager.unregisterApplier("ideaBin");
+      manager.unregisterCollector(instanceId);
+      manager.unregisterApplier(instanceId);
     };
   }, [managed, collectState, applyState]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -109,10 +110,10 @@ export default function useIdeaBinWindow(headlineInputRef) {
   }, [managed, manager?.minimizeAllVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── React to manager's per-window requestOpen signal ──
-  const lastOpenReqRef = useRef(manager?.openRequests?.["ideaBin"] ?? 0);
+  const lastOpenReqRef = useRef(manager?.openRequests?.[instanceId] ?? 0);
   useEffect(() => {
     if (!managed) return;
-    const ver = manager.openRequests?.["ideaBin"] ?? 0;
+    const ver = manager.openRequests?.[instanceId] ?? 0;
     if (ver > lastOpenReqRef.current && !isOpen) {
       const cs = customSizeRef.current;
       setWindowSize({ ...cs.size });
@@ -130,10 +131,10 @@ export default function useIdeaBinWindow(headlineInputRef) {
   }, [managed, manager?.openRequests]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── React to manager's per-window requestMinimize signal ──
-  const lastMinReqRef = useRef(manager?.minimizeRequests?.["ideaBin"] ?? 0);
+  const lastMinReqRef = useRef(manager?.minimizeRequests?.[instanceId] ?? 0);
   useEffect(() => {
     if (!managed) return;
-    const ver = manager.minimizeRequests?.["ideaBin"] ?? 0;
+    const ver = manager.minimizeRequests?.[instanceId] ?? 0;
     if (ver > lastMinReqRef.current && isOpen) {
       setIconPos({ ...defaultIcon });
       setIsOpen(false);
@@ -144,10 +145,10 @@ export default function useIdeaBinWindow(headlineInputRef) {
   }, [managed, manager?.minimizeRequests]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── React to manager's per-window requestOpenFullScreen signal ──
-  const lastFullReqRef = useRef(manager?.openFullScreenRequests?.["ideaBin"] ?? 0);
+  const lastFullReqRef = useRef(manager?.openFullScreenRequests?.[instanceId] ?? 0);
   useEffect(() => {
     if (!managed) return;
-    const ver = manager.openFullScreenRequests?.["ideaBin"] ?? 0;
+    const ver = manager.openFullScreenRequests?.[instanceId] ?? 0;
     if (ver > lastFullReqRef.current && !isOpen) {
       const topY = managed ? 4 : 60;
       const bottomReserve = managed ? 80 : 68;
@@ -161,6 +162,29 @@ export default function useIdeaBinWindow(headlineInputRef) {
     }
     lastFullReqRef.current = ver;
   }, [managed, manager?.openFullScreenRequests]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── React to manager's per-window requestFocus signal ──
+  const lastFocusReqRef = useRef(manager?.focusRequests?.[instanceId] ?? 0);
+  useEffect(() => {
+    if (!managed) return;
+    const ver = manager.focusRequests?.[instanceId] ?? 0;
+    if (ver > lastFocusReqRef.current) {
+      if (!isOpen) {
+        const cs = customSizeRef.current;
+        setWindowSize({ ...cs.size });
+        setWindowPos({
+          x: Math.max(4, (window.innerWidth - cs.size.w) / 2),
+          y: Math.max(4, (window.innerHeight - cs.size.h) / 2 - 30),
+        });
+        setIsOpen(true);
+        setIsMaximized(false);
+        playSound("ideaOpen");
+        setTimeout(() => headlineInputRef.current?.focus(), 100);
+      }
+      setZIndex(getNextZIndex());
+    }
+    lastFocusReqRef.current = ver;
+  }, [managed, manager?.focusRequests]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Bring this window to front (call on mousedown / focus) */
   const bringToFront = useCallback(() => {

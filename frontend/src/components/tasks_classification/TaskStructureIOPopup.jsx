@@ -3,7 +3,7 @@ import {
   Copy, Download, Check, Plus, Pencil,
   AlertCircle, Sparkles,
   ClipboardPaste, ArrowRightLeft, Star, Zap, Loader, Eye, Maximize2, Minimize2, Settings,
-  RotateCcw, Save, ChevronDown,
+  Save, ChevronDown,
 } from "lucide-react";
 import { detectTaskResponseContent } from "../shared/promptEngine/taskResponseApplier";
 import ControlledApplyModal from "../shared/promptEngine/ControlledApplyPanel";
@@ -12,6 +12,7 @@ import { applyTaskDetected } from "../shared/promptEngine/taskResponseApplier";
 import { aiGenerate, getDirectMode } from "../../api/aiGenerateApi";
 import { assemblePromptSections } from "../shared/promptEngine/assembler";
 import PromptInspector from "../shared/promptEngine/PromptInspector";
+import DefaultPromptTooltip from "../shared/promptEngine/DefaultPromptTooltip";
 import usePromptSettings from "../usePromptSettings";
 
 /**
@@ -312,15 +313,14 @@ export default function TaskStructureIOPopup({
         >
           {actionIcon(scenario.action, 8)}
           <span className="text-[9px] font-semibold text-gray-600 flex-1 truncate">{scenario.label}</span>
-          {isCustomised && (
-            <button
-              onClick={(e) => { e.stopPropagation(); setLocalScenarioPrompts(p => ({ ...p, [scenarioId]: "" })); }}
-              className="text-gray-300 hover:text-violet-500 transition-colors flex-shrink-0"
-              title="Reset to default"
-            >
-              <RotateCcw size={7} />
-            </button>
-          )}
+          <div onClick={e => e.stopPropagation()}>
+            <DefaultPromptTooltip
+              defaultPrompt={scenario.defaultPrompt}
+              isCustomised={isCustomised}
+              onReset={() => setLocalScenarioPrompts(p => ({ ...p, [scenarioId]: "" }))}
+              size={7}
+            />
+          </div>
           <ChevronDown
             size={8}
             className={`text-gray-300 group-hover/hdr:text-gray-500 flex-shrink-0 transition-transform duration-150 ${isCollapsed ? "-rotate-90" : ""}`}

@@ -64,11 +64,11 @@ const DEFAULT_FORM_H = 180;
 // ═══════════════════════════════════════════════════════════
 // ═══════════════════  IDEA BIN COMPONENT  ═════════════════
 // ═══════════════════════════════════════════════════════════
-export default function IdeaBin() {
+export default function IdeaBin({ instanceId = "ideaBin" }) {
   const { projectId } = useParams();   // optional — only present inside a project
   const { user } = useAuth();
   const currentUserId = user?.id;
-  const { buildClipboardText, settings: promptSettings, settingsRef: promptSettingsRef, projectDescRef } = usePromptSettings();
+  const { buildClipboardText, settings: promptSettings, settingsRef: promptSettingsRef, projectDescription } = usePromptSettings();
 
   // ───── Window state (extracted) ─────
   const headlineInputRef = useRef(null);
@@ -83,7 +83,7 @@ export default function IdeaBin() {
     handleIconDrag, handleWindowDrag, handleWindowResize, handleEdgeResize,
     managed,
     setExtraStateCollector, setExtraStateApplier,
-  } = useIdeaBinWindow(headlineInputRef);
+  } = useIdeaBinWindow(headlineInputRef, instanceId);
 
   // ───── Selected idea(s) ─────
   const [selectedIdeaIds, setSelectedIdeaIds] = useState(new Set());
@@ -656,13 +656,13 @@ export default function IdeaBin() {
     filterPresets,
     activeContext,
     projectTeams: projectTeams || [],
-    projectDescription: projectDescRef.current || "",
+    projectDescription: projectDescription || "",
   }), [
     ideas, categories, categoryOrders, unassignedOrder, contextIdeaOrders, dims,
     selectedIdeaIds, selectedCategoryIds,
     legendFilters, filterCombineMode, stackedFilters, stackCombineMode,
     globalTypeFilter, filterPresets, activeContext, projectTeams,
-    projectDescRef,
+    projectDescription,
   ]);
 
   // Helper: create a legend type on any legend (bypasses active-legend restriction)

@@ -21,7 +21,7 @@ import OverviewContent from "./OverviewContent";
 
 const MIN_CONTENT_H = 200;
 
-export default function OverviewWindow() {
+export default function OverviewWindow({ instanceId = "overview" }) {
   const { projectId } = useParams();
 
   const {
@@ -37,7 +37,7 @@ export default function OverviewWindow() {
     handleWindowResize, handleEdgeResize,
     managed,
   } = useFloatingWindow({
-    id: "overview",
+    id: instanceId,
     openSound: "ideaOpen",
     closeSound: "ideaClose",
     minSize: { w: 380, h: 320 },

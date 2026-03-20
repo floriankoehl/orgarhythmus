@@ -76,7 +76,7 @@ import { daysBetween } from './layoutMath';
 export default function MilestoneScheduleAdapter({ isFloating = false, windowPos, windowSize, setWindowPos, setWindowSize, isMaximized, setIsMaximized, viewBarRef, triggerViewBarRender }) {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const { buildClipboardText, settings: promptSettings, projectDescRef } = usePromptSettings();
+  const { buildClipboardText, settings: promptSettings, projectDescription } = usePromptSettings();
   const [ioPopupOpen, setIoPopupOpen] = useState(false);
 
   // ── Conflict resolve state ──
@@ -475,10 +475,10 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   /** Data context passed to scenario availability/payload builders */
   const ioCtx = useMemo(() => ({
     nodes, edges, rows, lanes, laneOrder, totalColumns,
-    projectDescription: projectDescRef?.current || "",
+    projectDescription: projectDescription || "",
     get selectedNodeIds() { return gridControlRef.current?.selectedNodes || new Set(); },
     get selectedRowIds() { return gridControlRef.current?.selectedRows || new Set(); },
-  }), [nodes, edges, rows, lanes, laneOrder, totalColumns, projectDescRef]);
+  }), [nodes, edges, rows, lanes, laneOrder, totalColumns, projectDescription]);
 
   /** API context for applying AI responses */
   const applyCtx = useMemo(() => ({

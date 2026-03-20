@@ -28,6 +28,8 @@
  * ═══════════════════════════════════════════════════════════
  */
 
+import { IDEABIN_DEFAULTS } from '../promptDefaults';
+
 // ─── Helpers ────────────────────────────────────────────
 
 /** Build a clean idea object for export */
@@ -208,8 +210,7 @@ export const IDEABIN_SCENARIOS = [
     label: "New ideas",
     description: "Generate new ideas. With context: avoids duplicates by referencing existing content.",
     unavailableMsg: () => null,
-    defaultPrompt:
-      `Generate 10-15 creative and diverse ideas for this project. Each idea should have a clear, concise title and a brief description explaining the concept. Think broadly — include both obvious and unexpected angles.`,
+    defaultPrompt: IDEABIN_DEFAULTS.ideas_add,
     expectedFormat: `{
   "ideas": [
     { "title": "Idea title", "description": "Brief description" }
@@ -239,8 +240,7 @@ export const IDEABIN_SCENARIOS = [
       !ctx.projectTeams?.length
         ? "No teams — create teams in Task Structure first"
         : null,
-    defaultPrompt:
-      `Given the teams and their current tasks below, generate 5-8 ideas per team that align with each team's domain and capabilities. Ideas should be actionable and relevant.`,
+    defaultPrompt: IDEABIN_DEFAULTS.ideas_add_for_teams,
     expectedFormat: `{
   "teams": [
     {
@@ -279,8 +279,7 @@ export const IDEABIN_SCENARIOS = [
       ctx.selectedIdeaIds.size === 0
         ? "Select one or more ideas first"
         : null,
-    defaultPrompt:
-      `Improve the following ideas. Make titles more concise and impactful, expand descriptions to be clearer and more actionable. Keep the original intent but elevate the quality. Include the original title so changes can be tracked.`,
+    defaultPrompt: IDEABIN_DEFAULTS.ideas_finetune_selected,
     expectedFormat: `{
   "updated_ideas": [
     {
@@ -316,8 +315,7 @@ export const IDEABIN_SCENARIOS = [
       ctxIdeaCount(ctx) === 0
         ? "No ideas to improve"
         : null,
-    defaultPrompt:
-      `Improve ALL of the following ideas. Make titles more concise, expand descriptions for clarity, and ensure consistency across the set. Include the original title for each so changes can be tracked.`,
+    defaultPrompt: IDEABIN_DEFAULTS.ideas_finetune_all,
     expectedFormat: `{
   "updated_ideas": [
     {
@@ -355,8 +353,7 @@ export const IDEABIN_SCENARIOS = [
       if (ctxUnassigned(ctx).length === 0) return "No unassigned ideas";
       return null;
     },
-    defaultPrompt:
-      `Review the unassigned ideas and categories below. For each unassigned idea, assign it to the most fitting existing category. Group assignments by target category using exact category names.`,
+    defaultPrompt: IDEABIN_DEFAULTS.assign_unassigned_existing,
     expectedFormat: `{
   "assignments": [
     {
@@ -389,8 +386,7 @@ export const IDEABIN_SCENARIOS = [
       if (ctxUnassigned(ctx).length === 0) return "No unassigned ideas";
       return null;
     },
-    defaultPrompt:
-      `Review the unassigned ideas and categories below. Assign each idea to the most fitting existing category. For ideas that don't fit any current category, propose new categories. Group assignments by target category.`,
+    defaultPrompt: IDEABIN_DEFAULTS.assign_unassigned_new,
     expectedFormat: `{
   "assignments": [
     {
@@ -430,8 +426,7 @@ export const IDEABIN_SCENARIOS = [
       if (ctxCategoryCount(ctx) < 1) return "Need at least 1 category";
       return null;
     },
-    defaultPrompt:
-      `Move each selected idea to the most fitting existing category. Only list moves that genuinely improve the organisation. Group assignments by target category using exact category names.`,
+    defaultPrompt: IDEABIN_DEFAULTS.assign_selected_existing,
     expectedFormat: `{
   "assignments": [
     {
@@ -464,8 +459,7 @@ export const IDEABIN_SCENARIOS = [
       if (ctx.selectedIdeaIds.size === 0) return "Select ideas first";
       return null;
     },
-    defaultPrompt:
-      `Move the selected ideas into the most suitable existing categories. For ideas that don't fit any current category, propose new categories to hold them. Group by target category name.`,
+    defaultPrompt: IDEABIN_DEFAULTS.assign_selected_new,
     expectedFormat: `{
   "assignments": [
     {
@@ -505,8 +499,7 @@ export const IDEABIN_SCENARIOS = [
     label: "New categories",
     description: "Suggest categories. With context: avoids duplicating existing ones.",
     unavailableMsg: () => null,
-    defaultPrompt:
-      `Suggest 5-8 meaningful categories for organising ideas in this project and populate each with 3-5 relevant ideas. Each category should have a clear, distinct focus area.`,
+    defaultPrompt: IDEABIN_DEFAULTS.categories_add,
     expectedFormat: `{
   "categories": [
     {
@@ -538,8 +531,7 @@ export const IDEABIN_SCENARIOS = [
       ctx.selectedIdeaIds.size === 0
         ? "Select ideas first"
         : null,
-    defaultPrompt:
-      `Based on the selected ideas below, suggest 2-5 categories that would best organise them. Assign each idea to its best-fit new category.`,
+    defaultPrompt: IDEABIN_DEFAULTS.categories_add_for_ideas,
     expectedFormat: `{
   "categories": [
     {
@@ -580,8 +572,7 @@ export const IDEABIN_SCENARIOS = [
       ctx.selectedCategoryIds.size === 0
         ? "Select categories first"
         : null,
-    defaultPrompt:
-      `Improve the selected categories: suggest better names, review and improve their ideas. Include original names so changes can be tracked.`,
+    defaultPrompt: IDEABIN_DEFAULTS.categories_finetune_selected,
     expectedFormat: `{
   "updated_categories": [
     {
@@ -614,8 +605,7 @@ export const IDEABIN_SCENARIOS = [
       ctxCategoryCount(ctx) === 0
         ? "Create at least one category first"
         : null,
-    defaultPrompt:
-      `Review all categories and suggest improvements: better names, merges, splits, or reorganisation. Return the improved structure with original names so changes can be tracked.`,
+    defaultPrompt: IDEABIN_DEFAULTS.categories_finetune_all,
     expectedFormat: `{
   "updated_categories": [
     {
@@ -652,8 +642,7 @@ export const IDEABIN_SCENARIOS = [
     label: "New legends + types",
     description: "Suggest legend dimensions with their types based on the project.",
     unavailableMsg: () => null,
-    defaultPrompt:
-      `Suggest 2-4 legend dimensions for categorising ideas in this project. Each legend should have 3-6 types with distinct names and hex colors. Legends are cross-cutting dimensions (e.g., "Priority", "Effort", "Domain"). Types are the values within each (e.g., "High", "Medium", "Low").`,
+    defaultPrompt: IDEABIN_DEFAULTS.legends_add,
     expectedFormat: `{
   "legends": [
     {
@@ -690,8 +679,7 @@ export const IDEABIN_SCENARIOS = [
       !hasLegendTypes(ctx.dims)
         ? "Create legend types first"
         : null,
-    defaultPrompt:
-      `Based on the legend types below, suggest 3-5 useful filter preset configurations. Each preset should have a descriptive name and specify which legend types to include or exclude. Think about common workflows — what combinations of filters would be most useful?`,
+    defaultPrompt: IDEABIN_DEFAULTS.filters_add,
     expectedFormat: `{
   "filter_presets": [
     {
@@ -728,8 +716,7 @@ export const IDEABIN_SCENARIOS = [
       !hasLegends(ctx.dims)
         ? "Create at least one legend first"
         : null,
-    defaultPrompt:
-      `Review the current legends and their types. Suggest improvements: better names, more useful colour coding, additional missing types, or types to merge. Return the improved structure.`,
+    defaultPrompt: IDEABIN_DEFAULTS.legends_finetune_all,
     expectedFormat: `{
   "legends": [
     {
@@ -756,8 +743,7 @@ export const IDEABIN_SCENARIOS = [
       !hasLegends(ctx.dims)
         ? "Create at least one legend first"
         : null,
-    defaultPrompt:
-      `Review this specific legend and its types. Suggest improvements: better type names, colours, missing types, or types to merge. Return the improved structure.`,
+    defaultPrompt: IDEABIN_DEFAULTS.legends_finetune_single,
     expectedFormat: `{
   "legends": [
     {
@@ -805,8 +791,7 @@ export const IDEABIN_SCENARIOS = [
       if (!hasLegends(ctx.dims)) return "Create a legend first";
       return null;
     },
-    defaultPrompt:
-      `Analyse each idea below and assign the most fitting type from this legend. Only use types from the provided list — do not invent new ones.`,
+    defaultPrompt: IDEABIN_DEFAULTS.legends_assign_one_selected,
     expectedFormat: `{
   "legend_assignments": [
     {
@@ -844,8 +829,7 @@ export const IDEABIN_SCENARIOS = [
       if (!hasLegends(ctx.dims)) return "Create a legend first";
       return null;
     },
-    defaultPrompt:
-      `Analyse every idea below and assign the most fitting type from this legend. Only use types from the provided list — do not invent new ones.`,
+    defaultPrompt: IDEABIN_DEFAULTS.legends_assign_one_all,
     expectedFormat: `{
   "legend_assignments": [
     {
@@ -881,8 +865,7 @@ export const IDEABIN_SCENARIOS = [
       if (!hasLegendTypes(ctx.dims)) return "Create legend types first";
       return null;
     },
-    defaultPrompt:
-      `Analyse each idea below and assign the most fitting legend types from the provided list. Each assignment is one legend-type pair. An idea can have multiple assignments across different legends. Only use types from the provided list — do not invent new ones.`,
+    defaultPrompt: IDEABIN_DEFAULTS.legends_assign_all_selected,
     expectedFormat: `{
   "legend_assignments": [
     {
@@ -912,8 +895,7 @@ export const IDEABIN_SCENARIOS = [
       if (!hasLegendTypes(ctx.dims)) return "Create legend types first";
       return null;
     },
-    defaultPrompt:
-      `Analyse every idea below and assign the most fitting legend types from the provided list. Each assignment is one legend-type pair. An idea can have multiple assignments across different legends. Only use types from the provided list — do not invent new ones.`,
+    defaultPrompt: IDEABIN_DEFAULTS.legends_assign_all_all,
     expectedFormat: `{
   "legend_assignments": [
     {
@@ -945,8 +927,7 @@ export const IDEABIN_SCENARIOS = [
       ctxIdeaCount(ctx) === 0 && ctxCategoryCount(ctx) === 0
         ? "Add some content first"
         : null,
-    defaultPrompt:
-      `Review the entire project context below (categories, ideas, legends, filters). Then generate additions: new ideas for existing categories, new categories with ideas, and any missing legend types. Do NOT modify existing content — only ADD new things.`,
+    defaultPrompt: IDEABIN_DEFAULTS.special_context_add,
     expectedFormat: `{
   "new_categories": [
     {
@@ -989,8 +970,7 @@ export const IDEABIN_SCENARIOS = [
       ctxIdeaCount(ctx) === 0 && ctxCategoryCount(ctx) === 0
         ? "Add some content first"
         : null,
-    defaultPrompt:
-      `Perform a comprehensive review of the entire project context below. Improve EVERYTHING: category names, idea titles and descriptions, categorisation, legend types. Include original names/titles so changes can be tracked.`,
+    defaultPrompt: IDEABIN_DEFAULTS.special_context_suggestions,
     expectedFormat: `{
   "updated_categories": [
     {
@@ -1034,8 +1014,7 @@ export const IDEABIN_SCENARIOS = [
       ctxIdeaCount(ctx) === 0 && ctxCategoryCount(ctx) === 0
         ? "Add some content first"
         : null,
-    defaultPrompt:
-      `Analyse the current idea landscape (categories and ideas) and identify gaps: what areas are underrepresented, what perspectives are missing, what obvious topics haven't been covered? Suggest concrete ideas to fill each gap.`,
+    defaultPrompt: IDEABIN_DEFAULTS.special_gap_analysis,
     expectedFormat: `{
   "gaps": [
     {
@@ -1072,8 +1051,7 @@ export const IDEABIN_SCENARIOS = [
       ctxIdeaCount(ctx) < 3
         ? "Need at least 3 ideas to check for duplicates"
         : null,
-    defaultPrompt:
-      `Analyse the following ideas and identify groups of similar, overlapping, or duplicate ideas. For each group, suggest a merged version that combines the best parts. Return both the duplicate groups and the suggested merged versions.`,
+    defaultPrompt: IDEABIN_DEFAULTS.special_dedup_merge,
     expectedFormat: `{
   "duplicate_groups": [
     {
@@ -1107,11 +1085,7 @@ export const IDEABIN_SCENARIOS = [
       "Copy the prompt, send it to your AI, then import the response in the Task Structure panel.",
     unavailableMsg: (ctx) =>
       ctxIdeaCount(ctx) === 0 ? "No ideas to taskify" : null,
-    defaultPrompt:
-      "Convert these ideas into well-defined tasks. " +
-      "Each idea should become one or more tasks with clear names, descriptions, " +
-      "priority, difficulty, and 2-4 acceptance criteria. " +
-      "Group them into teams if logical groupings emerge.",
+    defaultPrompt: IDEABIN_DEFAULTS.special_taskify_ideas,
     expectedFormat:
       '{ "teams": [{ "team_name": "...", "tasks": [{ "name": "...", "description": "...", "priority": "...", "difficulty": "...", "acceptance_criteria": [{ "title": "..." }] }] }], "unassigned_tasks": [...] }',
     buildPayload: (ctx) => {

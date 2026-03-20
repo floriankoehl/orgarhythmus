@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { emitDataEvent, useManualRefresh } from "../../../api/dataEvents";
 import { playSound } from "../../../assets/sound_registry";
 import {
   fetchCategories as fetchCategoriesApi,
@@ -46,12 +47,22 @@ export default function useIdeaBinCategories({ activeContext, setActiveContext, 
   // ── Merge target ──
   const [mergeCategoryTarget, setMergeCategoryTarget] = useState(null);
 
+  const _suppressEmitRef = useRef(true);
+
   const fetch_categories = useCallback(async () => {
+    const suppressed = _suppressEmitRef.current;
     try {
       const serialized = await fetchCategoriesApi();
       setCategories(serialized);
+      _suppressEmitRef.current = false;
+      if (!suppressed) emitDataEvent('ideas');
     } catch (err) { console.error("IdeaBin: fetch categories failed", err); }
   }, []);
+
+  useManualRefresh(() => {
+    _suppressEmitRef.current = true;
+    fetch_categories().finally(() => { _suppressEmitRef.current = false; });
+  });
 
   const create_category_api = useCallback(async () => {
     if (!newCategoryName.trim()) return;

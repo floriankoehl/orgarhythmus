@@ -1,47 +1,14 @@
 /**
- * TasksTabContent — task list for the "Tasks" tab inside TaskStructure.
- * Adapted from pages/overview/Tasks.jsx for in-window use.
+ * TasksTabContent — task list for the "All Tasks" tab inside TaskStructure.
  */
 import { useEffect, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Filter, X, Loader2, BarChart2, Users, AlertTriangle, Target } from "lucide-react";
+import { Plus, Filter, X, Loader2 } from "lucide-react";
 import Button from "@mui/material/Button";
 import { fetchTasksForProject, fetchTeamsForProject } from "../../api/org_API.js";
+import { emitDataEvent, useManualRefresh } from "../../api/dataEvents";
 import SMTaskCard from "../TaskCardSM.jsx";
 import ProjectCreateTaskForm from "../ProjectCreateTaskForm";
-
-/* ── Compact stats strip ── */
-function TaskStats({ tasks, teams }) {
-  const totalTasks = tasks.length;
-  const totalTeams = teams.length;
-  const unassignedCount = tasks.filter((t) => !t.team).length;
-  const assignedPersons = new Set(
-    tasks.flatMap((t) => (t.assigned_members_data || []).map((m) => m.id)),
-  );
-
-  const stats = [
-    { label: "Tasks", value: totalTasks, icon: <BarChart2 size={14} />, color: "from-blue-500 to-blue-600" },
-    { label: "Teams", value: totalTeams, icon: <Users size={14} />, color: "from-indigo-500 to-indigo-600" },
-    { label: "Unassigned", value: unassignedCount, icon: <AlertTriangle size={14} />, color: "from-amber-500 to-amber-600" },
-    { label: "Members", value: assignedPersons.size, icon: <Target size={14} />, color: "from-emerald-500 to-emerald-600" },
-  ];
-
-  return (
-    <div className="grid grid-cols-4 gap-2 mb-4 flex-shrink-0">
-      {stats.map((s) => (
-        <div key={s.label} className="rounded-lg border border-slate-200 bg-white/70 p-2 text-center">
-          <div
-            className={`mx-auto inline-flex items-center justify-center rounded-lg bg-gradient-to-br ${s.color} p-1.5 text-white shadow`}
-          >
-            {s.icon}
-          </div>
-          <div className="mt-1 text-base font-bold text-slate-900">{s.value}</div>
-          <div className="text-[9px] font-medium text-slate-500 uppercase tracking-wider">{s.label}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export default function TasksTabContent({ onViewTaskDetail }) {
   const { projectId } = useParams();
@@ -54,6 +21,8 @@ export default function TasksTabContent({ onViewTaskDetail }) {
   useEffect(() => {
     loadData();
   }, [projectId]);
+
+  useManualRefresh(loadData);
 
   async function loadData() {
     if (!projectId) return;
@@ -74,6 +43,7 @@ export default function TasksTabContent({ onViewTaskDetail }) {
 
   function handleTaskCreated() {
     setShowCreatePanel(false);
+    emitDataEvent('tasks');
     loadData();
   }
 
@@ -110,8 +80,6 @@ export default function TasksTabContent({ onViewTaskDetail }) {
     return entries;
   }, [filteredTasks]);
 
-  const hasTasks = filteredTasks.length > 0;
-
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center p-8">
@@ -147,9 +115,6 @@ export default function TasksTabContent({ onViewTaskDetail }) {
           <ProjectCreateTaskForm projectId={projectId} onTaskCreated={handleTaskCreated} />
         </div>
       )}
-
-      {/* Stats */}
-      <TaskStats tasks={tasks} teams={teams} />
 
       {/* Team filter */}
       {teams.length > 0 && (
@@ -199,34 +164,28 @@ export default function TasksTabContent({ onViewTaskDetail }) {
       )}
 
       {/* Tasks grouped by team */}
-      {hasTasks ? (
-        <div className="space-y-4">
+      {filteredTasks.length > 0 ? (
+        <div className="space-y-5">
           {groupedTasks.map((group, idx) => (
-            <div key={idx} className="rounded-xl border border-slate-200 bg-white/70 p-3 shadow-sm">
-              <div className="mb-3 flex items-center gap-2">
-                {group.team ? (
-                  <>
-                    <div
-                      className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: group.team.color || "#64748b" }}
-                    />
-                    <h3 className="text-sm font-semibold text-slate-900">{group.team.name}</h3>
-                    <span className="text-[10px] text-slate-400">{group.tasks.length}</span>
-                  </>
-                ) : (
-                  <>
-                    <div className="h-3 w-3 rounded-full bg-slate-300" />
-                    <h3 className="text-sm font-semibold text-slate-600">Unassigned</h3>
-                    <span className="text-[10px] text-slate-400">{group.tasks.length}</span>
-                  </>
-                )}
+            <div key={idx}>
+              {/* Team header */}
+              <div className="mb-2 flex items-center gap-2 px-0.5">
+                <div
+                  className="h-2.5 w-2.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: group.team ? group.team.color || "#64748b" : "#cbd5e1" }}
+                />
+                <span className="text-xs font-semibold text-slate-700">
+                  {group.team ? group.team.name : "Unassigned"}
+                </span>
+                <span className="text-[10px] text-slate-400">{group.tasks.length}</span>
               </div>
+              {/* Task cards */}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {group.tasks.map((task) => (
                   <div
                     key={task.id}
                     onClick={() => onViewTaskDetail(task.id)}
-                    className="cursor-pointer rounded-lg border border-slate-200 bg-slate-50 p-3 transition-all hover:border-blue-300 hover:bg-blue-50 hover:shadow-sm"
+                    className="cursor-pointer rounded-lg border border-slate-200 bg-white p-3 transition-all hover:border-blue-300 hover:shadow-sm"
                   >
                     <SMTaskCard projectId={projectId} task={task} onTaskDeleted={loadData} />
                   </div>

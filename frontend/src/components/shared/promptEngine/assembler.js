@@ -64,7 +64,12 @@ export function assemblePromptSections(scenarioId, ctx, settings) {
 
   // 2. Project description
   if (settings?.auto_add_project_description && ctx.projectDescription?.trim()) {
-    sections.push({ key: "project_description", label: "Project Description", header: "--- Project Description ---", content: ctx.projectDescription.trim() });
+    sections.push({
+      key: "project_description",
+      label: "Project Description",
+      header: "--- Project Description ---",
+      content: "The following is the description of the project you are currently working on:\n\n" + ctx.projectDescription.trim(),
+    });
   }
 
   // 3. Expected JSON format

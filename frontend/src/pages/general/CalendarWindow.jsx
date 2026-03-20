@@ -24,7 +24,7 @@ import CalendarContent from "./CalendarContent";
 
 const MIN_CONTENT_H = 200;
 
-export default function CalendarWindow() {
+export default function CalendarWindow({ instanceId = "calendar" }) {
   const { projectId } = useParams();
   const location = useLocation();
 
@@ -42,7 +42,7 @@ export default function CalendarWindow() {
     managed,
     setExtraStateCollector, setExtraStateApplier,
   } = useFloatingWindow({
-    id: "calendar",
+    id: instanceId,
     openSound: "ideaOpen",
     closeSound: "ideaClose",
     minSize: { w: 360, h: 300 },
@@ -70,11 +70,11 @@ export default function CalendarWindow() {
     return "1m";
   })();
 
-  // ── Auto-open when navigating to the /calender route ──
+  // ── Auto-open when navigating to the /calender route (primary instance only) ──
   const prevPathRef = useRef(null);
   useEffect(() => {
     const isCalendarRoute = location.pathname.endsWith("/calender");
-    if (isCalendarRoute && !isOpen) {
+    if (isCalendarRoute && !isOpen && instanceId === "calendar") {
       setWindowPos({ x: 4, y: 60 });
       setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - 68 });
       setIsMaximized(true);

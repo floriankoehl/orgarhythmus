@@ -48,12 +48,12 @@ const MAX_FORM_H = 400;
  *
  * Layout: Left sidebar (task list + legend panel) | Right canvas (team containers).
  */
-export default function TaskStructure() {
+export default function TaskStructure({ instanceId = "taskStructure" }) {
   const { projectId } = useParams();
   const location = useLocation();
 
   // ── Prompt settings (for AI prepend on export) ──
-  const { buildClipboardText, settings: promptSettings, projectDescRef } = usePromptSettings();
+  const { buildClipboardText, settings: promptSettings, projectDescription } = usePromptSettings();
 
   // ── Tab navigation ──
   const [activeTab, setActiveTab] = useState("canvas"); // "canvas" | "tasks" | "teams"
@@ -69,7 +69,7 @@ export default function TaskStructure() {
     managed,
     setExtraStateCollector, setExtraStateApplier,
   } = useFloatingWindow({
-    id: "taskStructure",
+    id: instanceId,
     openSound: "ideaOpen",
     closeSound: "ideaClose",
     minSize: { w: 360, h: 280 },
@@ -277,8 +277,9 @@ export default function TaskStructure() {
     prevOpenRef.current = isOpen;
   }, [isOpen, loadDefaultView]);
 
-  // ── Route-based auto-open: /teams, /teams/:id, /tasks, /tasks/:id ──
+  // ── Route-based auto-open: /teams, /teams/:id, /tasks, /tasks/:id (primary instance only) ──
   useEffect(() => {
+    if (instanceId !== "taskStructure") return;
     const path = location.pathname;
     const match = path.match(/\/projects\/\d+\/(teams|tasks)(?:\/(\d+))?$/);
     if (!match) return;
@@ -911,8 +912,8 @@ export default function TaskStructure() {
     selectedTaskIds,
     selectedTeamIds,
     tasksByTeamMap,
-    projectDescription: projectDescRef?.current || "",
-  }), [tasks, teams, taskOrder, teamOrder, selectedTaskIds, selectedTeamIds, tasksByTeamMap, projectDescRef]);
+    projectDescription: projectDescription || "",
+  }), [tasks, teams, taskOrder, teamOrder, selectedTaskIds, selectedTeamIds, tasksByTeamMap, projectDescription]);
 
   /** API context for applying AI responses */
   const applyCtx = useMemo(() => ({

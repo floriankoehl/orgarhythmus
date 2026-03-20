@@ -1,9 +1,10 @@
 import React, { useState, useCallback } from "react";
 import {
-  RotateCcw, Save, Check, ChevronDown, ChevronRight,
+  Save, Check, ChevronDown, ChevronRight,
   ToggleLeft, ToggleRight,
 } from "lucide-react";
 import { ALL_SCENARIOS, getScenario } from "./index";
+import DefaultPromptTooltip from "./DefaultPromptTooltip";
 
 /**
  * DomainPromptSettings
@@ -154,15 +155,12 @@ export default function DomainPromptSettings({ domain, settings, onUpdate }) {
                       <div key={sid} className="ml-3 mb-2">
                         <div className="flex items-center gap-1 mb-0.5">
                           <span className="text-[10px] font-medium text-gray-700 flex-1">{def?.label || sid}</span>
-                          {isCustomised && (
-                            <button
-                              onClick={() => resetScenario(sid)}
-                              className="text-gray-400 hover:text-violet-500 transition-colors flex-shrink-0"
-                              title="Reset to default"
-                            >
-                              <RotateCcw size={8} />
-                            </button>
-                          )}
+                          <DefaultPromptTooltip
+                            defaultPrompt={def?.defaultPrompt}
+                            isCustomised={isCustomised}
+                            onReset={() => resetScenario(sid)}
+                            size={8}
+                          />
                         </div>
                         <textarea
                           value={current}

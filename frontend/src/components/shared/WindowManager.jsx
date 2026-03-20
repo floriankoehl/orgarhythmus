@@ -41,8 +41,21 @@ export function useWindowManager() {
 
 export default function WindowManager({
   children,
+  // New multi-instance API
+  windowDefs = [],     // [{ type, multiInstance? }] – defines slot order
+  instances = [],      // [{ id, type }] – current live instances
+  spawnInstance,       // (type) => void
+  removeInstance,      // (id) => void
+  // Legacy single-instance API (still accepted for backward compat)
   windows = [],
 }) {
+  // Normalise: prefer new API, fall back to legacy
+  const effectiveDefs = windowDefs.length > 0
+    ? windowDefs
+    : windows.map(w => ({ type: w.id, multiInstance: false }));
+  const effectiveInstances = instances.length > 0
+    ? instances
+    : windows.map(w => ({ id: w.id, type: w.id }));
   // ── Open / close tracking (windows report via reportOpen / reportClose) ──
   const openSetRef = useRef(new Set());
   const [openWindows, setOpenWindows] = useState(() => new Set());
@@ -89,6 +102,12 @@ export default function WindowManager({
   // ── Workspace: per-window state collectors & appliers ──
   const stateCollectorsRef = useRef({});   // { [windowId]: () => stateObj }
   const stateAppliersRef = useRef({});     // { [windowId]: (state) => void }
+
+  // ── Coordination: per-window focus requests (InventoryBar instance popup → window) ──
+  const [focusRequests, setFocusRequests] = useState({});
+  const requestFocus = useCallback((id) => {
+    setFocusRequests((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }));
+  }, []);
 
   // ── View savers: per-window "save current view" callbacks ──
   const viewSaversRef = useRef({});        // { [windowId]: () => Promise<void> }
@@ -200,9 +219,15 @@ export default function WindowManager({
   // ── Context value ──
   const value = useMemo(
     () => ({
-      // Config
-      windowIds: windows.map((w) => w.id),
-      windowCount: windows.length,
+      // Config — slot order is the list of types
+      windowIds: effectiveDefs.map((d) => d.type),
+      windowCount: effectiveDefs.length,
+      windowDefs: effectiveDefs,
+
+      // Multi-instance
+      instances: effectiveInstances,
+      spawnInstance: spawnInstance || (() => {}),
+      removeInstance: removeInstance || (() => {}),
 
       // Queries
       openWindows,
@@ -221,6 +246,8 @@ export default function WindowManager({
       minimizeRequests,
       requestOpenFullScreen,
       openFullScreenRequests,
+      requestFocus,
+      focusRequests,
       allCollapsed,
 
       // Workspace state registry
@@ -240,12 +267,14 @@ export default function WindowManager({
       saveViews,
     }),
     [
-      windows, openWindows,
+      effectiveDefs, effectiveInstances, spawnInstance, removeInstance,
+      openWindows,
       reportOpen, reportClose,
       minimizeAll, minimizeAllVersion,
       requestOpen, requestMinimize,
       openRequests, minimizeRequests,
       requestOpenFullScreen, openFullScreenRequests,
+      requestFocus, focusRequests,
       allCollapsed,
       registerCollector, unregisterCollector,
       registerApplier, unregisterApplier,

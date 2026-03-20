@@ -41,11 +41,14 @@ function truncate(str, len = 50) {
   return str.length > len ? str.slice(0, len) + "…" : str;
 }
 
-/** Resolve a milestone name: prefer entry field, then look up in nodesCtx, fallback to ID */
+/** Resolve a milestone name: authoritative nodesCtx lookup first, then AI-provided name, then raw ID */
 function nodeName(entry, field, idField, nodesCtx) {
-  if (entry[field]) return entry[field];
+  // Prefer the live data — most reliable source
   const id = entry[idField];
-  if (id != null && nodesCtx[id]) return nodesCtx[id].name || String(id);
+  if (id != null && nodesCtx[id]?.name) return nodesCtx[id].name;
+  // Fall back to AI-provided name, but skip it if it looks like a bare numeric ID
+  const nameVal = entry[field];
+  if (nameVal && !/^\d+$/.test(String(nameVal).trim())) return String(nameVal);
   return String(id ?? "?");
 }
 

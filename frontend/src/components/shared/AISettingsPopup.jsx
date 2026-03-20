@@ -5,7 +5,9 @@ import {
 } from "lucide-react";
 import { getDirectMode, setDirectMode as persistDirectMode } from "../../api/aiGenerateApi";
 import usePromptSettings from "../usePromptSettings";
+import { DEFAULT_SYSTEM_PROMPT } from "./promptEngine/promptDefaults";
 import DomainPromptSettings from "./promptEngine/DomainPromptSettings";
+import DefaultPromptTooltip from "./promptEngine/DefaultPromptTooltip";
 
 /**
  * AISettingsPopup
@@ -195,15 +197,12 @@ export default function AISettingsPopup({ onClose }) {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide">System Prompt</label>
-                  {localSettings.system_prompt !== localSettings.default_system_prompt && localSettings.default_system_prompt && (
-                    <button
-                      type="button"
-                      onClick={() => setLocalSettings(p => ({ ...p, system_prompt: p.default_system_prompt }))}
-                      className="text-[9px] text-violet-500 hover:text-violet-700 hover:underline"
-                    >
-                      Reset to default
-                    </button>
-                  )}
+                  <DefaultPromptTooltip
+                    defaultPrompt={DEFAULT_SYSTEM_PROMPT}
+                    isCustomised={localSettings.system_prompt !== DEFAULT_SYSTEM_PROMPT}
+                    onReset={() => setLocalSettings(p => ({ ...p, system_prompt: DEFAULT_SYSTEM_PROMPT }))}
+                    size={11}
+                  />
                 </div>
                 <textarea
                   value={localSettings.system_prompt || ""}

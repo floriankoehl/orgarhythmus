@@ -114,6 +114,8 @@ export default function useFloatingWindow(opts = {}) {
     if (!managed) return;
     if (isOpen) manager.reportOpen(id);
     else manager.reportClose(id);
+    // On unmount, ensure we deregister from openWindows
+    return () => { if (managed && manager) manager.reportClose(id); };
   }, [isOpen, managed, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Register state collector/applier with WindowManager for workspaces ──
@@ -196,6 +198,29 @@ export default function useFloatingWindow(opts = {}) {
     }
     lastFullReqRef.current = ver;
   }, [managed, manager?.openFullScreenRequests, id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── React to manager's per-window requestFocus signal ──
+  const lastFocusReqRef = useRef(manager?.focusRequests?.[id] ?? 0);
+  useEffect(() => {
+    if (!managed) return;
+    const ver = manager.focusRequests?.[id] ?? 0;
+    if (ver > lastFocusReqRef.current) {
+      if (!isOpen) {
+        const cs = customSizeRef.current;
+        setWindowSize({ ...cs.size });
+        setWindowPos({
+          x: Math.max(4, (window.innerWidth - cs.size.w) / 2),
+          y: Math.max(4, (window.innerHeight - cs.size.h) / 2 - 30),
+        });
+        setIsOpen(true);
+        setIsMaximized(false);
+        playSound(openSound);
+        if (focusRef) setTimeout(() => focusRef.current?.focus(), 100);
+      }
+      setZIndex(getNextZIndex());
+    }
+    lastFocusReqRef.current = ver;
+  }, [managed, manager?.focusRequests, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Bring this window to front (call on mousedown / focus) */
   const bringToFront = useCallback(() => {

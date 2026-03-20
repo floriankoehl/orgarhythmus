@@ -10,17 +10,23 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
-from pathlib import Path
-from datetime import timedelta
 import os
+from datetime import timedelta
+from pathlib import Path
+
 from dotenv import load_dotenv
-
-# Load .env file (for local development outside Docker)
-load_dotenv()
-
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = BASE_DIR.parent
+
+# Load the repo-local .env for normal development settings.
+load_dotenv(PROJECT_ROOT / ".env")
+
+# Load the OpenAI key from a hidden user-level file outside the repo.
+OPENAI_ENV_FILE = Path.home() / ".config" / "orgarhythmus" / ".env"
+if OPENAI_ENV_FILE.exists():
+    load_dotenv(OPENAI_ENV_FILE, override=True)
 
 
 # Quick-start development settings - unsuitable for production

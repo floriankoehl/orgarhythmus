@@ -22,7 +22,7 @@ import ScheduleTitleBar from "./ScheduleTitleBar";
 
 const MIN_CONTENT_H = 200;
 
-export default function ScheduleWindow() {
+export default function ScheduleWindow({ instanceId = "schedule" }) {
   const { projectId } = useParams();
   const location = useLocation();
 
@@ -39,17 +39,17 @@ export default function ScheduleWindow() {
     handleWindowResize, handleEdgeResize,
     managed,
   } = useFloatingWindow({
-    id: "schedule",
+    id: instanceId,
     openSound: "ideaOpen",
     closeSound: "ideaClose",
     minSize: { w: 480, h: 360 },
   });
 
-  // ── Auto-open when navigating to the /dependencies route ──
+  // ── Auto-open when navigating to the /dependencies route (primary instance only) ──
   const prevPathRef = useRef(null);
   useEffect(() => {
     const isDepsRoute = location.pathname.endsWith("/dependencies");
-    if (isDepsRoute && !isOpen) {
+    if (isDepsRoute && !isOpen && instanceId === "schedule") {
       // Open maximized so it looks exactly like the old full-page layout
       setWindowPos({ x: 4, y: 60 });
       setWindowSize({ w: window.innerWidth - 8, h: window.innerHeight - 68 });

@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { emitDataEvent, useManualRefresh } from "../../api/dataEvents";
 import { HexColorPicker } from "react-colorful";
 import { Users, Plus, Trash2, Loader2 } from "lucide-react";
 import TextField from "@mui/material/TextField";
@@ -30,6 +31,9 @@ export default function TeamsTabContent({ onViewTeamDetail }) {
     loadTeams();
   }, [projectId]);
 
+  // Re-fetch whenever any window emits a data change
+  useManualRefresh(loadTeams);
+
   async function loadTeams() {
     if (!projectId) return;
     try {
@@ -54,6 +58,7 @@ export default function TeamsTabContent({ onViewTeamDetail }) {
       setColor("#facc15");
       setShowCreate(false);
       setShowPicker(false);
+      emitDataEvent('teams');
       await loadTeams();
     } catch (err) {
       setError(err.message || "Failed to create team.");
@@ -67,6 +72,7 @@ export default function TeamsTabContent({ onViewTeamDetail }) {
       setDeletingId(teamId);
       setError(null);
       await deleteTeamForProject(projectId, teamId);
+      emitDataEvent('teams');
       setTeams((prev) => prev.filter((t) => t.id !== teamId));
     } catch (err) {
       setError(err.message || "Failed to delete team.");
