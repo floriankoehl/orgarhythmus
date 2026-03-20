@@ -113,6 +113,28 @@ export function detectTaskResponseContent(json) {
     });
   }
 
+  // ── Add classification systems (legend + types) ──
+  if (Array.isArray(json.classification_systems) && json.classification_systems.length > 0) {
+    const totalCategories = json.classification_systems.reduce(
+      (s, sys) => s + (sys.categories?.length || 0), 0,
+    );
+    found.push({
+      type: "add_classification_systems", count: json.classification_systems.length,
+      categoryCount: totalCategories, data: json.classification_systems,
+    });
+  }
+
+  // ── Label assignments (task → category per classification system) ──
+  if (Array.isArray(json.label_assignments) && json.label_assignments.length > 0) {
+    const totalAssignments = json.label_assignments.reduce(
+      (s, sys) => s + (sys.assignments?.length || 0), 0,
+    );
+    found.push({
+      type: "task_label_assignments", count: json.label_assignments.length,
+      assignmentCount: totalAssignments, data: json.label_assignments,
+    });
+  }
+
   // ── Suggestions text ──
   if (json.suggestions && typeof json.suggestions === "string") {
     found.push({ type: "suggestions", data: json.suggestions });
@@ -141,6 +163,10 @@ export function buildTaskPreviewLabels(detected) {
         return `Update ${item.count} team${item.count > 1 ? "s" : ""}`;
       case "acceptance_criteria":
         return `${item.criteriaCount} acceptance criteria for ${item.count} task${item.count > 1 ? "s" : ""}`;
+      case "add_classification_systems":
+        return `${item.count} classification system${item.count > 1 ? "s" : ""} with ${item.categoryCount} categories`;
+      case "task_label_assignments":
+        return `${item.assignmentCount} label assignment${item.assignmentCount > 1 ? "s" : ""} across ${item.count} system${item.count > 1 ? "s" : ""}`;
       case "suggestions":
         return "Suggestions";
       default:
@@ -155,6 +181,7 @@ export function buildTaskPreviewLabels(detected) {
 const TASK_ACTIONABLE_TYPES = new Set([
   "task_teams", "task_tasks", "task_assignments", "task_new_team_assign",
   "update_tasks", "update_teams", "acceptance_criteria",
+  "add_classification_systems", "task_label_assignments",
 ]);
 
 /** Execution order: updates first, creates second, assignments last. */
@@ -162,6 +189,7 @@ const TASK_TYPE_ORDER = [
   "update_teams", "update_tasks", "acceptance_criteria",
   "task_teams", "task_tasks",
   "task_assignments", "task_new_team_assign",
+  "add_classification_systems", "task_label_assignments",
 ];
 
 export function hasTaskActionableContent(detected) {
@@ -181,10 +209,15 @@ export function hasTaskActionableContent(detected) {
  *   updateTask(taskId, payload)
  *   updateTeam(teamId, payload)
  *   assignTaskToTeam(taskId, teamId)    – move task to team
+ *   createLegend(name) → legend object
+ *   createLegendType(legendId, name, color) → type object
+ *   assignLegendType(taskId, legendId, typeId) → void
  *   refreshAll() → Promise
  *   tasks        – { [id]: { id, name, description, team, … } }
  *   teams        – { [id]: { id, name, color, … } }
  *   teamOrder    – [teamId, ...]
+ *   legends      – [{ id, name }]
+ *   legendsWithTypes – [{ id, name, types: [{ id, name, color }] }]
  *
  * @returns {{ created: string[], errors: string[] }}
  */
@@ -195,10 +228,15 @@ export async function applyTaskDetected(detected, applyCtx) {
     updateTask,
     updateTeam,
     assignTaskToTeam,
+    createLegend,
+    createLegendType,
+    assignLegendType,
     refreshAll,
     tasks,
     teams,
     teamOrder,
+    legends = [],
+    legendsWithTypes = [],
   } = applyCtx;
 
   const result = { created: [], errors: [] };
@@ -421,6 +459,75 @@ export async function applyTaskDetected(detected, applyCtx) {
           if (moved) result.created.push(`${moved} tasks assigned to teams`);
           if (notFoundTasks) result.errors.push(`${notFoundTasks} tasks not found`);
           if (notFoundTeams) result.errors.push(`${notFoundTeams} teams not found`);
+          break;
+        }
+
+        // ── Create classification systems (legends + types) ──
+        case "add_classification_systems": {
+          let systemsCreated = 0;
+          let categoriesCreated = 0;
+
+          for (const sys of item.data) {
+            const name = sys.name || "Unnamed";
+            if (!createLegend) break;
+            const legend = await createLegend(name);
+            if (!legend) { result.errors.push(`Failed to create classification system "${name}"`); continue; }
+            systemsCreated++;
+
+            for (const cat of (sys.categories || [])) {
+              if (!createLegendType) continue;
+              await createLegendType(legend.id, cat.name || "Unnamed", cat.color || "#64748b");
+              categoriesCreated++;
+            }
+          }
+
+          if (systemsCreated) result.created.push(`${systemsCreated} classification system${systemsCreated > 1 ? "s" : ""}`);
+          if (categoriesCreated) result.created.push(`${categoriesCreated} categories`);
+          break;
+        }
+
+        // ── Assign tasks to legend types (label assignments) ──
+        case "task_label_assignments": {
+          const taskLookup = buildTaskNameLookup();
+          let assigned = 0;
+          let notFoundSystems = 0;
+          let notFoundTasks = 0;
+          let notFoundCategories = 0;
+
+          for (const sysAssignment of item.data) {
+            const sysName = (sysAssignment.classification_system || "").toLowerCase().trim();
+            // Find legend by name in the runtime legends list
+            const legend = legends.find(l => (l.name || "").toLowerCase().trim() === sysName);
+            if (!legend) { notFoundSystems++; continue; }
+
+            // Build type lookup for this legend from legendsWithTypes
+            const systemTypes = legendsWithTypes.find(l => l.id === legend.id)?.types || [];
+            const typeLookup = {};
+            for (const t of systemTypes) {
+              typeLookup[(t.name || "").toLowerCase().trim()] = t;
+            }
+
+            for (const a of (sysAssignment.assignments || [])) {
+              const taskName = (a.task || "").toLowerCase().trim();
+              const catName = (a.category || "").toLowerCase().trim();
+
+              const taskMatch = taskLookup[taskName];
+              if (!taskMatch) { notFoundTasks++; continue; }
+
+              const typeMatch = typeLookup[catName];
+              if (!typeMatch) { notFoundCategories++; continue; }
+
+              if (assignLegendType) {
+                await assignLegendType(taskMatch.id, legend.id, typeMatch.id);
+                assigned++;
+              }
+            }
+          }
+
+          if (assigned) result.created.push(`${assigned} label assignment${assigned > 1 ? "s" : ""}`);
+          if (notFoundSystems) result.errors.push(`${notFoundSystems} classification system${notFoundSystems > 1 ? "s" : ""} not found`);
+          if (notFoundTasks) result.errors.push(`${notFoundTasks} tasks not matched by name`);
+          if (notFoundCategories) result.errors.push(`${notFoundCategories} categories not found`);
           break;
         }
 

@@ -147,6 +147,10 @@ export default function GridToolbar({
   setLaneDisplaySettings,
   showFilterDropdown,
   setShowFilterDropdown,
+  // Classification system
+  legendsWithTypes = [],
+  classificationLegendId = null,
+  setClassificationLegendId,
   // View mode
   viewMode,
   setViewMode,
@@ -350,6 +354,11 @@ export default function GridToolbar({
   const filteredLaneCount = laneOrder.filter(lid => laneDisplaySettings[lid]?.hidden).length;
   const allLanesHidden = filteredLaneCount === laneOrder.length;
   const noLanesHidden = filteredLaneCount === 0;
+
+  // Classification helpers
+  const activeClassificationLegend = classificationLegendId
+    ? legendsWithTypes.find(l => l.id === classificationLegendId)
+    : null;
   
   const getDeleteLabel = () => {
     if (selectedEdges?.length > 0) return selectedEdges.length > 1 ? `${selectedEdges.length} ${pl(edgeLabel, selectedEdges.length)}` : edgeLabel;
@@ -595,11 +604,16 @@ export default function GridToolbar({
             </button>
             
             {showFilterDropdown && (
-              <div 
+              <div
                 className="absolute top-full right-0 mt-1 w-56 rounded-lg border border-slate-200 bg-white shadow-xl z-50"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="p-2">
+                  {classificationLegendId && (
+                    <p className="mb-2 px-1 text-[10px] text-slate-400 italic">
+                      Team filter applies when grouped by Teams.
+                    </p>
+                  )}
                   <div className="flex items-center justify-between mb-2 px-1">
                     <span className="text-xs font-medium text-slate-700">Show {pl(laneLabel.toLowerCase(), 2)}:</span>
                     <div className="flex gap-2">
@@ -652,7 +666,48 @@ export default function GridToolbar({
           </div>
         </ToolbarSection>
 
-        {/* ─── COL 5: Display (flex area) ─── */}
+        {/* ─── COL 5: Group by ─── */}
+        {legendsWithTypes.length > 0 && setClassificationLegendId && (
+          <ToolbarSection sectionKey="groupby" label="Group by" icon={<AccountTreeIcon style={{ fontSize: 14 }} />} width={120} isOpen={openSections.has('groupby')} {...sectionProps}>
+            <div className="flex flex-col gap-1">
+              {/* Teams (default) */}
+              <button
+                onClick={() => { setClassificationLegendId(null); playSound('teamFilter'); }}
+                className={`flex items-center gap-1.5 px-2 py-1.5 text-xs rounded-md border transition ${
+                  !classificationLegendId
+                    ? 'border-blue-400 bg-blue-50 text-blue-700 font-semibold'
+                    : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <span
+                  className="inline-block h-2 w-2 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: '#64748b' }}
+                />
+                Teams
+              </button>
+              {/* One button per legend */}
+              {legendsWithTypes.map(leg => (
+                <button
+                  key={leg.id}
+                  onClick={() => { setClassificationLegendId(leg.id === classificationLegendId ? null : leg.id); playSound('teamFilter'); }}
+                  className={`flex items-center gap-1.5 px-2 py-1.5 text-xs rounded-md border transition ${
+                    classificationLegendId === leg.id
+                      ? 'border-indigo-400 bg-indigo-50 text-indigo-700 font-semibold'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <span
+                    className="inline-block h-2 w-2 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: leg.types?.[0]?.color || '#a5b4fc' }}
+                  />
+                  {leg.name}
+                </button>
+              ))}
+            </div>
+          </ToolbarSection>
+        )}
+
+        {/* ─── COL 6: Display (flex area) ─── */}
         <ToolbarSection sectionKey="display" label="Display" icon={<ViewTimelineIcon style={{ fontSize: 14 }} />} flex isOpen={openSections.has('display')} {...sectionProps}>
           <div className="flex gap-2 items-start">
             {/* Left sub-column: Rows + Lanes stacked vertically */}

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useParams, useLocation } from "react-router-dom";
-import { LayoutGrid, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { LayoutGrid, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, X } from "lucide-react";
+import { renderLegendTypeIcon } from "../ideas/legendTypeIcons.jsx";
 import { playSound } from "../../assets/sound_registry";
 import { createTaskForProject, bulk_delete_tasks } from "../../api/org_API";
 import { emitDataEvent } from "../../api/dataEvents";
@@ -19,7 +20,7 @@ import TaskList from "./TaskList";
 import TeamCanvas from "./TeamCanvas";
 import TaskEditPanel from "./TaskEditPanel";
 import TaskLegendPanel from "./TaskLegendPanel";
-import { assignTaskLegendTypeApi, batchAssignTaskLegendTypeApi, batchRemoveTaskLegendTypeApi, removeAllTaskLegendTypesApi } from "./api/taskLegendApi";
+import { assignTaskLegendTypeApi, batchAssignTaskLegendTypeApi, batchRemoveTaskLegendTypeApi, removeAllTaskLegendTypesApi, createTaskLegendTypeApi, fetchTaskLegendTypesApi } from "./api/taskLegendApi";
 import TaskConfirmModal from "./TaskConfirmModal";
 import TaskDragGhosts from "./TaskDragGhosts";
 import TaskExportModal from "./TaskExportModal";
@@ -111,7 +112,39 @@ export default function TaskStructure({ instanceId = "taskStructure" }) {
     createLegend, updateLegend, deleteLegend,
     createType, updateType, deleteType,
   } = useTaskLegends(projectId);
-  const [paintType, setPaintType] = useState(null); // { legendId, typeId }
+  const [paintType, setPaintType] = useState(null); // { legendId, typeId, color, name, icon }
+  const paintCursorRef = useRef(null);
+
+  // All legends with all their types (for AI context / apply)
+  const [legendsWithTypesAll, setLegendsWithTypesAll] = useState([]);
+  useEffect(() => {
+    if (!projectId || legends.length === 0) { setLegendsWithTypesAll([]); return; }
+    Promise.all(
+      legends.map(async (leg) => ({
+        ...leg,
+        types: await fetchTaskLegendTypesApi(projectId, leg.id).catch(() => []),
+      }))
+    ).then(setLegendsWithTypesAll).catch(() => {});
+  }, [projectId, legends]);
+
+  // Track mouse position and update paint cursor via direct DOM manipulation (no re-render)
+  useEffect(() => {
+    const onMove = (e) => {
+      if (paintCursorRef.current) {
+        paintCursorRef.current.style.left = `${e.clientX + 14}px`;
+        paintCursorRef.current.style.top = `${e.clientY - 14}px`;
+      }
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setPaintType(null);
+    };
+    window.addEventListener("mousemove", onMove, { passive: true });
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
 
   // ── UI state (needed before useTaskViews for deps) ──
   const [editingTaskId, setEditingTaskId] = useState(null);
@@ -737,8 +770,8 @@ export default function TaskStructure({ instanceId = "taskStructure" }) {
 
   // ── Legend assignment handlers ──
   const handleAssignLegendType = useCallback(async (taskId, legendId, typeId) => {
-    // Find the type info for optimistic update
-    const type = legendTypes.find((t) => t.id === typeId);
+    // legendTypes is keyed by type id: { [typeId]: typeObj }
+    const type = legendTypes[typeId];
     // Optimistic update
     setTasks((prev) => {
       const task = prev[taskId];
@@ -755,7 +788,7 @@ export default function TaskStructure({ instanceId = "taskStructure" }) {
   }, [projectId, legendTypes, setTasks]);
 
   const handleBatchAssignLegendType = useCallback(async (taskIds, legendId, typeId) => {
-    const type = legendTypes.find((t) => t.id === typeId);
+    const type = legendTypes[typeId];
     setTasks((prev) => {
       const next = { ...prev };
       taskIds.forEach((tid) => {
@@ -989,7 +1022,8 @@ export default function TaskStructure({ instanceId = "taskStructure" }) {
     selectedTeamIds,
     tasksByTeamMap,
     projectDescription: projectDescription || "",
-  }), [tasks, teams, taskOrder, teamOrder, selectedTaskIds, selectedTeamIds, tasksByTeamMap, projectDescription]);
+    legendsWithTypes: legendsWithTypesAll,
+  }), [tasks, teams, taskOrder, teamOrder, selectedTaskIds, selectedTeamIds, tasksByTeamMap, projectDescription, legendsWithTypesAll]);
 
   /** API context for applying AI responses */
   const applyCtx = useMemo(() => ({
@@ -1008,14 +1042,28 @@ export default function TaskStructure({ instanceId = "taskStructure" }) {
       await updateTeamApi(teamId, payload);
     },
     assignTaskToTeam,
+    createLegend: async (name) => {
+      const data = await createLegend(name);
+      return data?.legend || null;
+    },
+    createLegendType: async (legendId, name, color) => {
+      const data = await createTaskLegendTypeApi(projectId, legendId, name, color, null);
+      return data?.type || null;
+    },
+    assignLegendType: async (taskId, legendId, typeId) => {
+      await assignTaskLegendTypeApi(projectId, taskId, legendId, typeId);
+    },
     refreshAll: async () => {
       await fetchTasks();
       await fetchTeams();
+      await fetchLegends(projectId);
     },
     tasks,
     teams,
     teamOrder,
-  }), [createTask, createTeam, updateTaskApi, updateTeamApi, assignTaskToTeam, fetchTasks, fetchTeams, tasks, teams, teamOrder]);
+    legends,
+    legendsWithTypes: legendsWithTypesAll,
+  }), [createTask, createTeam, updateTaskApi, updateTeamApi, assignTaskToTeam, createLegend, fetchTasks, fetchTeams, fetchLegends, tasks, teams, teamOrder, legends, legendsWithTypesAll, projectId]);
 
   // ═════════════════════════════════════════════
   //  JSX
@@ -1043,6 +1091,43 @@ export default function TaskStructure({ instanceId = "taskStructure" }) {
         </div>
       )}
 
+      {/* ── Paint mode cursor overlay ── */}
+      <div
+        ref={paintCursorRef}
+        style={{
+          position: "fixed",
+          top: -100,
+          left: -100,
+          pointerEvents: "none",
+          zIndex: zIndex + 200,
+          display: paintType ? "flex" : "none",
+          alignItems: "center",
+          gap: "5px",
+          borderRadius: "999px",
+          padding: "4px 10px 4px 7px",
+          fontSize: "11px",
+          fontWeight: 700,
+          color: "#fff",
+          backgroundColor: paintType?.typeId === null ? "#64748b" : (paintType?.color || "#6366f1"),
+          boxShadow: `0 2px 12px 0 ${paintType?.color || "#6366f1"}66, 0 1px 3px rgba(0,0,0,0.3)`,
+          border: `2px solid rgba(255,255,255,0.35)`,
+          whiteSpace: "nowrap",
+          userSelect: "none",
+          transition: "background-color 0.15s",
+        }}
+      >
+        {paintType?.typeId === null ? (
+          <X size={11} style={{ flexShrink: 0 }} />
+        ) : paintType?.icon ? (
+          <span style={{ display: "flex", alignItems: "center", fontSize: 12 }}>
+            {renderLegendTypeIcon(paintType.icon, { style: { fontSize: 12 }, className: "text-white" })}
+          </span>
+        ) : (
+          <div style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: "rgba(255,255,255,0.6)", flexShrink: 0 }} />
+        )}
+        {paintType?.name || ""}
+      </div>
+
       {/* ── EXPANDED: Floating window ── */}
       {isOpen && (
         <div
@@ -1056,6 +1141,7 @@ export default function TaskStructure({ instanceId = "taskStructure" }) {
             width: windowSize.w,
             height: windowSize.h,
             zIndex: zIndex,
+            cursor: paintType ? "none" : undefined,
           }}
           className="flex flex-col bg-white rounded-lg shadow-2xl border border-gray-300 overflow-hidden select-none"
         >

@@ -8,7 +8,7 @@ import { useParams } from "react-router-dom";
 import { emitDataEvent, useManualRefresh } from "../../api/dataEvents";
 import {
   Edit2, Save, X, CheckCircle2, Loader2, Users, UserPlus,
-  ChevronDown, ChevronRight, CheckSquare, Square, Flag, Target,
+  ChevronDown, ChevronRight, CheckSquare, Square, Flag, Target, Tag,
 } from "lucide-react";
 import Button from "@mui/material/Button";
 import TextField from "@mui/material/TextField";
@@ -23,6 +23,10 @@ import {
   toggleCriterion, toggleTaskDone,
 } from "../../api/org_API.js";
 import { toggle_milestone_todo } from "../../api/dependencies_api.js";
+import {
+  fetchTaskLegendsApi, fetchTaskLegendTypesApi, assignTaskLegendTypeApi,
+} from "./api/taskLegendApi.js";
+import { renderLegendTypeIcon } from "../ideas/legendTypeIcons.jsx";
 
 /* ── Priority / difficulty dot display ── */
 function DotRow({ value, max = 5, color }) {
@@ -185,6 +189,10 @@ export default function TaskDetailPanel({ taskId, onViewTeamDetail }) {
   const [togglingDone, setTogglingDone] = useState(false);
   const [incompleteCriteria, setIncompleteCriteria] = useState(null); // { message, list }
 
+  // Legend labels
+  const [legendsWithTypes, setLegendsWithTypes] = useState([]); // [{ ...legend, types: [] }]
+  const [assigningLegendId, setAssigningLegendId] = useState(null); // which legend is mid-request
+
   useEffect(() => {
     loadData();
   }, [projectId, taskId]);
@@ -196,10 +204,11 @@ export default function TaskDetailPanel({ taskId, onViewTeamDetail }) {
     try {
       setLoading(true);
       setError(null);
-      const [taskData, teamsData, projectData] = await Promise.all([
+      const [taskData, teamsData, projectData, legends] = await Promise.all([
         fetchSingleTask(projectId, taskId),
         fetchTeamsForProject(projectId),
         fetch_project_detail(projectId),
+        fetchTaskLegendsApi(projectId),
       ]);
       setTask(taskData);
       setTeams(teamsData);
@@ -209,6 +218,14 @@ export default function TaskDetailPanel({ taskId, onViewTeamDetail }) {
       setEditTeamId(taskData.team?.id || null);
       setEditPriority(taskData.priority || 0);
       setEditDifficulty(taskData.difficulty || 0);
+      // Fetch all legend types in parallel
+      const legendsWithTypes = await Promise.all(
+        legends.map(async (leg) => {
+          const types = await fetchTaskLegendTypesApi(projectId, leg.id);
+          return { ...leg, types };
+        }),
+      );
+      setLegendsWithTypes(legendsWithTypes);
     } catch (err) {
       console.error(err);
       setError("Failed to load task details.");
@@ -318,6 +335,40 @@ export default function TaskDetailPanel({ taskId, onViewTeamDetail }) {
       setError(err.message || "Failed to toggle todo");
     } finally {
       setTogglingTodoId(null);
+    }
+  }
+
+  async function handleAssignLegendType(legendId, typeId) {
+    // If the task already has this exact type for this legend, clicking again unassigns it
+    const current = task?.legend_types?.[String(legendId)];
+    const newTypeId = current?.legend_type_id === typeId ? null : typeId;
+    setAssigningLegendId(legendId);
+    try {
+      await assignTaskLegendTypeApi(projectId, taskId, legendId, newTypeId);
+      // Update legend_types in task state optimistically
+      setTask((prev) => {
+        const next = { ...prev, legend_types: { ...(prev.legend_types || {}) } };
+        if (newTypeId === null) {
+          delete next.legend_types[String(legendId)];
+        } else {
+          const legend = legendsWithTypes.find((l) => l.id === legendId);
+          const typeObj = legend?.types?.find((t) => t.id === typeId);
+          if (typeObj) {
+            next.legend_types[String(legendId)] = {
+              legend_type_id: typeObj.id,
+              name: typeObj.name,
+              color: typeObj.color,
+              icon: typeObj.icon,
+            };
+          }
+        }
+        return next;
+      });
+      emitDataEvent('tasks');
+    } catch (err) {
+      setError(err.message || "Failed to assign label.");
+    } finally {
+      setAssigningLegendId(null);
     }
   }
 
@@ -600,6 +651,65 @@ export default function TaskDetailPanel({ taskId, onViewTeamDetail }) {
           </div>
         </div>
       </div>
+
+      {/* ── Labels (Legend Types) ── */}
+      {legendsWithTypes.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+          <div className="mb-3 flex items-center gap-2">
+            <Tag size={14} className="text-slate-600" />
+            <h3 className="text-sm font-semibold text-slate-900">Labels</h3>
+          </div>
+          <div className="space-y-3">
+            {legendsWithTypes.map((legend) => {
+              const current = task?.legend_types?.[String(legend.id)];
+              const isAssigning = assigningLegendId === legend.id;
+              return (
+                <div key={legend.id}>
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                    {legend.name}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {legend.types.map((type) => {
+                      const isActive = current?.legend_type_id === type.id;
+                      return (
+                        <button
+                          key={type.id}
+                          onClick={() => handleAssignLegendType(legend.id, type.id)}
+                          disabled={isAssigning}
+                          title={isActive ? `Remove "${type.name}"` : `Assign "${type.name}"`}
+                          className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all disabled:opacity-60 ${
+                            isActive
+                              ? "border-transparent text-white shadow-sm"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                          }`}
+                          style={isActive ? { backgroundColor: type.color, borderColor: type.color } : {}}
+                        >
+                          {isAssigning && isActive ? (
+                            <Loader2 size={11} className="animate-spin" />
+                          ) : type.icon ? (
+                            <span className="flex items-center" style={{ fontSize: 12 }}>
+                              {renderLegendTypeIcon(type.icon, { style: { fontSize: 12 }, className: isActive ? "text-white" : "text-slate-500" })}
+                            </span>
+                          ) : (
+                            <div
+                              className="h-2 w-2 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: isActive ? "rgba(255,255,255,0.8)" : type.color }}
+                            />
+                          )}
+                          {type.name}
+                        </button>
+                      );
+                    })}
+                    {legend.types.length === 0 && (
+                      <span className="text-[10px] italic text-slate-400">No types defined for this legend.</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── Acceptance Criteria ── */}
       <div className="rounded-xl border border-slate-200 bg-white/90 p-4 shadow-sm">

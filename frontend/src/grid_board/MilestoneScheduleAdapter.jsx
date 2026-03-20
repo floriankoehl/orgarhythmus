@@ -67,6 +67,7 @@ import {
   createTeamForProject,
   createTaskForProject,
 } from '../api/org_API.js';
+import { fetchTaskLegendsApi, fetchTaskLegendTypesApi } from '../components/tasks_classification/api/taskLegendApi.js';
 import { daysBetween } from './layoutMath';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -157,6 +158,11 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   const [edges, setEdges]                   = useState([]);   // dependencies
   const [reloadFlag, setReloadFlag]         = useState(0);     // bump to reload
 
+  // ── Legend classification system ──
+  const [legendsWithTypes, setLegendsWithTypes] = useState([]);
+  // null = default (teams), number = legend ID whose types become lanes
+  const [classificationLegendId, setClassificationLegendId] = useState(null);
+
   // ── Load all data ──
   useEffect(() => {
     if (!projectId) return;
@@ -229,6 +235,18 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
             setEdges(rd2.dependencies.map(d => ({ source: d.source, target: d.target, weight: d.weight || 'strong', reason: d.reason || null, description: d.description || null })));
           }
         } catch { setEdges([]); }
+
+        // Task legends (for filter)
+        try {
+          const legList = await fetchTaskLegendsApi(projectId);
+          const withTypes = await Promise.all(
+            legList.map(async (leg) => ({
+              ...leg,
+              types: await fetchTaskLegendTypesApi(projectId, leg.id),
+            }))
+          );
+          setLegendsWithTypes(withTypes);
+        } catch { setLegendsWithTypes([]); }
       } catch (err) {
         console.error('MilestoneScheduleAdapter: data load failed', err);
       }
@@ -276,6 +294,50 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
     }
     return labels;
   }, [projectStartDate, totalColumns, projectDays]);
+
+  // ── Classification-system derived display data ──
+  // When classificationLegendId is set, legend types become lanes and tasks are
+  // grouped by their assigned type. Default (null) = original team-based lanes.
+  const { displayLanes, displayLaneOrder, displayRows } = useMemo(() => {
+    if (!classificationLegendId) {
+      return { displayLanes: lanes, displayLaneOrder: laneOrder, displayRows: rows };
+    }
+    const legend = legendsWithTypes.find(l => l.id === classificationLegendId);
+    if (!legend) return { displayLanes: lanes, displayLaneOrder: laneOrder, displayRows: rows };
+
+    const types = legend.types || [];
+    // Lane ID = string of legend type id to avoid collisions with team IDs
+    const newLaneOrder = types.map(t => `lt_${t.id}`);
+    const newLanes = {};
+    for (const t of types) {
+      newLanes[`lt_${t.id}`] = {
+        id: `lt_${t.id}`,
+        name: t.name,
+        color: t.color,
+        rows: [],
+        tasks: [],
+      };
+    }
+
+    // Build a lookup: legend_type_id → lane key
+    const typeToLane = {};
+    for (const t of types) typeToLane[t.id] = `lt_${t.id}`;
+
+    const newRows = {};
+    for (const [taskId, row] of Object.entries(rows)) {
+      const assigned = row.legend_types?.[String(classificationLegendId)];
+      if (assigned) {
+        const laneKey = typeToLane[assigned.legend_type_id];
+        if (laneKey) {
+          newLanes[laneKey].rows.push(taskId);
+          newLanes[laneKey].tasks.push(taskId);
+          newRows[taskId] = { ...row, lane: laneKey };
+        }
+      }
+    }
+
+    return { displayLanes: newLanes, displayLaneOrder: newLaneOrder, displayRows: newRows };
+  }, [rows, lanes, laneOrder, classificationLegendId, legendsWithTypes]);
 
   // ════════════════════════════════════════════════════════════════════
   //  Persist callbacks — each maps generic → backend API
@@ -1088,18 +1150,23 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       // Data
       totalColumns={totalColumns}
       columnLabels={columnLabels}
-      lanes={lanes}
-      laneOrder={laneOrder}
-      rows={rows}
+      lanes={displayLanes}
+      laneOrder={displayLaneOrder}
+      rows={displayRows}
+      // Classification system
+      legendsWithTypes={legendsWithTypes}
+      classificationLegendId={classificationLegendId}
+      setClassificationLegendId={setClassificationLegendId}
       nodes={nodes}
       edges={edges}
       phases={phases}
       projectStartDate={projectStartDate}
 
-      // Data setters
-      setLanes={setLanes}
-      setLaneOrder={setLaneOrder}
-      setRows={setRows}
+      // Data setters — in legend-classification mode, lane/row mutations are blocked
+      // to prevent overwriting the real team-based data with derived display state.
+      setLanes={classificationLegendId ? () => {} : setLanes}
+      setLaneOrder={classificationLegendId ? () => {} : setLaneOrder}
+      setRows={classificationLegendId ? () => {} : setRows}
       setNodes={setNodes}
       setEdges={setEdges}
       setPhases={setPhases}

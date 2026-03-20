@@ -436,6 +436,92 @@ export const TASK_SCENARIOS = [
       project_description: ctx.projectDescription || "",
     }),
   },
+
+  // ─────────────────────────────────────────────────────────
+  //  CLASSIFICATION SYSTEMS (Legend + LegendTypes)
+  //  AI-facing terminology: "classification system" = Legend,
+  //  "category" = LegendType
+  // ─────────────────────────────────────────────────────────
+
+  {
+    id: "classification_add",
+    domain: "tasks",
+    grid: null, // special
+    group: "Classification",
+    action: "special",
+    label: "Add classification systems",
+    description: "Generate new classification systems (labels) with named categories and colors.",
+    unavailableMsg: () => null,
+    defaultPrompt: TASK_DEFAULTS.classification_add,
+    expectedFormat: '{ "classification_systems": [{ "name": "...", "categories": [{ "name": "...", "color": "#hex" }] }] }',
+    buildPayload: (ctx) => {
+      const existing = (ctx.legendsWithTypes || []).map(l => ({
+        name: l.name,
+        categories: (l.types || []).map(t => ({ name: t.name, color: t.color })),
+      }));
+      if (!wCtx(ctx)) {
+        return {
+          existing_classification_systems: existing,
+          project_description: ctx.projectDescription || "",
+        };
+      }
+      return {
+        ...buildFullProject(ctx),
+        existing_classification_systems: existing,
+        project_description: ctx.projectDescription || "",
+      };
+    },
+  },
+
+  {
+    id: "classification_assign_selected",
+    domain: "tasks",
+    grid: null, // special
+    group: "Classification",
+    action: "special",
+    label: "Classify selected tasks",
+    description: "Assign selected tasks to categories across all existing classification systems.",
+    unavailableMsg: (ctx) => {
+      if (selectedTaskCount(ctx) === 0) return "No tasks selected";
+      if ((ctx.legendsWithTypes || []).length === 0) return "No classification systems exist yet";
+      return null;
+    },
+    defaultPrompt: TASK_DEFAULTS.classification_assign_selected,
+    expectedFormat: '{ "label_assignments": [{ "classification_system": "...", "assignments": [{ "task": "...", "category": "..." }] }] }',
+    buildPayload: (ctx) => ({
+      tasks: getSelectedTasks(ctx).map(t => ({ name: t.name, description: t.description || "" })),
+      classification_systems: (ctx.legendsWithTypes || []).map(l => ({
+        name: l.name,
+        categories: (l.types || []).map(t => ({ name: t.name, color: t.color })),
+      })),
+      project_description: ctx.projectDescription || "",
+    }),
+  },
+
+  {
+    id: "classification_assign_all",
+    domain: "tasks",
+    grid: null, // special
+    group: "Classification",
+    action: "special",
+    label: "Classify all tasks",
+    description: "Assign all tasks to categories across all existing classification systems.",
+    unavailableMsg: (ctx) => {
+      if (taskCount(ctx) === 0) return "No tasks exist";
+      if ((ctx.legendsWithTypes || []).length === 0) return "No classification systems exist yet";
+      return null;
+    },
+    defaultPrompt: TASK_DEFAULTS.classification_assign_all,
+    expectedFormat: '{ "label_assignments": [{ "classification_system": "...", "assignments": [{ "task": "...", "category": "..." }] }] }',
+    buildPayload: (ctx) => ({
+      tasks: allTasks(ctx).map(t => ({ name: t.name, description: t.description || "" })),
+      classification_systems: (ctx.legendsWithTypes || []).map(l => ({
+        name: l.name,
+        categories: (l.types || []).map(t => ({ name: t.name, color: t.color })),
+      })),
+      project_description: ctx.projectDescription || "",
+    }),
+  },
 ];
 
 
@@ -465,6 +551,9 @@ export const TASK_GRID = {
     "special_acceptance_criteria_selected",
     "special_acceptance_criteria_all",
     "special_task_suggestions",
+    "classification_add",
+    "classification_assign_selected",
+    "classification_assign_all",
   ],
 };
 
@@ -478,4 +567,5 @@ export const TASK_GROUPS = [
   "Teams — Add",
   "Teams — Finetune",
   "Specials",
+  "Classification",
 ];

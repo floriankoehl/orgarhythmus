@@ -22,6 +22,7 @@ const TYPE_ORDER = [
   "update_teams", "update_tasks", "acceptance_criteria",
   "task_teams", "task_tasks",
   "task_assignments", "task_new_team_assign",
+  "add_classification_systems", "task_label_assignments",
 ];
 const TYPE_ORDER_MAP = {};
 TYPE_ORDER.forEach((t, i) => { TYPE_ORDER_MAP[t] = i; });
@@ -36,12 +37,15 @@ function truncate(str, len = 50) {
 // ─── Change-type meta ──────────────────────────────────
 
 export const TASK_CHANGE_TYPE_META = {
-  create_task:       { color: "text-green-600",  dotColor: "bg-green-500",   verb: "Create" },
-  create_team:       { color: "text-indigo-600", dotColor: "bg-indigo-500",  verb: "Create" },
-  update_task:       { color: "text-amber-600",  dotColor: "bg-amber-500",   verb: "Update" },
-  update_team:       { color: "text-amber-600",  dotColor: "bg-amber-500",   verb: "Update" },
-  move_task:         { color: "text-teal-600",   dotColor: "bg-teal-500",    verb: "Assign" },
-  add_criteria:      { color: "text-purple-600", dotColor: "bg-purple-500",  verb: "Add" },
+  create_task:              { color: "text-green-600",   dotColor: "bg-green-500",   verb: "Create" },
+  create_team:              { color: "text-indigo-600",  dotColor: "bg-indigo-500",  verb: "Create" },
+  update_task:              { color: "text-amber-600",   dotColor: "bg-amber-500",   verb: "Update" },
+  update_team:              { color: "text-amber-600",   dotColor: "bg-amber-500",   verb: "Update" },
+  move_task:                { color: "text-teal-600",    dotColor: "bg-teal-500",    verb: "Assign" },
+  add_criteria:             { color: "text-purple-600",  dotColor: "bg-purple-500",  verb: "Add" },
+  create_classification:    { color: "text-violet-600",  dotColor: "bg-violet-500",  verb: "Create" },
+  create_category:          { color: "text-fuchsia-600", dotColor: "bg-fuchsia-500", verb: "Create" },
+  assign_label:             { color: "text-cyan-600",    dotColor: "bg-cyan-500",    verb: "Label" },
 };
 
 
@@ -329,6 +333,68 @@ export function buildTaskChangeItems(detected) {
         break;
       }
 
+      // ── Create classification systems (legend + categories) ──
+      case "add_classification_systems": {
+        for (let di = 0; di < item.data.length; di++) {
+          const sys = item.data[di];
+          const sysName = sys.name || "Unnamed";
+          const catCount = sys.categories?.length || 0;
+
+          const sysItemId = makeId();
+          items.push({
+            id: sysItemId, parentId: null, accepted: true,
+            label: `Create classification: "${truncate(sysName, 35)}"`,
+            sublabel: catCount > 0 ? `${catCount} categor${catCount > 1 ? "ies" : "y"}` : "No categories",
+            changeType: "create_classification",
+            group: "Classification Systems",
+            depth: 0,
+            _sortOrder: sortOrder,
+            _ref: { detectedIdx: detIdx, dataIdx: di, childField: null, childIdx: null },
+            detail: { type: "create_classification", name: sysName, categoryCount: catCount },
+          });
+
+          for (let ci = 0; ci < (sys.categories || []).length; ci++) {
+            const cat = sys.categories[ci];
+            items.push({
+              id: makeId(), parentId: sysItemId, accepted: true,
+              label: `Category: "${truncate(cat.name, 38)}"`,
+              sublabel: cat.color || null,
+              changeType: "create_category",
+              group: "Classification Systems",
+              depth: 1,
+              _sortOrder: sortOrder,
+              _ref: { detectedIdx: detIdx, dataIdx: di, childField: "categories", childIdx: ci },
+              detail: { type: "create_category", name: cat.name, color: cat.color, systemName: sysName },
+            });
+          }
+        }
+        break;
+      }
+
+      // ── Assign tasks to legend types (label assignments) ──
+      case "task_label_assignments": {
+        for (let di = 0; di < item.data.length; di++) {
+          const sysAssignment = item.data[di];
+          const sysName = sysAssignment.classification_system || "Unknown";
+
+          for (let ci = 0; ci < (sysAssignment.assignments || []).length; ci++) {
+            const a = sysAssignment.assignments[ci];
+            items.push({
+              id: makeId(), parentId: null, accepted: true,
+              label: `Label: "${truncate(a.task, 32)}"`,
+              sublabel: `${sysName} → ${a.category || "?"}`,
+              changeType: "assign_label",
+              group: "Label Assignments",
+              depth: 0,
+              _sortOrder: sortOrder,
+              _ref: { detectedIdx: detIdx, dataIdx: di, childField: "assignments", childIdx: ci },
+              detail: { type: "assign_label", taskName: a.task, system: sysName, category: a.category },
+            });
+          }
+        }
+        break;
+      }
+
       default:
         break;
     }
@@ -346,6 +412,7 @@ const RECOMPOSABLE_TYPES = new Set([
   "update_teams", "update_tasks", "acceptance_criteria",
   "task_teams", "task_tasks",
   "task_assignments", "task_new_team_assign",
+  "add_classification_systems", "task_label_assignments",
 ]);
 
 /**
@@ -493,6 +560,33 @@ function filterTaskItemData(item, acceptedRoots, declinedRoots, acceptedChildren
           if (!childSet) return { ...entry, tasks: [] };
           const filtered = (entry.tasks || []).filter((_, ci) => childSet.has(ci));
           return { ...entry, tasks: filtered };
+        })
+        .filter(Boolean);
+    }
+
+    // ── Classification systems: hierarchical (system + categories) ──
+    case "add_classification_systems": {
+      return item.data
+        .map((sys, idx) => {
+          const sysAccepted = rootSet.has(idx);
+          const childSet = childMap[idx];
+          if (!sysAccepted) return null;
+          if (!sys.categories?.length) return sys;
+          if (!childSet) return { ...sys, categories: [] };
+          const filtered = (sys.categories || []).filter((_, ci) => childSet.has(ci));
+          return { ...sys, categories: filtered };
+        })
+        .filter(Boolean);
+    }
+
+    // ── Label assignments: filter individual assignments ──
+    case "task_label_assignments": {
+      return item.data
+        .map((sysAssignment, idx) => {
+          const childSet = childMap[idx];
+          if (!childSet) return null;
+          const filtered = (sysAssignment.assignments || []).filter((_, ci) => childSet.has(ci));
+          return filtered.length > 0 ? { ...sysAssignment, assignments: filtered } : null;
         })
         .filter(Boolean);
     }

@@ -226,6 +226,11 @@ function DependencyGridContent({
 
   /** Ref for adapter-level grid control (focus mode, view state, etc.) */
   gridControlRef,
+
+  // ── Classification system (passed through to GridToolbar) ──
+  legendsWithTypes = [],
+  classificationLegendId = null,
+  setClassificationLegendId,
 }) {
 
   const {
@@ -1353,6 +1358,9 @@ function DependencyGridContent({
               setLaneDisplaySettings={setLaneDisplaySettings}
               showFilterDropdown={showFilterDropdown}
               setShowFilterDropdown={setShowFilterDropdown}
+              legendsWithTypes={legendsWithTypes}
+              classificationLegendId={classificationLegendId}
+              setClassificationLegendId={setClassificationLegendId}
               viewMode={viewMode}
               setViewMode={setViewMode}
               mode={mode}

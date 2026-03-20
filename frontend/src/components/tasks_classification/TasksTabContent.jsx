@@ -3,17 +3,106 @@
  */
 import { useEffect, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Filter, X, Loader2 } from "lucide-react";
+import { Plus, Filter, X, Loader2, CheckCircle2, Flag, Target } from "lucide-react";
 import Button from "@mui/material/Button";
 import { fetchTasksForProject, fetchTeamsForProject } from "../../api/org_API.js";
 import { emitDataEvent, useManualRefresh } from "../../api/dataEvents";
-import SMTaskCard from "../TaskCardSM.jsx";
 import ProjectCreateTaskForm from "../ProjectCreateTaskForm";
+import { fetchTaskLegendsApi, fetchTaskLegendTypesApi } from "./api/taskLegendApi.js";
+import { renderLegendTypeIcon } from "../ideas/legendTypeIcons.jsx";
+
+/* ── Compact inline task card ── */
+function TaskRow({ task, activeLegendId, onClick }) {
+  const isDone = task.is_done;
+
+  // Active legend badge
+  const legendBadge = activeLegendId
+    ? task.legend_types?.[String(activeLegendId)] ?? null
+    : null;
+
+  // All legend badges (when no legend selected, show all)
+  const allBadges = !activeLegendId
+    ? Object.values(task.legend_types || {})
+    : null;
+
+  return (
+    <div
+      onClick={onClick}
+      className={`cursor-pointer rounded-lg border p-3 transition-all hover:shadow-sm ${
+        isDone
+          ? "border-green-200 bg-green-50/40 hover:border-green-300"
+          : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/30"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-1 items-start gap-2">
+          {isDone && <CheckCircle2 size={13} className="mt-0.5 flex-shrink-0 text-green-600" />}
+          <span
+            className={`text-xs font-semibold leading-snug ${
+              isDone ? "text-green-800 line-through decoration-green-400" : "text-slate-900"
+            }`}
+          >
+            {task.name}
+          </span>
+        </div>
+
+        {/* Legend badge(s) */}
+        <div className="flex flex-shrink-0 flex-wrap gap-1">
+          {legendBadge && (
+            <span
+              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
+              style={{ backgroundColor: legendBadge.color }}
+            >
+              {legendBadge.icon && (
+                <span style={{ fontSize: 10, lineHeight: 1 }}>
+                  {renderLegendTypeIcon(legendBadge.icon, { style: { fontSize: 10 }, className: "text-white" })}
+                </span>
+              )}
+              {legendBadge.name}
+            </span>
+          )}
+          {allBadges && allBadges.map((b, i) => (
+            <span
+              key={i}
+              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
+              style={{ backgroundColor: b.color }}
+            >
+              {b.icon && (
+                <span style={{ fontSize: 10, lineHeight: 1 }}>
+                  {renderLegendTypeIcon(b.icon, { style: { fontSize: 10 }, className: "text-white" })}
+                </span>
+              )}
+              {b.name}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Priority / Difficulty */}
+      {(task.priority > 0 || task.difficulty > 0) && (
+        <div className="mt-1.5 flex items-center gap-2">
+          {task.priority > 0 && (
+            <span className="flex items-center gap-0.5 text-[10px] text-slate-400">
+              <Flag size={9} /> {task.priority}
+            </span>
+          )}
+          {task.difficulty > 0 && (
+            <span className="flex items-center gap-0.5 text-[10px] text-slate-400">
+              <Target size={9} /> {task.difficulty}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function TasksTabContent({ onViewTaskDetail }) {
   const { projectId } = useParams();
   const [tasks, setTasks] = useState([]);
   const [teams, setTeams] = useState([]);
+  const [legendsWithTypes, setLegendsWithTypes] = useState([]);
+  const [activeLegendId, setActiveLegendId] = useState(null);
   const [showCreatePanel, setShowCreatePanel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedTeamIds, setSelectedTeamIds] = useState([]);
@@ -28,12 +117,26 @@ export default function TasksTabContent({ onViewTaskDetail }) {
     if (!projectId) return;
     try {
       setLoading(true);
-      const [taskData, teamData] = await Promise.all([
+      const [taskData, teamData, legends] = await Promise.all([
         fetchTasksForProject(projectId),
         fetchTeamsForProject(projectId),
+        fetchTaskLegendsApi(projectId),
       ]);
       setTasks(taskData);
       setTeams(teamData);
+      // Fetch all types in parallel
+      const withTypes = await Promise.all(
+        legends.map(async (leg) => ({
+          ...leg,
+          types: await fetchTaskLegendTypesApi(projectId, leg.id),
+        })),
+      );
+      setLegendsWithTypes(withTypes);
+      // Auto-select first legend if none selected
+      setActiveLegendId((prev) => {
+        if (prev) return prev;
+        return withTypes.length > 0 ? withTypes[0].id : null;
+      });
     } catch (err) {
       console.error(err);
     } finally {
@@ -53,10 +156,6 @@ export default function TasksTabContent({ onViewTaskDetail }) {
     );
   }
 
-  function clearFilters() {
-    setSelectedTeamIds([]);
-  }
-
   const filteredTasks = useMemo(() => {
     if (selectedTeamIds.length === 0) return tasks;
     return tasks.filter((t) => t.team && selectedTeamIds.includes(t.team.id));
@@ -66,9 +165,7 @@ export default function TasksTabContent({ onViewTaskDetail }) {
     const groups = {};
     filteredTasks.forEach((task) => {
       const teamId = task.team?.id || "unassigned";
-      if (!groups[teamId]) {
-        groups[teamId] = { team: task.team || null, tasks: [] };
-      }
+      if (!groups[teamId]) groups[teamId] = { team: task.team || null, tasks: [] };
       groups[teamId].tasks.push(task);
     });
     const entries = Object.values(groups);
@@ -83,10 +180,7 @@ export default function TasksTabContent({ onViewTaskDetail }) {
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center p-8">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 size={24} className="animate-spin text-slate-400" />
-          <span className="text-xs text-slate-500">Loading tasks…</span>
-        </div>
+        <Loader2 size={24} className="animate-spin text-slate-400" />
       </div>
     );
   }
@@ -116,19 +210,61 @@ export default function TasksTabContent({ onViewTaskDetail }) {
         </div>
       )}
 
+      {/* Legend selector */}
+      {legendsWithTypes.length > 0 && (
+        <div className="mb-3 flex flex-shrink-0 flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Legend:</span>
+          {legendsWithTypes.map((leg) => (
+            <button
+              key={leg.id}
+              onClick={() => setActiveLegendId(activeLegendId === leg.id ? null : leg.id)}
+              className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-all ${
+                activeLegendId === leg.id
+                  ? "border-indigo-400 bg-indigo-50 text-indigo-700"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+              }`}
+            >
+              {leg.name}
+            </button>
+          ))}
+          {/* Show type key for active legend */}
+          {activeLegendId && (() => {
+            const leg = legendsWithTypes.find((l) => l.id === activeLegendId);
+            return leg?.types?.length > 0 ? (
+              <div className="ml-1 flex items-center gap-1">
+                {leg.types.map((t) => (
+                  <span
+                    key={t.id}
+                    className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
+                    style={{ backgroundColor: t.color }}
+                  >
+                    {t.icon && (
+                      <span style={{ fontSize: 10, lineHeight: 1 }}>
+                        {renderLegendTypeIcon(t.icon, { style: { fontSize: 10 }, className: "text-white" })}
+                      </span>
+                    )}
+                    {t.name}
+                  </span>
+                ))}
+              </div>
+            ) : null;
+          })()}
+        </div>
+      )}
+
       {/* Team filter */}
       {teams.length > 0 && (
         <div className="mb-4 rounded-lg border border-slate-200 bg-white/70 p-3 flex-shrink-0">
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <Filter size={12} className="text-slate-500" />
-              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                 Filter by Team
               </span>
             </div>
             {selectedTeamIds.length > 0 && (
               <button
-                onClick={clearFilters}
+                onClick={() => setSelectedTeamIds([])}
                 className="flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 hover:bg-slate-200"
               >
                 <X size={10} /> Clear
@@ -148,10 +284,7 @@ export default function TasksTabContent({ onViewTaskDetail }) {
                       : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                   }`}
                 >
-                  <div
-                    className="h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: team.color || "#64748b" }}
-                  />
+                  <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: team.color || "#64748b" }} />
                   {team.name}
                   <span className="text-[10px] text-slate-400">
                     ({tasks.filter((t) => t.team?.id === team.id).length})
@@ -168,10 +301,9 @@ export default function TasksTabContent({ onViewTaskDetail }) {
         <div className="space-y-5">
           {groupedTasks.map((group, idx) => (
             <div key={idx}>
-              {/* Team header */}
               <div className="mb-2 flex items-center gap-2 px-0.5">
                 <div
-                  className="h-2.5 w-2.5 rounded-full flex-shrink-0"
+                  className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
                   style={{ backgroundColor: group.team ? group.team.color || "#64748b" : "#cbd5e1" }}
                 />
                 <span className="text-xs font-semibold text-slate-700">
@@ -179,16 +311,14 @@ export default function TasksTabContent({ onViewTaskDetail }) {
                 </span>
                 <span className="text-[10px] text-slate-400">{group.tasks.length}</span>
               </div>
-              {/* Task cards */}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {group.tasks.map((task) => (
-                  <div
+                  <TaskRow
                     key={task.id}
+                    task={task}
+                    activeLegendId={activeLegendId}
                     onClick={() => onViewTaskDetail(task.id)}
-                    className="cursor-pointer rounded-lg border border-slate-200 bg-white p-3 transition-all hover:border-blue-300 hover:shadow-sm"
-                  >
-                    <SMTaskCard projectId={projectId} task={task} onTaskDeleted={loadData} />
-                  </div>
+                  />
                 ))}
               </div>
             </div>

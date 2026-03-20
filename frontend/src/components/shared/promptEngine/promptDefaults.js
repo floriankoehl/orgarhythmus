@@ -176,6 +176,29 @@ export const TASK_DEFAULTS = {
 
   special_task_suggestions:
     "Analyse the current task structure and provide suggestions for improvement. Consider: missing tasks, team balance, task clarity, priority distribution, and acceptance criteria quality.",
+
+  // Classification Systems
+  classification_add:
+    "Analyse this project and suggest 2-4 classification systems for labelling tasks along different cross-cutting dimensions. " +
+    "Each system should have a clear purpose and 3-6 categories with distinct hex colors. " +
+    "Think beyond generic priority/difficulty — suggest dimensions specific to this project. " +
+    "Examples: an 'Importance' system (Critical / Should Have / Nice to Have), a 'Process' system tied to a real workflow (Booking / On-site / Post-event), " +
+    "a 'Risk' system (High Risk / Moderate / Low Risk), or anything else that helps this team filter and navigate their work. " +
+    "Do NOT duplicate any existing classification systems listed in the payload.",
+
+  classification_assign_selected:
+    "You are given a list of tasks and a set of classification systems, each with named categories. " +
+    "For every task, assign the single most fitting category from each classification system. " +
+    "Use only the category names exactly as provided — do not invent new ones. " +
+    "If a task genuinely does not fit any category in a system, omit that system for that task rather than forcing a bad fit. " +
+    "Group your output by classification system.",
+
+  classification_assign_all:
+    "You are given all tasks in the project and a set of classification systems, each with named categories. " +
+    "For every task, assign the single most fitting category from each classification system. " +
+    "Use only the category names exactly as provided — do not invent new ones. " +
+    "If a task genuinely does not fit any category in a system, omit that system for that task rather than forcing a bad fit. " +
+    "Group your output by classification system.",
 };
 
 

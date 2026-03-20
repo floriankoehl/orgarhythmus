@@ -79,6 +79,9 @@ Supporting: Day, Phase, DependencyView, ProjectSnapshot
 **IdeaBin**: Context → Category → Idea
 Supporting: Legend, IdeaLegendType, Formation, Adoption
 
+**Task Legend System**: Project → TaskLegend → TaskLegendType; Task ↔ TaskLegendAssignment
+Supporting: TaskLegendAssignment (unique_together: task + legend)
+
 ## Prompt Engine
 
 The Prompt Engine is a centralized AI-prompt system that assembles structured payloads from live project data and sends them to an AI. It operates in two modes and is implemented across three domains (IdeaBin, Task Structure, Dependencies).
@@ -208,6 +211,59 @@ When AI-suggested changes violate this rule, they are flagged as `conflict_depen
 - `scenario_prompts` — `JSONField` keyed by scenario ID (47 valid keys across all domains)
 
 Fetched via `usePromptSettings` hook in `frontend/src/components/usePromptSettings.js`.
+
+## Task Legend System
+
+The Task Legend System is a project-scoped labelling mechanism parallel to the IdeaBin Legend system. It allows any task to be classified along multiple independent dimensions simultaneously (e.g. Priority, Status, Risk Level), where each dimension is a **Legend** and each classification option within it is a **Legend Type**.
+
+### Data Model
+
+| Model | Key Fields |
+|---|---|
+| `TaskLegend` | `project` (FK), `owner` (FK), `name` |
+| `TaskLegendType` | `legend` (FK, related: `types`), `name`, `color`, `icon`, `order_index` |
+| `TaskLegendAssignment` | `task` (FK), `legend` (FK), `legend_type` (FK); `unique_together: [task, legend]` |
+
+**One type per legend per task** — assigning a new type for the same legend replaces the previous one. `legend_type_id = null` removes the assignment.
+
+### API Endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/projects/<id>/task-legends/` | List all legends |
+| POST | `/api/projects/<id>/task-legends/create/` | Create legend |
+| POST | `/api/projects/<id>/task-legends/<id>/` | Update legend name |
+| DELETE | `/api/projects/<id>/task-legends/<id>/delete/` | Delete legend + types |
+| GET | `/api/projects/<id>/task-legends/<id>/types/` | List types for legend |
+| POST | `/api/projects/<id>/task-legends/<id>/types/create/` | Create type |
+| POST | `/api/projects/<id>/task-legends/<id>/types/<id>/` | Update type |
+| DELETE | `/api/projects/<id>/task-legends/<id>/types/<id>/delete/` | Delete type |
+| POST | `/api/projects/<id>/tasks/assign_legend_type/` | Assign `{task_id, legend_id, legend_type_id}` |
+| POST | `/api/projects/<id>/tasks/batch_assign_legend_type/` | Batch assign `{task_ids, legend_id, legend_type_id}` |
+| POST | `/api/projects/<id>/tasks/batch_remove_legend_type/` | Batch remove `{task_ids, legend_id}` |
+| POST | `/api/projects/<id>/tasks/remove_all_legend_types/` | Remove all labels from task |
+
+### Serialized Task Format
+
+Every task serializer (TaskSerializer_Deps, TaskExpandedSerializer, TaskSerializer_TeamView) returns a `legend_types` field:
+```json
+{ "legend_id": { "legend_type_id": 3, "name": "High", "color": "#ef4444", "icon": "Flag" } }
+```
+Lookup: `task.legend_types[String(legendId)]` → current type for that legend.
+
+### Frontend Files
+
+```
+frontend/src/components/tasks_classification/
+├── api/taskLegendApi.js         # All legend API calls
+├── hooks/useTaskLegends.js      # Legend state: legends[], activeLegendId, legendTypes{}
+├── TaskLegendPanel.jsx          # Sidebar panel: legend selector, type list, paint-mode assignment
+└── TaskCard.jsx                 # Renders legend badge via task.legend_types[activeLegendId]
+```
+
+**Paint Mode** (canvas-view only): Click a type in `TaskLegendPanel` to enter paint mode → click tasks to assign that type. Ctrl+Click type → batch-assign to all selected tasks.
+
+**Icons**: Stored as string keys (e.g. `"Flag"`, `"Star"`, `"Lightbulb"`) in `TaskLegendType.icon`. Rendered via `renderLegendTypeIcon(iconKey)` from `frontend/src/components/ideas/legendTypeIcons.jsx`.
 
 ## Key Conventions
 
