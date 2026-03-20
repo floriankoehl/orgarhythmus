@@ -45,6 +45,7 @@ export default function TaskList({
   activeLegendId,
   paintType,
   onPaintAssign,
+  filterTypeId = null,
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAllTasks, setShowAllTasks] = useState(false);
@@ -170,6 +171,7 @@ export default function TaskList({
               activeLegendId={activeLegendId}
               paintType={paintType}
               onPaintAssign={onPaintAssign}
+              filterTypeId={filterTypeId}
             />
           ))
         )}

@@ -54,6 +54,7 @@ export default function TeamContainer({
   activeLegendId,
   paintType,
   onPaintAssign,
+  filterTypeId = null,
 }) {
   const [minimized, setMinimized] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -452,6 +453,7 @@ export default function TeamContainer({
                   activeLegendId={activeLegendId}
                   paintType={paintType}
                   onPaintAssign={onPaintAssign}
+                  filterTypeId={filterTypeId}
                 />
                 {/* Drop indicator line — after last card */}
                 {reorderIdx === taskIds.length && i === taskIds.length - 1 && (

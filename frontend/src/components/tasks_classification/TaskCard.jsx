@@ -39,6 +39,7 @@ export default function TaskCard({
   activeLegendId = null,   // currently active legend id (from TaskLegendPanel)
   paintType = null,        // { legendId, typeId } — when set, clicking assigns this type
   onPaintAssign = null,    // (taskId, legendId, typeId) => void
+  filterTypeId = null,     // null | typeId | "unassigned" — when set, dim non-matching tasks
 }) {
   const [showActions, setShowActions] = useState(false);
   const moreRef = useRef(null);
@@ -143,8 +144,14 @@ export default function TaskCard({
     });
   };
 
+  // Dim card if a filter is active and this task doesn't match
+  const isFiltered = filterTypeId !== null && (() => {
+    if (filterTypeId === "unassigned") return legendType !== null;
+    return !legendType || legendType.id !== filterTypeId;
+  })();
+
   return (
-    <div data-task-item="true" data-task-id={task.id}>
+    <div data-task-item="true" data-task-id={task.id} style={isFiltered ? { opacity: 0.2, pointerEvents: "none" } : undefined}>
       {/* Drop indicator */}
       <div
         style={{

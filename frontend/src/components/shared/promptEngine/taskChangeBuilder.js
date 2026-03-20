@@ -364,7 +364,7 @@ export function buildTaskChangeItems(detected) {
               depth: 1,
               _sortOrder: sortOrder,
               _ref: { detectedIdx: detIdx, dataIdx: di, childField: "categories", childIdx: ci },
-              detail: { type: "create_category", name: cat.name, color: cat.color, systemName: sysName },
+              detail: { type: "create_classification_category", name: cat.name, color: cat.color, systemName: sysName },
             });
           }
         }

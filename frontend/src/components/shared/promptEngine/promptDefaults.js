@@ -187,18 +187,18 @@ export const TASK_DEFAULTS = {
     "Do NOT duplicate any existing classification systems listed in the payload.",
 
   classification_assign_selected:
-    "You are given a list of tasks and a set of classification systems, each with named categories. " +
-    "For every task, assign the single most fitting category from each classification system. " +
+    "You are given a list of tasks and ONE active classification system with its named categories. " +
+    "For every task, assign the single most fitting category from this classification system. " +
     "Use only the category names exactly as provided — do not invent new ones. " +
-    "If a task genuinely does not fit any category in a system, omit that system for that task rather than forcing a bad fit. " +
-    "Group your output by classification system.",
+    "If a task genuinely does not fit any category, omit it rather than forcing a bad fit. " +
+    "Return a single entry in label_assignments using the classification system's exact name.",
 
   classification_assign_all:
-    "You are given all tasks in the project and a set of classification systems, each with named categories. " +
-    "For every task, assign the single most fitting category from each classification system. " +
+    "You are given all tasks in the project and ONE active classification system with its named categories. " +
+    "For every task, assign the single most fitting category from this classification system. " +
     "Use only the category names exactly as provided — do not invent new ones. " +
-    "If a task genuinely does not fit any category in a system, omit that system for that task rather than forcing a bad fit. " +
-    "Group your output by classification system.",
+    "If a task genuinely does not fit any category, omit it rather than forcing a bad fit. " +
+    "Return a single entry in label_assignments using the classification system's exact name.",
 };
 
 

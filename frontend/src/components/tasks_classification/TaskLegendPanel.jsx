@@ -37,6 +37,9 @@ export default function TaskLegendPanel({
   // paint mode
   paintType,
   setPaintType,
+  // filter mode
+  filterTypeId,
+  setFilterTypeId,
 }) {
   // ── Local UI state ──
   const [showCreateLegend, setShowCreateLegend] = useState(false);
@@ -125,13 +128,20 @@ export default function TaskLegendPanel({
     if (paintType?.typeId === typeId) setPaintType(null);
   };
 
-  const handleTypeClick = (typeId, typeName, typeColor, typeIcon, e) => {
+  // Click the row label → toggle filter
+  const handleTypeClick = (typeId, e) => {
     // Ctrl+click: batch assign to selected tasks
     if ((e.ctrlKey || e.metaKey) && selectedTaskIds?.size > 0 && onBatchAssignType) {
       onBatchAssignType([...selectedTaskIds], activeLegendId, typeId);
       return;
     }
-    // Normal click: toggle paint mode
+    // Normal click: toggle filter
+    setFilterTypeId?.(prev => prev === typeId ? null : typeId);
+  };
+
+  // Click the color dot/icon → toggle paint mode
+  const handleColorClick = (typeId, typeName, typeColor, typeIcon, e) => {
+    e.stopPropagation();
     if (paintType?.typeId === typeId && paintType?.legendId === activeLegendId) {
       setPaintType(null);
     } else {
@@ -145,7 +155,13 @@ export default function TaskLegendPanel({
       onBatchRemoveType([...selectedTaskIds], activeLegendId);
       return;
     }
-    // Normal click: toggle paint-remove mode
+    // Normal click: toggle filter for unassigned
+    setFilterTypeId?.(prev => prev === "unassigned" ? null : "unassigned");
+  };
+
+  // Click the unassigned dot → toggle paint-remove mode
+  const handleUnassignedColorClick = (e) => {
+    e.stopPropagation();
     if (paintType?.typeId === null && paintType?.legendId === activeLegendId) {
       setPaintType(null);
     } else {
@@ -227,6 +243,9 @@ export default function TaskLegendPanel({
         <Palette size={10} />
         Legends
         {activeLeg && <span className="text-gray-400 ml-1">— {activeLeg.name}</span>}
+        {filterTypeId && (
+          <span className="ml-1 text-[9px] text-amber-600 font-medium">filtered</span>
+        )}
         {paintType && (
           <span className="ml-1 flex items-center gap-0.5">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: paintType.color || "#ccc" }} />
@@ -354,22 +373,36 @@ export default function TaskLegendPanel({
                   );
                 }
 
+                const isFiltering = filterTypeId === t.id;
+
                 return (
                   <div
                     key={t.id}
-                    onClick={(e) => handleTypeClick(t.id, t.name, t.color, t.icon, e)}
+                    onClick={(e) => handleTypeClick(t.id, e)}
                     className={`group flex items-center gap-1.5 px-1.5 py-1 rounded cursor-pointer transition-all text-[10px]
-                      ${isPainting ? "bg-indigo-50 ring-1 ring-indigo-400" : "hover:bg-gray-50"}`}
-                    title={`Click to paint • Ctrl+click to assign to selected tasks`}
+                      ${isFiltering ? "bg-amber-50 ring-1 ring-amber-400" : isPainting ? "bg-indigo-50" : "hover:bg-gray-50"}`}
+                    title="Click to filter · Click color to paint · Ctrl+click to assign to selected"
                   >
-                    {/* Color dot or icon */}
+                    {/* Color dot or icon — click to toggle paint mode */}
                     {t.icon ? (
-                      <span style={{ color: t.color }}>{renderLegendTypeIcon(t.icon, { style: { fontSize: 14 } })}</span>
+                      <span
+                        onClick={(e) => handleColorClick(t.id, t.name, t.color, t.icon, e)}
+                        className={`flex-shrink-0 rounded p-0.5 cursor-pointer transition-all hover:opacity-80 ${isPainting ? "ring-2 ring-indigo-400" : ""}`}
+                        style={{ color: t.color }}
+                        title="Click to paint"
+                      >
+                        {renderLegendTypeIcon(t.icon, { style: { fontSize: 14 } })}
+                      </span>
                     ) : (
-                      <span className="w-3 h-3 rounded-full flex-shrink-0 border border-gray-200" style={{ backgroundColor: t.color }} />
+                      <span
+                        onClick={(e) => handleColorClick(t.id, t.name, t.color, t.icon, e)}
+                        className={`w-3 h-3 rounded-full flex-shrink-0 cursor-pointer transition-all hover:scale-125 ${isPainting ? "ring-2 ring-offset-1 ring-indigo-400" : "border border-gray-200"}`}
+                        style={{ backgroundColor: t.color }}
+                        title="Click to paint"
+                      />
                     )}
 
-                    <span className="flex-1 truncate text-gray-700">{t.name}</span>
+                    <span className={`flex-1 truncate ${isFiltering ? "text-amber-700 font-medium" : "text-gray-700"}`}>{t.name}</span>
                     <span className="text-[8px] text-gray-400">{count}</span>
 
                     {/* Edit / Delete (hidden until hover) */}
@@ -396,18 +429,26 @@ export default function TaskLegendPanel({
               })}
 
               {/* Unassigned row */}
-              {typesArr.length > 0 && (
-                <div
-                  onClick={handleUnassignedClick}
-                  className={`flex items-center gap-1.5 px-1.5 py-1 rounded cursor-pointer transition-all text-[10px]
-                    ${paintType?.typeId === null && paintType?.legendId === activeLegendId ? "bg-gray-100 ring-1 ring-gray-400" : "hover:bg-gray-50"}`}
-                  title="Click to paint-remove • Ctrl+click to remove from selected tasks"
-                >
-                  <span className="w-3 h-3 rounded-full flex-shrink-0 border border-dashed border-gray-300 bg-white" />
-                  <span className="flex-1 text-gray-400 italic">Unassigned</span>
-                  <span className="text-[8px] text-gray-400">{countTasksWithType("unassigned")}</span>
-                </div>
-              )}
+              {typesArr.length > 0 && (() => {
+                const isFilteringUnassigned = filterTypeId === "unassigned";
+                const isPaintingUnassigned = paintType?.typeId === null && paintType?.legendId === activeLegendId;
+                return (
+                  <div
+                    onClick={handleUnassignedClick}
+                    className={`flex items-center gap-1.5 px-1.5 py-1 rounded cursor-pointer transition-all text-[10px]
+                      ${isFilteringUnassigned ? "bg-amber-50 ring-1 ring-amber-400" : isPaintingUnassigned ? "bg-gray-100" : "hover:bg-gray-50"}`}
+                    title="Click to filter unassigned · Click dot to paint-remove · Ctrl+click to remove from selected"
+                  >
+                    <span
+                      onClick={handleUnassignedColorClick}
+                      className={`w-3 h-3 rounded-full flex-shrink-0 border-dashed bg-white cursor-pointer transition-all hover:scale-125 ${isPaintingUnassigned ? "border-2 border-gray-600" : "border border-gray-300"}`}
+                      title="Click to paint-remove"
+                    />
+                    <span className={`flex-1 italic ${isFilteringUnassigned ? "text-amber-700 font-medium not-italic" : "text-gray-400"}`}>Unassigned</span>
+                    <span className="text-[8px] text-gray-400">{countTasksWithType("unassigned")}</span>
+                  </div>
+                );
+              })()}
 
               {/* Create type form */}
               {showCreateType ? (

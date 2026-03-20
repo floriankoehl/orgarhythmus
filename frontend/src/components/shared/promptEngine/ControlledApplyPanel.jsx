@@ -1005,6 +1005,67 @@ function SlideDetailCard({ detail, changeType, resolved }) {
       );
     }
 
+    // ── Create classification system ──
+    case "create_classification": {
+      return (
+        <div className="flex flex-col gap-2">
+          <div>
+            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
+              New Classification System
+            </div>
+            <div className="bg-violet-50 border border-violet-200 rounded px-3 py-2">
+              <div className="text-[12px] font-medium text-violet-800">{detail.name}</div>
+              {detail.categoryCount > 0 && (
+                <div className="text-[10px] text-violet-600 mt-1">
+                  {detail.categoryCount} categor{detail.categoryCount > 1 ? "ies" : "y"}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Create classification category ──
+    case "create_classification_category": {
+      return (
+        <div className="flex flex-col gap-2">
+          <div className="text-[10px] text-gray-500">
+            Category in: <span className="font-medium text-gray-700">{detail.systemName}</span>
+          </div>
+          <div className="bg-fuchsia-50 border border-fuchsia-200 rounded px-3 py-2 flex items-center gap-2">
+            <span
+              className="w-3 h-3 rounded-full flex-shrink-0 border border-fuchsia-300"
+              style={{ backgroundColor: detail.color || "#a855f7" }}
+            />
+            <div className="text-[11px] font-medium text-fuchsia-800">{detail.name}</div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Assign label (task → classification category) ──
+    case "assign_label": {
+      return (
+        <div className="flex flex-col gap-2">
+          <div>
+            <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1">
+              Label Task
+            </div>
+            <div className="bg-cyan-50 border border-cyan-200 rounded px-3 py-2">
+              <div className="text-[11px] font-medium text-cyan-800">{detail.taskName}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
+            <ArrowRight size={10} />
+            <span className="text-gray-600">{detail.system}</span>
+            <span className="text-gray-400 mx-0.5">→</span>
+            <span className="font-medium text-gray-700">{detail.category}</span>
+          </div>
+        </div>
+      );
+    }
+
     // ════════════════════════════════════════════════════
     //  DEPENDENCY DOMAIN — detail types
     // ════════════════════════════════════════════════════

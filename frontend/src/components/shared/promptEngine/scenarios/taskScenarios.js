@@ -446,9 +446,9 @@ export const TASK_SCENARIOS = [
   {
     id: "classification_add",
     domain: "tasks",
-    grid: null, // special
+    grid: { row: "classification", col: "add" },
     group: "Classification",
-    action: "special",
+    action: "add",
     label: "Add classification systems",
     description: "Generate new classification systems (labels) with named categories and colors.",
     unavailableMsg: () => null,
@@ -476,51 +476,59 @@ export const TASK_SCENARIOS = [
   {
     id: "classification_assign_selected",
     domain: "tasks",
-    grid: null, // special
+    grid: { row: "classification", col: "assign" },
     group: "Classification",
-    action: "special",
+    action: "assign",
     label: "Classify selected tasks",
-    description: "Assign selected tasks to categories across all existing classification systems.",
+    description: "Assign selected tasks to categories in the active classification system.",
     unavailableMsg: (ctx) => {
       if (selectedTaskCount(ctx) === 0) return "No tasks selected";
       if ((ctx.legendsWithTypes || []).length === 0) return "No classification systems exist yet";
+      if (!ctx.activeLegendId) return "Select a classification system first";
       return null;
     },
     defaultPrompt: TASK_DEFAULTS.classification_assign_selected,
     expectedFormat: '{ "label_assignments": [{ "classification_system": "...", "assignments": [{ "task": "...", "category": "..." }] }] }',
-    buildPayload: (ctx) => ({
-      tasks: getSelectedTasks(ctx).map(t => ({ name: t.name, description: t.description || "" })),
-      classification_systems: (ctx.legendsWithTypes || []).map(l => ({
-        name: l.name,
-        categories: (l.types || []).map(t => ({ name: t.name, color: t.color })),
-      })),
-      project_description: ctx.projectDescription || "",
-    }),
+    buildPayload: (ctx) => {
+      const activeLegend = (ctx.legendsWithTypes || []).find(l => l.id === ctx.activeLegendId);
+      return {
+        tasks: getSelectedTasks(ctx).map(t => ({ name: t.name, description: t.description || "" })),
+        classification_system: activeLegend ? {
+          name: activeLegend.name,
+          categories: (activeLegend.types || []).map(t => ({ name: t.name, color: t.color })),
+        } : null,
+        project_description: ctx.projectDescription || "",
+      };
+    },
   },
 
   {
     id: "classification_assign_all",
     domain: "tasks",
-    grid: null, // special
+    grid: { row: "classification", col: "assign" },
     group: "Classification",
-    action: "special",
+    action: "assign",
     label: "Classify all tasks",
-    description: "Assign all tasks to categories across all existing classification systems.",
+    description: "Assign all tasks to categories in the active classification system.",
     unavailableMsg: (ctx) => {
       if (taskCount(ctx) === 0) return "No tasks exist";
       if ((ctx.legendsWithTypes || []).length === 0) return "No classification systems exist yet";
+      if (!ctx.activeLegendId) return "Select a classification system first";
       return null;
     },
     defaultPrompt: TASK_DEFAULTS.classification_assign_all,
     expectedFormat: '{ "label_assignments": [{ "classification_system": "...", "assignments": [{ "task": "...", "category": "..." }] }] }',
-    buildPayload: (ctx) => ({
-      tasks: allTasks(ctx).map(t => ({ name: t.name, description: t.description || "" })),
-      classification_systems: (ctx.legendsWithTypes || []).map(l => ({
-        name: l.name,
-        categories: (l.types || []).map(t => ({ name: t.name, color: t.color })),
-      })),
-      project_description: ctx.projectDescription || "",
-    }),
+    buildPayload: (ctx) => {
+      const activeLegend = (ctx.legendsWithTypes || []).find(l => l.id === ctx.activeLegendId);
+      return {
+        tasks: allTasks(ctx).map(t => ({ name: t.name, description: t.description || "" })),
+        classification_system: activeLegend ? {
+          name: activeLegend.name,
+          categories: (activeLegend.types || []).map(t => ({ name: t.name, color: t.color })),
+        } : null,
+        project_description: ctx.projectDescription || "",
+      };
+    },
   },
 ];
 
@@ -531,6 +539,7 @@ export const TASK_GRID = {
   rows: [
     { key: "tasks", label: "Tasks" },
     { key: "teams", label: "Teams" },
+    { key: "classification", label: "Classification" },
   ],
   columns: [
     { key: "add", label: "Add" },
@@ -538,22 +547,22 @@ export const TASK_GRID = {
     { key: "finetune", label: "Finetune" },
   ],
   cells: {
-    "tasks:add":      ["tasks_add", "tasks_add_for_teams"],
-    "tasks:assign":   ["tasks_assign_unassigned_existing", "tasks_assign_unassigned_new",
-                        "tasks_assign_selected_existing", "tasks_assign_selected_new"],
-    "tasks:finetune": ["tasks_finetune_selected", "tasks_finetune_all"],
-    "teams:add":      ["teams_add", "teams_add_for_tasks"],
-    "teams:assign":   null, // merged into tasks:assign (assign column spans both rows)
-    "teams:finetune": ["teams_finetune_selected", "teams_finetune_all"],
+    "tasks:add":              ["tasks_add", "tasks_add_for_teams"],
+    "tasks:assign":           ["tasks_assign_unassigned_existing", "tasks_assign_unassigned_new",
+                               "tasks_assign_selected_existing", "tasks_assign_selected_new"],
+    "tasks:finetune":         ["tasks_finetune_selected", "tasks_finetune_all"],
+    "teams:add":              ["teams_add", "teams_add_for_tasks"],
+    "teams:assign":           null, // merged into tasks:assign
+    "teams:finetune":         ["teams_finetune_selected", "teams_finetune_all"],
+    "classification:add":     ["classification_add"],
+    "classification:assign":  ["classification_assign_selected", "classification_assign_all"],
+    "classification:finetune": [],
   },
   specials: [
     "special_tasks_and_teams",
     "special_acceptance_criteria_selected",
     "special_acceptance_criteria_all",
     "special_task_suggestions",
-    "classification_add",
-    "classification_assign_selected",
-    "classification_assign_all",
   ],
 };
 

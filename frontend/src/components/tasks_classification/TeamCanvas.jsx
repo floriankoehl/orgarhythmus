@@ -60,6 +60,7 @@ export default function TeamCanvas({
   activeLegendId,
   paintType,
   onPaintAssign,
+  filterTypeId = null,
 }) {
   // ── Draw-to-create marquee state ──
   const [marquee, setMarquee] = useState(null); // { startX, startY, currentX, currentY }
@@ -315,6 +316,7 @@ export default function TeamCanvas({
               activeLegendId={activeLegendId}
               paintType={paintType}
               onPaintAssign={onPaintAssign}
+              filterTypeId={filterTypeId}
             />
           );
         })}

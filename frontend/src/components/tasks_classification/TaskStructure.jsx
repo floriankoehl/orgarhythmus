@@ -113,7 +113,11 @@ export default function TaskStructure({ instanceId = "taskStructure" }) {
     createType, updateType, deleteType,
   } = useTaskLegends(projectId);
   const [paintType, setPaintType] = useState(null); // { legendId, typeId, color, name, icon }
+  const [filterTypeId, setFilterTypeId] = useState(null); // null | typeId | "unassigned"
   const paintCursorRef = useRef(null);
+
+  // Reset filter when active legend changes
+  useEffect(() => { setFilterTypeId(null); }, [activeLegendId]);
 
   // All legends with all their types (for AI context / apply)
   const [legendsWithTypesAll, setLegendsWithTypesAll] = useState([]);
@@ -833,6 +837,64 @@ export default function TaskStructure({ instanceId = "taskStructure" }) {
     await removeAllTaskLegendTypesApi(projectId, taskIds);
   }, [projectId, setTasks]);
 
+  // ── Legend type mutations — propagate to tasks + legendsWithTypesAll ──
+
+  const handleCreateType = useCallback(async (name, color, icon) => {
+    const data = await createType(name, color, icon);
+    if (data?.type) {
+      setLegendsWithTypesAll(prev => prev.map(l =>
+        l.id !== activeLegendId ? l : { ...l, types: [...(l.types || []), data.type] }
+      ));
+    }
+    return data;
+  }, [createType, activeLegendId]);
+
+  const handleUpdateType = useCallback(async (typeId, updates) => {
+    await updateType(typeId, updates);
+    const key = String(activeLegendId);
+    // Propagate new name/color/icon to every task that has this type assigned
+    setTasks(prev => {
+      const next = { ...prev };
+      let changed = false;
+      for (const [id, task] of Object.entries(prev)) {
+        const lt = task.legend_types;
+        if (lt?.[key]?.legend_type_id === typeId) {
+          next[id] = { ...task, legend_types: { ...lt, [key]: { ...lt[key], ...updates } } };
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    setLegendsWithTypesAll(prev => prev.map(l =>
+      l.id !== activeLegendId ? l : {
+        ...l, types: (l.types || []).map(t => t.id !== typeId ? t : { ...t, ...updates }),
+      }
+    ));
+  }, [updateType, activeLegendId, setTasks]);
+
+  const handleDeleteType = useCallback(async (typeId) => {
+    await deleteType(typeId);
+    const key = String(activeLegendId);
+    // Remove the assignment from every task that had this type
+    setTasks(prev => {
+      const next = { ...prev };
+      let changed = false;
+      for (const [id, task] of Object.entries(prev)) {
+        const lt = task.legend_types;
+        if (lt?.[key]?.legend_type_id === typeId) {
+          const newLt = { ...lt };
+          delete newLt[key];
+          next[id] = { ...task, legend_types: newLt };
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    setLegendsWithTypesAll(prev => prev.map(l =>
+      l.id !== activeLegendId ? l : { ...l, types: (l.types || []).filter(t => t.id !== typeId) }
+    ));
+  }, [deleteType, activeLegendId, setTasks]);
+
   // ── Set per-team view override ──
   const setTeamViewOverride = useCallback((teamId, mode) => {
     setTeamViewOverrides((prev) => {
@@ -1023,7 +1085,8 @@ export default function TaskStructure({ instanceId = "taskStructure" }) {
     tasksByTeamMap,
     projectDescription: projectDescription || "",
     legendsWithTypes: legendsWithTypesAll,
-  }), [tasks, teams, taskOrder, teamOrder, selectedTaskIds, selectedTeamIds, tasksByTeamMap, projectDescription, legendsWithTypesAll]);
+    activeLegendId,
+  }), [tasks, teams, taskOrder, teamOrder, selectedTaskIds, selectedTeamIds, tasksByTeamMap, projectDescription, legendsWithTypesAll, activeLegendId]);
 
   /** API context for applying AI responses */
   const applyCtx = useMemo(() => ({
@@ -1051,6 +1114,20 @@ export default function TaskStructure({ instanceId = "taskStructure" }) {
       return data?.type || null;
     },
     assignLegendType: async (taskId, legendId, typeId) => {
+      // Optimistic update: find the type from legendsWithTypesAll or legendTypes
+      const legEntry = legendsWithTypesAll.find(l => l.id === legendId);
+      const type = legEntry?.types?.find(t => t.id === typeId) ?? legendTypes[typeId];
+      setTasks(prev => {
+        const task = prev[taskId];
+        if (!task) return prev;
+        const lt = { ...(task.legend_types || {}) };
+        if (type) {
+          lt[String(legendId)] = { legend_type_id: type.id, name: type.name, color: type.color, icon: type.icon };
+        } else {
+          delete lt[String(legendId)];
+        }
+        return { ...prev, [taskId]: { ...task, legend_types: lt } };
+      });
       await assignTaskLegendTypeApi(projectId, taskId, legendId, typeId);
     },
     refreshAll: async () => {
@@ -1063,7 +1140,7 @@ export default function TaskStructure({ instanceId = "taskStructure" }) {
     teamOrder,
     legends,
     legendsWithTypes: legendsWithTypesAll,
-  }), [createTask, createTeam, updateTaskApi, updateTeamApi, assignTaskToTeam, createLegend, fetchTasks, fetchTeams, fetchLegends, tasks, teams, teamOrder, legends, legendsWithTypesAll, projectId]);
+  }), [createTask, createTeam, updateTaskApi, updateTeamApi, assignTaskToTeam, createLegend, fetchTasks, fetchTeams, fetchLegends, tasks, teams, teamOrder, legends, legendsWithTypesAll, legendTypes, setTasks, projectId]);
 
   // ═════════════════════════════════════════════
   //  JSX
@@ -1334,6 +1411,7 @@ export default function TaskStructure({ instanceId = "taskStructure" }) {
                     activeLegendId={activeLegendId}
                     paintType={paintType}
                     onPaintAssign={handleAssignLegendType}
+                    filterTypeId={filterTypeId}
                   />
 
                   {/* Legend panel */}
@@ -1347,9 +1425,9 @@ export default function TaskStructure({ instanceId = "taskStructure" }) {
                     createLegend={createLegend}
                     updateLegend={updateLegend}
                     deleteLegend={deleteLegend}
-                    createType={createType}
-                    updateType={updateType}
-                    deleteType={deleteType}
+                    createType={handleCreateType}
+                    updateType={handleUpdateType}
+                    deleteType={handleDeleteType}
                     tasks={tasks}
                     selectedTaskIds={selectedTaskIds}
                     onAssignType={handleAssignLegendType}
@@ -1358,6 +1436,8 @@ export default function TaskStructure({ instanceId = "taskStructure" }) {
                     onRemoveAllTypes={handleRemoveAllLegendTypes}
                     paintType={paintType}
                     setPaintType={setPaintType}
+                    filterTypeId={filterTypeId}
+                    setFilterTypeId={setFilterTypeId}
                   />
                 </>
               )}
@@ -1470,6 +1550,7 @@ export default function TaskStructure({ instanceId = "taskStructure" }) {
                 activeLegendId={activeLegendId}
                 paintType={paintType}
                 onPaintAssign={handleAssignLegendType}
+                filterTypeId={filterTypeId}
               />
               </div>
             )}
