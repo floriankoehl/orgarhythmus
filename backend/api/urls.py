@@ -181,6 +181,24 @@ urlpatterns = [
     path("projects/<int:project_id>/protopersonas/<int:persona_id>/", views.update_protopersona),
     path("projects/<int:project_id>/protopersonas/<int:persona_id>/delete/", views.delete_protopersona),
 
+    # Task Legends (project-scoped)
+    path("projects/<int:project_id>/task-legends/", views.get_project_task_legends, name="get_project_task_legends"),
+    path("projects/<int:project_id>/task-legends/create/", views.create_task_legend, name="create_task_legend"),
+    path("projects/<int:project_id>/task-legends/<int:legend_id>/", views.update_task_legend, name="update_task_legend"),
+    path("projects/<int:project_id>/task-legends/<int:legend_id>/delete/", views.delete_task_legend, name="delete_task_legend"),
+
+    # Task Legend Types
+    path("projects/<int:project_id>/task-legends/<int:legend_id>/types/", views.get_task_legend_types, name="get_task_legend_types"),
+    path("projects/<int:project_id>/task-legends/<int:legend_id>/types/create/", views.create_task_legend_type, name="create_task_legend_type"),
+    path("projects/<int:project_id>/task-legends/<int:legend_id>/types/<int:type_id>/", views.update_task_legend_type, name="update_task_legend_type"),
+    path("projects/<int:project_id>/task-legends/<int:legend_id>/types/<int:type_id>/delete/", views.delete_task_legend_type, name="delete_task_legend_type"),
+
+    # Task ↔ Legend Type Assignment
+    path("projects/<int:project_id>/tasks/assign_legend_type/", views.assign_task_legend_type, name="assign_task_legend_type"),
+    path("projects/<int:project_id>/tasks/batch_assign_legend_type/", views.batch_assign_task_legend_type, name="batch_assign_task_legend_type"),
+    path("projects/<int:project_id>/tasks/batch_remove_legend_type/", views.batch_remove_task_legend_type, name="batch_remove_task_legend_type"),
+    path("projects/<int:project_id>/tasks/remove_all_legend_types/", views.remove_all_task_legend_types, name="remove_all_task_legend_types"),
+
     # User Shortcuts (per-user keyboard shortcut configuration)
     path("user/shortcuts/", views.get_user_shortcuts, name="get_user_shortcuts"),
     path("user/shortcuts/save/", views.save_user_shortcuts, name="save_user_shortcuts"),

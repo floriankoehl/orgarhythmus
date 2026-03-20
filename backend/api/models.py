@@ -927,6 +927,69 @@ DEFAULT_SYSTEM_PROMPT = (
     "- Ground suggestions in the provided data; avoid inventing names or structures that contradict existing context.\n"
     "- Keep all names and descriptions concise, specific, and actionable."
 )
+# ═══════════════════════════════════════════════
+#  TASK LEGEND  (project-scoped legend for tasks)
+# ═══════════════════════════════════════════════
+
+class TaskLegend(models.Model):
+    """
+    A classification axis for tasks within a project.
+    Mirrors Legend (context-scoped) but scoped to a project.
+    Example: "Priority", "Status", "Risk Level".
+    """
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="task_legends")
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="task_legends")
+    name = models.CharField(max_length=200, default="General")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.project.name})"
+
+
+# ═══════════════════════════════════════════════
+#  TASK LEGEND TYPE  (types within a task legend)
+# ═══════════════════════════════════════════════
+
+class TaskLegendType(models.Model):
+    """
+    One possible value inside a TaskLegend.
+    Example for legend "Priority": "High", "Medium", "Low".
+    Each type has a color and optional icon.
+    """
+    legend = models.ForeignKey(TaskLegend, on_delete=models.CASCADE, related_name="types")
+    name = models.CharField(max_length=100)
+    color = models.CharField(max_length=20, default="#ffffff")
+    icon = models.CharField(max_length=50, null=True, blank=True)
+    order_index = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ["order_index"]
+
+    def __str__(self):
+        return f"{self.name} ({self.legend.name})"
+
+
+# ═══════════════════════════════════════════════
+#  TASK ↔ LEGEND TYPE  (one type per legend per task)
+# ═══════════════════════════════════════════════
+
+class TaskLegendAssignment(models.Model):
+    """
+    Links a Task to a TaskLegendType within a specific TaskLegend.
+    Each task can have at most one type per legend (same constraint as IdeaLegendType).
+    """
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="legend_assignments")
+    legend = models.ForeignKey(TaskLegend, on_delete=models.CASCADE, related_name="task_assignments")
+    legend_type = models.ForeignKey(TaskLegendType, on_delete=models.CASCADE, related_name="task_assignments")
+
+    class Meta:
+        unique_together = ["task", "legend"]
+
+    def __str__(self):
+        return f"{self.task.name} → {self.legend.name}: {self.legend_type.name}"
 
 
 class PromptSettings(models.Model):

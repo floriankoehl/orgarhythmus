@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { GripVertical, Users, Pencil, Trash2, MoreVertical, ChevronDown, ChevronRight, CheckSquare, Square, AlertTriangle, Target, Flag } from "lucide-react";
+import { renderLegendTypeIcon } from "../ideas/legendTypeIcons";
 
 /**
  * Individual task card rendered in the sidebar task list and within team containers.
@@ -35,6 +36,9 @@ export default function TaskCard({
   displayedTaskIds = null, // ordered array of task IDs for shift-click range select
   lastClickedTaskRef = null, // ref to last-clicked task ID for shift anchor
   onIntraTeamDrag = null,  // (e, taskId, index) => void — intra-team reorder
+  activeLegendId = null,   // currently active legend id (from TaskLegendPanel)
+  paintType = null,        // { legendId, typeId } — when set, clicking assigns this type
+  onPaintAssign = null,    // (taskId, legendId, typeId) => void
 }) {
   const [showActions, setShowActions] = useState(false);
   const moreRef = useRef(null);
@@ -67,7 +71,22 @@ export default function TaskCard({
   const criteriaDone = criteria.filter((c) => c.done).length;
   const taskIsDone = !!task.is_done;
 
+  // Active legend type assigned to this task (mirrors IdeaBinIdeaCard pattern)
+  const legendType = (() => {
+    const legId = String(activeLegendId || "");
+    const dt = task.legend_types?.[legId];
+    if (dt) return { id: dt.legend_type_id, color: dt.color, name: dt.name, icon: dt.icon };
+    return null;
+  })();
+
   const handleClick = (e) => {
+    // Paint mode: clicking a task assigns the active paint type
+    if (paintType && onPaintAssign) {
+      e.stopPropagation();
+      onPaintAssign(task.id, paintType.legendId, paintType.typeId);
+      return;
+    }
+
     if (e.shiftKey && displayedTaskIds && lastClickedTaskRef) {
       // Range select: select all tasks between anchor and current
       const anchorId = lastClickedTaskRef.current;
@@ -149,8 +168,9 @@ export default function TaskCard({
                 : "bg-white hover:bg-gray-100 border border-transparent"
           }`}
         style={{
-          borderLeftWidth: teamColor ? 3 : undefined,
-          borderLeftColor: teamColor || undefined,
+          borderLeftWidth: legendType || teamColor ? 3 : undefined,
+          borderLeftColor: legendType ? legendType.color : teamColor || undefined,
+          backgroundColor: legendType ? `${legendType.color}20` : undefined,
         }}
       >
         {/* Drag handle — only interactive in task mode */}
@@ -191,6 +211,19 @@ export default function TaskCard({
                 }}
               >
                 {team.name || "Team"}
+              </span>
+            )}
+            {/* Legend type badge */}
+            {legendType && (
+              <span
+                className="text-[9px] px-1 py-0 rounded font-medium flex-shrink-0 flex items-center gap-0.5"
+                style={{
+                  backgroundColor: `${legendType.color}25`,
+                  color: legendType.color,
+                }}
+              >
+                {legendType.icon && renderLegendTypeIcon(legendType.icon, { style: { fontSize: 10 }, className: "flex-shrink-0" })}
+                {legendType.name}
               </span>
             )}
             {/* Criteria progress indicator (compact + titles modes) */}
