@@ -17,15 +17,22 @@ import {
   Settings,
   Plus,
   X,
+  FlaskConical,
+  ChevronLeft,
+  ChevronRight,
+  LogOut,
 } from "lucide-react";
 import { useWindowManager } from "./WindowManager";
 import { usePipeline } from "./PipelineContext";
 import { useNotifications } from "../../auth/NotificationContext";
+import { useBranch } from "../../auth/BranchContext";
 import useWorkspace from "./useWorkspace";
 import WorkspacePopup from "./WorkspacePopup";
 import AISettingsPopup from "./AISettingsPopup";
 import GlobalSettingsPopup from "./GlobalSettingsPopup";
+import BranchSwitcher from "./BranchSwitcher";
 import { triggerManualRefresh, useStaleData, useAutoRefreshSetting } from "../../api/dataEvents";
+import { indexToShortDisplay, metricStepLabel } from "../../utils/projectMetric";
 
 /**
  * Inventory bar configuration for each window slot (keyed by type).
@@ -54,10 +61,20 @@ export default function InventoryBar() {
   const manager = useWindowManager();
   const pipeline = usePipeline();
   const { unreadCount } = useNotifications();
+  const {
+    isDemoMode,
+    demoIndex,
+    projectMetric,
+    projectStartDate,
+    enterDemoMode,
+    exitDemoMode,
+    stepDemoIndex,
+  } = useBranch();
   const navigate = useNavigate();
   const { projectId } = useParams();
   const [collapsed, setCollapsed] = useState(false);
   const [selectedSlots, setSelectedSlots] = useState(new Set());
+  const [demoLoading, setDemoLoading] = useState(false);
 
   // Which slot type has its instance popup open
   const [hoveredType, setHoveredType] = useState(null);
@@ -401,6 +418,89 @@ export default function InventoryBar() {
           </div>
         );
       })}
+
+      {/* ── Divider ── */}
+      <div className="w-px h-10 bg-slate-700/50 mx-1 self-center" />
+
+      {/* ── Branch switcher ── */}
+      <BranchSwitcher />
+
+      {/* ── Divider ── */}
+      <div className="w-px h-10 bg-slate-700/50 mx-1 self-center" />
+
+      {/* ── Demo Mode ── */}
+      {isDemoMode ? (
+        /* ── In demo mode: nav controls ── */
+        <div className="flex flex-col items-center gap-0.5 px-1 py-1.5">
+          <div className="flex items-center gap-0.5">
+            {/* Step back */}
+            <button
+              onClick={() => stepDemoIndex(-1)}
+              className="w-7 h-7 flex items-center justify-center rounded-lg
+                text-amber-300 hover:text-white hover:bg-amber-500/30
+                transition-all duration-150"
+              title={`Back one ${metricStepLabel(projectMetric)}`}
+            >
+              <ChevronLeft size={14} />
+            </button>
+
+            {/* Current index display */}
+            <div className="px-2 py-1 rounded-lg bg-amber-500/20 border border-amber-400/40
+              text-amber-200 text-[10px] font-semibold tabular-nums whitespace-nowrap min-w-[60px] text-center">
+              {demoIndex !== null
+                ? indexToShortDisplay(demoIndex, projectMetric, projectStartDate)
+                : "—"}
+            </div>
+
+            {/* Step forward */}
+            <button
+              onClick={() => stepDemoIndex(+1)}
+              className="w-7 h-7 flex items-center justify-center rounded-lg
+                text-amber-300 hover:text-white hover:bg-amber-500/30
+                transition-all duration-150"
+              title={`Forward one ${metricStepLabel(projectMetric)}`}
+            >
+              <ChevronRight size={14} />
+            </button>
+
+            {/* Exit demo mode */}
+            <button
+              onClick={exitDemoMode}
+              className="w-7 h-7 flex items-center justify-center rounded-lg
+                text-slate-400 hover:text-rose-400 hover:bg-rose-500/20
+                transition-all duration-150"
+              title="Exit demo mode (branch is kept)"
+            >
+              <LogOut size={12} />
+            </button>
+          </div>
+          <span className="text-[8px] font-medium leading-none text-amber-400 tracking-wide">
+            DEMO
+          </span>
+        </div>
+      ) : (
+        /* ── Not in demo mode: enter button ── */
+        <button
+          onClick={async () => {
+            setDemoLoading(true);
+            try { await enterDemoMode(); } finally { setDemoLoading(false); }
+          }}
+          disabled={demoLoading}
+          className="group relative flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-xl
+            transition-all duration-200 outline-none opacity-50 hover:opacity-80"
+          title="Enter demo mode — creates a new branch to test your schedule"
+        >
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600
+            flex items-center justify-center shadow-lg transition-all duration-200
+            group-hover:shadow-xl">
+            {demoLoading
+              ? <RefreshCw size={18} className="text-white animate-spin" />
+              : <FlaskConical size={18} className="text-white drop-shadow" />
+            }
+          </div>
+          <span className="text-[9px] font-medium leading-none text-slate-500">Demo</span>
+        </button>
+      )}
 
       {/* ── Divider ── */}
       <div className="w-px h-10 bg-slate-700/50 mx-1 self-center" />

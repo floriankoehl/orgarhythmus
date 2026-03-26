@@ -2,7 +2,6 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { AuthProvider } from './auth/AuthContext';
 import { NotificationProvider } from './auth/NotificationContext';
-import { DemoDateProvider } from './auth/DemoDateContext';
 
 import OrgaLayout from './layouts/OrgaLayout.jsx';
 import Login from './pages/user/Login.jsx';
@@ -71,11 +70,9 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <DemoDateProvider>
-        <NotificationProvider>
-          <AppShell />
-        </NotificationProvider>
-      </DemoDateProvider>
+      <NotificationProvider>
+        <AppShell />
+      </NotificationProvider>
     </AuthProvider>
   );
 }

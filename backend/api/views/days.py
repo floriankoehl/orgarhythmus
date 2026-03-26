@@ -8,7 +8,7 @@ from django.db import transaction
 
 from ..models import Project, Day, Milestone
 from .serializers import DaySerializer
-from .helpers import user_has_project_access
+from .helpers import user_has_project_access, resolve_branch
 
 
 @api_view(["GET"])
@@ -25,15 +25,19 @@ def get_project_days(request, project_id):
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
     # Ensure days exist
     if project.start_date and project.end_date:
-        existing_days_count = Day.objects.filter(project=project).count()
+        existing_days_count = Day.objects.filter(project=project, branch=branch).count()
         expected_days_count = (project.end_date - project.start_date).days + 1
-        
+
         if existing_days_count != expected_days_count:
             project.create_days()
 
-    days = Day.objects.filter(project=project).order_by("day_index")
+    days = Day.objects.filter(project=project, branch=branch).order_by("day_index")
     serialized = DaySerializer(days, many=True)
     
     # Convert to dict by day_index for easier frontend access
@@ -62,8 +66,12 @@ def update_day(request, project_id, day_index):
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
     try:
-        day = Day.objects.get(project=project, day_index=day_index)
+        day = Day.objects.get(project=project, branch=branch, day_index=day_index)
     except Day.DoesNotExist:
         return Response({"detail": "Day not found"}, status=status.HTTP_404_NOT_FOUND)
 

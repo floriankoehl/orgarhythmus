@@ -13,7 +13,7 @@ from .serializers import (
     TaskSerializer_Deps,
     AcceptanceCriterionSerializer,
 )
-from .helpers import user_has_project_access
+from .helpers import user_has_project_access, resolve_branch
 from django.db import transaction
 
 
@@ -94,11 +94,15 @@ def project_tasks(request, project_id):
             status=status.HTTP_404_NOT_FOUND,
         )
 
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
     # 2) GET: alle Tasks dieses Projekts
     if request.method == "GET":
         tasks = (
             Task.objects
-            .filter(project=project)
+            .filter(project=project, branch=branch)
             .select_related("team")
             .prefetch_related("acceptance_criteria", "milestones", "milestones__todos")
         )
@@ -123,7 +127,7 @@ def project_tasks(request, project_id):
         team = None
         if team_id:
             try:
-                team = Team.objects.get(pk=team_id, project=project)
+                team = Team.objects.get(pk=team_id, project=project, branch=branch)
             except Team.DoesNotExist:
                 return Response(
                     {"detail": "Team does not belong to this project."},
@@ -132,6 +136,7 @@ def project_tasks(request, project_id):
 
         task = Task.objects.create(
             project=project,
+            branch=branch,
             team=team,
             name=name,
             description=description,
@@ -415,10 +420,14 @@ def fetch_project_tasks(request, project_id):
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
     all_tasks = (
         Task.objects
-        .filter(project=project)
-        .prefetch_related("milestones", "milestones__todos", "acceptance_criteria", "legend_assignments", "legend_assignments__legend", "legend_assignments__legend_type")  
+        .filter(project=project, branch=branch)
+        .prefetch_related("milestones", "milestones__todos", "acceptance_criteria", "legend_assignments", "legend_assignments__legend", "legend_assignments__legend_type")
         .order_by("team_id", "order_index")
     )
 
@@ -467,6 +476,10 @@ def reorder_team_tasks(request, project_id):
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
     task_id = request.data.get("task_id")
     target_team_id = request.data.get("target_team_id")
     order = request.data.get("order")
@@ -478,12 +491,12 @@ def reorder_team_tasks(request, project_id):
         )
 
     try:
-        task = Task.objects.get(pk=task_id, project=project)
+        task = Task.objects.get(pk=task_id, project=project, branch=branch)
     except Task.DoesNotExist:
         return Response({"detail": "Task not found"}, status=status.HTTP_404_NOT_FOUND)
 
     try:
-        target_team = Team.objects.get(pk=target_team_id, project=project)
+        target_team = Team.objects.get(pk=target_team_id, project=project, branch=branch)
     except Team.DoesNotExist:
         return Response({"detail": "Target team not found"}, status=status.HTTP_404_NOT_FOUND)
 

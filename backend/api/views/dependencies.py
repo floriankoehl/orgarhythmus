@@ -5,7 +5,7 @@ from rest_framework.response import Response
 
 from ..models import Project, Milestone, Dependency
 from .serializers import DependencySerializer_Deps
-from .helpers import user_has_project_access
+from .helpers import user_has_project_access, resolve_branch
 
 
 @api_view(["GET"])
@@ -22,7 +22,11 @@ def get_all_dependencies(request, project_id):
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
-    dependencies = Dependency.objects.filter(source__project=project)
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    dependencies = Dependency.objects.filter(source__project=project, source__branch=branch)
     serialized = DependencySerializer_Deps(dependencies, many=True)
     return Response({"dependencies": serialized.data})
 
@@ -42,6 +46,10 @@ def create_dependency(request, project_id):
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
     source_id = request.data.get("source")
     target_id = request.data.get("target")
 
@@ -49,8 +57,8 @@ def create_dependency(request, project_id):
         return Response({"detail": "source and target are required"}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        source = Milestone.objects.get(id=source_id, project=project)
-        target = Milestone.objects.get(id=target_id, project=project)
+        source = Milestone.objects.get(id=source_id, project=project, branch=branch)
+        target = Milestone.objects.get(id=target_id, project=project, branch=branch)
     except Milestone.DoesNotExist:
         return Response({"detail": "Milestone not found in this project"}, status=status.HTTP_404_NOT_FOUND)
 

@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from ..models import Project, Context, ProjectContextPlacement, UserContextAdoption
+from ..models import Project, Context, ProjectContextPlacement, UserContextAdoption, Branch
 from .serializers import (
     ProjectSerializer,
     ProjectSerializer_Deps,
@@ -154,6 +154,9 @@ def create_project(request):
     )
     # Optional: Owner auch gleich als Mitglied hinzufügen
     project.members.add(request.user)
+
+    # Auto-create main branch for the new project
+    Branch.objects.create(project=project, name="main", is_main=True, created_by=request.user)
 
     # Auto-create a context for the project and link it
     ctx = Context.objects.create(

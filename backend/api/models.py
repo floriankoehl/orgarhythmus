@@ -13,6 +13,15 @@ User = get_user_model()
 # ═══════════════════════════════════════════════
 
 class Project(models.Model):
+    METRIC_DAYS   = 'days'
+    METRIC_HOURS  = 'hours'
+    METRIC_MONTHS = 'months'
+    METRIC_CHOICES = [
+        (METRIC_DAYS,   'Days'),
+        (METRIC_HOURS,  'Hours'),
+        (METRIC_MONTHS, 'Months'),
+    ]
+
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="projects_owned")
     members = models.ManyToManyField(User, related_name="projects", blank=True)
     name = models.CharField(max_length=200)
@@ -20,6 +29,10 @@ class Project(models.Model):
     start_date = models.DateField(blank=True, null=True)
     end_date = models.DateField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    metric = models.CharField(
+        max_length=20, choices=METRIC_CHOICES, default=METRIC_DAYS,
+        help_text="Unit of time used by this project's timeline index.",
+    )
 
     def __str__(self):
         return self.name
@@ -124,6 +137,44 @@ class Project(models.Model):
 
 
 # ═══════════════════════════════════════════════
+#  BRANCH
+# ═══════════════════════════════════════════════
+
+class Branch(models.Model):
+    """
+    Git-inspired project branch.
+    Each project has exactly one main branch (is_main=True) created automatically.
+    All other branches are forks of an existing branch.
+    branch-aware models (Team, Task, Milestone, Phase, TaskLegend, Day) carry a FK here.
+    """
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="branches")
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="created_branches",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_main = models.BooleanField(default=False)
+    source_branch = models.ForeignKey(
+        "self", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="derived_branches",
+    )
+    is_demo = models.BooleanField(default=False)
+    demo_index = models.IntegerField(
+        null=True, blank=True,
+        help_text="Current timeline cursor position (only meaningful when is_demo=True).",
+    )
+
+    class Meta:
+        ordering = ["-is_main", "created_at"]
+        unique_together = [("project", "name")]
+
+    def __str__(self):
+        return f"{self.project.name} / {self.name}{'  [main]' if self.is_main else ''}{'  [demo]' if self.is_demo else ''}"
+
+
+# ═══════════════════════════════════════════════
 #  TEAM
 # ═══════════════════════════════════════════════
 
@@ -131,6 +182,7 @@ class Team(models.Model):
     name = models.CharField(max_length=200, blank=True, null=True)
     color = models.CharField(max_length=200, blank=True, null=True)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="teams")
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="teams", null=True, blank=True)
     line_index = models.IntegerField(blank=True, null=True)
     order_index = models.IntegerField(default=0)
     members = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="teams", blank=True)
@@ -153,6 +205,7 @@ class Task(models.Model):
     priority = models.CharField(max_length=200, blank=True, null=True)
     needs_approval = models.BooleanField(default=False)
     team = models.ForeignKey(Team, on_delete=SET_NULL, null=True, blank=True, related_name="tasks")
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="tasks", null=True, blank=True)
     project = models.ForeignKey(
         Project, on_delete=models.CASCADE, related_name="tasks",
         default=1, null=True, blank=True,
@@ -192,6 +245,7 @@ class AcceptanceCriterion(models.Model):
 
 class Day(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="days")
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="days", null=True, blank=True)
     date = models.DateField()
     day_index = models.IntegerField(default=0)  # 0-based index from project start
     purpose = models.CharField(max_length=200, blank=True, null=True)
@@ -238,6 +292,7 @@ class Milestone(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
     project = models.ForeignKey(Project, on_delete=models.CASCADE, null=False)
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="milestones", null=True, blank=True)
     task = models.ForeignKey(Task, on_delete=models.CASCADE, null=False, related_name="milestones")
     start_index = models.IntegerField(default=0)
     duration = models.IntegerField(default=1)
@@ -284,6 +339,7 @@ class Dependency(models.Model):
 
 class Phase(models.Model):
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="phases")
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="phases", null=True, blank=True)
     team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="phases", null=True, blank=True)  # null = all teams
     name = models.CharField(max_length=200)
     start_index = models.IntegerField(default=0)      # 0-based day index
@@ -938,6 +994,7 @@ class TaskLegend(models.Model):
     Example: "Priority", "Status", "Risk Level".
     """
     project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="task_legends")
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="task_legends", null=True, blank=True)
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="task_legends")
     name = models.CharField(max_length=200, default="General")
     created_at = models.DateTimeField(auto_now_add=True)

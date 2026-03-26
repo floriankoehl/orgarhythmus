@@ -5,7 +5,7 @@ from rest_framework.response import Response
 
 from ..models import Project, Task, Milestone, MilestoneTodo, Dependency
 from .serializers import MilestoneSerializer_Deps, MilestoneTodoSerializer, DependencySerializer_Deps
-from .helpers import user_has_project_access
+from .helpers import user_has_project_access, resolve_branch
 
 
 @api_view(["GET"])
@@ -22,11 +22,15 @@ def get_all_milestones(request, project_id):
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
-    all_milestones = Milestone.objects.filter(project=project).prefetch_related("todos", "task__acceptance_criteria")
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    all_milestones = Milestone.objects.filter(project=project, branch=branch).prefetch_related("todos", "task__acceptance_criteria")
     if all_milestones.exists():
         serialized = MilestoneSerializer_Deps(all_milestones, many=True)
         return Response({"milestones": serialized.data})
-    else: 
+    else:
         return Response({"milestones": []})
 
 
@@ -45,12 +49,16 @@ def add_milestone(request, project_id):
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
     task_id = request.data.get("task_id")
     if not task_id:
         return Response({"detail": "task_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        task = Task.objects.get(id=int(task_id), project=project)
+        task = Task.objects.get(id=int(task_id), project=project, branch=branch)
     except Task.DoesNotExist:
         return Response({"detail": "Task not found"}, status=status.HTTP_404_NOT_FOUND)
 
@@ -62,6 +70,7 @@ def add_milestone(request, project_id):
     duration = 1
     milestone = Milestone.objects.create(
         project=project,
+        branch=branch,
         name=name,
         description=description,
         task=task,
@@ -140,6 +149,10 @@ def bulk_update_start_index(request, project_id):
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
     moves = request.data.get("moves")
     if not moves or not isinstance(moves, list):
         return Response({"detail": "moves array is required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -148,7 +161,7 @@ def bulk_update_start_index(request, project_id):
     milestone_ids = [int(m["milestone_id"]) for m in moves]
     milestones = {
         ms.id: ms
-        for ms in Milestone.objects.select_related("task").filter(id__in=milestone_ids, project=project)
+        for ms in Milestone.objects.select_related("task").filter(id__in=milestone_ids, project=project, branch=branch)
     }
 
     for m in moves:
@@ -457,6 +470,10 @@ def bulk_import_dependencies(request, project_id):
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
     deps_list = request.data.get("dependencies")
     if not deps_list or not isinstance(deps_list, list):
         return Response({"detail": '"dependencies" array is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -480,8 +497,8 @@ def bulk_import_dependencies(request, project_id):
             task_ids.add(dep_id)
             adj[tid].append(dep_id)      # tid depends on dep_id  →  dep_id -> tid (edge)
 
-    # Verify all tasks belong to this project
-    existing_tasks = {t.id: t for t in Task.objects.filter(id__in=task_ids, project=project)}
+    # Verify all tasks belong to this project and branch
+    existing_tasks = {t.id: t for t in Task.objects.filter(id__in=task_ids, project=project, branch=branch)}
     missing = task_ids - set(existing_tasks.keys())
     if missing:
         return Response(
@@ -547,6 +564,7 @@ def bulk_import_dependencies(request, project_id):
         task_obj = existing_tasks[tid]
         ms = Milestone.objects.create(
             project=project,
+            branch=branch,
             task=task_obj,
             name=f"{task_obj.name}_0",
             description="",

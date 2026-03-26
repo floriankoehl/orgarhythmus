@@ -1,15 +1,16 @@
 import { authFetch, API } from "../../ideas/api/authFetch";
+import { branchParam } from "../../../api/activeBranch";
 
 // ── Task Legend CRUD ──
 
 export async function fetchTaskLegendsApi(projectId) {
-  const res = await authFetch(`${API}/projects/${projectId}/task-legends/`);
+  const res = await authFetch(`${API}/projects/${projectId}/task-legends/${branchParam()}`);
   const data = await res.json();
   return data?.legends || [];
 }
 
 export async function createTaskLegendApi(projectId, name) {
-  const res = await authFetch(`${API}/projects/${projectId}/task-legends/create/`, {
+  const res = await authFetch(`${API}/projects/${projectId}/task-legends/create/${branchParam()}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),

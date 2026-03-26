@@ -12,7 +12,6 @@ import NumbersIcon from '@mui/icons-material/Numbers';
 import { PanelsTopLeft, Bell } from 'lucide-react';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import NotificationsPanel from './NotificationsPanel';
-import DemoDateDisplay from './DemoDateDisplay';
 
 export default function ProjectHeader({}) {
   // Controls whether the mobile menu is open or closed
@@ -141,9 +140,6 @@ export default function ProjectHeader({}) {
 
           {!loadingUser && isAuthenticated && (
             <div className="ml-4 flex items-center gap-3">
-              {/* Demo Date Display */}
-              <DemoDateDisplay />
-
               {/* Notifications Bell */}
               <button
                 onClick={() => setNotificationsOpen(true)}
@@ -223,12 +219,6 @@ export default function ProjectHeader({}) {
         }`}
       >
         <nav className="space-y-1 border-t border-slate-800/70 bg-slate-950/95 px-4 pt-2 pb-4">
-          {/* Mobile Demo Date Control */}
-          {!loadingUser && isAuthenticated && (
-            <div className="mb-3">
-              <DemoDateDisplay />
-            </div>
-          )}
           {/* MOBILE USER INFO */}
 
           {!loadingUser && !isAuthenticated && (

@@ -6,7 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from ..models import Project, Task, TaskLegend, TaskLegendType, TaskLegendAssignment
-from .helpers import user_has_project_access
+from .helpers import user_has_project_access, resolve_branch
 from .serializers import TaskLegendSerializer, TaskLegendTypeSerializer
 
 
@@ -34,7 +34,10 @@ def get_project_task_legends(request, project_id):
     project = _get_project_or_403(request.user, project_id)
     if not project:
         return Response({"error": "Not found"}, status=404)
-    legends = TaskLegend.objects.filter(project=project)
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"error": "Branch not found"}, status=404)
+    legends = TaskLegend.objects.filter(project=project, branch=branch)
     return Response({"legends": TaskLegendSerializer(legends, many=True).data})
 
 
@@ -45,8 +48,11 @@ def create_task_legend(request, project_id):
     project = _get_project_or_403(request.user, project_id)
     if not project:
         return Response({"error": "Not found"}, status=404)
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"error": "Branch not found"}, status=404)
     name = (request.data.get("name") or "New Legend").strip()
-    leg = TaskLegend.objects.create(project=project, owner=request.user, name=name)
+    leg = TaskLegend.objects.create(project=project, branch=branch, owner=request.user, name=name)
     return Response({"created": True, "legend": TaskLegendSerializer(leg).data})
 
 

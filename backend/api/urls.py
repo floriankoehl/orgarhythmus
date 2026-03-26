@@ -299,6 +299,14 @@ urlpatterns = [
 
     # ── AI Generate (OpenAI proxy) ──
     path("ai/generate/", views.ai_generate, name="ai_generate"),
+
+    # ── Branches ──
+    path("projects/<int:project_id>/branches/", views.list_branches, name="list_branches"),
+    path("projects/<int:project_id>/branches/create/", views.create_branch, name="create_branch"),
+    path("projects/<int:project_id>/branches/enter-demo/", views.enter_demo, name="enter_demo"),
+    path("projects/<int:project_id>/branches/<int:branch_id>/", views.branch_detail, name="branch_detail"),
+    path("projects/<int:project_id>/branches/<int:branch_id>/update/", views.patch_branch, name="patch_branch"),
+    path("projects/<int:project_id>/branches/<int:branch_id>/delete/", views.delete_branch, name="delete_branch"),
 ]
 
 

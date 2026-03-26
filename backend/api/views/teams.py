@@ -11,7 +11,7 @@ from .serializers import (
     BasicTeamSerializer,
     TeamSerializer_Deps,
 )
-from .helpers import user_has_project_access
+from .helpers import user_has_project_access, resolve_branch
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -69,15 +69,19 @@ def project_teams(request, project_id):
     if not user_has_project_access(user, project):
         return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
 
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
     if request.method == "GET":
-        teams = project.teams.all().order_by("name")
+        teams = project.teams.filter(branch=branch).order_by("name")
         serializer = BasicTeamSerializer(teams, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     # POST → Team erstellen
     serializer = BasicTeamSerializer(data=request.data)
     if serializer.is_valid():
-        team = serializer.save(project=project)
+        team = serializer.save(project=project, branch=branch)
         out = BasicTeamSerializer(team).data
         return Response(out, status=status.HTTP_201_CREATED)
 
@@ -98,13 +102,17 @@ def project_teams_expanded(request, project_id):
     if not user_has_project_access(user, project):
         return Response({"detail": "Not allowed"}, status=403)
 
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
     all_teams = (
         Team.objects
         .prefetch_related(
             "tasks",
             "tasks__milestones",  # was "tasks__attempts"
         )
-        .filter(project_id=project_id)
+        .filter(project_id=project_id, branch=branch)
     )
 
     serializer = TeamExpandedSerializer(all_teams, many=True)
@@ -251,7 +259,11 @@ def fetch_project_teams(request, project_id):
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
-    all_teams = Team.objects.filter(project=project).order_by("order_index")
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    all_teams = Team.objects.filter(project=project, branch=branch).order_by("order_index")
     serialized_teams = TeamSerializer_Deps(all_teams, many=True)
 
     return Response({"teams": serialized_teams.data})

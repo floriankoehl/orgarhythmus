@@ -2,6 +2,7 @@
 import { useState, useCallback } from "react";
 import { Outlet, useParams } from "react-router-dom";
 import { PipelineProvider } from "../components/shared/PipelineContext";
+import { BranchProvider } from "../auth/BranchContext";
 import WindowManager from "../components/shared/WindowManager";
 import IdeaBin from "../components/ideas/IdeaBin";
 import ProfileWindow from "../pages/user/ProfileWindow";
@@ -59,6 +60,7 @@ export default function ProjectLayout() {
   }, []);
 
   return (
+    <BranchProvider projectId={Number(projectId)}>
     <PipelineProvider>
       <div className="min-h-screen w-full bg-slate-900">
         {/* Page content */}
@@ -81,5 +83,6 @@ export default function ProjectLayout() {
         </WindowManager>
       </div>
     </PipelineProvider>
+    </BranchProvider>
   );
 }

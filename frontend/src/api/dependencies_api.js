@@ -1,5 +1,6 @@
 import { BASE_URL } from '../config/api';
 import { authFetch } from '../auth';
+import { branchParam } from './activeBranch';
 
 const API = `${BASE_URL}/api`;
 
@@ -16,7 +17,7 @@ export async function fetch_project_details(projectId){
 
 
 export async function fetch_project_teams(projectId){
-    const res = await authFetch(`/api/projects/${projectId}/fetch_project_teams/`)
+    const res = await authFetch(`/api/projects/${projectId}/fetch_project_teams/${branchParam()}`)
     if (!res.ok) throw new Error('Failed to fetch project teams');
     const answer = await res.json()
     return answer
@@ -35,7 +36,7 @@ export async function safe_team_order(projectId, new_order){
 }
 
 export async function fetch_project_tasks(projectId){
-    const res = await authFetch(`/api/projects/${projectId}/fetch_project_tasks/`)
+    const res = await authFetch(`/api/projects/${projectId}/fetch_project_tasks/${branchParam()}`)
     if (!res.ok) throw new Error('Failed to fetch project tasks');
     const answer = await res.json()
     return answer
@@ -47,7 +48,7 @@ export async function fetch_project_tasks(projectId){
 
 
 export async function get_all_milestones(projectId){
-    const res = await authFetch(`/api/projects/${projectId}/get_all_milestones/`)
+    const res = await authFetch(`/api/projects/${projectId}/get_all_milestones/${branchParam()}`)
     if (!res.ok) throw new Error('Failed to fetch milestones');
     const answer = await res.json()
     return answer
@@ -55,7 +56,7 @@ export async function get_all_milestones(projectId){
 
 
 export async function add_milestone(projectId, task_id, { name, description, start_index } = {}) {
-    const res = await authFetch(`/api/projects/${projectId}/add_milestone/`, {
+    const res = await authFetch(`/api/projects/${projectId}/add_milestone/${branchParam()}`, {
         method: "POST",
         body: JSON.stringify({
             task_id: task_id,
@@ -85,7 +86,7 @@ export async function update_start_index(projectId, milestone_id, index) {
 }
 
 export async function bulk_update_start_index(projectId, moves) {
-    const res = await authFetch(`/api/projects/${projectId}/bulk_update_start_index/`, {
+    const res = await authFetch(`/api/projects/${projectId}/bulk_update_start_index/${branchParam()}`, {
         method: "PATCH",
         body: JSON.stringify({ moves })
     })
@@ -207,7 +208,7 @@ export async function rename_milestone(projectId, milestone_id, new_name) {
 // Dependencies (connections between milestones)
 
 export async function get_all_dependencies(projectId){
-    const res = await authFetch(`/api/projects/${projectId}/get_all_dependencies/`)
+    const res = await authFetch(`/api/projects/${projectId}/get_all_dependencies/${branchParam()}`)
     if (!res.ok) throw new Error('Failed to fetch dependencies');
     const answer = await res.json()
     return answer
@@ -222,7 +223,7 @@ export async function create_dependency(projectId, sourceId, targetId, { weight,
     if (reason !== undefined) body.reason = reason;
     if (description !== undefined) body.description = description;
 
-    const res = await authFetch(`/api/projects/${projectId}/create_dependency/`, {
+    const res = await authFetch(`/api/projects/${projectId}/create_dependency/${branchParam()}`, {
         method: "POST",
         body: JSON.stringify(body)
     })
@@ -303,7 +304,7 @@ export async function set_task_deadline(projectId, taskId, hardDeadline) {
 // Days
 
 export async function get_project_days(projectId) {
-    const res = await authFetch(`/api/projects/${projectId}/days/`)
+    const res = await authFetch(`/api/projects/${projectId}/days/${branchParam()}`)
     if (!res.ok) throw new Error('Failed to fetch project days');
     return await res.json()
 }
@@ -383,13 +384,13 @@ export async function delete_team(projectId, teamId) {
 // ════════════════════════════════════════════
 
 export async function get_all_phases(projectId) {
-    const res = await authFetch(`/api/projects/${projectId}/phases/`);
+    const res = await authFetch(`/api/projects/${projectId}/phases/${branchParam()}`);
     if (!res.ok) throw new Error('Failed to fetch phases');
     return await res.json();
 }
 
 export async function create_phase(projectId, data) {
-    const res = await authFetch(`/api/projects/${projectId}/phases/create/`, {
+    const res = await authFetch(`/api/projects/${projectId}/phases/create/${branchParam()}`, {
         method: "POST",
         body: JSON.stringify(data),
     });

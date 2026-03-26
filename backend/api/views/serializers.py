@@ -3,6 +3,7 @@ from datetime import timedelta
 from rest_framework import serializers
 
 from ..models import (
+    Branch,
     Project,
     Team,
     Task,
@@ -79,7 +80,7 @@ class ProjectSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Project
-        fields = ["id", "name", "description", "created_at", "owner", "owner_username", "members_data", "start_date", "end_date"]
+        fields = ["id", "name", "description", "created_at", "owner", "owner_username", "members_data", "start_date", "end_date", "metric"]
         read_only_fields = ["id", "created_at", "owner", "owner_username", "members_data"]
 
     def get_members_data(self, obj):
@@ -496,6 +497,22 @@ class ProtoPersonaSerializer(serializers.ModelSerializer):
             return obj.created_by.username
         return None
 
+
+class BranchSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Branch
+        fields = [
+            "id", "name", "description", "is_main", "is_demo", "demo_index",
+            "source_branch", "created_by", "created_by_name", "created_at",
+        ]
+        read_only_fields = ["id", "created_at", "created_by", "is_main", "is_demo"]
+
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return obj.created_by.username
+        return None
 
 
 

@@ -1,6 +1,7 @@
 import { BASE_URL } from '../config/api';
 import { redirect } from 'react-router-dom';
 import { authFetch } from '../auth';
+import { branchParam } from './activeBranch';
 
 //_______________________________________________
 //_______________________________________________
@@ -221,7 +222,7 @@ export async function update_project_api(projectId, data) {
 
 // project_teams_expanded
 export async function project_teams_expanded(projectId) {
-  const res = await authFetch(`/api/projects/${projectId}/project_teams_expanded/`);
+  const res = await authFetch(`/api/projects/${projectId}/project_teams_expanded/${branchParam()}`);
 
   if (res.status === 401 || res.status === 403) {
     const err = new Error('unauthorized');
@@ -241,7 +242,7 @@ export async function project_teams_expanded(projectId) {
 
 // fetchTeamsForProject
 export async function fetchTeamsForProject(projectId) {
-  const res = await authFetch(`/api/projects/${projectId}/teams/`, {
+  const res = await authFetch(`/api/projects/${projectId}/teams/${branchParam()}`, {
     method: 'GET',
   });
 
@@ -254,7 +255,7 @@ export async function fetchTeamsForProject(projectId) {
 
 // createTeamForProject
 export async function createTeamForProject(projectId, payload) {
-  const res = await authFetch(`/api/projects/${projectId}/teams/`, {
+  const res = await authFetch(`/api/projects/${projectId}/teams/${branchParam()}`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -396,7 +397,7 @@ export async function bulk_delete_tasks(projectId, taskIds) {
 
 // fetchTasksForProject
 export async function fetchTasksForProject(projectId) {
-  const res = await authFetch(`/api/projects/${projectId}/tasks/`, {
+  const res = await authFetch(`/api/projects/${projectId}/tasks/${branchParam()}`, {
     method: 'GET',
   });
 
@@ -410,7 +411,7 @@ export async function fetchTasksForProject(projectId) {
 
 // createTaskForProject
 export async function createTaskForProject(projectId, payload) {
-  const res = await authFetch(`/api/projects/${projectId}/tasks/`, {
+  const res = await authFetch(`/api/projects/${projectId}/tasks/${branchParam()}`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -564,33 +565,3 @@ export async function deleteNotification(notificationId) {
   return await res.json();
 }
 
-//_______________________________________________
-//_______________________________________________
-//____________________DEMO_DATE__________________
-//_______________________________________________
-//_______________________________________________
-
-// Get current demo date from backend
-export async function getDemoDate() {
-  const res = await authFetch(`/api/demo-date/`);
-  
-  if (!res.ok) {
-    throw new Error('Failed to fetch demo date');
-  }
-  
-  return await res.json();
-}
-
-// Set demo date on backend
-export async function setDemoDate(date) {
-  const res = await authFetch(`/api/demo-date/`, {
-    method: 'POST',
-    body: JSON.stringify({ date }),
-  });
-  
-  if (!res.ok) {
-    throw new Error('Failed to set demo date');
-  }
-  
-  return await res.json();
-}

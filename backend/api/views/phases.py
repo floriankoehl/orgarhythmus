@@ -5,10 +5,10 @@ from rest_framework.response import Response
 
 from ..models import Project, Phase, Team
 from .serializers import PhaseSerializer
-from .helpers import user_has_project_access
+from .helpers import user_has_project_access, resolve_branch
 
 
-def _check_phase_overlap(project, start_index, duration, team_id, exclude_phase_id=None):
+def _check_phase_overlap(project, start_index, duration, team_id, exclude_phase_id=None, branch=None):
     """
     Check if a phase would overlap with existing phases.
     Rules:
@@ -19,6 +19,8 @@ def _check_phase_overlap(project, start_index, duration, team_id, exclude_phase_
     """
     end_index = start_index + duration
     candidates = Phase.objects.filter(project=project)
+    if branch is not None:
+        candidates = candidates.filter(branch=branch)
     if exclude_phase_id:
         candidates = candidates.exclude(pk=exclude_phase_id)
 
@@ -48,7 +50,11 @@ def get_all_phases(request, project_id):
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
-    phases = Phase.objects.filter(project=project)
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    phases = Phase.objects.filter(project=project, branch=branch)
     serialized = PhaseSerializer(phases, many=True)
     return Response({"phases": serialized.data})
 
@@ -68,6 +74,10 @@ def create_phase(request, project_id):
     if not user_has_project_access(request.user, project):
         return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
 
+    branch = resolve_branch(request, project)
+    if branch is None:
+        return Response({"detail": "Branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
     name = request.data.get("name", "New Phase")
     start_index = int(request.data.get("start_index", 0))
     duration = int(request.data.get("duration", 1))
@@ -83,12 +93,12 @@ def create_phase(request, project_id):
     team = None
     if team_id is not None:
         try:
-            team = Team.objects.get(pk=int(team_id), project=project)
+            team = Team.objects.get(pk=int(team_id), project=project, branch=branch)
         except Team.DoesNotExist:
             return Response({"detail": "Team not found"}, status=status.HTTP_404_NOT_FOUND)
 
     # Check overlap
-    overlapping = _check_phase_overlap(project, start_index, duration, team.id if team else None)
+    overlapping = _check_phase_overlap(project, start_index, duration, team.id if team else None, branch=branch)
     if overlapping:
         return Response({
             "detail": f"Phase overlaps with: {', '.join(overlapping)}",
@@ -96,10 +106,11 @@ def create_phase(request, project_id):
         }, status=status.HTTP_409_CONFLICT)
 
     # Auto order_index
-    max_order = Phase.objects.filter(project=project).count()
+    max_order = Phase.objects.filter(project=project, branch=branch).count()
 
     phase = Phase.objects.create(
         project=project,
+        branch=branch,
         team=team,
         name=name,
         start_index=start_index,
@@ -161,7 +172,7 @@ def update_phase(request, project_id, phase_id):
     # Check overlap with new values
     overlapping = _check_phase_overlap(
         project, phase.start_index, phase.duration,
-        phase.team_id, exclude_phase_id=phase.id
+        phase.team_id, exclude_phase_id=phase.id, branch=phase.branch
     )
     if overlapping:
         return Response({

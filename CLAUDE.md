@@ -19,7 +19,7 @@ docker compose up --build
 ```bash
 # Backend
 cd backend
-source venv/bin/activate
+source .venv/bin/activate
 python manage.py migrate
 python manage.py runserver  # http://127.0.0.1:8000
 
@@ -264,6 +264,293 @@ frontend/src/components/tasks_classification/
 **Paint Mode** (canvas-view only): Click a type in `TaskLegendPanel` to enter paint mode → click tasks to assign that type. Ctrl+Click type → batch-assign to all selected tasks.
 
 **Icons**: Stored as string keys (e.g. `"Flag"`, `"Star"`, `"Lightbulb"`) in `TaskLegendType.icon`. Rendered via `renderLegendTypeIcon(iconKey)` from `frontend/src/components/ideas/legendTypeIcons.jsx`.
+
+## Branching System
+
+Git-inspired project branching. Each project has a **main** branch (the source of truth) plus any number of user-created branches. Changes made while on a non-main branch do not affect main. Designed for multi-user projects where only admins/owners merge branches into main.
+
+### Core Concepts
+
+- **Branch**: A named, independent copy of all substantive project data at the point the branch was created. Not owned by a user — anyone can view or edit any branch.
+- **Main branch**: Auto-created for every project. Always exists, cannot be deleted. Serves as the canonical version.
+- **Branch isolation**: Every write operation (create/update/delete) for branch-aware data targets the current active branch only.
+- **Branch switching**: Per-user, per-project preference stored in `localStorage` (`branch_<projectId>`). No server-side session for active branch.
+- **Future work** (not yet implemented): branch diff, merge, PR-style review.
+
+### What IS Branch-Aware (captured in a branch)
+
+| Model | Why |
+|---|---|
+| `Team` | teams + ordering define project structure |
+| `Task` | all task fields, team assignment, ordering |
+| `AcceptanceCriterion` | criterion text + done state |
+| `Milestone` | name, start_index, duration, scheduling |
+| `MilestoneTodo` | todo text + done state |
+| `Dependency` | scheduling connections between milestones |
+| `Phase` | named timeline spans |
+| `TaskLegend` | classification system definitions |
+| `TaskLegendType` | category definitions within a legend |
+| `TaskLegendAssignment` | which task is assigned which category |
+| `Day` | purpose, is_blocked, color overrides on timeline days |
+
+### What is NOT Branch-Aware
+
+- `Project` metadata (name, description, start_date, end_date) — shared across all branches
+- `DependencyView` — frontend display state only
+- `ProjectSnapshot` — separate backup mechanism
+- `PromptSettings` — user AI settings
+- `UserShortcuts` / `filter_presets` — user preferences
+- `Formation` — IdeaBin visual layout
+- All IdeaBin models (Context, Category, Idea, etc.) — separate brainstorming tool, not branched
+- `ProtoPersona` — deferred; complex M2M relationships across branched models
+
+### Data Model
+
+```python
+class Branch(Model):
+    project = FK(Project, related_name="branches")
+    name = CharField(max_length=200)
+    description = TextField(blank=True)
+    created_by = FK(User, null=True, SET_NULL)
+    created_at = DateTimeField(auto_now_add=True)
+    is_main = BooleanField(default=False)
+    source_branch = FK("self", null=True, blank=True, SET_NULL)  # which branch this was forked from
+
+    class Meta:
+        unique_together = [("project", "name")]
+```
+
+All branch-aware models get a `branch` FK:
+```python
+branch = FK(Branch, on_delete=CASCADE, related_name="<model_plural>")
+```
+
+**AcceptanceCriterion, MilestoneTodo, TaskLegendType, TaskLegendAssignment, Dependency** do NOT get a direct branch FK — they cascade naturally from their parents (Task, Milestone, TaskLegend) which are branch-aware.
+
+### Deep Copy on Branch Creation
+
+When a new branch is created from a source branch, a service function `copy_branch_data(source_branch, new_branch)` performs:
+
+1. Copy `Team` rows → map `old_id → new_id`
+2. Copy `Task` rows (with new team FK from map) → map `old_id → new_id`
+3. Copy `AcceptanceCriterion` rows (with new task FK)
+4. Copy `Milestone` rows (with new task FK) → map `old_id → new_id`
+5. Copy `MilestoneTodo` rows (with new milestone FK)
+6. Copy `Dependency` rows (with new source/target FK from milestone map)
+7. Copy `Phase` rows (with new team FK if team-specific)
+8. Copy `TaskLegend` rows → map `old_id → new_id`
+9. Copy `TaskLegendType` rows (with new legend FK) → map `old_id → new_id`
+10. Copy `TaskLegendAssignment` rows (new task/legend/type FKs from maps)
+11. Copy `Day` rows (with new branch FK)
+
+All copy steps use `bulk_create` for performance.
+
+### Migration Strategy
+
+The migration for adding `branch` FK to existing data:
+1. Create `Branch` table
+2. For each existing `Project`, create one `Branch(is_main=True, name="main")`
+3. For each branch-aware model, set `branch_id` to the corresponding project's main branch
+4. Make `branch` FK non-nullable (after backfill)
+
+### API Endpoints
+
+```
+GET    /api/projects/<pid>/branches/                   List all branches
+POST   /api/projects/<pid>/branches/create/            Create new branch {name, description, source_branch_id}
+GET    /api/projects/<pid>/branches/<bid>/             Branch detail
+DELETE /api/projects/<pid>/branches/<bid>/delete/      Delete (not main)
+```
+
+All branch-aware endpoints accept a `?branch=<bid>` query parameter. If omitted, defaults to the project's main branch (looked up via `Branch.objects.get(project=pid, is_main=True)`).
+
+Affected endpoints (add `?branch` filtering):
+- `/api/projects/<pid>/teams/`
+- `/api/projects/<pid>/tasks/`
+- `/api/projects/<pid>/milestones/` (and milestone-related routes)
+- `/api/projects/<pid>/dependencies/` (and dependency-related routes)
+- `/api/projects/<pid>/phases/`
+- `/api/projects/<pid>/task-legends/` (and type/assignment routes)
+- `/api/projects/<pid>/days/`
+
+### Frontend Integration
+
+**Branch context**: A `BranchContext` provider (or included in existing project context) holds:
+```js
+{
+  branches,          // all branches for current project
+  activeBranchId,    // currently selected branch id
+  mainBranchId,      // the main branch id
+  setActiveBranchId, // switch branch (also writes localStorage)
+  isMainBranch,      // activeBranchId === mainBranchId
+  createBranch,      // (name, description) => Promise
+  deleteBranch,      // (branchId) => Promise
+}
+```
+
+Storage key: `branch_${projectId}` in `localStorage`.
+
+**Branch switcher UI**: Added to the project inventory/navigation header — a dropdown showing all branches with a "New branch" option. Shows current branch name. Main branch has a special indicator (e.g., a crown icon).
+
+**API calls**: All branch-aware API utility functions accept an optional `branchId` param, appended as `?branch=<id>`. The frontend reads `activeBranchId` from context and passes it automatically.
+
+### Key Files
+
+**Backend:**
+```
+backend/api/models.py                                         # Branch model + branch FK on all branch-aware models
+backend/api/migrations/0056_alter_promptsettings_*.py         # Migration with backfill logic
+backend/api/views/branches.py                                 # Branch CRUD + _copy_branch_data service
+backend/api/views/helpers.py                                  # resolve_branch() helper
+backend/api/views/projects.py                                 # create_project auto-creates main branch
+backend/api/views/teams.py                                    # branch-filtered
+backend/api/views/tasks.py                                    # branch-filtered
+backend/api/views/milestones.py                               # branch-filtered
+backend/api/views/dependencies.py                             # branch-filtered
+backend/api/views/phases.py                                   # branch-filtered
+backend/api/views/task_legends.py                             # branch-filtered
+backend/api/views/days.py                                     # branch-filtered
+backend/api/urls.py                                           # Branch endpoints registered
+```
+
+**Frontend:**
+```
+frontend/src/auth/BranchContext.jsx                  # Branch state provider
+frontend/src/api/branchApi.js                        # Branch API calls
+frontend/src/api/activeBranch.js                     # Module singleton for non-React API modules
+frontend/src/components/shared/BranchSwitcher.jsx    # Dropdown UI in InventoryBar
+frontend/src/api/org_API.js                          # branchParam() added to team/task calls
+frontend/src/api/dependencies_api.js                 # branchParam() added to all calls
+frontend/src/components/tasks_classification/api/taskLegendApi.js  # branchParam() added
+```
+
+### Implementation Status
+
+- [x] Backend: `Branch` model + migration with backfill (migration 0056)
+- [x] Backend: Branch CRUD views (`views/branches.py`) + `_copy_branch_data` service
+- [x] Backend: `BranchSerializer` in `serializers.py`; routes in `urls.py`
+- [x] Backend: `?branch=<id>` filtering in all branch-aware view files (teams, tasks, milestones, dependencies, phases, task-legends, days)
+- [x] Backend: `resolve_branch` helper in `views/helpers.py` — reads `?branch=<id>`, defaults to main, auto-creates main branch if missing
+- [x] Backend: `create_project` auto-creates a main branch for every new project
+- [x] Frontend: `BranchContext` provider (`auth/BranchContext.jsx`)
+- [x] Frontend: `branchApi.js` (`api/branchApi.js`)
+- [x] Frontend: `BranchSwitcher` dropdown in InventoryBar (`components/shared/BranchSwitcher.jsx`)
+- [x] Frontend: `BranchProvider` wraps `ProjectLayout`
+- [x] Frontend: `activeBranch.js` module singleton — keeps active branch ID in sync for non-React API modules
+- [x] Frontend: `branchParam()` threaded through all branch-aware API calls (`org_API.js`, `dependencies_api.js`, `taskLegendApi.js`)
+
+### Known Gotcha: New Projects Must Get a Main Branch
+
+`create_project` (`views/projects.py`) now creates a `Branch(is_main=True, name="main")` automatically. `resolve_branch` also auto-creates the main branch if one is missing (safety net for projects created before this was wired up). Any project without a main branch will have it created on the first branch-aware API call.
+
+## Demo Mode
+
+### Core Goal
+
+Allow users to move a "current time cursor" forward and backward along a project's timeline to crash-test schedules — seeing which milestones would be late, which are on track, and simulating future/past states. Each demo session is its own branch so it is fully isolated, resumable, and never corrupts real data.
+
+### Design Principle: Index-First, Metric-Aware
+
+The system stores a raw **integer index** (`demo_index`) and translates it to a human-readable value in the frontend based on the project's `metric` field. This makes the low-level data metric-agnostic.
+
+```
+demo_index = 5, metric = 'days',   start_date = 2026-01-01  →  "6. Jan 2026"
+demo_index = 5, metric = 'hours',  start_date = 2026-01-01  →  "01.01 14:00"
+demo_index = 5, metric = 'months', start_date = 2026-01-01  →  "Jun 2026"
+```
+
+This aligns naturally with how milestones/phases already work (`start_index`, `duration` are already metric-agnostic integers). The `demo_index` is just a cursor on that same axis.
+
+### What "current time" means
+
+- **Main/regular branch**: current time = `todayToIndex(metric, project.start_date)` — computed from real wall-clock date, not stored
+- **Demo branch** (`is_demo=True`): current time = `branch.demo_index` — manually controlled by the user
+
+The warning/overdue system always reads one consistent "current index" value from whichever source applies.
+
+### Backend Changes
+
+**`Project` model — new field:**
+```python
+metric = CharField(max_length=20, choices=['days', 'hours', 'months'], default='days')
+```
+
+**`Branch` model — two new fields:**
+```python
+is_demo    = BooleanField(default=False)
+demo_index = IntegerField(null=True, blank=True)  # only meaningful when is_demo=True
+```
+
+**New endpoint:** `POST /api/projects/<pid>/branches/enter-demo/`
+- Body: `{ source_branch_id }` — which branch to fork from
+- Deep-copies all branch data (same `_copy_branch_data` service as regular branch creation)
+- Sets `is_demo=True`, `demo_index` = today's position relative to `project.start_date`
+- Auto-generates branch name: `"demo-YYYY-MM-DD-HHmm"` (unique, no user input)
+- Returns the new branch
+
+**Existing `PATCH /api/projects/<pid>/branches/<bid>/`** — add `demo_index` to the serializer so the frontend can step it.
+
+**`DemoDate` model** — deprecated and removed. It was app-global and is fully replaced by this per-branch approach.
+
+### Frontend Changes
+
+**New utility file: `src/utils/projectMetric.js`**
+```js
+indexToDisplay(index, metric, startDate)  // → human-readable string
+todayToIndex(metric, startDate)            // → integer for today's real position
+```
+This is the ONLY place that knows about metric→unit translation.
+
+**`BranchContext` grows demo-aware properties:**
+```js
+isDemoMode         // activeBranch.is_demo
+demoIndex          // activeBranch.demo_index
+enterDemoMode()    // POST enter-demo → switches to new demo branch
+stepDemoIndex(±1)  // PATCH demo_index on current branch
+exitDemoMode()     // switch back to source_branch (branch is kept, NOT deleted)
+```
+
+**InventoryBar** — gets a Demo Mode section (replaces the old `DemoDateDisplay` in the org/project headers):
+- Not in demo mode: single "Demo" button to enter
+- In demo mode: `← [translated index display] →` + exit button
+
+**Removed:** `DemoDateContext`, `DemoDateDisplay`, `getDemoDate`/`setDemoDate` in `org_API.js`, all references in `App.jsx`, `OrgaHeader`, `ProjectHeader`.
+
+### Demo Branch Lifecycle
+
+1. User clicks "Enter Demo" in InventoryBar → `enterDemoMode()` is called
+2. Backend forks the active branch → returns demo branch → frontend switches to it
+3. User navigates forward/backward → `stepDemoIndex(±1)` PATCHes `demo_index` on the backend
+4. User clicks exit → `exitDemoMode()` switches back to source branch — **demo branch is kept**
+5. On a future visit, the demo branch appears in the BranchSwitcher — user can re-select it to resume
+
+### Key Files (planned)
+
+```
+backend/api/models.py                                   # metric on Project; is_demo + demo_index on Branch
+backend/api/migrations/XXXX_demo_mode.py                # migration for new fields
+backend/api/views/branches.py                           # enter_demo_view added
+backend/api/urls.py                                     # enter-demo route
+
+frontend/src/utils/projectMetric.js                     # indexToDisplay, todayToIndex
+frontend/src/auth/BranchContext.jsx                     # isDemoMode, demoIndex, enterDemoMode, stepDemoIndex, exitDemoMode
+frontend/src/api/branchApi.js                           # enterDemoMode API call
+frontend/src/components/shared/InventoryBar.jsx         # Demo Mode section
+```
+
+### Implementation Status
+
+- [x] Backend: `metric` field on `Project`
+- [x] Backend: `is_demo` + `demo_index` fields on `Branch`
+- [x] Backend: migration `0057_demo_mode_fields`
+- [x] Backend: `enter_demo` view + `patch_branch` view in `views/branches.py`
+- [x] Backend: `enter-demo` + `<bid>/update/` routes in `urls.py`
+- [x] Backend: `is_demo`, `demo_index` added to `BranchSerializer`; `metric` to `ProjectSerializer`
+- [x] Frontend: `projectMetric.js` utility (`indexToDisplay`, `indexToShortDisplay`, `todayToIndex`, `metricStepLabel`)
+- [x] Frontend: `BranchContext` — `isDemoMode`, `demoIndex`, `projectMetric`, `projectStartDate`, `enterDemoMode`, `exitDemoMode`, `stepDemoIndex`
+- [x] Frontend: `branchApi.js` — `enterDemoBranch()`, `patchBranch()` calls
+- [x] Frontend: `InventoryBar` — Demo Mode section (enter button / nav controls)
+- [x] Frontend: Removed `DemoDateContext`, `DemoDateDisplay`, old header references, `getDemoDate`/`setDemoDate` from `org_API.js`
 
 ## Key Conventions
 

@@ -7,7 +7,6 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import { useAuth } from "../auth/AuthContext";
 import ReplayIcon from '@mui/icons-material/Replay';
 import { Folder, Lightbulb } from 'lucide-react';
-import DemoDateDisplay from './DemoDateDisplay';
 
 
 export default function OrgaHeader() {
@@ -105,9 +104,6 @@ export default function OrgaHeader() {
           {!loadingUser && isAuthenticated && (
             <div className="flex items-center gap-3 ml-4">
 
-              {/* Demo Date Display */}
-              <DemoDateDisplay />
-
               {/* My Ideas Link */}
               <NavLink
                 to="/my-ideas"
@@ -189,12 +185,6 @@ export default function OrgaHeader() {
 
 
         <nav className="space-y-1 border-t border-slate-800/70 bg-slate-950/95 px-4 pb-4 pt-2">
-          {/* Mobile Demo Date Control */}
-          {!loadingUser && isAuthenticated && (
-            <div className="mb-3">
-              <DemoDateDisplay />
-            </div>
-          )}
           {/* MOBILE USER INFO */}
 
           {!loadingUser && !isAuthenticated && (
