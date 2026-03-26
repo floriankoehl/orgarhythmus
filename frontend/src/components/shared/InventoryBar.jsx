@@ -32,7 +32,7 @@ import AISettingsPopup from "./AISettingsPopup";
 import GlobalSettingsPopup from "./GlobalSettingsPopup";
 import BranchSwitcher from "./BranchSwitcher";
 import { triggerManualRefresh, useStaleData, useAutoRefreshSetting } from "../../api/dataEvents";
-import { indexToShortDisplay, metricStepLabel } from "../../utils/projectMetric";
+import { indexToNavDisplay, metricStepLabel } from "../../utils/projectMetric";
 
 /**
  * Inventory bar configuration for each window slot (keyed by type).
@@ -66,6 +66,7 @@ export default function InventoryBar() {
     demoIndex,
     projectMetric,
     projectStartDate,
+    displayMetric,
     enterDemoMode,
     exitDemoMode,
     stepDemoIndex,
@@ -448,7 +449,7 @@ export default function InventoryBar() {
             <div className="px-2 py-1 rounded-lg bg-amber-500/20 border border-amber-400/40
               text-amber-200 text-[10px] font-semibold tabular-nums whitespace-nowrap min-w-[60px] text-center">
               {demoIndex !== null
-                ? indexToShortDisplay(demoIndex, projectMetric, projectStartDate)
+                ? indexToNavDisplay(demoIndex, projectMetric, projectStartDate, displayMetric)
                 : "—"}
             </div>
 

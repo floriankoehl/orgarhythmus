@@ -40,6 +40,7 @@ export function BranchProvider({ projectId, children }) {
   const [loading, setLoading] = useState(true);
   const [projectMetric, setProjectMetric] = useState("days");
   const [projectStartDate, setProjectStartDate] = useState(null);
+  const [displayMetric, setDisplayMetric] = useState("date");
 
   const storageKey = `branch_${projectId}`;
 
@@ -196,6 +197,8 @@ export function BranchProvider({ projectId, children }) {
       stepDemoIndex,
       reloadBranches,
       loading,
+      displayMetric,
+      setDisplayMetric,
     }}>
       {children}
     </BranchContext.Provider>

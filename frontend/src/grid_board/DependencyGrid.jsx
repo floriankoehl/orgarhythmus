@@ -145,6 +145,8 @@ function DependencyGridContent({
   persistRowDeadline,
   persistLaneColor,
   persistToggleNodeDone,
+  onNodeDoubleClick = null,
+  onToggleMilestoneTodo = null,
 
   // ── View / snapshot API ──
   fetchViews,
@@ -208,6 +210,14 @@ function DependencyGridContent({
   onResolveEnd,
   /** Session edge IDs for visual distinction during review */
   sessionEdgeIds,
+
+  /** Demo mode: column index to highlight (null = not in demo mode) */
+  demoColumnIndex = null,
+  /** Current time index — used for overdue/warning node styling */
+  currentTimeIndex = null,
+  /** Display metric for column header labels ('date' | 'index' | 'week' | 'month') */
+  displayMetric = 'date',
+  setDisplayMetric,
 
   /** When true, rendered inside a floating window — uses compact padding, hides header toggle */
   isFloating = false,
@@ -762,9 +772,12 @@ function DependencyGridContent({
       ioPopupOpen,
       setIoPopupOpen,
       ioPopupContent,
+      // Display metric switcher
+      displayMetric,
+      setDisplayMetric,
     };
   }
-  useEffect(() => { triggerViewBarRender?.(); }, [savedViews, activeViewId, activeViewName, toolbarCollapsed, ioPopupOpen, ghostEdges, triggerViewBarRender]);
+  useEffect(() => { triggerViewBarRender?.(); }, [savedViews, activeViewId, activeViewName, toolbarCollapsed, ioPopupOpen, ghostEdges, displayMetric, triggerViewBarRender]);
 
   // ─────────────────────────
   //  Snapshot management (inline — no separate hook needed since it's all callbacks)
@@ -1065,6 +1078,8 @@ function DependencyGridContent({
     ghostEdges,
     ghostNodes,
     sessionEdgeIds,
+    demoColumnIndex,
+    currentTimeIndex,
   };
 
   const handlers = {
@@ -1113,6 +1128,8 @@ function DependencyGridContent({
     onRowNavigate,
     // Toggle done
     persistToggleNodeDone,
+    // Double-click detail modal
+    onNodeDoubleClick,
   };
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -1190,6 +1207,8 @@ function DependencyGridContent({
         handleCreatePhase={handleCreatePhase}
         handleUpdatePhase={handleUpdatePhase}
         handleDeletePhase={handleDeletePhase}
+        nodes={nodes}
+        onToggleMilestoneTodo={onToggleMilestoneTodo}
         totalColumns={totalColumns}
         projectStartDate={projectStartDate}
         phases={phases}

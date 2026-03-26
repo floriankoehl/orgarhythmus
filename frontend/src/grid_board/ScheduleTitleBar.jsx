@@ -29,7 +29,17 @@ export default function ScheduleTitleBar({
     ioPopupOpen,
     setIoPopupOpen,
     ioPopupContent,
+    // Display metric
+    displayMetric = 'date',
+    setDisplayMetric,
   } = viewBar;
+
+  const METRICS = [
+    { key: 'date',  label: 'Date',  title: 'Show calendar dates (5.3)' },
+    { key: 'index', label: 'Idx',   title: 'Show raw index numbers (0, 1, 2…)' },
+    { key: 'week',  label: 'Week',  title: 'Show week numbers (W1 D1…)' },
+    { key: 'month', label: 'Month', title: 'Show day + month abbreviation (5 Mar)' },
+  ];
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -99,6 +109,30 @@ export default function ScheduleTitleBar({
       <span className="text-[12px] font-semibold text-white truncate">
         Schedule
       </span>
+
+      {/* ── Metric switcher ── */}
+      {setDisplayMetric && (
+        <div
+          className="flex items-center gap-0.5 ml-2 bg-black/20 rounded-md p-0.5"
+          onMouseDown={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          {METRICS.map(({ key, label, title }) => (
+            <button
+              key={key}
+              onClick={() => setDisplayMetric(key)}
+              title={title}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                displayMetric === key
+                  ? 'bg-white text-sky-700 shadow-sm'
+                  : 'text-white/70 hover:text-white hover:bg-white/15'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ── View selector ── */}
       <div className="relative flex items-center gap-0.5 ml-2" onMouseDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} ref={dropdownRef}>

@@ -116,3 +116,56 @@ export function metricStepLabel(metric) {
     default:       return "day";
   }
 }
+
+/**
+ * Format a demo index for the InventoryBar nav display, respecting both the
+ * project's unit metric AND the schedule's chosen display format.
+ *
+ * @param {number} index
+ * @param {string} projectMetric  - 'days' | 'hours' | 'months'
+ * @param {string|null} startDate - ISO date string or null
+ * @param {string} displayMetric  - 'date' | 'index' | 'week' | 'month'
+ * @returns {string}
+ */
+export function indexToNavDisplay(index, projectMetric, startDate, displayMetric) {
+  if (index === null || index === undefined) return "—";
+
+  switch (displayMetric) {
+    case "index":
+      return String(index);
+
+    case "week": {
+      // Week number and day-within-week, derived from the unit metric
+      if (projectMetric === "hours") {
+        const day = Math.floor(index / 24);
+        const week = Math.floor(day / 7) + 1;
+        const dayInWeek = (day % 7) + 1;
+        return `W${week} D${dayInWeek}`;
+      }
+      if (projectMetric === "months") {
+        // Approximate: 1 month ≈ 4.3 weeks; just show month as a week-ish label
+        return `M${index + 1}`;
+      }
+      // days (default)
+      const week = Math.floor(index / 7) + 1;
+      const dayInWeek = (index % 7) + 1;
+      return `W${week} D${dayInWeek}`;
+    }
+
+    case "month": {
+      if (!startDate) {
+        if (projectMetric === "months") return `M${index + 1}`;
+        const monthNum = Math.floor(index / (projectMetric === "hours" ? 720 : 30)) + 1;
+        return `M${monthNum}`;
+      }
+      const base = dayjs(startDate);
+      if (projectMetric === "hours")  return base.add(index, "hour").format("MMM YY");
+      if (projectMetric === "months") return base.add(index, "month").format("MMM YY");
+      return base.add(index, "day").format("MMM YY");
+    }
+
+    case "date":
+    default:
+      return indexToShortDisplay(index, projectMetric, startDate);
+  }
+}

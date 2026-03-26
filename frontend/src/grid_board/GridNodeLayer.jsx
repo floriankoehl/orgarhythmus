@@ -69,6 +69,10 @@ export default function GridNodeLayer({
   ghostNodes = [],
   // Toggle done callback
   persistToggleNodeDone,
+  // Current time index for overdue/warning detection (null = disabled)
+  currentTimeIndex = null,
+  // Double-click handler — receives the node object
+  onNodeDoubleClick = null,
 }) {
   const [todoModal, setTodoModal] = useState(null); // { nodeId, incompleteTodos: [] }
 
@@ -319,6 +323,11 @@ export default function GridNodeLayer({
             const nodeDone = !!node.is_done_effective;
             const effectiveNodeColor = nodeDone ? '#22c55e' : nodeColor;
 
+            // Overdue / warning based on current time index
+            const nodeEnd = node.startColumn + (node.duration || 1);
+            const isOverdue  = !nodeDone && currentTimeIndex !== null && currentTimeIndex >= nodeEnd;
+            const isWarning  = !nodeDone && !isOverdue && currentTimeIndex !== null && currentTimeIndex === nodeEnd - 1;
+
             // Use node.x (pixel offset) during drag for smooth visual feedback,
             // otherwise use columnLayout-based position
             const nodeLeft = node.x !== undefined
@@ -352,6 +361,12 @@ export default function GridNodeLayer({
                     handleNodeClick(e, node.id);
                   }
                 }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  if (!refactorMode && onNodeDoubleClick) {
+                    onNodeDoubleClick(node);
+                  }
+                }}
                 title={`${node.name}${rows[row_key]?.name ? `\n${rows[row_key].name}` : ''}`}
                 onMouseEnter={() => setHoveredNode(node.id)}
                 onMouseLeave={() => setHoveredNode(null)}
@@ -362,7 +377,11 @@ export default function GridNodeLayer({
                       ? 'ring-2 ring-red-500 ring-offset-1 shadow-lg animate-pulse'
                       : isSelected
                         ? 'ring-2 ring-blue-500 ring-offset-1 shadow-lg'
-                        : 'hover:brightness-95'
+                        : isOverdue
+                          ? 'ring-2 ring-red-500 ring-offset-1'
+                          : isWarning
+                            ? 'ring-2 ring-amber-400 ring-offset-1'
+                            : 'hover:brightness-95'
                 }`}
                 style={{
                   left: `${nodeLeft}px`,
@@ -381,6 +400,12 @@ export default function GridNodeLayer({
                 <div className="flex items-center h-full px-2 overflow-hidden gap-1">
                   {nodeDone && (
                     <CheckCircleIcon style={{ fontSize: 12, flexShrink: 0 }} className="text-white drop-shadow-sm" />
+                  )}
+                  {isOverdue && (
+                    <WarningAmberIcon style={{ fontSize: 12, flexShrink: 0, color: '#ef4444' }} className="drop-shadow-sm" />
+                  )}
+                  {isWarning && (
+                    <WarningAmberIcon style={{ fontSize: 12, flexShrink: 0, color: '#f59e0b' }} className="drop-shadow-sm" />
                   )}
                   <span className={`truncate text-xs ${isSelected ? 'text-white' : ''} ${nodeDone ? 'text-white' : ''}`}>
                     {node.name}

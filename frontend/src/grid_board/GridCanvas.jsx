@@ -119,6 +119,8 @@ export default function GridCanvas({
     ghostEdges = [],
     ghostNodes = [],
     sessionEdgeIds,
+    demoColumnIndex = null,
+    currentTimeIndex = null,
   } = displayState;
 
   // ── Destructure handlers ──
@@ -168,6 +170,8 @@ export default function GridCanvas({
     onRowNavigate,
     // Toggle done
     persistToggleNodeDone,
+    // Double-click to open detail modal
+    onNodeDoubleClick,
   } = handlers;
 
   // Row multi-select from context
@@ -656,21 +660,25 @@ export default function GridCanvas({
                       );
                     }
 
+                    const isDemoCol = demoColumnIndex != null && i === demoColumnIndex;
+
                     return (
                       <div
                         key={i}
                         className={`absolute top-0 flex flex-col items-center justify-center text-xs border-r cursor-pointer transition-colors ${
-                          isSelected
-                            ? 'bg-blue-200 text-blue-900 ring-1 ring-inset ring-blue-400'
-                            : hasPurpose
-                              ? isLaneSpecific
-                                ? 'bg-slate-600 text-white hover:bg-slate-500'
-                                : 'bg-slate-800 text-white hover:bg-slate-700'
-                            : highlightWeekends && isSunday
-                                ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
-                                : highlightWeekends && isWeekend
-                                  ? 'bg-purple-50 text-purple-700 hover:bg-purple-100'
-                                  : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                          isDemoCol
+                            ? 'bg-amber-300 text-amber-900 border-x-2 border-amber-500 font-semibold'
+                            : isSelected
+                              ? 'bg-blue-200 text-blue-900 ring-1 ring-inset ring-blue-400'
+                              : hasPurpose
+                                ? isLaneSpecific
+                                  ? 'bg-slate-600 text-white hover:bg-slate-500'
+                                  : 'bg-slate-800 text-white hover:bg-slate-700'
+                              : highlightWeekends && isSunday
+                                  ? 'bg-purple-100 text-purple-800 hover:bg-purple-200'
+                                  : highlightWeekends && isWeekend
+                                    ? 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                                    : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
                         }`}
                         style={{
                           left: `${colX}px`,
@@ -810,9 +818,32 @@ export default function GridCanvas({
                     0%, 100% { opacity: 1; stroke-width: 5; }
                     50% { opacity: 0.5; stroke-width: 3; }
                   }
+                  @keyframes demoPulse {
+                    0%, 100% { opacity: 0.18; }
+                    50% { opacity: 0.28; }
+                  }
                 `}
               </style>
             </defs>
+
+            {/* Demo mode column stripe */}
+            {demoColumnIndex != null && !collapsedColumns.has(demoColumnIndex) && (() => {
+              const demoColX = SIDEBAR_WIDTH + (columnLayout ? columnLayout.columnXOffset(demoColumnIndex) : demoColumnIndex * COLUMNWIDTH);
+              const demoColW = columnLayout ? columnLayout.columnWidth(demoColumnIndex) : COLUMNWIDTH;
+              return (
+                <rect
+                  key="demo-col-stripe"
+                  x={demoColX}
+                  y={0}
+                  width={demoColW}
+                  height={contentHeight}
+                  fill="rgba(251,191,36,0.18)"
+                  stroke="rgba(245,158,11,0.5)"
+                  strokeWidth={1.5}
+                  style={{ animation: 'demoPulse 2s ease-in-out infinite' }}
+                />
+              );
+            })()}
 
             {!hideAllEdges && edges.map((edge) => {
               const weight = edge.weight || 'strong';
@@ -1081,6 +1112,8 @@ export default function GridCanvas({
             getLanePhaseRowHeight={getLanePhaseRowHeight}
             ghostNodes={ghostNodes}
             persistToggleNodeDone={persistToggleNodeDone}
+            currentTimeIndex={currentTimeIndex}
+            onNodeDoubleClick={onNodeDoubleClick}
           />
 
           {/* Ghost edges overlay — ABOVE nodes for visibility */}

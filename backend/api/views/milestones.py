@@ -398,6 +398,114 @@ def rename_milestone(request, project_id):
 
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
+def update_milestone(request, project_id):
+    """
+    Update a milestone's name and/or description.
+    Body: { "id": <milestone_id>, "name": <optional>, "description": <optional> }
+    """
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    milestone_id = request.data.get("id")
+    if not milestone_id:
+        return Response({"detail": "id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        milestone = Milestone.objects.get(id=milestone_id, project=project)
+    except Milestone.DoesNotExist:
+        return Response({"detail": "Milestone not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if "name" in request.data:
+        name = request.data["name"].strip()
+        if name:
+            milestone.name = name
+    if "description" in request.data:
+        milestone.description = request.data["description"]
+    milestone.save()
+
+    milestone = Milestone.objects.prefetch_related("todos", "task__acceptance_criteria").get(pk=milestone.pk)
+    return Response(MilestoneSerializer_Deps(milestone).data, status=200)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def add_milestone_todo(request, project_id):
+    """
+    Add a new todo to a milestone.
+    Body: { "milestone_id": <id>, "title": <str> }
+    """
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    milestone_id = request.data.get("milestone_id")
+    title = (request.data.get("title") or "").strip()
+    if not milestone_id or not title:
+        return Response({"detail": "milestone_id and title are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        milestone = Milestone.objects.get(id=milestone_id, project=project)
+    except Milestone.DoesNotExist:
+        return Response({"detail": "Milestone not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    order = milestone.todos.count()
+    MilestoneTodo.objects.create(milestone=milestone, title=title, order=order)
+
+    milestone = Milestone.objects.prefetch_related("todos", "task__acceptance_criteria").get(pk=milestone.pk)
+    return Response(MilestoneSerializer_Deps(milestone).data, status=201)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_milestone_todo(request, project_id):
+    """
+    Delete a todo from a milestone.
+    Body: { "milestone_id": <id>, "todo_id": <id> }
+    Cannot delete the auto-created 'Milestone finished' default todo.
+    """
+    try:
+        project = Project.objects.get(pk=project_id)
+    except Project.DoesNotExist:
+        return Response({"detail": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if not user_has_project_access(request.user, project):
+        return Response({"detail": "Forbidden"}, status=status.HTTP_403_FORBIDDEN)
+
+    milestone_id = request.data.get("milestone_id")
+    todo_id = request.data.get("todo_id")
+    if not milestone_id or not todo_id:
+        return Response({"detail": "milestone_id and todo_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        milestone = Milestone.objects.get(id=milestone_id, project=project)
+    except Milestone.DoesNotExist:
+        return Response({"detail": "Milestone not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        todo = MilestoneTodo.objects.get(id=todo_id, milestone=milestone)
+    except MilestoneTodo.DoesNotExist:
+        return Response({"detail": "Todo not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    if todo.title == "Milestone finished":
+        return Response({"detail": "Cannot delete the default milestone todo"}, status=status.HTTP_400_BAD_REQUEST)
+
+    todo.delete()
+
+    milestone = Milestone.objects.prefetch_related("todos", "task__acceptance_criteria").get(pk=milestone.pk)
+    return Response(MilestoneSerializer_Deps(milestone).data, status=200)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
 def move_milestone_task(request, project_id):
     """
     Move a milestone to a different task within the same project.

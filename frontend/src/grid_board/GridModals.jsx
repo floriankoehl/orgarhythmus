@@ -34,6 +34,9 @@ function useModalKeys(isOpen, onConfirm, onCancel) {
 }
 
 export default function GridModals({
+  // All nodes (milestones) for column milestone view
+  nodes = {},
+  onToggleMilestoneTodo = null,
   // Column Purpose Modal
   columnPurposeModal,
   setColumnPurposeModal,
@@ -123,133 +126,243 @@ export default function GridModals({
   useModalKeys(!!weakEdgeModal, () => { if (handleWeakEdgeConvert) handleWeakEdgeConvert(weakEdgeModal); setWeakEdgeModal(null); }, () => setWeakEdgeModal(null));
   useModalKeys(!!suggestionOfferModal, handleSuggestionOfferAccept, () => setSuggestionOfferModal(null));
 
+  // Tab state for the column modal ('settings' | 'milestones')
+  const [columnTab, setColumnTab] = useState('settings');
+  // Which milestone todos are expanded (Set of node ids)
+  const [expandedTodos, setExpandedTodos] = useState(new Set());
+  // Reset tab + expansions when the modal opens/closes
+  useEffect(() => {
+    if (columnPurposeModal) { setColumnTab('milestones'); setExpandedTodos(new Set()); }
+  }, [!!columnPurposeModal]);
+
   return (
     <>
       {/* Column Purpose Modal */}
-      {columnPurposeModal && (
+      {columnPurposeModal && (() => {
+        const colIdx = columnPurposeModal.columnIndex;
+        const colLabel = columnLabels[colIdx];
+        // Milestones active on this column
+        const colMilestones = Object.values(nodes).filter(
+          (n) => n.startColumn <= colIdx && colIdx < n.startColumn + (n.duration || 1)
+        );
+
+        return (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm modal-backdrop-animate">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl max-w-md w-full mx-4 modal-animate-in">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-slate-900">
-                Set {columnLabel} Purpose
-              </h2>
-              <button
-                onClick={() => setColumnPurposeModal(null)}
-                className="p-1 rounded hover:bg-slate-100"
-              >
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-2xl max-w-md w-full mx-4 modal-animate-in overflow-hidden flex flex-col" style={{ maxHeight: '80vh' }}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-5 pb-3">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">
+                  {columnLabel} {colIdx + 1}
+                  {colLabel?.dateStr && <span className="ml-2 text-sm font-normal text-slate-500">{colLabel.dateStr}</span>}
+                </h2>
+                {colLabel?.isSunday && (
+                  <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Sunday</span>
+                )}
+              </div>
+              <button onClick={() => setColumnPurposeModal(null)} className="p-1 rounded hover:bg-slate-100">
                 <CloseIcon fontSize="small" />
               </button>
             </div>
 
-            <p className="text-sm text-slate-600 mb-4">
-              {columnLabel} {columnPurposeModal.columnIndex + 1} - {columnLabels[columnPurposeModal.columnIndex]?.dateStr}
-              {columnLabels[columnPurposeModal.columnIndex]?.isSunday && (
-                <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Sunday</span>
-              )}
-            </p>
+            {/* Tabs */}
+            <div className="flex gap-0 px-6 border-b border-slate-100">
+              {[
+                { id: 'settings', label: 'Settings' },
+                { id: 'milestones', label: `Milestones${colMilestones.length > 0 ? ` (${colMilestones.length})` : ''}` },
+              ].map(({ id, label }) => (
+                <button
+                  key={id}
+                  onClick={() => setColumnTab(id)}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                    columnTab === id
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
 
-            <input
-              type="text"
-              value={newColumnPurpose}
-              onChange={(e) => setNewColumnPurpose(e.target.value)}
-              placeholder="e.g., Meeting, Sprint Review, Holiday..."
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSaveColumnPurpose();
-                if (e.key === 'Escape') setColumnPurposeModal(null);
-              }}
-            />
+            {/* Tab content */}
+            <div className="overflow-y-auto flex-1 px-6 py-4">
 
-            {/* Lane scope selector */}
-            <div className="mb-4">
-              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Applies to</h4>
-              <div className="space-y-1.5">
-                <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer px-2 py-1 rounded hover:bg-slate-50">
+              {columnTab === 'settings' && (
+                <>
                   <input
-                    type="radio"
-                    name="purposeScope"
-                    checked={newColumnPurposeLanes === null}
-                    onChange={() => setNewColumnPurposeLanes(null)}
-                    className="text-blue-600"
+                    type="text"
+                    value={newColumnPurpose}
+                    onChange={(e) => setNewColumnPurpose(e.target.value)}
+                    placeholder="e.g., Meeting, Sprint Review, Holiday..."
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveColumnPurpose();
+                      if (e.key === 'Escape') setColumnPurposeModal(null);
+                    }}
                   />
-                  <span className="font-medium">All {laneLabel}s</span>
-                </label>
-                <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer px-2 py-1 rounded hover:bg-slate-50">
-                  <input
-                    type="radio"
-                    name="purposeScope"
-                    checked={newColumnPurposeLanes !== null}
-                    onChange={() => setNewColumnPurposeLanes([])}
-                    className="text-blue-600"
-                  />
-                  <span className="font-medium">Specific {laneLabel}s</span>
-                </label>
-              </div>
 
-              {newColumnPurposeLanes !== null && (
-                <div className="mt-2 ml-6 space-y-1 max-h-36 overflow-y-auto border border-slate-100 rounded-lg p-2">
-                  {laneOrder && laneOrder.length > 0 ? laneOrder.filter(lid => !allLanes?.[lid]?._virtual).map((laneId) => {
-                    const lane = allLanes?.[laneId];
-                    if (!lane) return null;
-                    const isSelected = newColumnPurposeLanes.includes(laneId);
-                    return (
-                      <label
-                        key={laneId}
-                        className="flex items-center gap-2 px-2 py-1 rounded hover:bg-slate-50 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => {
-                            setNewColumnPurposeLanes(prev =>
-                              isSelected
-                                ? prev.filter(id => id !== laneId)
-                                : [...prev, laneId]
-                            );
-                          }}
-                          className="rounded border-slate-300"
-                        />
-                        <div
-                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: lane.color || '#94a3b8' }}
-                        />
-                        <span className="text-xs text-slate-700 truncate">{lane.name}</span>
+                  {/* Lane scope selector */}
+                  <div className="mb-2">
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Applies to</h4>
+                    <div className="space-y-1.5">
+                      <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer px-2 py-1 rounded hover:bg-slate-50">
+                        <input type="radio" name="purposeScope" checked={newColumnPurposeLanes === null} onChange={() => setNewColumnPurposeLanes(null)} className="text-blue-600" />
+                        <span className="font-medium">All {laneLabel}s</span>
                       </label>
-                    );
-                  }) : (
-                    <p className="text-xs text-slate-400 italic px-2">No {laneLabel.toLowerCase()}s available</p>
-                  )}
-                </div>
+                      <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer px-2 py-1 rounded hover:bg-slate-50">
+                        <input type="radio" name="purposeScope" checked={newColumnPurposeLanes !== null} onChange={() => setNewColumnPurposeLanes([])} className="text-blue-600" />
+                        <span className="font-medium">Specific {laneLabel}s</span>
+                      </label>
+                    </div>
+
+                    {newColumnPurposeLanes !== null && (
+                      <div className="mt-2 ml-6 space-y-1 max-h-36 overflow-y-auto border border-slate-100 rounded-lg p-2">
+                        {laneOrder && laneOrder.length > 0 ? laneOrder.filter(lid => !allLanes?.[lid]?._virtual).map((laneId) => {
+                          const lane = allLanes?.[laneId];
+                          if (!lane) return null;
+                          const isSelected = newColumnPurposeLanes.includes(laneId);
+                          return (
+                            <label key={laneId} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-slate-50 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => setNewColumnPurposeLanes(prev => isSelected ? prev.filter(id => id !== laneId) : [...prev, laneId])}
+                                className="rounded border-slate-300"
+                              />
+                              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: lane.color || '#94a3b8' }} />
+                              <span className="text-xs text-slate-700 truncate">{lane.name}</span>
+                            </label>
+                          );
+                        }) : (
+                          <p className="text-xs text-slate-400 italic px-2">No {laneLabel.toLowerCase()}s available</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {columnTab === 'milestones' && (
+                colMilestones.length === 0 ? (
+                  <p className="text-sm text-slate-400 italic text-center py-6">No milestones on this {columnLabel.toLowerCase()}.</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {colMilestones.map((node) => {
+                      const rowName = rows?.[node.row]?.name;
+                      const done = !!node.is_done_effective;
+                      const isStart = node.startColumn === colIdx;
+                      const isEnd = node.startColumn + (node.duration || 1) - 1 === colIdx;
+                      const todos = node.todos ?? [];
+                      return (
+                        <li key={node.id} className="rounded-xl bg-slate-50 border border-slate-100 overflow-hidden">
+                          {/* Milestone header */}
+                          <div className="flex items-start gap-3 px-3 py-2.5">
+                            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1" style={{ backgroundColor: node.color || '#94a3b8' }} />
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-sm font-medium leading-snug ${done ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                                {node.name}
+                              </p>
+                              {rowName && <p className="text-xs text-slate-400 mt-0.5 truncate">{rowName}</p>}
+                              <div className="flex items-center gap-2 mt-1">
+                                {done && <span className="text-[10px] font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded">Done</span>}
+                                {isStart && !isEnd && <span className="text-[10px] text-sky-600 bg-sky-50 px-1.5 py-0.5 rounded">Starts here</span>}
+                                {isEnd && !isStart && <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Ends here</span>}
+                                {isStart && isEnd && <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">Single day</span>}
+                                {node.duration > 1 && <span className="text-[10px] text-slate-400">{node.duration}d</span>}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Todos — collapsible */}
+                          {todos.length > 0 && (
+                            <div className="border-t border-slate-100">
+                              <button
+                                onClick={() => setExpandedTodos((prev) => {
+                                  const next = new Set(prev);
+                                  next.has(node.id) ? next.delete(node.id) : next.add(node.id);
+                                  return next;
+                                })}
+                                className="w-full flex items-center justify-between px-4 py-1.5 text-left hover:bg-slate-100 transition-colors"
+                              >
+                                <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
+                                  Criteria ({todos.filter(t => t.done).length}/{todos.length})
+                                </span>
+                                <svg
+                                  viewBox="0 0 10 6" className="w-2.5 h-2.5 text-slate-400 transition-transform"
+                                  style={{ transform: expandedTodos.has(node.id) ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                                  fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
+                                >
+                                  <path d="M1 1l4 4 4-4" />
+                                </svg>
+                              </button>
+                              {expandedTodos.has(node.id) && (
+                                <ul className="divide-y divide-slate-100">
+                                  {todos.map((todo) => (
+                                    <li key={todo.id}>
+                                      <button
+                                        onClick={() => onToggleMilestoneTodo?.(node.id, todo.id)}
+                                        className={`w-full flex items-center gap-2.5 px-4 py-2 text-left transition-colors
+                                          ${todo.done ? 'hover:bg-green-50' : 'hover:bg-slate-100'}`}
+                                      >
+                                        <span className={`w-3.5 h-3.5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors
+                                          ${todo.done ? 'bg-green-500 border-green-500' : 'border-slate-300'}`}
+                                        >
+                                          {todo.done && (
+                                            <svg viewBox="0 0 10 8" className="w-2 h-2" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                              <path d="M1 4l3 3 5-6" />
+                                            </svg>
+                                          )}
+                                        </span>
+                                        <span className={`text-xs ${todo.done ? 'line-through text-slate-400' : 'text-slate-600'}`}>
+                                          {todo.title}
+                                        </span>
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )
               )}
             </div>
 
-            <div className="flex justify-between gap-3">
-              <button
-                onClick={handleClearColumnPurpose}
-                className="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition"
-                disabled={!columnPurposeModal.currentPurpose}
-              >
-                Clear Purpose
-              </button>
-              <div className="flex gap-2">
+            {/* Footer — only shown on settings tab */}
+            {columnTab === 'settings' && (
+              <div className="flex justify-between gap-3 px-6 py-4 border-t border-slate-100">
                 <button
-                  onClick={() => setColumnPurposeModal(null)}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition"
+                  onClick={handleClearColumnPurpose}
+                  className="px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition"
+                  disabled={!columnPurposeModal.currentPurpose}
                 >
-                  Cancel
+                  Clear Purpose
                 </button>
-                <button
-                  onClick={handleSaveColumnPurpose}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition"
-                  disabled={newColumnPurposeLanes !== null && newColumnPurposeLanes.length === 0}
-                >
-                  Save
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={() => setColumnPurposeModal(null)} className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveColumnPurpose}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition"
+                    disabled={newColumnPurposeLanes !== null && newColumnPurposeLanes.length === 0}
+                  >
+                    Save
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
+
           </div>
         </div>
+        );
+      })()}
       )}
 
       {/* Create Lane Modal */}

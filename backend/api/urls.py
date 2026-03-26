@@ -137,6 +137,9 @@ urlpatterns = [
     path("projects/<int:project_id>/toggle_milestone_todo/", views.toggle_milestone_todo),
     path("projects/<int:project_id>/change_duration/", views.change_duration),
     path("projects/<int:project_id>/rename_milestone/", views.rename_milestone),
+    path("projects/<int:project_id>/update_milestone/", views.update_milestone),
+    path("projects/<int:project_id>/add_milestone_todo/", views.add_milestone_todo),
+    path("projects/<int:project_id>/delete_milestone_todo/", views.delete_milestone_todo),
     path("projects/<int:project_id>/move_milestone_task/", views.move_milestone_task),
     path("projects/<int:project_id>/bulk_import_dependencies/", views.bulk_import_dependencies),
 

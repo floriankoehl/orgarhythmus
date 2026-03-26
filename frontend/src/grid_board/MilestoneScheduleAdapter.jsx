@@ -19,6 +19,7 @@ import { checkDepConflict, applyDepDetected } from '../components/shared/promptE
 import { buildDepChangeItems, recomposeDepDetected, DEP_CHANGE_TYPE_META } from '../components/shared/promptEngine/depChangeBuilder';
 import ControlledApplyModal from '../components/shared/promptEngine/ControlledApplyPanel';
 import { getDefaultViewState } from './viewDefaults';
+import MilestoneDetailModal from './MilestoneDetailModal';
 import { playSound } from '../assets/sound_registry';
 import { emitDataEvent, useManualRefresh } from '../api/dataEvents';
 
@@ -61,6 +62,10 @@ import {
   save_user_shortcuts,
   bulk_import_dependencies,
   toggle_milestone_done,
+  toggle_milestone_todo,
+  update_milestone,
+  add_milestone_todo,
+  delete_milestone_todo,
 } from '../api/dependencies_api';
 import {
   updateTeam,
@@ -69,6 +74,8 @@ import {
 } from '../api/org_API.js';
 import { fetchTaskLegendsApi, fetchTaskLegendTypesApi } from '../components/tasks_classification/api/taskLegendApi.js';
 import { daysBetween } from './layoutMath';
+import { useBranch } from '../auth/BranchContext';
+import { todayToIndex } from '../utils/projectMetric';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  MilestoneScheduleAdapter
@@ -77,8 +84,59 @@ import { daysBetween } from './layoutMath';
 export default function MilestoneScheduleAdapter({ isFloating = false, windowPos, windowSize, setWindowPos, setWindowSize, isMaximized, setIsMaximized, viewBarRef, triggerViewBarRender }) {
   const { projectId } = useParams();
   const navigate = useNavigate();
+  const { isDemoMode, demoIndex, displayMetric, setDisplayMetric, projectMetric, projectStartDate: branchStartDate } = useBranch();
+  const currentTimeIndex = isDemoMode ? demoIndex : todayToIndex(projectMetric, branchStartDate);
   const { buildClipboardText, settings: promptSettings, projectDescription } = usePromptSettings();
   const [ioPopupOpen, setIoPopupOpen] = useState(false);
+
+  // ── Milestone detail modal ──
+  const [detailMilestone, setDetailMilestone] = useState(null);
+
+  const handleNodeDoubleClick = useCallback((node) => {
+    setDetailMilestone(node);
+  }, []);
+
+  // Sync updated milestone data into both nodes state and detail modal
+  const syncMilestone = useCallback((updated) => {
+    if (!updated) return;
+    setNodes((prev) => ({
+      ...prev,
+      [updated.id]: { ...prev[updated.id], ...updated },
+    }));
+    setDetailMilestone((prev) => prev ? { ...prev, ...updated } : prev);
+  }, []);
+
+  const handleToggleMilestoneTodo = useCallback(async (milestoneId, todoId) => {
+    const result = await toggle_milestone_todo(projectId, milestoneId, todoId);
+    syncMilestone(result);
+    return result;
+  }, [projectId, syncMilestone]);
+
+  const handleDetailTodoToggle = useCallback(async (todoId) => {
+    if (!detailMilestone) return;
+    return handleToggleMilestoneTodo(detailMilestone.id, todoId);
+  }, [detailMilestone, handleToggleMilestoneTodo]);
+
+  const handleDetailUpdate = useCallback(async (fields) => {
+    if (!detailMilestone) return;
+    const result = await update_milestone(projectId, detailMilestone.id, fields);
+    syncMilestone(result);
+    return result;
+  }, [detailMilestone, projectId, syncMilestone]);
+
+  const handleDetailAddTodo = useCallback(async (title) => {
+    if (!detailMilestone) return;
+    const result = await add_milestone_todo(projectId, detailMilestone.id, title);
+    syncMilestone(result);
+    return result;
+  }, [detailMilestone, projectId, syncMilestone]);
+
+  const handleDetailDeleteTodo = useCallback(async (todoId) => {
+    if (!detailMilestone) return;
+    const result = await delete_milestone_todo(projectId, detailMilestone.id, todoId);
+    syncMilestone(result);
+    return result;
+  }, [detailMilestone, projectId, syncMilestone]);
 
   // ── Conflict resolve state ──
   // { sourceId, targetId, sourceName, targetName, changeItemId } or null
@@ -269,22 +327,47 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
   // ════════════════════════════════════════════════════════════════════
   const columnLabels = useMemo(() => {
     if (!projectStartDate || !totalColumns) return [];
+    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const DAY_NAMES   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
     const labels = [];
     for (let i = 0; i < totalColumns; i++) {
       const date = new Date(projectStartDate);
       date.setDate(date.getDate() + i);
-      const day = date.getDate();
-      const month = date.getMonth() + 1;
+      const day      = date.getDate();
+      const month    = date.getMonth() + 1;
       const dayOfWeek = date.getDay();
-      const isSunday = dayOfWeek === 0;
+      const isSunday  = dayOfWeek === 0;
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-      const dayNames = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-      const dayNameShort = dayNames[dayOfWeek];
-      const dayData = projectDays[i] || {};
+      const rawDayName = DAY_NAMES[dayOfWeek];
+      const dayData   = projectDays[i] || {};
+
+      let dateStr, dayNameShort;
+      switch (displayMetric) {
+        case 'index':
+          dateStr     = String(i);
+          dayNameShort = '';
+          break;
+        case 'week': {
+          const weekNum   = Math.floor(i / 7) + 1;
+          const dayInWeek = (i % 7) + 1;
+          dateStr      = `W${weekNum}`;
+          dayNameShort = `D${dayInWeek}`;
+          break;
+        }
+        case 'month':
+          dateStr      = String(day);
+          dayNameShort = MONTH_NAMES[date.getMonth()];
+          break;
+        default: // 'date'
+          dateStr      = `${day}.${month}`;
+          dayNameShort = dayData.day_name_short || rawDayName;
+          break;
+      }
+
       labels.push({
         index: i,
-        dateStr: `${day}.${month}`,
-        dayNameShort: dayData.day_name_short || dayNameShort,
+        dateStr,
+        dayNameShort,
         isSunday: dayData.is_sunday ?? isSunday,
         isWeekend: dayData.is_weekend ?? isWeekend,
         purpose: dayData.purpose || null,
@@ -293,7 +376,7 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       });
     }
     return labels;
-  }, [projectStartDate, totalColumns, projectDays]);
+  }, [projectStartDate, totalColumns, projectDays, displayMetric]);
 
   // ── Classification-system derived display data ──
   // When classificationLegendId is set, legend types become lanes and tasks are
@@ -1195,6 +1278,8 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       persistRowDeadline={persistRowDeadline}
       persistLaneColor={persistLaneColor}
       persistToggleNodeDone={persistToggleNodeDone}
+      onNodeDoubleClick={handleNodeDoubleClick}
+      onToggleMilestoneTodo={handleToggleMilestoneTodo}
 
       // View / snapshot API
       fetchViews={fetchViews}
@@ -1280,6 +1365,12 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
       resolveState={resolveState}
       onResolveEnd={handleResolveEnd}
       sessionEdgeIds={sessionEdgeIds}
+
+      // Demo mode
+      demoColumnIndex={isDemoMode ? demoIndex : null}
+      currentTimeIndex={currentTimeIndex}
+      displayMetric={displayMetric}
+      setDisplayMetric={setDisplayMetric}
     >
       {/* Refactor mode ghost card */}
       {refactorGhost && (
@@ -1329,6 +1420,18 @@ export default function MilestoneScheduleAdapter({ isFloating = false, windowPos
           onFocusToggle={handleReviewFocusToggle}
           onDone={handleReviewEnd}
           onDurationResolve={handleDurationResolveStart}
+        />
+      )}
+
+      {/* Milestone detail modal — opened on double-click */}
+      {detailMilestone && (
+        <MilestoneDetailModal
+          milestone={detailMilestone}
+          onClose={() => setDetailMilestone(null)}
+          onToggleTodo={handleDetailTodoToggle}
+          onUpdate={handleDetailUpdate}
+          onAddTodo={handleDetailAddTodo}
+          onDeleteTodo={handleDetailDeleteTodo}
         />
       )}
 

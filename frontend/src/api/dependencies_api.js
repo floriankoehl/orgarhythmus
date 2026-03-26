@@ -142,6 +142,33 @@ export async function toggle_milestone_todo(projectId, milestone_id, todo_id) {
     return await res.json();
 }
 
+export async function update_milestone(projectId, milestone_id, fields) {
+    const res = await authFetch(`/api/projects/${projectId}/update_milestone/`, {
+        method: "PATCH",
+        body: JSON.stringify({ id: milestone_id, ...fields }),
+    });
+    if (!res.ok) throw new Error('Failed to update milestone');
+    return await res.json();
+}
+
+export async function add_milestone_todo(projectId, milestone_id, title) {
+    const res = await authFetch(`/api/projects/${projectId}/add_milestone_todo/`, {
+        method: "POST",
+        body: JSON.stringify({ milestone_id, title }),
+    });
+    if (!res.ok) throw new Error('Failed to add milestone todo');
+    return await res.json();
+}
+
+export async function delete_milestone_todo(projectId, milestone_id, todo_id) {
+    const res = await authFetch(`/api/projects/${projectId}/delete_milestone_todo/`, {
+        method: "DELETE",
+        body: JSON.stringify({ milestone_id, todo_id }),
+    });
+    if (!res.ok) throw new Error('Failed to delete milestone todo');
+    return await res.json();
+}
+
 export async function delete_milestone(projectId, milestone_id){
     const res = await authFetch(`/api/projects/${projectId}/delete_milestones/`, {
         method: "DELETE",
